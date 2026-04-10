@@ -174,7 +174,11 @@ async function login() {
         params.append('username_or_email', CONFIG.USERNAME);
         params.append('password', CONFIG.PASSWORD);
         const response = await axios.post(`${CONFIG.BASE_URL}/auth/login`, params, {
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+            headers: { 
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Referer': 'https://animeinweb.com/'
+            }
         });
         const resData = response.data;
         if (resData.data && resData.data.user) {
@@ -195,7 +199,13 @@ async function fetchMessages() {
     try {
         const queryParams = { id_user: auth.userId, key_client: auth.userKey };
         if (lastMessageId > 0) queryParams.highest_id = lastMessageId;
-        const response = await axios.get(`${CONFIG.BASE_URL}/3/2/chat/data`, { params: queryParams });
+        const response = await axios.get(`${CONFIG.BASE_URL}/3/2/chat/data`, { 
+            params: queryParams,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Referer': 'https://animeinweb.com/'
+            }
+        });
         return response.data;
     } catch (error) {
         return null;
@@ -210,7 +220,11 @@ async function sendChatMessage(text, replyTo = '0') {
         params.append('id_user', auth.userId);
         params.append('key_client', auth.userKey);
         await axios.post(`${CONFIG.BASE_URL}/3/2/chat/do`, params, {
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+            headers: { 
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Referer': 'https://animeinweb.com/'
+            }
         });
     } catch (error) {
         console.error('Send error:', error.message);
