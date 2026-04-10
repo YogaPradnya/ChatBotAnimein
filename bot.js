@@ -3,9 +3,6 @@ const Groq = require('groq-sdk');
 const express = require('express');
 require('dotenv').config();
 
-// ═══════════════════════════════════════════════════════
-// KONFIGURASI
-// ═══════════════════════════════════════════════════════
 const CONFIG = {
     BASE_URL: 'https://purple-hall-e016.yogapradnyana988.workers.dev/api/proxy',
     USERNAME: process.env.ANIMEIN_USERNAME,
@@ -16,9 +13,7 @@ const CONFIG = {
     IMAGE_TRIGGERS: ['gambar', 'foto', 'ilustrasi', 'buatkan gambar', 'generate gambar'],
 };
 
-// ═══════════════════════════════════════════════════════
-// STATS TRACKER (untuk dashboard)
-// ═══════════════════════════════════════════════════════
+
 const stats = {
     startTime: new Date().toISOString(),
     botStatus: 'starting',
@@ -56,12 +51,10 @@ function addActivity(type, from, text, response, provider) {
     if (stats.recentActivity.length > 20) stats.recentActivity.pop();
 }
 
-// ═══════════════════════════════════════════════════════
-// INIT GROQ
-// ═══════════════════════════════════════════════════════
+
 const groqClient = CONFIG.GROQ_API_KEY ? new Groq({ apiKey: CONFIG.GROQ_API_KEY }) : null;
 
-const SYSTEM_PROMPT = `Kamu adalah bot anime bernama AI-chan di chat room AnimeinWeb. Aturan menjawab:
+const SYSTEM_PROMPT = `Kamu adalah bot anime bernama AI-chan di chat room Animein. Aturan menjawab:
 - Gunakan bahasa Indonesia yang santai dan gaul
 - Jawaban singkat tapi padat, maksimal 3-4 kalimat
 - Kalau ada list/pilihan, buat per baris dengan tanda strip (-)
