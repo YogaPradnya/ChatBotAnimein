@@ -7,7 +7,7 @@ require('dotenv').config();
 // KONFIGURASI
 // ═══════════════════════════════════════════════════════
 const CONFIG = {
-    BASE_URL: 'https://animeinweb.com/api/proxy',
+    BASE_URL: 'https://purple-hall-e016.yogapradnyana988.workers.dev/api/proxy',
     USERNAME: process.env.ANIMEIN_USERNAME,
     PASSWORD: process.env.ANIMEIN_PASSWORD,
     GROQ_API_KEY: process.env.GROQ_API_KEY,
@@ -175,9 +175,18 @@ async function login() {
         params.append('password', CONFIG.PASSWORD);
         const response = await axios.post(`${CONFIG.BASE_URL}/auth/login`, params, {
             headers: { 
+                'Accept': 'application/json, text/plain, */*',
+                'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
                 'Content-Type': 'application/x-www-form-urlencoded',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Referer': 'https://animeinweb.com/'
+                'Origin': 'https://animeinweb.com',
+                'Referer': 'https://animeinweb.com/',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+                'sec-ch-ua': '"Google Chrome";v="123", "Not:A-Brand";v="8", "Chromium";v="123"',
+                'sec-ch-ua-mobile': '?0',
+                'sec-ch-ua-platform': '"Windows"',
+                'Sec-Fetch-Dest': 'empty',
+                'Sec-Fetch-Mode': 'cors',
+                'Sec-Fetch-Site': 'same-origin'
             }
         });
         const resData = response.data;
@@ -202,8 +211,16 @@ async function fetchMessages() {
         const response = await axios.get(`${CONFIG.BASE_URL}/3/2/chat/data`, { 
             params: queryParams,
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Referer': 'https://animeinweb.com/'
+                'Accept': 'application/json, text/plain, */*',
+                'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+                'Referer': 'https://animeinweb.com/',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+                'sec-ch-ua': '"Google Chrome";v="123", "Not:A-Brand";v="8", "Chromium";v="123"',
+                'sec-ch-ua-mobile': '?0',
+                'sec-ch-ua-platform': '"Windows"',
+                'Sec-Fetch-Dest': 'empty',
+                'Sec-Fetch-Mode': 'cors',
+                'Sec-Fetch-Site': 'same-origin'
             }
         });
         return response.data;
@@ -221,9 +238,18 @@ async function sendChatMessage(text, replyTo = '0') {
         params.append('key_client', auth.userKey);
         await axios.post(`${CONFIG.BASE_URL}/3/2/chat/do`, params, {
             headers: { 
+                'Accept': 'application/json, text/plain, */*',
+                'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
                 'Content-Type': 'application/x-www-form-urlencoded',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Referer': 'https://animeinweb.com/'
+                'Origin': 'https://animeinweb.com',
+                'Referer': 'https://animeinweb.com/',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+                'sec-ch-ua': '"Google Chrome";v="123", "Not:A-Brand";v="8", "Chromium";v="123"',
+                'sec-ch-ua-mobile': '?0',
+                'sec-ch-ua-platform': '"Windows"',
+                'Sec-Fetch-Dest': 'empty',
+                'Sec-Fetch-Mode': 'cors',
+                'Sec-Fetch-Site': 'same-origin'
             }
         });
     } catch (error) {
