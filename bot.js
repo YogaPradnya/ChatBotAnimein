@@ -7,10 +7,16 @@ const CONFIG = {
     BASE_URL: 'https://purple-hall-e016.yogapradnyana988.workers.dev/api/proxy',
     USERNAME: process.env.ANIMEIN_USERNAME,
     PASSWORD: process.env.ANIMEIN_PASSWORD,
-    GROQ_API_KEY: process.env.GROQ_API_KEY,
+    // Mendukung hingga 3 Groq API Keys
+    GROQ_KEYS: [
+        process.env.GROQ_API_KEY,      // Utama
+        process.env.GROQ_API_KEY_2,    // Cadangan 1
+        process.env.GROQ_API_KEY_3     // Cadangan 2
+    ].filter(Boolean),
     POLL_INTERVAL: 5000,
     DASHBOARD_PORT: process.env.PORT || 3500,
     IMAGE_TRIGGERS: ['gambar', 'foto', 'ilustrasi', 'buatkan gambar', 'generate gambar'],
+    GROQ_COOLDOWN: 60 * 1000, // 1 menit cooldown jika rate limit
 };
 
 
@@ -20,16 +26,15 @@ const stats = {
     totalTriggers: 0,
     recentActivity: [],  // maks 20 item terakhir
 
-    groq: {
-        available: !!CONFIG.GROQ_API_KEY,
+    groq: CONFIG.GROQ_KEYS.map((key, index) => ({
+        id: index + 1,
+        active: true,
+        cooldownUntil: 0,
         requests: 0,
         success: 0,
         errors: 0,
-        // Groq free tier limit: 14400/day, 30/min
-        dailyLimit: 14400,
-        minuteLimit: 30,
         lastError: null,
-    },
+    })),
     pollinations: {
         available: true,
         requests: 0,
@@ -52,7 +57,8 @@ function addActivity(type, from, text, response, provider) {
 }
 
 
-const groqClient = CONFIG.GROQ_API_KEY ? new Groq({ apiKey: CONFIG.GROQ_API_KEY }) : null;
+// Inisialisasi multiple Groq clients
+const groqClients = CONFIG.GROQ_KEYS.map(key => new Groq({ apiKey: key }));
 
 const SYSTEM_PROMPT = `Kamu adalah asisten chat di komunitas Animein yang di buat oleh Yogaa. 
 Aturan menjawab:
@@ -99,10 +105,12 @@ function isImageRequest(text) {
 // ═══════════════════════════════════════════════════════
 
 /** Groq (Llama 3.1) - kualitas lebih baik */
-async function askGroq(userMessage, senderName) {
-    if (!groqClient) throw new Error('Groq API key tidak ada');
-    stats.groq.requests++;
-    const completion = await groqClient.chat.completions.create({
+async function askGroq(index, userMessage, senderName) {
+    const client = groqClients[index];
+    const stat = stats.groq[index];
+    
+    stat.requests++;
+    const completion = await client.chat.completions.create({
         model: 'llama-3.1-8b-instant',
         messages: [
             { role: 'system', content: SYSTEM_PROMPT },
@@ -111,7 +119,7 @@ async function askGroq(userMessage, senderName) {
         max_tokens: 200,
         temperature: 0.75,
     });
-    stats.groq.success++;
+    stat.success++;
     return stripEmoji(completion.choices[0]?.message?.content || '');
 }
 
@@ -133,18 +141,34 @@ async function askPollinations(userMessage, senderName) {
 
 /** Main AI handler: Groq dulu, fallback ke Pollinations */
 async function getAIResponse(userMessage, senderName) {
-    // Coba Groq dulu jika key tersedia
-    if (groqClient) {
+    // Cari Groq yang tidak sedang cooldown (prioritas index kecil/utama)
+    for (let i = 0; i < groqClients.length; i++) {
+        const stat = stats.groq[i];
+        const now = Date.now();
+
+        if (now < stat.cooldownUntil) {
+            console.log(`[GROQ-${i+1}] Cooldown... Skip to next.`);
+            continue;
+        }
+
         try {
-            const result = await askGroq(userMessage, senderName);
-            if (result) return { text: result, provider: 'Groq' };
+            const result = await askGroq(i, userMessage, senderName);
+            if (result) return { text: result, provider: `Groq #${i+1}` };
         } catch (err) {
-            stats.groq.errors++;
-            stats.groq.lastError = err.message.slice(0, 100);
-            console.log(`[GROQ-FAIL] ${err.message.slice(0, 80)} -> Fallback ke Pollinations`);
+            stat.errors++;
+            stat.lastError = err.message.slice(0, 100);
+            
+            // Jika kena rate limit (429), aktifkan cooldown
+            if (err.message.includes('429') || err.status === 429) {
+                stat.cooldownUntil = now + CONFIG.GROQ_COOLDOWN;
+                console.log(`[GROQ-${i+1}] Rate limit! Cooldown 1 menit.`);
+            } else {
+                console.log(`[GROQ-${i+1}] Error: ${err.message.slice(0, 50)}`);
+            }
         }
     }
-    // Fallback ke Pollinations
+
+    // Fallback ke Pollinations jika semua Groq gagal/cooldown
     try {
         const result = await askPollinations(userMessage, senderName);
         return { text: result || 'Hmm, gak tau nih.', provider: 'Pollinations' };
@@ -463,7 +487,7 @@ function getDashboardHTML() {
       <div class="metric-sub">hh:mm:ss</div>
     </div>
     <div class="card">
-      <div class="card-title">Groq Requests</div>
+      <div class="card-title">Total Groq Req</div>
       <div class="metric" id="groqTotal">-</div>
       <div class="metric-sub" id="groqSuccessRate">Success rate</div>
     </div>
@@ -474,28 +498,13 @@ function getDashboardHTML() {
     </div>
   </div>
 
+  <div class="section-title">Provider Status</div>
   <!-- PROVIDER CARDS -->
-  <div class="grid grid-2" style="margin-bottom:20px">
-    <!-- GROQ -->
-    <div class="provider-card">
-      <div class="provider-header">
-        <div class="provider-icon" style="background:linear-gradient(135deg,#f97316,#ea580c)">G</div>
-        <div>
-          <div class="provider-name">Groq API</div>
-          <div class="provider-sub">Llama 3.1 8B Instant</div>
-        </div>
-        <div id="groqBadge" style="margin-left:auto"></div>
-      </div>
-      <div class="stat-row"><span class="stat-label">Status</span><span class="stat-value" id="groqStatus">-</span></div>
-      <div class="stat-row"><span class="stat-label">Requests (sukses)</span><span class="stat-value" id="groqSuccess">-</span></div>
-      <div class="stat-row"><span class="stat-label">Errors</span><span class="stat-value" id="groqErrors">-</span></div>
-      <div class="stat-row"><span class="stat-label">Daily Limit</span><span class="stat-value">14.400 req/hari</span></div>
-      <div class="stat-row"><span class="stat-label">Estimasi Sisa</span><span class="stat-value" id="groqRemain">-</span></div>
-      <div class="stat-row"><span class="stat-label">Error Terakhir</span></div>
-      <div style="font-size:12px;color:var(--red);margin-top:6px;word-break:break-all" id="groqLastErr">-</div>
-      <div class="progress-bar"><div class="progress-fill" id="groqBar" style="background:linear-gradient(90deg,#f97316,#ea580c);width:0%"></div></div>
-    </div>
+  <div class="grid grid-3" style="margin-bottom:20px" id="groqCards">
+    <!-- Groq cards will be injected here -->
+  </div>
 
+  <div class="grid grid-1" style="margin-bottom:20px">
     <!-- POLLINATIONS -->
     <div class="provider-card">
       <div class="provider-header">
@@ -504,16 +513,14 @@ function getDashboardHTML() {
           <div class="provider-name">Pollinations.ai</div>
           <div class="provider-sub">OpenAI compatible · Tanpa API Key</div>
         </div>
-        <div class="badge badge-green" style="margin-left:auto">Unlimited</div>
+        <div class="badge badge-green" style="margin-left:auto">Unlimited (Fallback)</div>
       </div>
-      <div class="stat-row"><span class="stat-label">Status</span><span class="stat-value" style="color:var(--green)">Aktif (Fallback)</span></div>
-      <div class="stat-row"><span class="stat-label">Requests (sukses)</span><span class="stat-value" id="pollSuccess">-</span></div>
-      <div class="stat-row"><span class="stat-label">Errors</span><span class="stat-value" id="pollErrors">-</span></div>
-      <div class="stat-row"><span class="stat-label">Limit Harian</span><span class="stat-value">Tidak ada</span></div>
-      <div class="stat-row"><span class="stat-label">Reset</span><span class="stat-value">Per menit</span></div>
-      <div class="stat-row"><span class="stat-label">Error Terakhir</span></div>
-      <div style="font-size:12px;color:var(--red);margin-top:6px;word-break:break-all" id="pollLastErr">-</div>
-      <div class="progress-bar"><div class="progress-fill" style="background:linear-gradient(90deg,#5eead4,#0891b2);width:100%"></div></div>
+      <div class="grid grid-3" style="gap:10px">
+        <div class="stat-row"><span class="stat-label">Requests</span><span class="stat-value" id="pollSuccess">-</span></div>
+        <div class="stat-row"><span class="stat-label">Errors</span><span class="stat-value" id="pollErrors">-</span></div>
+        <div class="stat-row"><span class="stat-label">Status</span><span class="stat-value" style="color:var(--green)">Aktif</span></div>
+      </div>
+      <div style="font-size:12px;color:var(--red);margin-top:10px;word-break:break-all" id="pollLastErr">-</div>
     </div>
   </div>
 
@@ -550,29 +557,44 @@ async function refresh() {
     // top stats
     document.getElementById('totalTriggers').textContent = d.totalTriggers||0;
     document.getElementById('uptime').textContent = formatUptime(d.uptime||0);
-    document.getElementById('groqTotal').textContent = d.groq.requests;
-    document.getElementById('groqSuccessRate').textContent = rate(d.groq.success, d.groq.requests)+' success';
+    
+    // Aggregated Groq Stats
+    const totalGroqReq = d.groq.reduce((acc, g) => acc + g.requests, 0);
+    const totalGroqSuccess = d.groq.reduce((acc, g) => acc + g.success, 0);
+    document.getElementById('groqTotal').textContent = totalGroqReq;
+    document.getElementById('groqSuccessRate').textContent = rate(totalGroqSuccess, totalGroqReq)+' success';
+    
     document.getElementById('pollTotal').textContent = d.pollinations.requests;
     document.getElementById('pollSuccessRate').textContent = rate(d.pollinations.success, d.pollinations.requests)+' success';
 
-    // groq card
-    const groqAvail = d.groq.available;
-    document.getElementById('groqBadge').innerHTML = groqAvail
-      ? '<span class="badge badge-green">Aktif</span>'
-      : '<span class="badge badge-red">No API Key</span>';
-    document.getElementById('groqStatus').textContent = groqAvail?'Tersedia':'API Key tidak ada';
-    document.getElementById('groqStatus').style.color = groqAvail?'var(--green)':'var(--red)';
-    document.getElementById('groqSuccess').textContent = d.groq.success+' / '+d.groq.requests;
-    document.getElementById('groqErrors').textContent = d.groq.errors;
-    document.getElementById('groqErrors').style.color = d.groq.errors>0?'var(--red)':'var(--text)';
-    const remain = Math.max(0, d.groq.dailyLimit - d.groq.requests);
-    document.getElementById('groqRemain').textContent = remain.toLocaleString()+' req';
-    document.getElementById('groqLastErr').textContent = d.groq.lastError||'Tidak ada error';
-    const usedPct = Math.min(100, d.groq.requests/d.groq.dailyLimit*100);
-    document.getElementById('groqBar').style.width = usedPct+'%';
+    // Groq cards
+    const now = Date.now();
+    const groqCardsContainer = document.getElementById('groqCards');
+    groqCardsContainer.innerHTML = d.groq.map((g, i) => {
+      const isCooldown = now < g.cooldownUntil;
+      const statusText = isCooldown ? 'COOLDOWN' : 'READY';
+      const cooldownSecs = isCooldown ? Math.round((g.cooldownUntil - now) / 1000) : 0;
+      
+      return '<div class="provider-card">'
+          + '<div class="provider-header">'
+          + '<div class="provider-icon" style="background:linear-gradient(135deg,#f97316,#ea580c)">' + (i+1) + '</div>'
+          + '<div>'
+          + '<div class="provider-name">Groq Key #' + (i+1) + '</div>'
+          + '<div class="provider-sub">' + (i === 0 ? 'Primary' : 'Backup') + '</div>'
+          + '</div>'
+          + '<div style="margin-left:auto">'
+          + '<span class="badge ' + (isCooldown ? 'badge-yellow' : 'badge-green') + '">' + statusText + '</span>'
+          + '</div>'
+          + '</div>'
+          + '<div class="stat-row"><span class="stat-label">Usage</span><span class="stat-value">' + g.success + ' / ' + g.requests + '</span></div>'
+          + '<div class="stat-row"><span class="stat-label">Errors</span><span class="stat-value" style="color:' + (g.errors > 0 ? 'var(--red)' : 'inherit') + '">' + g.errors + '</span></div>'
+          + (isCooldown ? '<div class="stat-row"><span class="stat-label">Reset In</span><span class="stat-value">' + cooldownSecs + 's</span></div>' : '')
+          + '<div style="font-size:11px;color:var(--red);margin-top:8px;height:1.2em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + (g.lastError || '') + '">' + (g.lastError || '') + '</div>'
+          + '</div>';
+    }).join('');
 
     // pollinations card
-    document.getElementById('pollSuccess').textContent = d.pollinations.success+' / '+d.pollinations.requests;
+    document.getElementById('pollSuccess').textContent = d.pollinations.success + ' / ' + d.pollinations.requests;
     document.getElementById('pollErrors').textContent = d.pollinations.errors;
     document.getElementById('pollErrors').style.color = d.pollinations.errors>0?'var(--red)':'var(--text)';
     document.getElementById('pollLastErr').textContent = d.pollinations.lastError||'Tidak ada error';
@@ -581,7 +603,7 @@ async function refresh() {
     const list = document.getElementById('activityList');
     if (d.recentActivity && d.recentActivity.length > 0) {
       list.innerHTML = d.recentActivity.map(a => {
-        const provClass = a.provider==='Groq'?'prov-groq':a.provider==='Pollinations'?'prov-pollinations':'prov-error';
+        const provClass = a.provider.startsWith('Groq')?'prov-groq':a.provider==='Pollinations'?'prov-pollinations':'prov-error';
         const typeClass = a.type==='image'?'type-image':'type-text';
         const typeLabel = a.type==='image'?'Gambar':'Teks';
         return '<div class="activity-item">'
