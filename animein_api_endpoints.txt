@@ -1,0 +1,70 @@
+HASIL ANALISIS API ANIMEINWEB.COM
+=================================
+
+1. STRUKTUR DASAR API
+--------------------
+Website menggunakan Proxy API untuk menyembunyikan backend.
+Base URL Proxy: https://animeinweb.com/api/proxy
+
+2. FITUR LOGIN & AUTENTIKASI
+---------------------------
+Data dikirim dalam format: application/x-www-form-urlencoded
+
+A. Login (Masuk)
+   Endpoint: /auth/login
+   Metode  : POST
+   Payload : 
+     - username_or_email: [string]
+     - password: [string]
+
+B. Register (Daftar)
+   Endpoint: /auth/register
+   Metode  : POST
+   Payload : 
+     - username: [string]
+     - email: [string]
+     - password: [string]
+     - pokemon: [string] (ID Avatar, contoh: "152")
+
+C. Forgot Password (Lupa Password)
+   Endpoint: /auth/forget
+   Metode  : POST
+   Payload : 
+     - email: [string]
+
+D. Mekanisme Token (Authentication)
+   Tersimpan di localStorage dengan key: auth_pref_v1
+   Struktur:
+   {
+     "user_id": "87xxx",
+     "user_key": "abcxxxx-xxxx-xxxx"
+   }
+   Keterangan: 
+   - Gunakan `user_id` sebagai parameter `id_user`
+   - Gunakan `user_key` sebagai parameter `key_client`
+
+3. FITUR CHAT
+-------------
+Sistem menggunakan metode polling berkala.
+
+A. Mengambil Pesan (Fetch Chat)
+   Endpoint: /3/2/chat/data
+   Metode  : GET
+   Query Parameters:
+     - highest_id: [integer] (Opsional, untuk pesan terbaru)
+     - lowest_id: [integer] (Opsional, untuk pesan lama/history)
+     - id_user: [string] (Wajib jika login)
+     - key_client: [string] (Wajib jika login)
+
+B. Mengirim Pesan (Send Message)
+   Endpoint: /3/2/chat/do
+   Metode  : POST
+   Payload (Form Data):
+     - text: [string] (Isi pesan)
+     - id_chat_replay: [string] (ID pesan yang dibalas, "0" jika pesan baru)
+     - id_user: [string] (Wajib)
+     - key_client: [string] (Wajib)
+
+---
+Catatan: Semua endpoint di atas harus diakses melalui Base URL Proxy:
+Contoh: https://animeinweb.com/api/proxy/3/2/chat/data
