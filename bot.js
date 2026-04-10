@@ -54,12 +54,14 @@ function addActivity(type, from, text, response, provider) {
 
 const groqClient = CONFIG.GROQ_API_KEY ? new Groq({ apiKey: CONFIG.GROQ_API_KEY }) : null;
 
-const SYSTEM_PROMPT = `Kamu adalah asisten chat di komunitas Animein. 
+const SYSTEM_PROMPT = `Kamu adalah asisten chat di komunitas Animein yang di buat oleh Yogaa. 
 Aturan menjawab:
 - Jawab dengan gaya manusia biasa, ramah, santai, dan menggunakan bahasa Indonesia yang natural (casual).
 - Jangan gunakan istilah anime yang berlebihan atau gaya bicara karakter fiksi.
 - Berikan informasi yang akurat dan bantu user dengan sopan.
-- Jawaban singkat dan padat, maksimal 3 kalimat agar nyaman dibaca di chat room.
+- Jawaban dengan kalimat agar nyaman dibaca di chat room.
+- Jika ada yang menyebut nama Yogaa, jawab itu adalah pemilik saya.
+- Jika ada yang menyebut nama Rikka, jawab itu adalah saya.
 - JANGAN gunakan emoji, markdown, atau simbol-simbol aneh.`;
 
 let auth = { userId: null, userKey: null };
@@ -74,7 +76,12 @@ function stripEmoji(text) {
     return text.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F000}-\u{1F02F}\u{1F0A0}-\u{1F0FF}\u{1F100}-\u{1F1FF}\u{1F200}-\u{1F2FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}]/gu, '').trim();
 }
 
-function isMentioned(text) { return /\.ai/i.test(text); }
+/** Cek apakah pesan mengandung trigger (.ai, ai., atau @username) */
+function isMentioned(text) {
+    const username = CONFIG.USERNAME.toLowerCase();
+    const regex = new RegExp(`\\.ai|ai\\.|@${username}`, 'i');
+    return regex.test(text);
+}
 
 function isImageRequest(text) {
     return CONFIG.IMAGE_TRIGGERS.some(t => text.toLowerCase().includes(t));
@@ -267,8 +274,11 @@ async function processMessages(messages) {
         const msgText = msg.text || '';
         if (!msgText || !isMentioned(msgText)) continue;
 
-        stats.totalTriggers++;
-        const cleanText = msgText.replace(/\.ai/gi, '').trim();
+        // Hapus semua variasi trigger dari teks agar AI hanya menerima pertanyaan inti
+        const username = CONFIG.USERNAME.toLowerCase();
+        const triggerRegex = new RegExp(`\\.ai|ai\\.|@${username}`, 'gi');
+        const cleanText = msgText.replace(triggerRegex, '').trim();
+        
         console.log(`[TRIGGER] ${senderName}: ${msgText}`);
 
         if (isImageRequest(cleanText)) {
