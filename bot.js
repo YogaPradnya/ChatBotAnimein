@@ -157,20 +157,30 @@ const ANIMEIN_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
 };
 
-/** Ambil data anime trending/populer dari Animein */
+/** Ambil data anime trending (HOT) dari Animein - dari home/data */
 async function fetchTrendingAnime() {
     const now = Date.now();
     if (cache.trending.data && now - cache.trending.lastFetch < cache.TTL) {
         return cache.trending.data;
     }
     try {
-        const res = await axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, {
-            params: { sort: 'popular', page: 1 },
+        // home/data punya key 'hot' dan 'popular' yang berisi anime trending saat ini
+        const res = await axios.get(`${CONFIG.BASE_URL}/3/2/home/data`, {
+            params: { day: 'SENIN' }, // Gunakan parameter agar server mengembalikan data lengkap
             headers: ANIMEIN_HEADERS,
             timeout: 10000,
         });
-        const raw = res.data?.data?.movie || [];
-        const list = raw.slice(0, 10).map(a => `- ${a.title || a.name}`);
+        const hot = res.data?.data?.hot || [];
+        const popular = res.data?.data?.popular || [];
+        // Gabungkan hot + popular, deduplikasi berdasarkan title
+        const combined = [...hot, ...popular];
+        const seen = new Set();
+        const unique = combined.filter(a => {
+            if (!a.title || seen.has(a.title)) return false;
+            seen.add(a.title);
+            return true;
+        });
+        const list = unique.slice(0, 10).map(a => `${a.title}`);
         if (list.length > 0) {
             cache.trending.data = list;
             cache.trending.lastFetch = now;
@@ -183,22 +193,20 @@ async function fetchTrendingAnime() {
     }
 }
 
-/** Ambil jadwal anime hari ini dari Animein */
+/** Ambil jadwal anime rilis hari ini dari Animein */
 async function fetchSchedule() {
     const now = Date.now();
     if (cache.schedule.data && now - cache.schedule.lastFetch < cache.TTL) {
         return cache.schedule.data;
     }
-    const days = ['AHAD', 'SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT', 'SABTU'];
-    const today = days[new Date().getDay()];
     try {
         const res = await axios.get(`${CONFIG.BASE_URL}/3/2/home/data`, {
-            params: { day: today },
             headers: ANIMEIN_HEADERS,
             timeout: 10000,
         });
-        const raw = res.data?.data?.schedule || res.data?.data?.anime || [];
-        const list = raw.slice(0, 10).map(a => `- ${a.title || a.name}`);
+        // 'today' berisi anime yang update hari ini, 'new' berisi anime terbaru
+        const raw = res.data?.data?.today || res.data?.data?.new || [];
+        const list = raw.slice(0, 10).map(a => `${a.title}`);
         if (list.length > 0) {
             cache.schedule.data = list;
             cache.schedule.lastFetch = now;
@@ -220,7 +228,7 @@ async function searchAnime(query) {
             timeout: 8000,
         });
         const raw = res.data?.data?.movie || [];
-        return raw.slice(0, 5).map(a => `- ${a.title || a.name}`);
+        return raw.slice(0, 5).map(a => `${a.title}`);
     } catch (e) {
         console.warn('[ANIMEIN] Gagal search anime:', e.message.slice(0, 60));
         return [];
@@ -541,6 +549,29 @@ function startDashboard() {
         res.json({ ...stats, uptime });
     });
 
+    // Debug endpoint - cek struktur response Animein
+    app.get('/api/debug/trending', async (req, res) => {
+        try {
+            const r = await axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, {
+                params: { sort: 'popular', page: 1 },
+                headers: ANIMEIN_HEADERS, timeout: 10000,
+            });
+            res.json({ status: 'ok', keys: Object.keys(r.data || {}), dataKeys: Object.keys(r.data?.data || {}), sample: r.data });
+        } catch (e) { res.json({ error: e.message }); }
+    });
+
+    app.get('/api/debug/schedule', async (req, res) => {
+        try {
+            const days = ['AHAD','SENIN','SELASA','RABU','KAMIS','JUMAT','SABTU'];
+            const today = days[new Date().getDay()];
+            const r = await axios.get(`${CONFIG.BASE_URL}/3/2/home/data`, {
+                params: { day: today },
+                headers: ANIMEIN_HEADERS, timeout: 10000,
+            });
+            res.json({ today, status: 'ok', keys: Object.keys(r.data || {}), dataKeys: Object.keys(r.data?.data || {}), sample: r.data });
+        } catch (e) { res.json({ error: e.message }); }
+    });
+
     app.get('/', (req, res) => {
         res.send(getDashboardHTML());
     });
@@ -730,9 +761,6 @@ async function refresh() {
     const totalGroqSuccess = d.groq.reduce((acc, g) => acc + g.success, 0);
     document.getElementById('groqTotal').textContent = totalGroqReq;
     document.getElementById('groqSuccessRate').textContent = rate(totalGroqSuccess, totalGroqReq)+' success';
-    
-    document.getElementById('pollTotal').textContent = d.pollinations.requests;
-    document.getElementById('pollSuccessRate').textContent = rate(d.pollinations.success, d.pollinations.requests)+' success';
 
     // Groq cards
     const now = Date.now();
