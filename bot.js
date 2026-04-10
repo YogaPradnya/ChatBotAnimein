@@ -116,6 +116,11 @@ function stripEmoji(text) {
     return text.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F000}-\u{1F02F}\u{1F0A0}-\u{1F0FF}\u{1F100}-\u{1F1FF}\u{1F200}-\u{1F2FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}]/gu, '').trim();
 }
 
+/** Ambil waktu di zona WIB */
+function getJakartaDate() {
+    return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
+}
+
 /** Cek apakah pesan mengandung trigger (.ai, ai., atau @username) */
 function isMentioned(text) {
     const username = CONFIG.USERNAME.toLowerCase();
@@ -171,7 +176,7 @@ async function fetchTrendingAnime() {
         return cache.trending.data;
     }
     const days = ['AHAD', 'SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT', 'SABTU'];
-    const today = days[new Date().getDay()];
+    const today = days[getJakartaDate().getDay()];
     try {
         const res = await axios.get(`${CONFIG.BASE_URL}/3/2/home/data`, {
             params: { day: today },
@@ -208,7 +213,7 @@ async function fetchSchedule() {
         return cache.schedule.data;
     }
     const days = ['AHAD', 'SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT', 'SABTU'];
-    const today = days[new Date().getDay()];
+    const today = days[getJakartaDate().getDay()];
     try {
         const res = await axios.get(`${CONFIG.BASE_URL}/3/2/home/data`, {
             params: { day: today },
@@ -311,43 +316,53 @@ async function fetchPopularByGenre(genreId, maxLimit = 10) {
 async function buildAnimeContext(intent, question) {
     const lowerQ = question.toLowerCase();
 
+    // Setup format info waktu real-time untuk AI
+    const nowLocal = new Date();
+    const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' };
+    let contextData = `\n\n[INFO WAKTU SEKARANG]: Waktu server saat ini adalah ${nowLocal.toLocaleString('id-ID', options)} WIB. Pastikan kamu SELALU menggunakan waktu ini sebagai acuan saat user bertanya "jam berapa", "hari apa ini/besok", atau kapan rilisnya.`;
+
     // Deteksi apakah user menyebutkan spesifik genre
     const allGenres = await fetchGenresList();
     let matchedGenre = null;
     for (const g of allGenres) {
-        // Kita juga pastikan kata tersebut berdiri sendiri agar "sejarah" tidak match dengan genre "mecha" atau "ecchi" tidak sengaja masuk, dst.
-        const regex = new RegExp(`\\b${g.name}\\b`, 'i');
+        // Menangani plural/tambahan "s" dari user (misal: "actions" -> "action")
+        let genName = g.name.toLowerCase();
+        if (genName.endsWith('s')) genName = genName.slice(0, -1) + 's?';
+        else genName = genName + 's?';
+
+        const regex = new RegExp(`\\b${genName}\\b`, 'i');
         if (regex.test(lowerQ)) {
             matchedGenre = g;
             break;
         }
     }
 
-    if (matchedGenre && (intent === 'popular' || intent === 'trending' || lowerQ.includes('genre'))) {
+    if (matchedGenre && (intent === 'popular' || intent === 'trending' || lowerQ.includes('genre') || lowerQ.includes('anime'))) {
         const list = await fetchPopularByGenre(matchedGenre.id);
         if (list.length > 0) {
-            return `\n\n[DATA ANIMEIN - Anime Populer Genre ${matchedGenre.name.toUpperCase()}]:\n${list.join('\n')}\nGunakan daftar anime bergenre ${matchedGenre.name.toUpperCase()} ini sebagai referensi utama rekomendasi, pastikan judul persis dari daftar tersebut.`;
+            contextData += `\n\n[DATA ANIMEIN - Anime Populer Genre ${matchedGenre.name.toUpperCase()}]:\n${list.join('\n')}\nGunakan daftar anime bergenre ${matchedGenre.name.toUpperCase()} ini sebagai referensi utama rekomendasi, pastikan judul persis dari daftar tersebut.`;
+        }
+    } else if (intent === 'trending' || intent === 'popular') {
+        const list = await fetchTrendingAnime();
+        if (list.length > 0) {
+            contextData += `\n\n[DATA ANIMEIN - ${intent === 'trending' ? 'Trending' : 'Populer'}]:\n${list.join('\n')}\nGunakan daftar ini sebagai referensi utama rekomendasi, pastikan judul persis dari daftar tersebut.`;
+        }
+    } else if (intent === 'schedule') {
+        const list = await fetchSchedule();
+        if (list.length > 0) {
+            contextData += `\n\n[DATA ANIMEIN - Jadwal Hari Ini]:\n${list.join('\n')}\nGunakan data ini untuk menjawab jadwal tayang anime hari ini.`;
+        }
+    } else if (intent === 'search') {
+        const keywords = question.replace(/cari|search|ada ga|ada gak|ada tidak/gi, '').trim();
+        if (keywords) {
+            const list = await searchAnime(keywords);
+            if (list.length > 0) {
+                contextData += `\n\n[DATA ANIMEIN - Hasil Pencarian "${keywords}"]:\n${list.join('\n')}\nGunakan data ini untuk menjawab apakah anime tersebut ada di Animein.`;
+            }
         }
     }
 
-    if (intent === 'trending' || intent === 'popular') {
-        const list = await fetchTrendingAnime();
-        if (list.length === 0) return '';
-        return `\n\n[DATA ANIMEIN - ${intent === 'trending' ? 'Trending' : 'Populer'}]:\n${list.join('\n')}\nGunakan daftar ini sebagai referensi utama rekomendasi, pastikan judul persis dari daftar tersebut.`;
-    }
-    if (intent === 'schedule') {
-        const list = await fetchSchedule();
-        if (list.length === 0) return '';
-        return `\n\n[DATA ANIMEIN - Jadwal Hari Ini]:\n${list.join('\n')}\nGunakan data ini untuk menjawab jadwal tayang anime hari ini.`;
-    }
-    if (intent === 'search') {
-        const keywords = question.replace(/cari|search|ada ga|ada gak|ada tidak/gi, '').trim();
-        if (!keywords) return '';
-        const list = await searchAnime(keywords);
-        if (list.length === 0) return '';
-        return `\n\n[DATA ANIMEIN - Hasil Pencarian "${keywords}"]:\n${list.join('\n')}\nGunakan data ini untuk menjawab apakah anime tersebut ada di Animein.`;
-    }
-    return '';
+    return contextData;
 }
 
 // ═══════════════════════════════════════════════════════
