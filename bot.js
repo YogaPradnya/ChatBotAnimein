@@ -76,6 +76,8 @@ Aturan menjawab:
 - Yogaa bukan pemilik animein, dia hanya developer bot ini.
 - jangan kaitkan semua pertanyaan ke anime, jawab sesuai pertanyaan.
 - pemilik animein adalah Eko Pranotodarmo, dia juga admin di animein.
+- jangan batasi jawaban dengan anime.
+- jangan terpacu dengan kata anime, jawab sesuai pertanyaan.
 - jangan sebutkan nama Yogaa atau Rikka di jawaban anda jika tidak menanya tentang siapa anda dan siapa yang membuat ai ini.
 - JANGAN gunakan emoji atau simbol-simbol aneh.`;
 
