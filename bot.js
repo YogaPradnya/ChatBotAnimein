@@ -1,7 +1,21 @@
 const axios = require('axios');
 const Groq = require('groq-sdk');
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
+
+// ═══════════════════════════════════════════════════════
+// LOAD FILTER KATA KASAR
+// ═══════════════════════════════════════════════════════
+const filterPath = path.join(__dirname, 'filters.json');
+let FILTER_DATA = { profanities: [], response: 'Maaf, saya tidak akan menjawab pesan tersebut.' };
+try {
+    FILTER_DATA = JSON.parse(fs.readFileSync(filterPath, 'utf-8'));
+    console.log(`[FILTER] Loaded ${FILTER_DATA.profanities.length} kata kasar dari filters.json`);
+} catch (e) {
+    console.warn('[FILTER] Gagal membaca filters.json, filter dinonaktifkan.');
+}
 
 const CONFIG = {
     BASE_URL: 'https://purple-hall-e016.yogapradnyana988.workers.dev/api/proxy',
@@ -24,7 +38,7 @@ const stats = {
     startTime: new Date().toISOString(),
     botStatus: 'starting',
     totalTriggers: 0,
-    recentActivity: [],  // maks 20 item terakhir
+    recentActivity: [],
 
     groq: CONFIG.GROQ_KEYS.map((key, index) => ({
         id: index + 1,
@@ -45,6 +59,10 @@ const stats = {
     image: {
         requests: 0,
         success: 0,
+    },
+    filter: {
+        blocked: 0,
+        lastBlocked: null,
     }
 };
 
@@ -104,23 +122,151 @@ function isImageRequest(text) {
     return CONFIG.IMAGE_TRIGGERS.some(t => text.toLowerCase().includes(t));
 }
 
+/** Cek apakah pesan mengandung kata kasar */
+function containsProfanity(text) {
+    const lower = text.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return FILTER_DATA.profanities.some(word => {
+        const cleanWord = word.toLowerCase().replace(/[^a-z0-9]/g, '');
+        return lower.includes(cleanWord);
+    });
+}
+
+/** Deteksi intent user untuk konteks data */
+function detectIntent(text) {
+    const lower = text.toLowerCase();
+    if (/jadwal|tayang|hari ini|schedule|kapan rilis/.test(lower)) return 'schedule';
+    if (/trending|tranding|viral/.test(lower)) return 'trending';
+    if (/populer|popular|terpopuler|rekomendasi|rekomen|recommend/.test(lower)) return 'popular';
+    if (/cari|search|ada ga|ada gak|ada tidak/.test(lower)) return 'search';
+    return null;
+}
+
+// ═══════════════════════════════════════════════════════
+// ANIMEIN DATA CACHE
+// ═══════════════════════════════════════════════════════
+const cache = {
+    trending: { data: null, lastFetch: 0 },
+    schedule: { data: null, lastFetch: 0 },
+    TTL: 60 * 60 * 1000, // 1 jam
+};
+
+const ANIMEIN_HEADERS = {
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'id-ID,id;q=0.9',
+    'Referer': 'https://animeinweb.com/',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+};
+
+/** Ambil data anime trending/populer dari Animein */
+async function fetchTrendingAnime() {
+    const now = Date.now();
+    if (cache.trending.data && now - cache.trending.lastFetch < cache.TTL) {
+        return cache.trending.data;
+    }
+    try {
+        const res = await axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, {
+            params: { sort: 'popular', page: 1 },
+            headers: ANIMEIN_HEADERS,
+            timeout: 10000,
+        });
+        const raw = res.data?.data?.movie || [];
+        const list = raw.slice(0, 10).map(a => `- ${a.title || a.name}`);
+        if (list.length > 0) {
+            cache.trending.data = list;
+            cache.trending.lastFetch = now;
+            console.log(`[ANIMEIN] Trending cache updated: ${list.length} anime`);
+        }
+        return list;
+    } catch (e) {
+        console.warn('[ANIMEIN] Gagal ambil trending:', e.message.slice(0, 60));
+        return cache.trending.data || [];
+    }
+}
+
+/** Ambil jadwal anime hari ini dari Animein */
+async function fetchSchedule() {
+    const now = Date.now();
+    if (cache.schedule.data && now - cache.schedule.lastFetch < cache.TTL) {
+        return cache.schedule.data;
+    }
+    const days = ['AHAD', 'SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT', 'SABTU'];
+    const today = days[new Date().getDay()];
+    try {
+        const res = await axios.get(`${CONFIG.BASE_URL}/3/2/home/data`, {
+            params: { day: today },
+            headers: ANIMEIN_HEADERS,
+            timeout: 10000,
+        });
+        const raw = res.data?.data?.schedule || res.data?.data?.anime || [];
+        const list = raw.slice(0, 10).map(a => `- ${a.title || a.name}`);
+        if (list.length > 0) {
+            cache.schedule.data = list;
+            cache.schedule.lastFetch = now;
+            console.log(`[ANIMEIN] Schedule cache updated: ${list.length} anime`);
+        }
+        return list;
+    } catch (e) {
+        console.warn('[ANIMEIN] Gagal ambil jadwal:', e.message.slice(0, 60));
+        return cache.schedule.data || [];
+    }
+}
+
+/** Cari anime berdasarkan kata kunci */
+async function searchAnime(query) {
+    try {
+        const res = await axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, {
+            params: { keyword: query, page: 1 },
+            headers: ANIMEIN_HEADERS,
+            timeout: 8000,
+        });
+        const raw = res.data?.data?.movie || [];
+        return raw.slice(0, 5).map(a => `- ${a.title || a.name}`);
+    } catch (e) {
+        console.warn('[ANIMEIN] Gagal search anime:', e.message.slice(0, 60));
+        return [];
+    }
+}
+
+/** Build konteks Animein berdasarkan intent user */
+async function buildAnimeContext(intent, question) {
+    if (intent === 'trending' || intent === 'popular') {
+        const list = await fetchTrendingAnime();
+        if (list.length === 0) return '';
+        return `\n\n[DATA ANIMEIN - ${intent === 'trending' ? 'Trending' : 'Populer'}]:\n${list.join('\n')}\nGunakan daftar ini sebagai referensi utama rekomendasi, pastikan judul persis dari daftar tersebut.`;
+    }
+    if (intent === 'schedule') {
+        const list = await fetchSchedule();
+        if (list.length === 0) return '';
+        return `\n\n[DATA ANIMEIN - Jadwal Hari Ini]:\n${list.join('\n')}\nGunakan data ini untuk menjawab jadwal tayang anime hari ini.`;
+    }
+    if (intent === 'search') {
+        const keywords = question.replace(/cari|search|ada ga|ada gak|ada tidak/gi, '').trim();
+        if (!keywords) return '';
+        const list = await searchAnime(keywords);
+        if (list.length === 0) return '';
+        return `\n\n[DATA ANIMEIN - Hasil Pencarian "${keywords}"]:\n${list.join('\n')}\nGunakan data ini untuk menjawab apakah anime tersebut ada di Animein.`;
+    }
+    return '';
+}
+
 // ═══════════════════════════════════════════════════════
 // FUNGSI AI
 // ═══════════════════════════════════════════════════════
 
 /** Groq (Llama 3.1) - kualitas lebih baik */
-async function askGroq(index, userMessage, senderName) {
+async function askGroq(index, userMessage, senderName, contextData = '') {
     const client = groqClients[index];
     const stat = stats.groq[index];
     
     stat.requests++;
+    const systemContent = SYSTEM_PROMPT + contextData;
     const completion = await client.chat.completions.create({
         model: 'llama-3.1-8b-instant',
         messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            { role: 'user', content: `${senderName} berkata: "${userMessage}". Balas sesuai konteks anime.` }
+            { role: 'system', content: systemContent },
+            { role: 'user', content: `${senderName} berkata: "${userMessage}".` }
         ],
-        max_tokens: 200,
+        max_tokens: 300,
         temperature: 0.75,
     });
     stat.success++;
@@ -128,12 +274,12 @@ async function askGroq(index, userMessage, senderName) {
 }
 
 /** Pollinations.ai - fallback unlimited */
-async function askPollinations(userMessage, senderName) {
+async function askPollinations(userMessage, senderName, contextData = '') {
     stats.pollinations.requests++;
     const response = await axios.post('https://text.pollinations.ai/', {
         messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            { role: 'user', content: `${senderName} berkata: "${userMessage}". Balas sesuai konteks anime.` }
+            { role: 'system', content: SYSTEM_PROMPT + contextData },
+            { role: 'user', content: `${senderName} berkata: "${userMessage}".` }
         ],
         model: 'openai',
         seed: Math.floor(Math.random() * 9999),
@@ -145,6 +291,11 @@ async function askPollinations(userMessage, senderName) {
 
 /** Main AI handler: Groq dulu, fallback ke Pollinations */
 async function getAIResponse(userMessage, senderName) {
+    // Deteksi intent dan ambil konteks data dari Animein
+    const intent = detectIntent(userMessage);
+    const contextData = await buildAnimeContext(intent, userMessage);
+    if (intent) console.log(`[INTENT] ${intent} -> Konteks data: ${contextData ? 'Ada' : 'Kosong'}`);
+
     // Cari Groq yang tidak sedang cooldown (prioritas index kecil/utama)
     for (let i = 0; i < groqClients.length; i++) {
         const stat = stats.groq[i];
@@ -156,13 +307,12 @@ async function getAIResponse(userMessage, senderName) {
         }
 
         try {
-            const result = await askGroq(i, userMessage, senderName);
+            const result = await askGroq(i, userMessage, senderName, contextData);
             if (result) return { text: result, provider: `Groq #${i+1}` };
         } catch (err) {
             stat.errors++;
             stat.lastError = err.message.slice(0, 100);
             
-            // Jika kena rate limit (429), aktifkan cooldown
             if (err.message.includes('429') || err.status === 429) {
                 stat.cooldownUntil = now + CONFIG.GROQ_COOLDOWN;
                 console.log(`[GROQ-${i+1}] Rate limit! Cooldown 1 menit.`);
@@ -172,9 +322,9 @@ async function getAIResponse(userMessage, senderName) {
         }
     }
 
-    // Fallback ke Pollinations jika semua Groq gagal/cooldown
+    // Fallback ke Pollinations
     try {
-        const result = await askPollinations(userMessage, senderName);
+        const result = await askPollinations(userMessage, senderName, contextData);
         return { text: result || 'Hmm, gak tau nih.', provider: 'Pollinations' };
     } catch (err) {
         stats.pollinations.errors++;
@@ -315,6 +465,17 @@ async function processMessages(messages) {
         const cleanText = msgText.replace(triggerRegex, '').trim();
         
         console.log(`[TRIGGER] ${senderName}: ${msgText}`);
+        stats.totalTriggers++;
+
+        // Cek filter kata kasar SEBELUM ke AI
+        if (containsProfanity(cleanText)) {
+            stats.filter.blocked++;
+            stats.filter.lastBlocked = senderName;
+            console.log(`[FILTER] Pesan dari ${senderName} mengandung kata kasar. Skip.`);
+            await sendChatMessage(`@${senderName} ${FILTER_DATA.response}`, msg.id);
+            addActivity('blocked', senderName, cleanText, FILTER_DATA.response, 'Filter');
+            continue;
+        }
 
         if (isImageRequest(cleanText)) {
             let imagePrompt = cleanText;
@@ -461,6 +622,8 @@ function getDashboardHTML() {
   .prov-groq { background: rgba(249,115,22,.15); color: var(--accent3); }
   .prov-pollinations { background: rgba(94,234,212,.15); color: var(--accent2); }
   .prov-error { background: rgba(239,68,68,.15); color: var(--red); }
+  .prov-filter { background: rgba(234,179,8,.15); color: var(--yellow); }
+  .type-blocked { background: rgba(239,68,68,.15); color: var(--red); }
   .section-title { font-size: 16px; font-weight: 600; margin-bottom: 14px; }
   .uptime { font-size: 13px; color: var(--muted); }
   ::-webkit-scrollbar{width:4px} ::-webkit-scrollbar-track{background:transparent} ::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
@@ -496,9 +659,9 @@ function getDashboardHTML() {
       <div class="metric-sub" id="groqSuccessRate">Success rate</div>
     </div>
     <div class="card">
-      <div class="card-title">Pollinations Req</div>
-      <div class="metric" id="pollTotal">-</div>
-      <div class="metric-sub" id="pollSuccessRate">Success rate</div>
+      <div class="card-title">Pesan Diblokir</div>
+      <div class="metric" style="color:var(--red)" id="filterBlocked">-</div>
+      <div class="metric-sub" id="filterLastBlock">kata kasar terdeteksi</div>
     </div>
   </div>
 
@@ -607,20 +770,25 @@ async function refresh() {
     const list = document.getElementById('activityList');
     if (d.recentActivity && d.recentActivity.length > 0) {
       list.innerHTML = d.recentActivity.map(a => {
-        const provClass = a.provider.startsWith('Groq')?'prov-groq':a.provider==='Pollinations'?'prov-pollinations':'prov-error';
-        const typeClass = a.type==='image'?'type-image':'type-text';
-        const typeLabel = a.type==='image'?'Gambar':'Teks';
-        return '<div class="activity-item">'
+        const provClass = a.provider.startsWith('Groq') ? 'prov-groq' : a.provider === 'Pollinations' ? 'prov-pollinations' : a.provider === 'Filter' ? 'prov-filter' : 'prov-error';
+        const typeClass = a.type === 'image' ? 'type-image' : a.type === 'blocked' ? 'type-blocked' : 'type-text';
+        const typeLabel = a.type === 'image' ? 'Gambar' : a.type === 'blocked' ? 'Diblokir' : 'Teks';
+        return '<div class="activity-item">' 
           + '<div class="activity-meta">'
-          + '<span class="activity-from">@'+a.from+'</span>'
-          + '<span class="activity-type '+typeClass+'">'+typeLabel+'</span>'
-          + '<span class="activity-time">'+a.time+'</span>'
-          + '<span class="provider-tag '+provClass+'">'+a.provider+'</span>'
+          + '<span class="activity-from">@' + a.from + '</span>'
+          + '<span class="activity-type ' + typeClass + '">' + typeLabel + '</span>'
+          + '<span class="activity-time">' + a.time + '</span>'
+          + '<span class="provider-tag ' + provClass + '">' + a.provider + '</span>'
           + '</div>'
-          + '<div class="activity-q">Tanya: '+a.text+'</div>'
-          + '<div class="activity-a">'+a.response+'</div>'
+          + '<div class="activity-q">Pesan: ' + a.text + '</div>'
+          + '<div class="activity-a">' + a.response + '</div>'
           + '</div>';
       }).join('');
+    }
+    // filter stats
+    if (d.filter) {
+      document.getElementById('filterBlocked').textContent = d.filter.blocked || 0;
+      document.getElementById('filterLastBlock').textContent = d.filter.lastBlocked ? 'Terakhir: @' + d.filter.lastBlocked : 'Belum ada';
     }
   } catch(e) { console.error(e); }
 }
