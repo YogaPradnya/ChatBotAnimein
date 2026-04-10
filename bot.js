@@ -94,7 +94,15 @@ Aturan menjawab:
 - pemilik animein adalah Eko Pranotodarmo, dia juga admin di animein.
 - jangan terpacu dengan kata anime, jawab sesuai pertanyaan.
 - jangan sebutkan nama Yogaa atau Rikka di jawaban anda jika tidak menanya tentang siapa anda dan siapa yang membuat ai ini.
-- JANGAN gunakan emoji atau simbol-simbol aneh.`;
+- JANGAN gunakan emoji atau simbol-simbol aneh.
+
+Informasi penting seputar fitur AnimeinWeb/Aplikasi yang WAJIB DIIKUTI:
+1. Cara Upgrade Akun Pro / Support: Melalui aplikasi Animein Komunity di Play Store atau lewat sistem Trakteer sesuai harganya. Kendala pembayaran hubungi Instagram Animein.
+2. Akun Support (IDR 10.000 / 30 Hari): Keuntungan berupa Coin gratis 50++ per hari, kemunculan 3 Pokemon Legend per minggu, diskon harga Pokemon Legend 2 gem, bisa atur foto profil gambar, dapat medal khusus, dan no iklan.
+3. Akun Pro (30 Hari): Keuntungan berupa Coin gratis 100++ per hari, kemunculan 6 Pokemon Legend per minggu, diskon harga Pokemon Legend 5 gem, bisa atur foto profil bebas (GIF/Gambar maks 10MB), dapat medal khusus, dan no iklan. Tidak bisa gabung dengan fitur Support (sisa waktu support akan terganti jadi pro).
+4. Coin Animein: Adalah mata uang di Animein yang digunakan untuk membeli Pokemon, Evo Pokemon, Battle, dan lainnya.
+5. Cara Upload Server Anime: Buka web teman.animein.net atau masuk ke profile lalu cari fitur "Rapsodi" agar diarahkan ke menu upload server anime.
+6. Cara Upload Cover/Poster Anime: Pergi ke bagian anime, buka animenya, lalu geser (scroll) ke kanan untuk menemukan menu poster dan cover.`;
 
 let auth = { userId: null, userKey: null };
 let lastMessageId = 0;
@@ -144,6 +152,8 @@ function detectIntent(text) {
 const cache = {
     trending: { data: null, lastFetch: 0 },
     schedule: { data: null, lastFetch: 0 },
+    genres: { data: null, lastFetch: 0 },
+    genreCache: {},
     TTL: 60 * 60 * 1000, // 1 jam
 };
 
@@ -207,7 +217,7 @@ async function fetchSchedule() {
         });
         // 'today' berisi anime yang rilis hari ini
         const raw = res.data?.data?.today || res.data?.data?.new || [];
-        const list = raw.slice(0, 10).map(a => {
+        const list = raw.map(a => {
             let desc = `- ${a.title}`;
             if (a.key_time) {
                 // key_time "YYYY-MM-DD HH:MM:SS" -> ambil "HH:MM"
@@ -246,8 +256,80 @@ async function searchAnime(query) {
     }
 }
 
+/** Ambil daftar semua genre dari Animein */
+async function fetchGenresList() {
+    const now = Date.now();
+    if (cache.genres.data && now - cache.genres.lastFetch < cache.TTL) return cache.genres.data;
+    try {
+        const res = await axios.get(`${CONFIG.BASE_URL}/3/2/explore/genre`, { 
+            headers: ANIMEIN_HEADERS, 
+            timeout: 10000 
+        });
+        const genresList = res.data?.data?.genre || res.data?.data || [];
+        if (genresList.length > 0) {
+            // Sort by descending string length so "Action" and "Action Comedy" won't conflict
+            const parsed = genresList
+                .map(g => ({ id: g.id, name: g.name.toLowerCase() }))
+                .sort((a, b) => b.name.length - a.name.length);
+            cache.genres.data = parsed;
+            cache.genres.lastFetch = now;
+            console.log(`[ANIMEIN] Genres cache updated: ${parsed.length} genres`);
+            return parsed;
+        }
+    } catch(e) {
+        console.warn('[ANIMEIN] Gagal ambil genres:', e.message.slice(0, 60));
+    }
+    return cache.genres.data || [];
+}
+
+/** Ambil anime populer berdasarkan genre tertentu */
+async function fetchPopularByGenre(genreId, maxLimit = 10) {
+    const now = Date.now();
+    if (!cache.genreCache) cache.genreCache = {};
+    if (cache.genreCache[genreId] && now - cache.genreCache[genreId].lastFetch < cache.TTL) {
+        return cache.genreCache[genreId].data;
+    }
+    try {
+        const res = await axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, {
+            params: { sort: 'popular', page: 1, genre_in: genreId },
+            headers: ANIMEIN_HEADERS, 
+            timeout: 10000
+        });
+        const movies = res.data?.data?.movie || [];
+        const list = movies.slice(0, maxLimit).map(a => `- ${a.title}`);
+        if(list.length > 0) {
+            cache.genreCache[genreId] = { data: list, lastFetch: now };
+            return list;
+        }
+    } catch(e) {
+        console.warn(`[ANIMEIN] Gagal ambil anime untuk genre ${genreId}:`, e.message.slice(0, 60));
+    }
+    return cache.genreCache[genreId]?.data || [];
+}
+
 /** Build konteks Animein berdasarkan intent user */
 async function buildAnimeContext(intent, question) {
+    const lowerQ = question.toLowerCase();
+
+    // Deteksi apakah user menyebutkan spesifik genre
+    const allGenres = await fetchGenresList();
+    let matchedGenre = null;
+    for (const g of allGenres) {
+        // Kita juga pastikan kata tersebut berdiri sendiri agar "sejarah" tidak match dengan genre "mecha" atau "ecchi" tidak sengaja masuk, dst.
+        const regex = new RegExp(`\\b${g.name}\\b`, 'i');
+        if (regex.test(lowerQ)) {
+            matchedGenre = g;
+            break;
+        }
+    }
+
+    if (matchedGenre && (intent === 'popular' || intent === 'trending' || lowerQ.includes('genre'))) {
+        const list = await fetchPopularByGenre(matchedGenre.id);
+        if (list.length > 0) {
+            return `\n\n[DATA ANIMEIN - Anime Populer Genre ${matchedGenre.name.toUpperCase()}]:\n${list.join('\n')}\nGunakan daftar anime bergenre ${matchedGenre.name.toUpperCase()} ini sebagai referensi utama rekomendasi, pastikan judul persis dari daftar tersebut.`;
+        }
+    }
+
     if (intent === 'trending' || intent === 'popular') {
         const list = await fetchTrendingAnime();
         if (list.length === 0) return '';
