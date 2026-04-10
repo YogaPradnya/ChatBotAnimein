@@ -1,70 +1,67 @@
-HASIL ANALISIS API ANIMEINWEB.COM
-=================================
+HASIL ANALISIS API ANIMEINWEB.COM (UPDATE)
+========================================
 
 1. STRUKTUR DASAR API
 --------------------
-Website menggunakan Proxy API untuk menyembunyikan backend.
+Website menggunakan Proxy API untuk komunikasi backend.
 Base URL Proxy: https://animeinweb.com/api/proxy
 
-2. FITUR LOGIN & AUTENTIKASI
+2. AUTENTIKASI (User Identity)
+------------------------------
+Data identitas user dikirim sebagai parameter query atau form data:
+- id_user: [ID User dari localStorage auth_pref_v1]
+- key_client: [Key Client dari localStorage auth_pref_v1]
+
+3. ENDPOINT KONTEN ANIME
+-------------------------
+Semua endpoint di bawah ini diakses melalui Base Proxy (Contoh: BaseURL + /3/2/home/data)
+
+A. Home Data (Jadwal & Update)
+   Endpoint: /3/2/home/data
+   Query Params: day (SENIN, SELASA, dll), limit
+
+B. Explore & Search (Pencarian)
+   Endpoint: /3/2/explore/movie
+   Query Params: 
+     - page: [number]
+     - sort: [new, popular, old, stars]
+     - keyword: [string] (untuk pencarian judul)
+     - genre_in: [id_genre] (filter genre)
+
+C. Genre List
+   Endpoint: /3/2/explore/genre
+   Kegunaan: Mengambil daftar semua genre dan ID-nya.
+
+D. Detail Anime
+   Endpoint: /3/2/movie/detail/:id
+   Kegunaan: Mengambil sinopsis, skor, info studio, dan status anime.
+
+E. Daftar Episode
+   Endpoint: /3/2/movie/episode/:id
+   Query Params: page, search
+
+F. Streaming & Link Server
+   Endpoint: /3/2/episode/streamnew/:id
+   Kegunaan: Mengambil link video (server), subtitle, dan info episode selanjutnya.
+
+4. ENDPOINT INTERAKSI & CHAT
+-----------------------------
+
+A. Chat (Polling)
+   - Fetch: /3/2/chat/data (Params: highest_id, id_user, key_client)
+   - Send: /3/2/chat/do (Body: text, id_chat_replay, id_user, key_client)
+
+B. Komentar (Episode)
+   - Data: /3/2/comment/data (Params: id_episode, sort, page)
+   - Post: /3/2/comment/do (Body: text, id_episode)
+   - Action: /3/2/comment/action (Body: id_comment, type [Y/N])
+
+5. ENDPOINT PENGGUNA (USER)
 ---------------------------
-Data dikirim dalam format: application/x-www-form-urlencoded
+- Login: /auth/login
+- Register: /auth/register
+- Stream Log: /3/2/user/stream/do (Untuk mencatat progres tontonan)
 
-A. Login (Masuk)
-   Endpoint: /auth/login
-   Metode  : POST
-   Payload : 
-     - username_or_email: [string]
-     - password: [string]
-
-B. Register (Daftar)
-   Endpoint: /auth/register
-   Metode  : POST
-   Payload : 
-     - username: [string]
-     - email: [string]
-     - password: [string]
-     - pokemon: [string] (ID Avatar, contoh: "152")
-
-C. Forgot Password (Lupa Password)
-   Endpoint: /auth/forget
-   Metode  : POST
-   Payload : 
-     - email: [string]
-
-D. Mekanisme Token (Authentication)
-   Tersimpan di localStorage dengan key: auth_pref_v1
-   Struktur:
-   {
-     "user_id": "87xxx",
-     "user_key": "abcxxxx-xxxx-xxxx"
-   }
-   Keterangan: 
-   - Gunakan `user_id` sebagai parameter `id_user`
-   - Gunakan `user_key` sebagai parameter `key_client`
-
-3. FITUR CHAT
--------------
-Sistem menggunakan metode polling berkala.
-
-A. Mengambil Pesan (Fetch Chat)
-   Endpoint: /3/2/chat/data
-   Metode  : GET
-   Query Parameters:
-     - highest_id: [integer] (Opsional, untuk pesan terbaru)
-     - lowest_id: [integer] (Opsional, untuk pesan lama/history)
-     - id_user: [string] (Wajib jika login)
-     - key_client: [string] (Wajib jika login)
-
-B. Mengirim Pesan (Send Message)
-   Endpoint: /3/2/chat/do
-   Metode  : POST
-   Payload (Form Data):
-     - text: [string] (Isi pesan)
-     - id_chat_replay: [string] (ID pesan yang dibalas, "0" jika pesan baru)
-     - id_user: [string] (Wajib)
-     - key_client: [string] (Wajib)
-
----
-Catatan: Semua endpoint di atas harus diakses melalui Base URL Proxy:
-Contoh: https://animeinweb.com/api/proxy/3/2/chat/data
+6. MEDIA DOMAIN
+---------------
+- Images: https://xyz-api.animein.net (Prefix untuk path gambar)

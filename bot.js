@@ -102,7 +102,8 @@ Informasi penting seputar fitur AnimeinWeb/Aplikasi yang WAJIB DIIKUTI:
 3. Akun Pro (30 Hari): Keuntungan berupa Coin gratis 100++ per hari, kemunculan 6 Pokemon Legend per minggu, diskon harga Pokemon Legend 5 gem, bisa atur foto profil bebas (GIF/Gambar maks 10MB), dapat medal khusus, dan no iklan. Tidak bisa gabung dengan fitur Support (sisa waktu support akan terganti jadi pro).
 4. Coin Animein: Adalah mata uang di Animein yang digunakan untuk membeli Pokemon, Evo Pokemon, Battle, dan lainnya.
 5. Cara Upload Server Anime: Buka web teman.animein.net atau masuk ke profile lalu cari fitur "Rapsodi" agar diarahkan ke menu upload server anime.
-6. Cara Upload Cover/Poster Anime: Pergi ke bagian anime, buka animenya, lalu geser (scroll) ke kanan untuk menemukan menu poster dan cover.`;
+6. Cara Upload Cover/Poster Anime: Pergi ke bagian anime, buka animenya, lalu geser (scroll) ke kanan untuk menemukan menu poster dan cover.
+7. Fitur Cuplix: Cuplix adalah klip/highlight episode anime untuk rekomendasi. Pembuat Cuplix & Uploader Server dapat 1 coin tiap ada yang like (Maks 250 coin/hari, cair saat ganti hari dan wajib login). Cara buat: Masukkan detik start & end (durasi 10 dtk - 3 mnt), jepret thumbnail di jarak detik tersebut, lalu simpan. Peraturan: Maksimal 3 Cuplix per user untuk 1 episode, dan tidak boleh kembar/sama dengan Cuplix yang sudah dibooking.`;
 
 let auth = { userId: null, userKey: null };
 let lastMessageId = 0;
