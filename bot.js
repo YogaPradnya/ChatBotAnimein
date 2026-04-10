@@ -78,23 +78,20 @@ function addActivity(type, from, text, response, provider) {
 // Inisialisasi multiple Groq clients
 const groqClients = CONFIG.GROQ_KEYS.map(key => new Groq({ apiKey: key }));
 
-const SYSTEM_PROMPT = `Kamu adalah asisten chat di komunitas Animein yang di buat oleh Yogaa. 
+const SYSTEM_PROMPT = `Kamu adalah asisten chat Animein yang di buat oleh Yogaa. 
 Aturan menjawab:
 - Jawab dengan gaya manusia biasa, ramah, santai, dan menggunakan bahasa Indonesia yang natural (casual).
 - Jangan gunakan istilah anime yang berlebihan atau gaya bicara karakter fiksi.
 - jawab pertanyaan intinya saja, jangan bertele-tele.
-- jika ada yang bertanya tentang anime, jawab dengan singkat dan padat.
-- jika ada yang meninta rekomendasi berikan minimal 5 rekomendasi judul dengan list angka.
+- jika ada yang meninta rekomendasi berikan minimal 10 rekomendasi judul dengan list angka.
 - jawab semua pertanyaan yang ada, jika tidak tahu jawab saja tidak tahu.
 - jawab dengan bahasa gaul ala ala gen z.
-- jawab semua pertanyaan dengan semua informasi dari google, dan berikan informasi yang akurat dan tidak ada jawaban yang salah.
-- Jawaban dengan kalimat agar nyaman dibaca di chat room.
+- jawab semua pertanyaan dengan semua informasi dari google, dan berikan informasi yang akurat.
 - Jika ada yang menyebut nama Yogaa, jawab itu adalah pemilik saya.
 - Jika ada yang menyebut nama Rikka, jawab itu adalah saya.
 - Yogaa bukan pemilik animein, dia hanya developer bot ini.
 - jangan kaitkan semua pertanyaan ke anime, jawab sesuai pertanyaan.
 - pemilik animein adalah Eko Pranotodarmo, dia juga admin di animein.
-- jangan batasi jawaban dengan anime.
 - jangan terpacu dengan kata anime, jawab sesuai pertanyaan.
 - jangan sebutkan nama Yogaa atau Rikka di jawaban anda jika tidak menanya tentang siapa anda dan siapa yang membuat ai ini.
 - JANGAN gunakan emoji atau simbol-simbol aneh.`;
@@ -157,30 +154,31 @@ const ANIMEIN_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
 };
 
-/** Ambil data anime trending (HOT) dari Animein - dari home/data */
+/** Ambil data anime trending (HOT/POPULAR) dari Animein */
 async function fetchTrendingAnime() {
     const now = Date.now();
     if (cache.trending.data && now - cache.trending.lastFetch < cache.TTL) {
         return cache.trending.data;
     }
+    const days = ['AHAD', 'SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT', 'SABTU'];
+    const today = days[new Date().getDay()];
     try {
-        // home/data punya key 'hot' dan 'popular' yang berisi anime trending saat ini
         const res = await axios.get(`${CONFIG.BASE_URL}/3/2/home/data`, {
-            params: { day: 'SENIN' }, // Gunakan parameter agar server mengembalikan data lengkap
+            params: { day: today },
             headers: ANIMEIN_HEADERS,
             timeout: 10000,
         });
         const hot = res.data?.data?.hot || [];
         const popular = res.data?.data?.popular || [];
-        // Gabungkan hot + popular, deduplikasi berdasarkan title
-        const combined = [...hot, ...popular];
+        // Gabungkan popular + hot, dahulukan popular seperti di aplikasi Animein
+        const combined = [...popular, ...hot];
         const seen = new Set();
         const unique = combined.filter(a => {
             if (!a.title || seen.has(a.title)) return false;
             seen.add(a.title);
             return true;
         });
-        const list = unique.slice(0, 10).map(a => `${a.title}`);
+        const list = unique.slice(0, 10).map(a => `- ${a.title}`);
         if (list.length > 0) {
             cache.trending.data = list;
             cache.trending.lastFetch = now;
@@ -199,14 +197,27 @@ async function fetchSchedule() {
     if (cache.schedule.data && now - cache.schedule.lastFetch < cache.TTL) {
         return cache.schedule.data;
     }
+    const days = ['AHAD', 'SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT', 'SABTU'];
+    const today = days[new Date().getDay()];
     try {
         const res = await axios.get(`${CONFIG.BASE_URL}/3/2/home/data`, {
+            params: { day: today },
             headers: ANIMEIN_HEADERS,
             timeout: 10000,
         });
-        // 'today' berisi anime yang update hari ini, 'new' berisi anime terbaru
+        // 'today' berisi anime yang rilis hari ini
         const raw = res.data?.data?.today || res.data?.data?.new || [];
-        const list = raw.slice(0, 10).map(a => `${a.title}`);
+        const list = raw.slice(0, 10).map(a => {
+            let desc = `- ${a.title}`;
+            if (a.key_time) {
+                // key_time "YYYY-MM-DD HH:MM:SS" -> ambil "HH:MM"
+                const parts = a.key_time.split(' ');
+                if (parts.length > 1) {
+                    desc += ` (Jam tayang: ${parts[1].slice(0, 5)})`;
+                }
+            }
+            return desc;
+        });
         if (list.length > 0) {
             cache.schedule.data = list;
             cache.schedule.lastFetch = now;
