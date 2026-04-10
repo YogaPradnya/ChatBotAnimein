@@ -287,29 +287,38 @@ async function fetchGenresList() {
     return cache.genres.data || [];
 }
 
-/** Ambil anime populer berdasarkan genre tertentu */
+/** Ambil anime populer berdasarkan genre tertentu secara acak */
 async function fetchPopularByGenre(genreId, maxLimit = 10) {
-    const now = Date.now();
-    if (!cache.genreCache) cache.genreCache = {};
-    if (cache.genreCache[genreId] && now - cache.genreCache[genreId].lastFetch < cache.TTL) {
-        return cache.genreCache[genreId].data;
-    }
     try {
+        // Ambil halaman secara acak (1 sampai 5) agar judul tidak ngumpul di huruf tertentu (M/A dsb)
+        const randomPage = Math.floor(Math.random() * 5) + 1;
+        
         const res = await axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, {
-            params: { sort: 'popular', page: 1, genre_in: genreId },
+            params: { sort: 'popular', page: randomPage, genre_in: genreId },
             headers: ANIMEIN_HEADERS, 
             timeout: 10000
         });
-        const movies = res.data?.data?.movie || [];
-        const list = movies.slice(0, maxLimit).map(a => `- ${a.title}`);
-        if(list.length > 0) {
-            cache.genreCache[genreId] = { data: list, lastFetch: now };
-            return list;
+        
+        let movies = res.data?.data?.movie || [];
+        if (movies.length === 0 && randomPage > 1) {
+            // Fallback ke page 1 jika genre tersebut API nya tidak sampai halaman random tersebut
+            const fallback = await axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, {
+                params: { sort: 'popular', page: 1, genre_in: genreId },
+                headers: ANIMEIN_HEADERS, 
+                timeout: 10000
+            });
+            movies = fallback.data?.data?.movie || [];
+        }
+        
+        if (movies.length > 0) {
+            // Acak array menggunakan sort dengan tingkat keacakan 0.5 agar rekomendasi berotasi
+            movies.sort(() => 0.5 - Math.random());
+            return movies.slice(0, maxLimit).map(a => `- ${a.title}`);
         }
     } catch(e) {
         console.warn(`[ANIMEIN] Gagal ambil anime untuk genre ${genreId}:`, e.message.slice(0, 60));
     }
-    return cache.genreCache[genreId]?.data || [];
+    return [];
 }
 
 /** Build konteks Animein berdasarkan intent user */
