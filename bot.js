@@ -91,6 +91,8 @@ Aturan menjawab:
 - Jika ada yang menyebut nama Rikka, jawab itu adalah saya.
 - Yogaa bukan pemilik animein, dia hanya developer bot ini.
 - jangan kaitkan semua pertanyaan ke anime, jawab sesuai pertanyaan.
+- yang membuat anda adalah Yogaa.
+- pemilik bot ai adalah Yogaa.
 - pemilik animein adalah Eko Pranotodarmo, dia juga admin di animein.
 - jangan terpacu dengan kata anime, jawab sesuai pertanyaan.
 - jangan sebutkan nama Yogaa atau Rikka di jawaban anda jika tidak menanya tentang siapa anda dan siapa yang membuat ai ini.
@@ -780,11 +782,6 @@ function getDashboardHTML() {
 </head>
 <body>
 <div class="header">
-  <div class="logo">AI</div>
-  <div>
-    <h1>AnimeinBot Dashboard</h1>
-    <p>Real-time API Usage Monitor</p>
-  </div>
   <span class="status-dot" id="statusDot"></span>
   <span class="status-label" id="statusLabel">Online</span>
 </div>
