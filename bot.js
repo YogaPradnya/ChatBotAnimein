@@ -282,7 +282,7 @@ async function searchAnime(query) {
             timeout: 8000,
         });
         const raw = res.data?.data?.movie || [];
-        return raw.slice(0, 5).map(a => `${a.title}`);
+        return raw.map(a => `${a.title}`);
     } catch (e) {
         console.warn('[ANIMEIN] Gagal search anime:', e.message.slice(0, 60));
         return [];
@@ -395,6 +395,19 @@ async function buildAnimeContext(intent, question) {
             const list = await searchAnime(keywords);
             if (list.length > 0) {
                 contextData += `\n\n[DATA ANIMEIN - Hasil Pencarian "${keywords}"]:\n${list.join('\n')}\nGunakan data ini untuk menjawab apakah anime tersebut ada di Animein.`;
+            }
+        }
+    } else if (intent === 'popular' || lowerQ.includes('rekomendasi') || lowerQ.includes('rekomen')) {
+        // Jika tidak ada genre yang match, coba cari manual pake keyword user
+        // Hapus kata-kata umum agar pencarian lebih akurat
+        const cleanQuery = lowerQ.replace(/rekomendasi|rekomen|anime|dong|bang|pls|pake|pembantu|yang|bertema|tentang/gi, '').trim();
+        
+        if (cleanQuery.length > 2) {
+            console.log(`[SEARCH RECOMMEND] Mencari anime dengan keyword: ${cleanQuery}`);
+            const list = await searchAnime(cleanQuery);
+            if (list.length > 0) {
+                const results = list.slice(0, 10).map(t => `- ${t}`);
+                contextData += `\n\n[DATA ANIMEIN - Rekomendasi Khusus "${cleanQuery}"]: \n${results.join('\n')}\nGunakan daftar hasil pencarian ini untuk memberikan rekomendasi yang sesuai dengan permintaan user.`;
             }
         }
     }
