@@ -612,9 +612,10 @@ async function generatePollinationsImage(prompt) {
         console.warn('[IMG/POLLINATIONS] Groq Translator error, menggunakan prompt original:', err.message.slice(0, 50));
     }
     
+    let imageUrl = '';
     try {
         const seed = Math.floor(Math.random() * 999999);
-        const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(refined)}?width=512&height=512&nologo=true&seed=${seed}`;
+        imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(refined)}?width=512&height=512&nologo=true&seed=${seed}`;
         
         console.log(`[IMG] Mengunduh gambar dari: ${imageUrl}`);
         // Download gambar sebagai buffer, perbesar timeout jadi 60 detik karena gambar server kadang berat
@@ -628,8 +629,9 @@ async function generatePollinationsImage(prompt) {
             isFromPollinations: true,
         };
     } catch (err) {
-        console.warn('[IMG/POLLINATIONS] Image API Error:', err.message.slice(0, 80));
-        return null;
+        console.warn('[IMG/POLLINATIONS] Image API Error lambat/rate-limit:', err.message.slice(0, 80));
+        // Kembalikan URL fallback agar user tetap mendapatkan gambar walau berbentuk link
+        return { fallbackUrl: imageUrl };
     }
 }
 
@@ -822,7 +824,10 @@ async function processMessages(messages) {
             
             try {
                 const imageResult = await generatePollinationsImage(cleanText);
-                if (imageResult) {
+                if (imageResult && imageResult.fallbackUrl) {
+                    await sendChatMessage(`@${senderName} Server gambar lagi penuh kak (error/timeout). Coba langsung klik link ini aja ya: ${imageResult.fallbackUrl}`, msg.id);
+                    addActivity('image', senderName, cleanText, `[Gambar URL/Fallback]`, 'Pollinations');
+                } else if (imageResult && imageResult.data) {
                     // Coba kirim gambar langsung via multipart
                     const sentDirect = await sendChatWithImage(
                         imageResult,
