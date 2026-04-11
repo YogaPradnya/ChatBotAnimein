@@ -92,7 +92,7 @@ Aturan:
 - Max 600 karakter per chat. Gaya: Gaul, santai, tongkrongan.
 - tidak ada bahasa formal yang di gunakan
 - Panggil user/username langsung. JANGAN gunakan "Lu", "Aku", "Saya", "Kamu", "Anda".
-- Rekomendasi: List angka judul saja (Min 10). Dilarang beri sinopsis/deskripsi.
+- Rekomendasi: List angka/- judul saja (Min 10). Dilarang beri sinopsis/deskripsi.
 - Identitas: Manusia nyata (bukan AI). Yogaa penciptamu (9 April 2026).
 - Yogaa pemilik Rika, bukan pemilik Animein. Pemilik Animein: Eko Pranotodarmo.
 - Jawab singkat, akurat, konsisten. Max 1 emoji atau jangan isi emoji sama sekali. Jika tanya suka/tidak, jawab "suka/tidak".
@@ -102,44 +102,48 @@ Aturan:
 /** BASIS DATA PENGETAHUAN ANIMEIN (Save Tokens via Dynamic Injection) */
 const ANIMEIN_KNOWLEDGE = [
     {
-        keywords: ['pro', 'support', 'upgrade', 'bayar', 'premium', 'keuntungan', 'iklan', 'pokemon legend', 'coin gratis'],
+        keywords: ["identitas", "pencipta", "pembuat", "siapa anda", "siapa kamu", "yogaa", "eko", "pemilik"],
+        info: "- Rika: Asisten nyata Animein. Kreator: Yogaa (Developer Bot). Pemilik Animein: Eko Pranotodarmo.\n- Yogaa adalah pembuat Rika, bukan pemilik Animein."
+    },
+    {
+        keywords: ["pro", "support", "upgrade", "bayar", "premium", "keuntungan", "iklan", "pokemon legend", "coin gratis", "trakteer"],
         info: "1. Cara Upgrade Akun Pro / Support: Melalui aplikasi Animein Komunity di Play Store atau lewat sistem Trakteer sesuai harganya. Kendala pembayaran hubungi Instagram Animein.\n2. Akun Support (IDR 10.000 / 30 Hari): Keuntungan berupa Coin gratis 50++ per hari, kemunculan 3 Pokemon Legend per minggu, diskon harga Pokemon Legend 2 gem, bisa atur foto profil gambar, dapat medal khusus, dan no iklan.\n3. Akun Pro (IDR 30.000 / 30 Hari): Keuntungan berupa Coin gratis 100++ per hari, kemunculan 6 Pokemon Legend per minggu, diskon harga Pokemon Legend 5 gem, bisa atur foto profil bebas (GIF/Gambar maks 10MB), dapat medal khusus, dan no iklan. Tidak bisa gabung dengan fitur Support (sisa waktu support akan terganti jadi pro). Kendala hubungi Instagram @animein.aja."
     },
     {
-        keywords: ['coin', 'gem', 'tukar', 'mata uang', 'evolusi', 'upgrade pokemon'],
-        info: "4. Mata Uang Animein: Coin digunakan untuk membeli Pokemon, Battle, dll. Gem adalah mata uang ke-2 (500 Coin = 1 Gem). Gem untuk evolusi, ganti nama, upgrade Pokemon, dan beli Pokemon (tidak bisa jual pokemon)."
+        keywords: ["coin", "koin", "gem", "tukar", "uang", "mata uang", "evolusi", "upgrade pokemon"],
+        info: "4. Mata Uang Animein: Coin digunakan HANYA untuk membeli Pokemon, Battle, dll. Coin TIDAK BISA digunakan untuk beli Premium/Pro/Support. Gem adalah mata uang ke-2 (500 Coin = 1 Gem). Gem digunakan untuk evolusi Pokemon, mengganti nama, upgrade Pokemon, dan beli Pokemon (tidak bisa jual pokemon)."
     },
     {
-        keywords: ['upload', 'server', 'rapsodi', 'poster', 'cover', 'pasang'],
-        info: "5. Cara Upload Server Anime: Buka teman.animein.net atau masuk ke profile > fitur 'Rapsodi'.\n6. Cara Upload Cover/Poster: Pergi ke anime, buka animenya, geser (scroll) ke kanan layar untuk menemukan tempat upload poster/cover (Hanya menu poster, tidak ada hubungannya dengan menonton)."
+        keywords: ["upload", "server", "rapsodi", "poster", "cover", "pasang"],
+        info: "5. Cara Upload Server Anime: Buka teman.animein.net atau masuk ke profile lalu cari fitur \"Rapsodi\" agar diarahkan ke menu upload server anime.\n6. Cara Upload Cover/Poster Anime: Pergi ke anime, buka animenya, lalu geser (scroll) ke kanan layar untuk menemukan tempat upload poster dan cover (HANYA untuk menu poster/cover)."
     },
     {
-        keywords: ['cuplix', 'klip', 'highlight', 'pembuat cuplix', 'durasi cuplix'],
-        info: "7. Fitur Cuplix: Klip/highlight episode (10 dtk - 3 mnt). Pembuat Cuplix & Uploader dapat 1 coin tiap ada yang like (Maks 250/hari, cair saat ganti hari). Cara buat: Masukkan detik start & end, jepret thumbnail, simpan. Peraturan: Maks 3 Cuplix per user per 1 episode, tak boleh kembar."
+        keywords: ["cuplix", "klip", "highlight", "pembuat cuplix", "like cuplix"],
+        info: "7. Fitur Cuplix: Klip/highlight episode (10 dtk - 3 mnt). Pembuat & Uploader dapat 1 coin tiap ada yang like (Maks 250/hari, cair saat ganti hari). Cara buat: Masukkan detik start & end, jepret thumbnail, simpan. Peraturan: Maks 3 Cuplix per user per 1 episode, tak boleh kembar."
     },
     {
-        keywords: ['battle', 'pokemon', 'level', 'rank', 'bp', 'grade', 'rookie', 'mythic', 'legendary'],
-        info: "8. Cara Battle Pokemon: Minimal punya 3 Pokemon. Menu Battle di profil, pilih 3 Pokemon. 'Battle Rank' untuk tanding dan dapatkan BP (Battle Point), atau 'VS Temen'. Maks level 20. Tingkatan: R (Rookie), E (Epic), M (Mythic), L (Legendary). Grade gen 2: R2, E2, M2, L2."
+        keywords: ["battle", "pokemon", "level", "rank", "bp", "grade", "rookie", "mythic", "legendary", "tanding"],
+        info: "8. Cara Battle Pokemon: Minimal punya 3 Pokemon. Menu Battle di profil, pilih 3 Pokemon. \"Battle Rank\" untuk tanding dan dapatkan BP (Battle Point), atau \"VS Temen\". Maks level 20. Tingkatan: R (Rookie), E (Epic), M (Mythic), L (Legendary). Grade gen 2: R2, E2, M2, L2."
     },
     {
-        keywords: ['download', 'more', 'simpan', 'eps', 'cara download'],
-        info: "9. Cara download eps: Tekan tombol 'more' saat menonton salah satu eps anime lalu pilih download."
+        keywords: ["download", "more", "simpan", "eps", "cara download", "nonton", "resolusi", "server", "kualitas", "360p", "1080p", "gerigi"],
+        info: "9. Cara download eps: Tekan tombol \"more\" saat menonton salah satu eps anime lalu pilih download.\n10. Cara ubah resolusi: SAAT MENONTON ANIME, klik pilihan \"server\" atau icon bergerigi (BUKAN geser layar). Di sana kalian bisa memilih resolusi 360p - 1080p."
     },
     {
-        keywords: ['resolusi', 'server', 'kualitas', '360p', '1080p', 'gerigi'],
-        info: "10. Cara ubah resolusi: SAAT MENONTON ANIME, klik pilihan 'server' (icon bergerigi, BUKAN geser layar). Di sana kalian bisa memilih resolusi 360p - 1080p yang diinginkan."
-    },
-    {
-        keywords: ['rewind', 'mundur', 'maju', 'forward', 'geser', 'cepat', 'speedup', 'fast forward'],
+        keywords: ["rewind", "mundur", "maju", "forward", "geser", "cepat", "speedup", "fast forward", "putar", "video"],
         info: "11. Cara rewind: Tahan pada video lalu geser ke kiri.\n12. Cara fast forward: Tahan pada video lalu geser ke kanan.\n13. Cara speedup: Tekan/ketuk 2x pada layar bagian kanan video yang sedang diputar."
+    },
+    {
+        keywords: ["web", "aplikasi", "apk", "donasi", "trakteer"],
+        info: "Versi web baru 10%. Fitur lengkap di APK Android (animein.net). Donasi: trakteer.id/animein.net."
     }
 ];
 
 function getKnowledgeContext(query) {
     const lowerQ = query.toLowerCase();
     const matched = ANIMEIN_KNOWLEDGE.filter(k => k.keywords.some(key => lowerQ.includes(key)));
-    if (matched.length === 0) return '';
-    return `\n\n[DOKUMENTASI TEKNIS ANIMEIN - Sangat Akurat]: \n${matched.map(m => m.info).join('\n')}`;
+    if (matched.length === 0) return "";
+    return `\n\n[DOKUMENTASI TEKNIS ANIMEIN - Sangat Akurat]: \n${matched.map(m => m.info).join("\n")}`;
 }
 
 
