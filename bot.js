@@ -141,10 +141,10 @@ function getJakartaDate() {
     return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
 }
 
-/** Cek apakah pesan mengandung trigger (.ai, ai., atau @username) */
+/** Cek apakah pesan mengandung trigger (.ai, ai., .rika, rika., atau @username) */
 function isMentioned(text) {
     const username = CONFIG.USERNAME.toLowerCase();
-    const regex = new RegExp(`\\.ai|ai\\.|@${username}`, 'i');
+    const regex = new RegExp(`\\.ai|ai\\.|\\.rika|rika\\.|@${username}`, 'i');
     return regex.test(text);
 }
 
@@ -799,7 +799,7 @@ async function processMessages(messages) {
 
 
         const username = CONFIG.USERNAME.toLowerCase();
-        const triggerRegex = new RegExp(`\\.ai|ai\\.|@${username}`, 'gi');
+        const triggerRegex = new RegExp(`\\.ai|ai\\.|\\.rika|rika\\.|@${username}`, 'gi');
         const cleanText = msgText.replace(triggerRegex, '').trim();
         
         console.log(`[TRIGGER] ${senderName}: ${msgText}`);
@@ -869,7 +869,7 @@ async function startBot() {
     if (!loggedIn) { stats.botStatus = 'login_failed'; return; }
 
     stats.botStatus = 'online';
-    console.log(`Bot aktif! Trigger: .ai <pesan> | Dashboard: http://localhost:${CONFIG.DASHBOARD_PORT}`);
+    console.log(`Bot aktif! Trigger: .ai, ai., .rika, rika. | Dashboard: http://localhost:${CONFIG.DASHBOARD_PORT}`);
 
     setInterval(async () => {
         const data = await fetchMessages();
