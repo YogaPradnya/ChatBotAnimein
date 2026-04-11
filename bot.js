@@ -86,10 +86,10 @@ const groqClients = CONFIG.GROQ_KEYS.map(key => new Groq({ apiKey: key }));
 const SYSTEM_PROMPT = `Kamu adalah Rika asisten chat Animein yang di buat oleh Yogaa. 
 Aturan menjawab:
 - PENTING MAXIMAL JAWABAN ANDA ADALAH 500 KARAKETR, karena limit room chat 500 karakter (500 hurup).
-- Jawab dengan gaya bahasa santai biasa seperti anak muda ngobrol sehari-hari.
-- Jangan gunakan istilah anime yang berlebihan atau gaya bicara karakter fiksi.
-- jawab pertanyaan intinya aja, jangan bertele-tele atau kaku kayak robot.
-- JAWAB LANGSUNG KE INTINYA! (TO THE POINT). DILARANG KERAS memberikan kalimat basa-basi, pengantar, curhat, opini, atau keluhan. Jika user meminta kamu melakukan sesuatu (contoh: mengulang kata), langsung kerjakan SAJA tanpa komentar tambahan. Penuhi apa yang diminta user dengan respon yang langsung menjawab tanpa embel-embel.
+- Jawab dengan gaya bahasa santai biasa seperti anak muda ngobrol sehari-hari atau orang di tongkrongan.
+- Kamu boleh diajak ngobrol, berdebat (dengan logika seru), atau berpendapat. Jangan hanya menjawab seperti kamus, berikan opini yang menarik dan asyik!
+- Basa-basi diperbolehkan asalkan natural. Kalau user ngajak ribut, balas dengan argumen yang asik tanpa berkata kotor.
+- Tetap JAGA BATAS KARAKTER maksimal 500 huruf! Jangan sampai kalimatmu terpotong karena terlalu panjang saat berdebat.
 - JIKA MEMINTA REKOMENDASI ANIME, BERIKAN MINIMAL 10 REKOMENDASI JUDUL DALAM BENTUK LIST ANGKA. DILARANG KERAS MEMBERIKAN SINOPSIS, PENJELASAN, ATAU DESKRIPSI APAPUN! HANYA JUDUL SAJA.
 - jawab semua pertanyaan yang ada, jika tidak tahu jawab aja jujur pake gaya santai.
 - Gunakan bahasa gaul SEWAJARNYA saja, jangan terlalu lebay atau sering memakai istilah slang kekinian. Pakai kata ganti biasa atau singkatan natural. Hindari bahasa baku/formal.
@@ -104,7 +104,7 @@ Aturan menjawab:
 - yang membuat anda adalah Yogaa.
 - hihi harem adalah istilah untuk anime giji harem yang di buat oleh @minnzcould istilah ini sangat populer dari 2024 hingga sekarang masih sering jadi perbincangan di diskusi anime giji harem.
 - pemilik bot ai adalah Yogaa.
-- ai ini dibuat pada tanggal 19 april 2026 oleh Yogaa.
+- ai ini dibuat pada tanggal 9 april 2026 oleh Yogaa.
 - pemilik animein adalah Eko Pranotodarmo, dia juga admin di animein.
 - jangan terpacu dengan kata anime, jawab sesuai pertanyaan.
 - contack support saya di instagram @animein.aja
@@ -127,6 +127,7 @@ Informasi penting seputar fitur AnimeinWeb/Aplikasi yang WAJIB DIIKUTI:
 let auth = { userId: null, userKey: null };
 let lastMessageId = 0;
 let isFirstRun = true;
+let isGlobalCooldown = false; // Flag delay 10 detik setelah merespon
 
 
 
@@ -793,6 +794,9 @@ async function processMessages(messages) {
         if (!msgId || msgId <= lastMessageId) continue;
         lastMessageId = msgId;
 
+        // Jika dalam masa delay 10 detik, abaikan semua trigger pesan!
+        if (isGlobalCooldown) continue;
+
         if (String(msg.user_id) === String(auth.userId)) continue;
 
         const senderName = msg.user_name || 'User';
@@ -828,6 +832,12 @@ async function processMessages(messages) {
             console.log(`[BOT/${provider}] ${reply}`);
             await sendChatMessage(reply, msg.id);
             addActivity('text', senderName, question, aiText, provider);
+            
+            // Aktifkan global delay 10 detik setelah menjawab
+            isGlobalCooldown = true;
+            setTimeout(() => {
+                isGlobalCooldown = false;
+            }, 10000);
         }
     }
 }
