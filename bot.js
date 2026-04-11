@@ -121,6 +121,7 @@ Informasi penting seputar fitur AnimeinWeb/Aplikasi yang WAJIB DIIKUTI:
 let auth = { userId: null, userKey: null };
 let lastMessageId = 0;
 let isFirstRun = true;
+const userSessions = {};
 
 
 
@@ -421,7 +422,7 @@ async function buildAnimeContext(intent, question) {
 
 
 /** Groq (Llama 3.1) - kualitas lebih baik */
-async function askGroq(index, userMessage, senderName, contextData = '') {
+async function askGroq(index, userMessage, senderName, contextData = '', history = []) {
     const client = groqClients[index];
     const stat = stats.groq[index];
     
@@ -431,6 +432,7 @@ async function askGroq(index, userMessage, senderName, contextData = '') {
         model: 'llama-3.1-8b-instant',
         messages: [
             { role: 'system', content: systemContent },
+            ...history,
             { role: 'user', content: `${senderName} berkata: "${userMessage}".` }
         ],
         max_tokens: 300,
@@ -456,11 +458,12 @@ async function askGroq(index, userMessage, senderName, contextData = '') {
 }
 
 /** Pollinations.ai - fallback unlimited */
-async function askPollinations(userMessage, senderName, contextData = '') {
+async function askPollinations(userMessage, senderName, contextData = '', history = []) {
     stats.pollinations.requests++;
     const response = await axios.post('https://text.pollinations.ai/', {
         messages: [
             { role: 'system', content: SYSTEM_PROMPT + contextData },
+            ...history,
             { role: 'user', content: `${senderName} berkata: "${userMessage}".` }
         ],
         model: 'openai',
@@ -472,7 +475,7 @@ async function askPollinations(userMessage, senderName, contextData = '') {
 }
 
 /** Main AI handler: Groq dulu, fallback ke Pollinations */
-async function getAIResponse(userMessage, senderName) {
+async function getAIResponse(userMessage, senderName, history = []) {
 
     const intent = detectIntent(userMessage);
     const contextData = await buildAnimeContext(intent, userMessage);
@@ -489,7 +492,7 @@ async function getAIResponse(userMessage, senderName) {
         }
 
         try {
-            const result = await askGroq(i, userMessage, senderName, contextData);
+            const result = await askGroq(i, userMessage, senderName, contextData, history);
             if (result) return { text: result, provider: `Groq #${i+1}` };
         } catch (err) {
             stat.errors++;
@@ -506,7 +509,7 @@ async function getAIResponse(userMessage, senderName) {
 
 
     try {
-        const result = await askPollinations(userMessage, senderName, contextData);
+        const result = await askPollinations(userMessage, senderName, contextData, history);
         return { text: result || 'Hmm, gak tau nih.', provider: 'Pollinations' };
     } catch (err) {
         stats.pollinations.errors++;
@@ -663,7 +666,15 @@ async function processMessages(messages) {
             addActivity('blocked', senderName, cleanText, 'maaf saat ini fitur tersebuat sedang di nonaktifkan', 'System');
         } else {
             const question = cleanText || 'kamu manggil?';
-            const { text: aiText, provider } = await getAIResponse(question, senderName);
+            if (!userSessions[senderName]) userSessions[senderName] = [];
+            const history = userSessions[senderName];
+
+            const { text: aiText, provider } = await getAIResponse(question, senderName, history);
+            
+            history.push({ role: 'user', content: `${senderName} berkata: "${question}".` });
+            history.push({ role: 'assistant', content: aiText });
+            if (history.length > 4) userSessions[senderName] = history.slice(history.length - 4);
+
             const reply = `@${senderName} ${aiText}`;
             console.log(`[BOT/${provider}] ${reply}`);
             await sendChatMessage(reply, msg.id);
