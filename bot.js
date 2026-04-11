@@ -5,9 +5,6 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 
-
-
-
 const filterPath = path.join(__dirname, 'filters.json');
 let FILTER_DATA = { profanities: [], response: 'Maaf, saya tidak akan menjawab pesan tersebut.' };
 try {
@@ -107,7 +104,10 @@ Informasi penting seputar fitur AnimeinWeb/Aplikasi yang WAJIB DIIKUTI:
 4. Coin Animein: Adalah mata uang di Animein yang digunakan untuk membeli Pokemon, Evo Pokemon, Battle, dan lainnya.
 5. Cara Upload Server Anime: Buka web teman.animein.net atau masuk ke profile lalu cari fitur "Rapsodi" agar diarahkan ke menu upload server anime.
 6. Cara Upload Cover/Poster Anime: Pergi ke bagian anime, buka animenya, lalu geser (scroll) ke kanan untuk menemukan menu poster dan cover.
-7. Fitur Cuplix: Cuplix adalah klip/highlight episode anime untuk rekomendasi. Pembuat Cuplix & Uploader Server dapat 1 coin tiap ada yang like (Maks 250 coin/hari, cair saat ganti hari dan wajib login). Cara buat: Masukkan detik start & end (durasi 10 dtk - 3 mnt), jepret thumbnail di jarak detik tersebut, lalu simpan. Peraturan: Maksimal 3 Cuplix per user untuk 1 episode, dan tidak boleh kembar/sama dengan Cuplix yang sudah dibooking.`;
+7. Fitur Cuplix: Cuplix adalah klip/highlight episode anime untuk rekomendasi. Pembuat Cuplix & Uploader Server dapat 1 coin tiap ada yang like (Maks 250 coin/hari, cair saat ganti hari dan wajib login). Cara buat: Masukkan detik start & end (durasi 10 dtk - 3 mnt), jepret thumbnail di jarak detik tersebut, lalu simpan. Peraturan: Maksimal 3 Cuplix per user untuk 1 episode, dan tidak boleh kembar/sama dengan Cuplix yang sudah dibooking.
+8. Status Website vs Aplikasi: Versi web (animeinweb.com) masih dalam tahap pengembangan (progress sekitar 10%). Jika user ingin fitur yang jauh lebih lengkap, arahkan mereka untuk download APK Android di animein.net.
+9. Dukungan / Donasi: Beri tahu user yang ingin mendukung pengembangan Animein bahwa mereka bisa berdonasi melalui Trakteer di trakteer.id/animein.net.
+10. Fitur Website Lainnya: Web mendukung kategori streaming (Sedang Hangat, Populer), Jadwal Rilis berupa kalender, serta fitur komunitas live chat tempat pengguna & AI berkumpul.`;
 
 let auth = { userId: null, userKey: null };
 let lastMessageId = 0;
@@ -574,9 +574,6 @@ async function sendChatMessage(text, replyTo = '0') {
 }
 
 
-
-
-
 async function processMessages(messages) {
     for (const msg of messages) {
         const msgId = parseInt(msg.id || 0);
@@ -653,9 +650,6 @@ async function startBot() {
         await processMessages(messages);
     }, CONFIG.POLL_INTERVAL);
 }
-
-
-
 
 
 function startDashboard() {
