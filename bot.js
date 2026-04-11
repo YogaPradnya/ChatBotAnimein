@@ -144,10 +144,22 @@ function isImageRequest(text) {
 
 /** Cek apakah pesan mengandung kata kasar */
 function containsProfanity(text) {
-    const lower = text.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const lower = text.toLowerCase();
+    const lowerNoSpace = lower.replace(/\s+/g, '');
+    
     return FILTER_DATA.profanities.some(word => {
-        const cleanWord = word.toLowerCase().replace(/[^a-z0-9]/g, '');
-        return lower.includes(cleanWord);
+        const cleanWord = word.toLowerCase();
+        
+        // Untuk kata kotor pendek (<= 4 huruf spt "tt", "asu", "cuk", "ewe", "babi", "sex")
+        // Wajib pakai word boundary agar tidak nge-block kata biasa (cewek, kasur, battel)
+        if (cleanWord.length <= 4) {
+            const regex = new RegExp(`\\b${cleanWord}\\b`, 'i');
+            return regex.test(lower);
+        } else {
+            // Untuk kata > 4 huruf, cari di kalimat asli dan kalimat tanpa spasi 
+            // (buat mengantisipasi "k o n t o l")
+            return lower.includes(cleanWord) || lowerNoSpace.includes(cleanWord);
+        }
     });
 }
 
