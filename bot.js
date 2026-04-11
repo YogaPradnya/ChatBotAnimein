@@ -5,9 +5,9 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 
-// ═══════════════════════════════════════════════════════
-// LOAD FILTER KATA KASAR
-// ═══════════════════════════════════════════════════════
+
+
+
 const filterPath = path.join(__dirname, 'filters.json');
 let FILTER_DATA = { profanities: [], response: 'Maaf, saya tidak akan menjawab pesan tersebut.' };
 try {
@@ -21,16 +21,16 @@ const CONFIG = {
     BASE_URL: 'https://purple-hall-e016.yogapradnyana988.workers.dev/api/proxy',
     USERNAME: process.env.ANIMEIN_USERNAME,
     PASSWORD: process.env.ANIMEIN_PASSWORD,
-    // Mendukung hingga 3 Groq API Keys
+
     GROQ_KEYS: [
-        process.env.GROQ_API_KEY,      // Utama
-        process.env.GROQ_API_KEY_2,    // Cadangan 1
-        process.env.GROQ_API_KEY_3     // Cadangan 2
+        process.env.GROQ_API_KEY,
+        process.env.GROQ_API_KEY_2,
+        process.env.GROQ_API_KEY_3
     ].filter(Boolean),
     POLL_INTERVAL: 5000,
     DASHBOARD_PORT: process.env.PORT || 3500,
     IMAGE_TRIGGERS: ['gambar', 'foto', 'ilustrasi', 'buatkan gambar', 'generate gambar'],
-    GROQ_COOLDOWN: 60 * 1000, // 1 menit cooldown jika rate limit
+    GROQ_COOLDOWN: 60 * 1000,
 };
 
 
@@ -75,7 +75,7 @@ function addActivity(type, from, text, response, provider) {
 }
 
 
-// Inisialisasi multiple Groq clients
+
 const groqClients = CONFIG.GROQ_KEYS.map(key => new Groq({ apiKey: key }));
 
 const SYSTEM_PROMPT = `Kamu adalah asisten chat Animein yang di buat oleh Yogaa. 
@@ -113,9 +113,9 @@ let auth = { userId: null, userKey: null };
 let lastMessageId = 0;
 let isFirstRun = true;
 
-// ═══════════════════════════════════════════════════════
-// FUNGSI UTILITAS
-// ═══════════════════════════════════════════════════════
+
+
+
 
 function stripEmoji(text) {
     return text.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F000}-\u{1F02F}\u{1F0A0}-\u{1F0FF}\u{1F100}-\u{1F1FF}\u{1F200}-\u{1F2FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}]/gu, '').trim();
@@ -156,15 +156,15 @@ function detectIntent(text) {
     return null;
 }
 
-// ═══════════════════════════════════════════════════════
-// ANIMEIN DATA CACHE
-// ═══════════════════════════════════════════════════════
+
+
+
 const cache = {
     trending: { data: null, lastFetch: 0 },
     schedule: { data: null, lastFetch: 0 },
     genres: { data: null, lastFetch: 0 },
     genreCache: {},
-    TTL: 60 * 60 * 1000, // 1 jam
+    TTL: 60 * 60 * 1000,
 };
 
 const ANIMEIN_HEADERS = {
@@ -190,7 +190,7 @@ async function fetchTrendingAnime() {
         });
         const hot = res.data?.data?.hot || [];
         const popular = res.data?.data?.popular || [];
-        // Gabungkan popular + hot, dahulukan popular seperti di aplikasi Animein
+
         const combined = [...popular, ...hot];
         const seen = new Set();
         const unique = combined.filter(a => {
@@ -225,12 +225,12 @@ async function fetchSchedule() {
             headers: ANIMEIN_HEADERS,
             timeout: 10000,
         });
-        // 'today' berisi anime yang rilis hari ini
+
         const raw = res.data?.data?.today || res.data?.data?.new || [];
         const list = raw.map(a => {
             let desc = `- ${a.title}`;
             if (a.key_time) {
-                // key_time "YYYY-MM-DD HH:MM:SS" -> ambil "HH:MM"
+
                 const parts = a.key_time.split(' ');
                 if (parts.length > 1) {
                     desc += ` (Jam tayang: ${parts[1].slice(0, 5)})`;
@@ -277,7 +277,7 @@ async function fetchGenresList() {
         });
         const genresList = res.data?.data?.genre || res.data?.data || [];
         if (genresList.length > 0) {
-            // Sort by descending string length so "Action" and "Action Comedy" won't conflict
+
             const parsed = genresList
                 .map(g => ({ id: g.id, name: g.name.toLowerCase() }))
                 .sort((a, b) => b.name.length - a.name.length);
@@ -295,7 +295,7 @@ async function fetchGenresList() {
 /** Ambil anime populer berdasarkan genre tertentu secara acak */
 async function fetchPopularByGenre(genreId, maxLimit = 10) {
     try {
-        // Ambil halaman secara acak (1 sampai 5) agar judul tidak ngumpul di huruf tertentu (M/A dsb)
+
         const randomPage = Math.floor(Math.random() * 5) + 1;
         
         const res = await axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, {
@@ -306,7 +306,7 @@ async function fetchPopularByGenre(genreId, maxLimit = 10) {
         
         let movies = res.data?.data?.movie || [];
         if (movies.length === 0 && randomPage > 1) {
-            // Fallback ke page 1 jika genre tersebut API nya tidak sampai halaman random tersebut
+
             const fallback = await axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, {
                 params: { sort: 'popular', page: 1, genre_in: genreId },
                 headers: ANIMEIN_HEADERS, 
@@ -316,7 +316,7 @@ async function fetchPopularByGenre(genreId, maxLimit = 10) {
         }
         
         if (movies.length > 0) {
-            // Acak array menggunakan sort dengan tingkat keacakan 0.5 agar rekomendasi berotasi
+
             movies.sort(() => 0.5 - Math.random());
             return movies.slice(0, maxLimit).map(a => `- ${a.title}`);
         }
@@ -330,16 +330,16 @@ async function fetchPopularByGenre(genreId, maxLimit = 10) {
 async function buildAnimeContext(intent, question) {
     const lowerQ = question.toLowerCase();
 
-    // Setup format info waktu real-time untuk AI
+
     const nowLocal = new Date();
     const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' };
     let contextData = `\n\n[INFO WAKTU SEKARANG]: Waktu server saat ini adalah ${nowLocal.toLocaleString('id-ID', options)} WIB. Pastikan kamu SELALU menggunakan waktu ini sebagai acuan saat user bertanya "jam berapa", "hari apa ini/besok", atau kapan rilisnya.`;
 
-    // Deteksi apakah user menyebutkan spesifik genre
+
     const allGenres = await fetchGenresList();
     let matchedGenre = null;
     for (const g of allGenres) {
-        // Menangani plural/tambahan "s" dari user (misal: "actions" -> "action")
+
         let genName = g.name.toLowerCase();
         if (genName.endsWith('s')) genName = genName.slice(0, -1) + 's?';
         else genName = genName + 's?';
@@ -379,9 +379,9 @@ async function buildAnimeContext(intent, question) {
     return contextData;
 }
 
-// ═══════════════════════════════════════════════════════
-// FUNGSI AI
-// ═══════════════════════════════════════════════════════
+
+
+
 
 /** Groq (Llama 3.1) - kualitas lebih baik */
 async function askGroq(index, userMessage, senderName, contextData = '') {
@@ -421,12 +421,12 @@ async function askPollinations(userMessage, senderName, contextData = '') {
 
 /** Main AI handler: Groq dulu, fallback ke Pollinations */
 async function getAIResponse(userMessage, senderName) {
-    // Deteksi intent dan ambil konteks data dari Animein
+
     const intent = detectIntent(userMessage);
     const contextData = await buildAnimeContext(intent, userMessage);
     if (intent) console.log(`[INTENT] ${intent} -> Konteks data: ${contextData ? 'Ada' : 'Kosong'}`);
 
-    // Cari Groq yang tidak sedang cooldown (prioritas index kecil/utama)
+
     for (let i = 0; i < groqClients.length; i++) {
         const stat = stats.groq[i];
         const now = Date.now();
@@ -452,7 +452,7 @@ async function getAIResponse(userMessage, senderName) {
         }
     }
 
-    // Fallback ke Pollinations
+
     try {
         const result = await askPollinations(userMessage, senderName, contextData);
         return { text: result || 'Hmm, gak tau nih.', provider: 'Pollinations' };
@@ -479,9 +479,9 @@ async function generateImageUrl(prompt) {
     }
 }
 
-// ═══════════════════════════════════════════════════════
-// FUNGSI API ANIMEINWEB
-// ═══════════════════════════════════════════════════════
+
+
+
 
 async function login() {
     try {
@@ -573,9 +573,9 @@ async function sendChatMessage(text, replyTo = '0') {
     }
 }
 
-// ═══════════════════════════════════════════════════════
-// PROCESS MESSAGES
-// ═══════════════════════════════════════════════════════
+
+
+
 
 async function processMessages(messages) {
     for (const msg of messages) {
@@ -589,7 +589,7 @@ async function processMessages(messages) {
         const msgText = msg.text || '';
         if (!msgText || !isMentioned(msgText)) continue;
 
-        // Hapus semua variasi trigger dari teks agar AI hanya menerima pertanyaan inti
+
         const username = CONFIG.USERNAME.toLowerCase();
         const triggerRegex = new RegExp(`\\.ai|ai\\.|@${username}`, 'gi');
         const cleanText = msgText.replace(triggerRegex, '').trim();
@@ -597,7 +597,7 @@ async function processMessages(messages) {
         console.log(`[TRIGGER] ${senderName}: ${msgText}`);
         stats.totalTriggers++;
 
-        // Cek filter kata kasar SEBELUM ke AI
+
         if (containsProfanity(cleanText)) {
             stats.filter.blocked++;
             stats.filter.lastBlocked = senderName;
@@ -623,9 +623,9 @@ async function processMessages(messages) {
     }
 }
 
-// ═══════════════════════════════════════════════════════
-// MAIN BOT LOOP
-// ═══════════════════════════════════════════════════════
+
+
+
 
 async function startBot() {
     const loggedIn = await login();
@@ -654,9 +654,9 @@ async function startBot() {
     }, CONFIG.POLL_INTERVAL);
 }
 
-// ═══════════════════════════════════════════════════════
-// DASHBOARD (Express)
-// ═══════════════════════════════════════════════════════
+
+
+
 
 function startDashboard() {
     const app = express();
@@ -666,7 +666,7 @@ function startDashboard() {
         res.json({ ...stats, uptime });
     });
 
-    // Debug endpoint - cek struktur response Animein
+
     app.get('/api/debug/trending', async (req, res) => {
         try {
             const r = await axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, {
@@ -858,23 +858,23 @@ async function refresh() {
     const res = await fetch('/api/stats');
     const d = await res.json();
 
-    // header status
+
     const online = d.botStatus==='online';
     document.getElementById('statusDot').style.background = online?'var(--green)':'var(--red)';
     document.getElementById('statusLabel').textContent = online?'Online':'Offline';
     document.getElementById('statusLabel').style.color = online?'var(--green)':'var(--red)';
 
-    // top stats
+
     document.getElementById('totalTriggers').textContent = d.totalTriggers||0;
     document.getElementById('uptime').textContent = formatUptime(d.uptime||0);
     
-    // Aggregated Groq Stats
+
     const totalGroqReq = d.groq.reduce((acc, g) => acc + g.requests, 0);
     const totalGroqSuccess = d.groq.reduce((acc, g) => acc + g.success, 0);
     document.getElementById('groqTotal').textContent = totalGroqReq;
     document.getElementById('groqSuccessRate').textContent = rate(totalGroqSuccess, totalGroqReq)+' success';
 
-    // Groq cards
+
     const now = Date.now();
     const groqCardsContainer = document.getElementById('groqCards');
     groqCardsContainer.innerHTML = d.groq.map((g, i) => {
@@ -900,13 +900,13 @@ async function refresh() {
           + '</div>';
     }).join('');
 
-    // pollinations card
+
     document.getElementById('pollSuccess').textContent = d.pollinations.success + ' / ' + d.pollinations.requests;
     document.getElementById('pollErrors').textContent = d.pollinations.errors;
     document.getElementById('pollErrors').style.color = d.pollinations.errors>0?'var(--red)':'var(--text)';
     document.getElementById('pollLastErr').textContent = d.pollinations.lastError||'Tidak ada error';
 
-    // activity
+
     const list = document.getElementById('activityList');
     if (d.recentActivity && d.recentActivity.length > 0) {
       list.innerHTML = d.recentActivity.map(a => {
@@ -925,7 +925,7 @@ async function refresh() {
           + '</div>';
       }).join('');
     }
-    // filter stats
+
     if (d.filter) {
       document.getElementById('filterBlocked').textContent = d.filter.blocked || 0;
       document.getElementById('filterLastBlock').textContent = d.filter.lastBlocked ? 'Terakhir: @' + d.filter.lastBlocked : 'Belum ada';
@@ -940,9 +940,9 @@ setInterval(refresh, 5000);
 </html>`;
 }
 
-// ═══════════════════════════════════════════════════════
-// START
-// ═══════════════════════════════════════════════════════
+
+
+
 process.on('uncaughtException', (err) => { console.error('Uncaught Exception:', err.message); });
 
 startDashboard();
