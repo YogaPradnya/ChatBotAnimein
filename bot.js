@@ -93,6 +93,7 @@ Aturan menjawab:
 - Kamu boleh diajak ngobrol, berdebat (dengan logika seru), atau berpendapat. Jangan hanya menjawab seperti kamus, berikan opini yang menarik dan asyik!
 - Basa-basi diperbolehkan asalkan natural. Kalau user ngajak ribut, balas dengan argumen yang asik tanpa berkata kotor.
 - Tetap JAGA BATAS KARAKTER maksimal 500 huruf! Jangan sampai kalimatmu terpotong karena terlalu panjang saat berdebat.
+- jangan ada kata formal atau sifat formal, gunakan bahasa yang sangat gaul dan plesetan terkenal yang sering digunakan.
 - JIKA MEMINTA REKOMENDASI ANIME, BERIKAN MINIMAL 10 REKOMENDASI JUDUL DALAM BENTUK LIST ANGKA. DILARANG KERAS MEMBERIKAN SINOPSIS, PENJELASAN, ATAU DESKRIPSI APAPUN! HANYA JUDUL SAJA.
 - jawab semua pertanyaan yang ada, jika tidak tahu jawab aja jujur pake gaya santai.
 - Gunakan bahasa gaul SEWAJARNYA saja, jangan terlalu lebay atau sering memakai istilah slang kekinian. Pakai kata ganti biasa atau singkatan natural. Hindari bahasa baku/formal.
@@ -131,6 +132,8 @@ let auth = { userId: null, userKey: null };
 let lastMessageId = 0;
 let isFirstRun = true;
 let isGlobalCooldown = false; // Flag delay 10 detik setelah merespon
+const chatMemory = {}; // Menyimpan memori obrolan tiap user (maks 2 obrolan terakhir)
+
 
 
 
@@ -431,7 +434,7 @@ async function buildAnimeContext(intent, question) {
 
 
 /** Groq (Llama 3.1) - kualitas lebih baik */
-async function askGroq(index, userMessage, senderName, contextData = '') {
+async function askGroq(index, userMessage, senderName, contextData = '', chatHistory = []) {
     const client = groqClients[index];
     const stat = stats.groq[index];
     
@@ -441,6 +444,7 @@ async function askGroq(index, userMessage, senderName, contextData = '') {
         model: 'llama-3.1-8b-instant',
         messages: [
             { role: 'system', content: systemContent },
+            ...chatHistory,
             { role: 'user', content: `${senderName} berkata: "${userMessage}".` }
         ],
         max_tokens: 300,
@@ -466,11 +470,12 @@ async function askGroq(index, userMessage, senderName, contextData = '') {
 }
 
 /** Pollinations.ai - fallback unlimited */
-async function askPollinations(userMessage, senderName, contextData = '') {
+async function askPollinations(userMessage, senderName, contextData = '', chatHistory = []) {
     stats.pollinations.requests++;
     const response = await axios.post('https://text.pollinations.ai/', {
         messages: [
             { role: 'system', content: SYSTEM_PROMPT + contextData },
+            ...chatHistory,
             { role: 'user', content: `${senderName} berkata: "${userMessage}".` }
         ],
         model: 'openai',
@@ -488,6 +493,7 @@ async function getAIResponse(userMessage, senderName) {
     const contextData = await buildAnimeContext(intent, userMessage);
     if (intent) console.log(`[INTENT] ${intent} -> Konteks data: ${contextData ? 'Ada' : 'Kosong'}`);
 
+    const history = chatMemory[senderName] || [];
 
     for (let i = 0; i < groqClients.length; i++) {
         const stat = stats.groq[i];
@@ -499,8 +505,15 @@ async function getAIResponse(userMessage, senderName) {
         }
 
         try {
-            const result = await askGroq(i, userMessage, senderName, contextData);
-            if (result) return { text: result, provider: `Groq #${i+1}` };
+            const result = await askGroq(i, userMessage, senderName, contextData, history);
+            if (result) {
+                // Simpan memori obrolan ke global memory (maks 2 loop = 4 messages)
+                chatMemory[senderName] = [...history, 
+                    { role: 'user', content: userMessage },
+                    { role: 'assistant', content: result }
+                ].slice(-4);
+                return { text: result, provider: `Groq #${i+1}` };
+            }
         } catch (err) {
             stat.errors++;
             stat.lastError = err.message.slice(0, 100);
@@ -516,7 +529,13 @@ async function getAIResponse(userMessage, senderName) {
 
 
     try {
-        const result = await askPollinations(userMessage, senderName, contextData);
+        const result = await askPollinations(userMessage, senderName, contextData, history);
+        if (result) {
+            chatMemory[senderName] = [...history, 
+                { role: 'user', content: userMessage },
+                { role: 'assistant', content: result }
+            ].slice(-4);
+        }
         return { text: result || 'Hmm, gak tau nih.', provider: 'Pollinations' };
     } catch (err) {
         stats.pollinations.errors++;
