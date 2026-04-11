@@ -79,6 +79,7 @@ const groqClients = CONFIG.GROQ_KEYS.map(key => new Groq({ apiKey: key }));
 
 const SYSTEM_PROMPT = `Kamu adalah asisten chat Animein yang di buat oleh Yogaa. 
 Aturan menjawab:
+- PENTING MAXIMAL JAWABAN ANDA ADALAH 500 KARAKETR, karena limit room chat 500 karakter.
 - Jawab dengan gaya bahasa santai biasa seperti anak muda ngobrol sehari-hari.
 - Jangan gunakan istilah anime yang berlebihan atau gaya bicara karakter fiksi.
 - jawab pertanyaan intinya aja, jangan bertele-tele atau kaku kayak robot.
@@ -150,14 +151,10 @@ function containsProfanity(text) {
     return FILTER_DATA.profanities.some(word => {
         const cleanWord = word.toLowerCase();
         
-        // Untuk kata kotor pendek (<= 4 huruf spt "tt", "asu", "cuk", "ewe", "babi", "sex")
-        // Wajib pakai word boundary agar tidak nge-block kata biasa (cewek, kasur, battel)
         if (cleanWord.length <= 4) {
             const regex = new RegExp(`\\b${cleanWord}\\b`, 'i');
             return regex.test(lower);
         } else {
-            // Untuk kata > 4 huruf, cari di kalimat asli dan kalimat tanpa spasi 
-            // (buat mengantisipasi "k o n t o l")
             return lower.includes(cleanWord) || lowerNoSpace.includes(cleanWord);
         }
     });
