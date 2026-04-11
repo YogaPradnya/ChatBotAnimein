@@ -22,12 +22,14 @@ const CONFIG = {
     GROQ_KEYS: [
         process.env.GROQ_API_KEY,
         process.env.GROQ_API_KEY_2,
-        process.env.GROQ_API_KEY_3
+        process.env.GROQ_API_KEY_3,
+        process.env.GROQ_API_KEY_4,
+        process.env.GROQ_API_KEY_5
     ].filter(Boolean),
     POLL_INTERVAL: 5000,
     DASHBOARD_PORT: process.env.PORT || 3500,
     IMAGE_TRIGGERS: ['gambar', 'foto', 'ilustrasi', 'buatkan gambar', 'generate gambar'],
-    GROQ_COOLDOWN: 5 * 60 * 1000,
+    GROQ_COOLDOWN: 2 * 60 * 1000,
 };
 
 
@@ -121,7 +123,6 @@ Informasi penting seputar fitur AnimeinWeb/Aplikasi yang WAJIB DIIKUTI:
 let auth = { userId: null, userKey: null };
 let lastMessageId = 0;
 let isFirstRun = true;
-const userSessions = {};
 
 
 
@@ -422,7 +423,7 @@ async function buildAnimeContext(intent, question) {
 
 
 /** Groq (Llama 3.1) - kualitas lebih baik */
-async function askGroq(index, userMessage, senderName, contextData = '', history = []) {
+async function askGroq(index, userMessage, senderName, contextData = '') {
     const client = groqClients[index];
     const stat = stats.groq[index];
     
@@ -432,7 +433,6 @@ async function askGroq(index, userMessage, senderName, contextData = '', history
         model: 'llama-3.1-8b-instant',
         messages: [
             { role: 'system', content: systemContent },
-            ...history,
             { role: 'user', content: `${senderName} berkata: "${userMessage}".` }
         ],
         max_tokens: 300,
@@ -458,12 +458,11 @@ async function askGroq(index, userMessage, senderName, contextData = '', history
 }
 
 /** Pollinations.ai - fallback unlimited */
-async function askPollinations(userMessage, senderName, contextData = '', history = []) {
+async function askPollinations(userMessage, senderName, contextData = '') {
     stats.pollinations.requests++;
     const response = await axios.post('https://text.pollinations.ai/', {
         messages: [
             { role: 'system', content: SYSTEM_PROMPT + contextData },
-            ...history,
             { role: 'user', content: `${senderName} berkata: "${userMessage}".` }
         ],
         model: 'openai',
@@ -475,7 +474,7 @@ async function askPollinations(userMessage, senderName, contextData = '', histor
 }
 
 /** Main AI handler: Groq dulu, fallback ke Pollinations */
-async function getAIResponse(userMessage, senderName, history = []) {
+async function getAIResponse(userMessage, senderName) {
 
     const intent = detectIntent(userMessage);
     const contextData = await buildAnimeContext(intent, userMessage);
@@ -492,7 +491,7 @@ async function getAIResponse(userMessage, senderName, history = []) {
         }
 
         try {
-            const result = await askGroq(i, userMessage, senderName, contextData, history);
+            const result = await askGroq(i, userMessage, senderName, contextData);
             if (result) return { text: result, provider: `Groq #${i+1}` };
         } catch (err) {
             stat.errors++;
@@ -500,7 +499,7 @@ async function getAIResponse(userMessage, senderName, history = []) {
             
             if (err.message.includes('429') || err.status === 429) {
                 stat.cooldownUntil = now + CONFIG.GROQ_COOLDOWN;
-                console.log(`[GROQ-${i+1}] Rate limit! Cooldown 5 menit.`);
+                console.log(`[GROQ-${i+1}] Rate limit! Cooldown 2 menit.`);
             } else {
                 console.log(`[GROQ-${i+1}] Error: ${err.message.slice(0, 50)}`);
             }
@@ -509,7 +508,7 @@ async function getAIResponse(userMessage, senderName, history = []) {
 
 
     try {
-        const result = await askPollinations(userMessage, senderName, contextData, history);
+        const result = await askPollinations(userMessage, senderName, contextData);
         return { text: result || 'Hmm, gak tau nih.', provider: 'Pollinations' };
     } catch (err) {
         stats.pollinations.errors++;
@@ -666,15 +665,7 @@ async function processMessages(messages) {
             addActivity('blocked', senderName, cleanText, 'maaf saat ini fitur tersebuat sedang di nonaktifkan', 'System');
         } else {
             const question = cleanText || 'kamu manggil?';
-            if (!userSessions[senderName]) userSessions[senderName] = [];
-            const history = userSessions[senderName];
-
-            const { text: aiText, provider } = await getAIResponse(question, senderName, history);
-            
-            history.push({ role: 'user', content: `${senderName} berkata: "${question}".` });
-            history.push({ role: 'assistant', content: aiText });
-            if (history.length > 4) userSessions[senderName] = history.slice(history.length - 4);
-
+            const { text: aiText, provider } = await getAIResponse(question, senderName);
             const reply = `@${senderName} ${aiText}`;
             console.log(`[BOT/${provider}] ${reply}`);
             await sendChatMessage(reply, msg.id);
