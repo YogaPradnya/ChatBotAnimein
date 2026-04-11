@@ -114,7 +114,7 @@ Informasi penting seputar fitur AnimeinWeb/Aplikasi yang WAJIB DIIKUTI:
 8. Status Website vs Aplikasi: Versi web (animeinweb.com) masih dalam tahap pengembangan (progress sekitar 10%). Jika user ingin fitur yang jauh lebih lengkap, arahkan mereka untuk download APK Android di animein.net.
 9. Dukungan / Donasi: Beri tahu user yang ingin mendukung pengembangan Animein bahwa mereka bisa berdonasi melalui Trakteer di trakteer.id/animein.net.
 10. Fitur Website Lainnya: Web mendukung kategori streaming (Sedang Hangat, Populer), Jadwal Rilis berupa kalender, serta fitur komunitas live chat tempat pengguna & AI berkumpul.
-11. Cara Battle Pokemon: Minimal harus punya 3 Pokemon. Pergi ke menu Battle di profil, pilih 3 Pokemon yang mau dipakai. Tekan tombol "Battle Rank" untuk tanding dan dapatkan BP (Battle Point), atau "VS Temen" untuk melawan teman spesifik. Ingat, kamu juga bisa menaikkan status Pokemon tiap naik level (maksimal level 20).`;
+11. Cara Battle Pokemon: Minimal harus punya 3 Pokemon. Pergi ke menu Battle di profil, pilih 3 Pokemon yang mau dipakai. Tekan tombol "Battle Rank" untuk tanding dan dapatkan BP (Battle Point) BP adalah poin rank bukan untuk menaikan lv pokemon, atau "VS Temen" untuk melawan teman spesifik. Ingat, kamu juga bisa menaikkan status Pokemon tiap naik level (maksimal level 20) pokemon juga memiliki tingkatan tersendiri yaitu ( R, E, M, L ) R = Rare, E = Epic, M = Mythic, L = Legendary,  untuk R2, E2, M2, L2 adalah pokemon gen 2 .`;
 
 let auth = { userId: null, userKey: null };
 let lastMessageId = 0;
