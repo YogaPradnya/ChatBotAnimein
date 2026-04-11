@@ -154,8 +154,8 @@ function containsProfanity(text) {
 /** Deteksi intent user untuk konteks data */
 function detectIntent(text) {
     const lower = text.toLowerCase();
+    if (/rekomendasi hari ini|sedang hangat|hangat|trending|tranding|viral/.test(lower)) return 'trending';
     if (/jadwal|tayang|hari ini|schedule|kapan rilis/.test(lower)) return 'schedule';
-    if (/trending|tranding|viral/.test(lower)) return 'trending';
     if (/populer|popular|terpopuler|rekomendasi|rekomen|recommend/.test(lower)) return 'popular';
     if (/cari|search|ada ga|ada gak|ada tidak/.test(lower)) return 'search';
     return null;
@@ -166,6 +166,7 @@ function detectIntent(text) {
 
 const cache = {
     trending: { data: null, lastFetch: 0 },
+    popular: { data: null, lastFetch: 0 },
     schedule: { data: null, lastFetch: 0 },
     genres: { data: null, lastFetch: 0 },
     genreCache: {},
@@ -179,11 +180,11 @@ const ANIMEIN_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
 };
 
-/** Ambil data anime trending (HOT/POPULAR) dari Animein */
-async function fetchTrendingAnime() {
+/** Ambil data anime dari Animein berdasarkan tipe (trending/hot atau popular) */
+async function fetchHomeAnime(type) {
     const now = Date.now();
-    if (cache.trending.data && now - cache.trending.lastFetch < cache.TTL) {
-        return cache.trending.data;
+    if (cache[type] && cache[type].data && now - cache[type].lastFetch < cache.TTL) {
+        return cache[type].data;
     }
     const days = ['AHAD', 'SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT', 'SABTU'];
     const today = days[getJakartaDate().getDay()];
@@ -196,23 +197,29 @@ async function fetchTrendingAnime() {
         const hot = res.data?.data?.hot || [];
         const popular = res.data?.data?.popular || [];
 
-        const combined = [...popular, ...hot];
-        const seen = new Set();
-        const unique = combined.filter(a => {
-            if (!a.title || seen.has(a.title)) return false;
-            seen.add(a.title);
-            return true;
+        // Save popular to cache
+        const popSet = new Set();
+        const popUnique = popular.filter(a => {
+            if (!a.title || popSet.has(a.title)) return false;
+            popSet.add(a.title); return true;
         });
-        const list = unique.slice(0, 10).map(a => `- ${a.title}`);
-        if (list.length > 0) {
-            cache.trending.data = list;
-            cache.trending.lastFetch = now;
-            console.log(`[ANIMEIN] Trending cache updated: ${list.length} anime`);
-        }
-        return list;
+        cache.popular.data = popUnique.slice(0, 10).map(a => `- ${a.title}`);
+        cache.popular.lastFetch = now;
+
+        // Save hot to cache
+        const hotSet = new Set();
+        const hotUnique = hot.filter(a => {
+            if (!a.title || hotSet.has(a.title)) return false;
+            hotSet.add(a.title); return true;
+        });
+        cache.trending.data = hotUnique.slice(0, 10).map(a => `- ${a.title}`);
+        cache.trending.lastFetch = now;
+
+        console.log(`[ANIMEIN] Home cache updated: ${cache.trending.data.length} hot, ${cache.popular.data.length} popular`);
+        return cache[type].data;
     } catch (e) {
-        console.warn('[ANIMEIN] Gagal ambil trending:', e.message.slice(0, 60));
-        return cache.trending.data || [];
+        console.warn(`[ANIMEIN] Gagal ambil ${type}:`, e.message.slice(0, 60));
+        return cache[type]?.data || [];
     }
 }
 
@@ -362,9 +369,9 @@ async function buildAnimeContext(intent, question) {
             contextData += `\n\n[DATA ANIMEIN - Anime Populer Genre ${matchedGenre.name.toUpperCase()}]:\n${list.join('\n')}\nGunakan daftar anime bergenre ${matchedGenre.name.toUpperCase()} ini sebagai referensi utama rekomendasi, pastikan judul persis dari daftar tersebut.`;
         }
     } else if (intent === 'trending' || intent === 'popular') {
-        const list = await fetchTrendingAnime();
+        const list = await fetchHomeAnime(intent);
         if (list.length > 0) {
-            contextData += `\n\n[DATA ANIMEIN - ${intent === 'trending' ? 'Trending' : 'Populer'}]:\n${list.join('\n')}\nGunakan daftar ini sebagai referensi utama rekomendasi, pastikan judul persis dari daftar tersebut.`;
+            contextData += `\n\n[DATA ANIMEIN - ${intent === 'trending' ? 'Sedang Hangat (Rekomendasi Hari Ini)' : 'Populer'}]:\n${list.join('\n')}\nGunakan daftar ini sebagai referensi utama rekomendasi, pastikan judul persis dari daftar tersebut.`;
         }
     } else if (intent === 'schedule') {
         const list = await fetchSchedule();
