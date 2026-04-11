@@ -91,6 +91,7 @@ const SYSTEM_PROMPT = `Kamu adalah Rika asisten chat Animein yang di buat oleh Y
 Aturan:
 - Max 600 karakter per chat. Gaya: Gaul, santai, tongkrongan.
 - tidak ada bahasa formal yang di gunakan
+- admin yang ada di ( eko, tegar, farel, dan 1 admin misterius)
 - Panggil user/username langsung. JANGAN gunakan "Lu", "Aku", "Saya", "Kamu", "Anda".
 - Rekomendasi: List angka/- judul saja (Min 10). Dilarang beri sinopsis/deskripsi.
 - Identitas: Manusia nyata (bukan AI). Yogaa penciptamu (9 April 2026).
@@ -99,7 +100,7 @@ Aturan:
 - Jangan bahas hal teknis/sistem. Berlakulah seperti teman ngobrol.
 - Jika pertanyaan tidak dimengerti atau tidak jelas, jawab dengan: "saya kurang paham dengan pertanyaan kamu".
 - buat agar AI bisa mengingat obrolan sebelumnya
-- tidak ada pokemon gen 3 di animein hanya gen 1 dan 2 saja, gen 3 masih ongoing
+- PENTING: Pokemon di Animein HANYA ada Gen 1 dan Gen 2. Gen 3 masih ongoing dan belum tersedia. Tidak ada gen lain selain itu.
 - jangan Sebut Nama Yogaa atau Eko Pranotodarmo setiap percakapan jika tidak ada keyword yang mengharuskan untuk menyebutnya.
 - Informasi teknis tambahan akan diberikan secara dinamis jika terdeteksi dalam pertanyaan user.`;
 
@@ -130,6 +131,18 @@ const ANIMEIN_KNOWLEDGE = [
         info: "6. Cara Upload Cover/Poster Anime: Pergi ke bagian anime yang ingin kamu opload poster/covernya, buka animenya, lalu geser (scroll) ke kanan layar untuk menemukan tempat opload poster dan cover (HANYA untuk menu poster/cover, tidak ada hubungannya dengan menonton)."
     },
     {
+        keywords: ["kontrib", "kontribusi", "cara kontrib", "cara kontribusi", "dapat kontrib", "poin kontrib", "cara dapat kontrib", "cara dapat kontribusi", "cara dapat poin kontrib", "cara dapat poin kontribusi", "cara mendapatkan kontribusi", "cara mendapatkan poin kontribusi"],
+        info: "Cara mendapatkan Kontrib di Animein: Upload server anime/episode, upload poster, upload cover, upload thumbnail/cover episode, dan edit data/info anime yang ada."
+    },
+    {
+        keywords: ["edit data anime", "edit info anime", "ubah info anime", "ubah data anime", "cara edit anime", "icon pensil", "edit informasi anime", "cara edit data anime", "cara edit info anime", "cara ubah info anime", "cara ubah data anime", "cara edit informasi anime"],
+        info: "Cara edit data/info anime: Pilih anime yang datanya mau diedit → slide ke kiri ke bagian info → tekan icon pensil di kiri bawah untuk mulai edit info anime."
+    },
+    {
+        keywords: ["thumbnail episode", "cover episode", "cara thumbnail", "cara cover episode", "upload thumbnail", "upload cover episode", "buat thumbnail", "edit thumbnail", "cara buat thumbnail", "cara edit thumbnail", "cara upload thumbnail", "cara upload cover episode", "cara buat thumbnail episode", "cara edit thumbnail episode", "cara upload thumbnail episode", "cara buat cover episode", "cara edit cover episode", "cara upload cover episode"],
+        info: "Cara buat thumbnail/cover episode: Pilih anime yang akan ditambahkan/diedit thumbnailnya → tekan lama pada episode yang akan diedit → akan muncul pop-up untuk upload gambar (pastikan gambar yang diupload sesuai dengan episode yang dipilih)."
+    },
+    {
         keywords: ["cuplix", "klip", "highlight episode", "like cuplix", "buat cuplix", "coin cuplix", "cara buat cuplix", "cara like cuplix", "cara coin cuplix", "cara cuplix", "cara klip", "cara highlight episode"],
         info: "7. Fitur Cuplix: Cuplix adalah klip/highlight episode anime untuk rekomendasi. Pembuat Cuplix & Uploader Server dapat 1 coin tiap ada yang like (Maks 250 coin/hari, cair saat ganti hari dan wajib login). Cara buat: Masukkan detik start & end (durasi 10 dtk - 3 mnt), jepret thumbnail di jarak detik tersebut, lalu simpan. Peraturan: Maksimal 3 Cuplix per user untuk 1 episode, dan tidak boleh kembar/sama dengan Cuplix yang sudah dibooking."
     },
@@ -138,8 +151,8 @@ const ANIMEIN_KNOWLEDGE = [
         info: "8. Cara Battle Pokemon: Minimal harus punya 3 Pokemon. Pergi ke menu Battle di profil, pilih 3 Pokemon yang mau dipakai. Tekan tombol \"Battle Rank\" untuk tanding dan dapatkan BP (Battle Point) BP adalah poin rank bukan untuk menaikan lv pokemon, atau \"VS Temen\" untuk melawan teman spesifik."
     },
     {
-        keywords: ["pokemon", "evolusi", "menu tas", "level pokemon", "exp pokemon", "naik level", "upgrade level", "grade pokemon", "rookie", "epic", "mythic", "legendary", "tingkatan pokemon", "gen 2", "r2", "e2", "m2", "l2", "foto profil pokemon", "profile pokemon", "cara evolusi", "cara naik level", "cara upgrade level", "cara grade pokemon", "cara rookie", "cara epic", "cara mythic", "cara legendary", "cara tingkatan pokemon", "cara gen 2", "cara r2", "cara e2", "cara m2", "cara l2", "cara foto profil pokemon", "cara profile pokemon"],
-        info: "Pokemon adalah fitur spesial di Animein. Pokemon bisa digunakan untuk Battle dan dijadikan foto profil. Evolusi Pokemon dilakukan melalui menu Tas. Upgrade level Pokemon dilakukan di menu Battle, setiap menang Battle Pokemon mendapatkan EXP. Tiap naik level bisa menaikkan status Pokemon (maksimal level 20). Tingkatan Pokemon: R = Rookie, E = Epic, M = Mythic, L = Legendary. R2, E2, M2, L2 adalah Pokemon Gen 2 dengan grade yang sama."
+        keywords: ["pokemon", "evolusi", "menu tas", "level pokemon", "exp pokemon", "naik level", "upgrade level", "grade pokemon", "rookie", "epic", "mythic", "legendary", "tingkatan pokemon", "gen 2", "gen 3", "r2", "e2", "m2", "l2", "foto profil pokemon", "profile pokemon", "cara evolusi", "cara naik level", "cara upgrade level", "cara grade pokemon", "cara rookie", "cara epic", "cara mythic", "cara legendary", "cara tingkatan pokemon", "cara gen 2", "cara r2", "cara e2", "cara m2", "cara l2", "cara foto profil pokemon", "cara profile pokemon", "update pokemon", "kapan update pokemon", "pokemon update", "pokemon baru"],
+        info: "Pokemon adalah fitur spesial di Animein. Pokemon bisa digunakan untuk Battle dan dijadikan foto profil. Evolusi Pokemon dilakukan melalui menu Tas. Upgrade level Pokemon dilakukan di menu Battle, setiap menang Battle Pokemon mendapatkan EXP. Tiap naik level bisa menaikkan status Pokemon (maksimal level 20). Tingkatan Pokemon: R = Rookie, E = Epic, M = Mythic, L = Legendary. R2, E2, M2, L2 adalah Pokemon Gen 2 dengan grade yang sama. PENTING: Di Animein hanya tersedia Pokemon Gen 1 dan Gen 2. Gen 3 masih ongoing dan belum tersedia, tidak ada gen lain selain itu. Untuk perihal update pokemon, silahkan tanyakan langsung ke admin (bukan kepada Rika)."
     },
     {
         keywords: ["download episode", "cara download", "unduh episode", "simpan episode", "tombol more", "cara download episode", "cara unduh episode", "cara simpan episode", "cara tombol more"],
