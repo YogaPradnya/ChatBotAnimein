@@ -145,11 +145,8 @@ Informasi penting seputar fitur AnimeinWeb/Aplikasi yang WAJIB DIIKUTI:
 let auth = { userId: null, userKey: null };
 let lastMessageId = 0;
 let isFirstRun = true;
-let isGlobalCooldown = false; // Flag delay 10 detik setelah merespon
-const chatMemory = {}; // Menyimpan memori obrolan tiap user (maks 3 obrolan terakhir)
-
-
-
+let isGlobalCooldown = false; 
+const chatMemory = {}; 
 
 
 
