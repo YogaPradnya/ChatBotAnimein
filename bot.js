@@ -147,7 +147,7 @@ let auth = { userId: null, userKey: null };
 let lastMessageId = 0;
 let isFirstRun = true;
 let isGlobalCooldown = false; 
-const chatMemory = {}; // Menyimpan memori obrolan tiap user (maks 4 obrolan terakhir = 8 pesan)
+const chatMemory = {}; // Menyimpan memori obrolan tiap user (maks 2 obrolan terakhir = 4 pesan)
 
 
 
@@ -520,11 +520,11 @@ async function getAIResponse(userMessage, senderName) {
             const result = await askGroq(i, userMessage, senderName, contextData, history);
             if (result) {
                 stats.lastUsedGroq = i; // Tandai key ini sebagai "Online"
-                // Simpan memori obrolan ke global memory (maks 4 obrolan terakhir = 8 pesan)
+                // Simpan memori obrolan ke global memory (maks 2 obrolan terakhir = 4 pesan)
                 chatMemory[senderName] = [...history, 
                     { role: 'user', content: userMessage },
                     { role: 'assistant', content: result }
-                ].slice(-8);
+                ].slice(-4); // Simpan 2 obrolan terakhir (4 pesan)
                 return { text: result, provider: `Groq #${i+1}` };
             }
         } catch (err) {
@@ -1150,111 +1150,110 @@ async function refresh() {
   try {
     const res = await fetch('/api/stats');
     const d = await res.json();
+    if (!d) return;
 
-
-    const online = d.botStatus==='online';
-    document.getElementById('statusDot').style.background = online?'var(--green)':'var(--red)';
-    document.getElementById('statusLabel').textContent = online?'Online':'Offline';
-    document.getElementById('statusLabel').style.color = online?'var(--green)':'var(--red)';
-
-
-    document.getElementById('totalTriggers').textContent = d.totalTriggers||0;
-    document.getElementById('uptime').textContent = formatUptime(d.uptime||0);
-    if (document.getElementById('totalTokens')) {
-        document.getElementById('totalTokens').textContent = (d.totalTokensUsed || 0).toLocaleString('id-ID');
+    const online = d.botStatus === 'online';
+    const dot = document.getElementById('statusDot');
+    const label = document.getElementById('statusLabel');
+    if (dot) dot.style.background = online ? 'var(--green)' : 'var(--red)';
+    if (label) {
+      label.textContent = online ? 'Online' : 'Offline';
+      label.style.color = online ? 'var(--green)' : 'var(--red)';
     }
+
+    const setT = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
     
+    setT('totalTriggers', d.totalTriggers || 0);
+    setT('uptime', formatUptime(d.uptime || 0));
+    setT('totalTokens', (d.totalTokensUsed || 0).toLocaleString('id-ID'));
+    
+    if (d.groq && Array.isArray(d.groq)) {
+      const totalReq = d.groq.reduce((acc, g) => acc + (g.requests || 0), 0);
+      const totalSuc = d.groq.reduce((acc, g) => acc + (g.success || 0), 0);
+      setT('groqTotal', totalReq);
+      setT('groqSuccessRate', rate(totalSuc, totalReq) + ' success');
 
-    const totalGroqReq = d.groq.reduce((acc, g) => acc + g.requests, 0);
-    const totalGroqSuccess = d.groq.reduce((acc, g) => acc + g.success, 0);
-    document.getElementById('groqTotal').textContent = totalGroqReq;
-    document.getElementById('groqSuccessRate').textContent = rate(totalGroqSuccess, totalGroqReq)+' success';
-
-
-
-    const now = Date.now();
-    const groqContainer = document.getElementById('groqAccordion');
-    groqContainer.innerHTML = d.groq.map((g, i) => {
-      const isCooldown = now < g.cooldownUntil;
-      const isOnline = d.lastUsedGroq === i;
-      
-      let statusText = 'READY';
-      let badgeClass = 'badge-green';
-      if (isCooldown) {
-          statusText = 'COOLDOWN';
-          badgeClass = 'badge-yellow';
-      } else if (isOnline) {
-          statusText = 'ONLINE';
-          badgeClass = 'badge-online';
+      const now = Date.now();
+      const accordion = document.getElementById('groqAccordion');
+      if (accordion) {
+        accordion.innerHTML = d.groq.map((g, i) => {
+          const isCooldown = now < g.cooldownUntil;
+          const isOnline = d.lastUsedGroq === i;
+          const isOpen = isOnline; // Yang terbuka hanya yang sedang aktif (Online) saja
+          
+          let statusText = 'READY';
+          let badgeClass = 'badge-green';
+          if (isCooldown) {
+            statusText = 'COOLDOWN';
+            badgeClass = 'badge-yellow';
+          } else if (isOnline) {
+            statusText = 'ONLINE';
+            badgeClass = 'badge-online';
+          }
+          
+          const cooldownSecs = isCooldown ? Math.round((g.cooldownUntil - now) / 1000) : 0;
+          
+          return '<div class="groq-item ' + (isOpen ? 'is-open' : '') + ' ' + (isOnline ? 'is-online' : '') + '">'
+              + '<div class="groq-trigger" onclick="this.parentElement.classList.toggle(&quot;is-open&quot;)">'
+              + '<div class="groq-number">' + (i + 1) + '</div>'
+              + '<div class="groq-info">'
+              + '<div class="groq-name">Groq Key #' + (i + 1) + '</div>'
+              + '<div class="groq-status-row">'
+              + '<span class="badge ' + badgeClass + '" style="font-size:10px; padding: 2px 8px;">' + statusText + '</span> '
+              + '<span style="font-size:11px; color:var(--muted)">' + (i === 0 ? 'Primary' : 'Backup') + '</span>'
+              + '</div>'
+              + '</div>'
+              + '<div style="font-size:12px; color:var(--muted)">' + (isOnline ? 'Active Now' : '') + '</div>'
+              + '</div>'
+              + '<div class="groq-content">'
+              + '<div class="grid grid-4" style="gap:15px; border-top: 1px solid var(--border); padding-top:15px;">'
+              + '<div class="stat-row" style="flex-direction:column; align-items:flex-start;">'
+              + '<span class="stat-label">Usage Suc/Req</span>'
+              + '<span class="stat-value">' + (g.success || 0) + ' / ' + (g.requests || 0) + '</span>'
+              + '</div>'
+              + '<div class="stat-row" style="flex-direction:column; align-items:flex-start;">'
+              + '<span class="stat-label">RPM Left</span>'
+              + '<span class="stat-value">' + (g.remainingReqs || '?') + '</span>'
+              + '</div>'
+              + '<div class="stat-row" style="flex-direction:column; align-items:flex-start;">'
+              + '<span class="stat-label">Token Daily</span>'
+              + '<span class="stat-value">' + (g.remainingTokensDay || '?') + '</span>'
+              + '</div>'
+              + '<div class="stat-row" style="flex-direction:column; align-items:flex-start;">'
+              + '<span class="stat-label">Errors</span>'
+              + '<span class="stat-value" style="color:' + (g.errors > 0 ? 'var(--red)' : 'inherit') + '">' + (g.errors || 0) + '</span>'
+              + '</div>'
+              + '</div>'
+              + (isCooldown ? '<div style="margin-top:10px; font-size:12px; color:var(--yellow)">Cooldown: Reset in ' + cooldownSecs + 's</div>' : '')
+              + (g.lastError ? '<div style="margin-top:10px; font-size:11px; color:var(--red); background:rgba(239, 68, 68, 0.05); padding:8px; border-radius:8px;">Err: ' + g.lastError + '</div>' : '')
+              + '</div>'
+              + '</div>';
+        }).join('');
       }
-      
-      const isOpen = isOnline; // Dropdown yang dibuka hanya yang sedang aktif (Online) saja
-      const cooldownSecs = isCooldown ? Math.round((g.cooldownUntil - now) / 1000) : 0;
-      
-      return '<div class="groq-item ' + (isOpen ? 'is-open' : '') + ' ' + (isOnline ? 'is-online' : '') + '">'
-          + '<div class="groq-trigger" onclick="this.parentElement.classList.toggle(\'is-open\')">'
-          + '<div class="groq-number">' + (i+1) + '</div>'
-          + '<div class="groq-info">'
-          + '<div class="groq-name">Groq Key #' + (i+1) + '</div>'
-          + '<div class="groq-status-row">'
-          + '<span class="badge ' + badgeClass + '" style="font-size:10px; padding: 2px 8px;">' + statusText + '</span>'
-          + '<span style="font-size:11px; color:var(--muted)">' + (i === 0 ? 'Primary' : 'Backup') + '</span>'
-          + '</div>'
-          + '</div>'
-          + '<div style="font-size:12px; color:var(--muted)">' + (isOnline ? 'Active Now' : '') + '</div>'
-          + '</div>'
-          + '<div class="groq-content">'
-          + '<div class="grid grid-4" style="gap:15px; border-top: 1px solid var(--border); padding-top:15px;">'
-          + '<div class="stat-row" style="flex-direction:column; align-items:flex-start;">'
-          + '<span class="stat-label">Usage Scs/Req</span>'
-          + '<span class="stat-value">' + g.success + ' / ' + g.requests + '</span>'
-          + '</div>'
-          + '<div class="stat-row" style="flex-direction:column; align-items:flex-start;">'
-          + '<span class="stat-label">RPM Remaining</span>'
-          + '<span class="stat-value">' + g.remainingReqs + '</span>'
-          + '</div>'
-          + '<div class="stat-row" style="flex-direction:column; align-items:flex-start;">'
-          + '<span class="stat-label">Token Daily</span>'
-          + '<span class="stat-value">' + g.remainingTokensDay + '</span>'
-          + '</div>'
-          + '<div class="stat-row" style="flex-direction:column; align-items:flex-start;">'
-          + '<span class="stat-label">Errors</span>'
-          + '<span class="stat-value" style="color:' + (g.errors > 0 ? 'var(--red)' : 'inherit') + '">' + g.errors + '</span>'
-          + '</div>'
-          + '</div>'
-          + (isCooldown ? '<div style="margin-top:10px; font-size:12px; color:var(--yellow)">Cooldown: Reset in ' + cooldownSecs + 's</div>' : '')
-          + (g.lastError ? '<div style="margin-top:10px; font-size:11px; color:var(--red); background:rgba(239, 68, 68, 0.05); padding:8px; border-radius:8px;">Error: ' + g.lastError + '</div>' : '')
-          + '</div>'
-          + '</div>';
-    }).join('');
-
-
-    // IMAGE stats
-    if (d.image) {
-      document.getElementById('imgReqs').textContent = d.image.requests || 0;
-      document.getElementById('imgSuccess').textContent = d.image.success || 0;
-      document.getElementById('imgErrors').textContent = d.image.errors || 0;
-      document.getElementById('imgErrors').style.color = (d.image.errors || 0) > 0 ? 'var(--red)' : 'inherit';
-      document.getElementById('imgLastErr').textContent = d.image.lastError || 'Tidak ada error';
     }
 
+    if (d.image) {
+      setT('imgReqs', d.image.requests || 0);
+      setT('imgSuccess', d.image.success || 0);
+      setT('imgErrors', d.image.errors || 0);
+      setT('imgLastErr', d.image.lastError || 'Tidak ada error');
+    }
 
-    document.getElementById('pollSuccess').textContent = d.pollinations.success + ' / ' + d.pollinations.requests;
-    document.getElementById('pollErrors').textContent = d.pollinations.errors;
-    document.getElementById('pollErrors').style.color = d.pollinations.errors>0?'var(--red)':'var(--text)';
-    document.getElementById('pollLastErr').textContent = d.pollinations.lastError||'Tidak ada error';
-
+    if (d.pollinations) {
+      setT('pollSuccess', (d.pollinations.success || 0) + ' / ' + (d.pollinations.requests || 0));
+      setT('pollErrors', d.pollinations.errors || 0);
+      setT('pollLastErr', d.pollinations.lastError || 'Tidak ada error');
+    }
 
     const list = document.getElementById('activityList');
-    if (d.recentActivity && d.recentActivity.length > 0) {
+    if (list && d.recentActivity && d.recentActivity.length > 0) {
       list.innerHTML = d.recentActivity.map(a => {
         const provClass = a.provider.startsWith('Groq') ? 'prov-groq' : a.provider === 'Pollinations' ? 'prov-pollinations' : a.provider === 'Filter' ? 'prov-filter' : 'prov-error';
-        const typeClass = a.type === 'image' ? 'type-image' : a.type === 'blocked' ? 'type-blocked' : 'type-text';
-        const typeLabel = a.type === 'image' ? 'Gambar' : a.type === 'blocked' ? 'Diblokir' : 'Teks';
+        const typeClass = (a.type === 'image') ? 'type-image' : (a.type === 'blocked' ? 'type-blocked' : 'type-text');
         return '<div class="activity-item">' 
           + '<div class="activity-meta">'
           + '<span class="activity-from">@' + a.from + '</span>'
-          + '<span class="activity-type ' + typeClass + '">' + typeLabel + '</span>'
+          + '<span class="activity-type ' + typeClass + '">' + (a.type || 'Teks') + '</span>'
           + '<span class="activity-time">' + a.time + '</span>'
           + '<span class="provider-tag ' + provClass + '">' + a.provider + '</span>'
           + '</div>'
@@ -1265,10 +1264,10 @@ async function refresh() {
     }
 
     if (d.filter) {
-      document.getElementById('filterBlocked').textContent = d.filter.blocked || 0;
-      document.getElementById('filterLastBlock').textContent = d.filter.lastBlocked ? 'Terakhir: @' + d.filter.lastBlocked : 'Belum ada';
+      setT('filterBlocked', d.filter.blocked || 0);
+      setT('filterLastBlock', d.filter.lastBlocked ? 'Terakhir: @' + d.filter.lastBlocked : 'Belum ada');
     }
-  } catch(e) { console.error(e); }
+  } catch (e) { console.error('Refresh Error:', e); }
 }
 
 refresh();
