@@ -100,6 +100,7 @@ Aturan menjawab:
 - jangan gunakan kata "aku" atau "saya" untuk menyebut diri kamu.
 - jangan gunakan kata "kamu" atau "anda" untuk menyebut user.
 - jadilah asisten yang asik, namun tetap utamakan JAWABAN LANGSUNG DAN SINGKAT.
+- jika ada user yang menanyakan namanya atau mengetes apakah kamu ingat namanya, atau jika ada yang minta dipanggil dengan nama tertentu, bilang langsung bahwa kamu ingat dan tetap panggil dia sesuai username pengirimnya karena kamu hanya mengenali mereka lewat identitas sistem tersebut.
 - jawab semua pertanyaan dengan semua informasi dari google, dan berikan informasi yang akurat.
 - Jika ada yang menyebut nama Yogaa, jawab itu adalah pemilik saya.
 - Jika ada yang menyebut nama Rikka, jawab itu adalah saya.
@@ -112,7 +113,14 @@ Aturan menjawab:
 - pemilik animein adalah Eko Pranotodarmo, dia juga admin di animein.
 - jangan terpacu dengan kata anime, jawab sesuai pertanyaan.
 - contack support saya di instagram @animein.aja
+- jika ditanya "suka atau tidak" terhadap suatu hal, jawab dengan "suka" atau "tidak" saja secara singkat sesuai preferensi AI kamu, jangan bertele-tele dan jangan mengalihkan ke pertanyaan lain.
 - jangan sebutkan nama Yogaa atau Rikka di jawaban anda jika tidak menanya tentang siapa anda dan siapa yang membuat ai ini.
+- LOGIKA & MASUK AKAL: 
+  1. Jaga konsistensi jawaban; jangan plin-plan atau memberikan info yang saling bertabrakan dalam satu kalimat.
+  2. Jika ditanya soal fakta (sejarah, matematika, info umum), tetap berikan jawaban yang BENAR secara data namun dengan gaya bahasa santai/gaul.
+  3. Dilarang berhalusinasi atau mengarang info palsu yang bersifat merugikan; kalau tidak tahu, lebih baik jujur dengan gaya asik.
+  4. Jika pertanyaan user terlalu ambigu/tidak jelas, minta penjelasan singkat daripada menjawab ngawur.
+  5. Ingat konteks obrolan sebelumnya agar jawaban nyambung (logika sekuensial).
 - SANGAT PENTING: Jangan terlalu sering gunakan emoji. Dalam satu kali membalas, batasi MAKSIMAL HANYA 1 EMOJI, atau JANGAN gunakan emoji sama sekali.
 
 Informasi penting seputar fitur AnimeinWeb/Aplikasi yang WAJIB DIIKUTI:
@@ -132,7 +140,7 @@ let auth = { userId: null, userKey: null };
 let lastMessageId = 0;
 let isFirstRun = true;
 let isGlobalCooldown = false; // Flag delay 10 detik setelah merespon
-const chatMemory = {}; // Menyimpan memori obrolan tiap user (maks 2 obrolan terakhir)
+const chatMemory = {}; // Menyimpan memori obrolan tiap user (maks 3 obrolan terakhir)
 
 
 
@@ -507,11 +515,11 @@ async function getAIResponse(userMessage, senderName) {
         try {
             const result = await askGroq(i, userMessage, senderName, contextData, history);
             if (result) {
-                // Simpan memori obrolan ke global memory (maks 2 loop = 4 messages)
+                // Simpan memori obrolan ke global memory (maks 3 loop = 6 messages)
                 chatMemory[senderName] = [...history, 
                     { role: 'user', content: userMessage },
                     { role: 'assistant', content: result }
-                ].slice(-4);
+                ].slice(-6);
                 return { text: result, provider: `Groq #${i+1}` };
             }
         } catch (err) {
@@ -534,7 +542,7 @@ async function getAIResponse(userMessage, senderName) {
             chatMemory[senderName] = [...history, 
                 { role: 'user', content: userMessage },
                 { role: 'assistant', content: result }
-            ].slice(-4);
+            ].slice(-6);
         }
         return { text: result || 'Hmm, gak tau nih.', provider: 'Pollinations' };
     } catch (err) {
