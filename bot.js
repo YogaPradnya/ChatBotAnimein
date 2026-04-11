@@ -1,9 +1,9 @@
 const axios = require('axios');
 const Groq = require('groq-sdk');
-const { GoogleGenerativeAI } = require("@google/generative-ai");
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const FormData = require('form-data');
 require('dotenv').config();
 
 const filterPath = path.join(__dirname, 'filters.json');
@@ -31,10 +31,6 @@ const CONFIG = {
     DASHBOARD_PORT: process.env.PORT || 3500,
     IMAGE_TRIGGERS: ['gambar', 'foto', 'ilustrasi', 'buatkan gambar', 'generate gambar'],
     GROQ_COOLDOWN: 2 * 60 * 1000,
-    GEMINI_KEYS: [
-        process.env.GEMINI_API_KEY,
-        process.env.GEMINI_API_KEY_2
-    ].filter(Boolean),
 };
 
 
@@ -62,18 +58,11 @@ const stats = {
         errors: 0,
         lastError: null,
     },
-    gemini: CONFIG.GEMINI_KEYS.map((key, index) => ({
-        id: index + 1,
-        active: true,
-        cooldownUntil: 0,
+    image: {
         requests: 0,
         success: 0,
         errors: 0,
         lastError: null,
-    })),
-    image: {
-        requests: 0,
-        success: 0,
     },
     filter: {
         blocked: 0,
@@ -93,7 +82,6 @@ function addActivity(type, from, text, response, provider) {
 
 
 const groqClients = CONFIG.GROQ_KEYS.map(key => new Groq({ apiKey: key }));
-const geminiClients = CONFIG.GEMINI_KEYS.map(key => new GoogleGenerativeAI(key));
 
 const SYSTEM_PROMPT = `Kamu adalah asisten chat Animein yang di buat oleh Yogaa. 
 Aturan menjawab:
@@ -472,27 +460,6 @@ async function askGroq(index, userMessage, senderName, contextData = '') {
     return completion.choices[0]?.message?.content || '';
 }
 
-/** Google Gemini - cadangan utama */
-async function askGemini(index, userMessage, senderName, contextData = '') {
-    const genAI = geminiClients[index];
-    const stat = stats.gemini[index];
-    
-    stat.requests++;
-    try {
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-        const prompt = `${SYSTEM_PROMPT}${contextData}\n\n${senderName} berkata: "${userMessage}".`;
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        stat.success++;
-        return response.text().trim();
-    } catch (err) {
-        stat.errors++;
-        stat.lastError = err.message.slice(0, 100);
-        console.warn(`[GEMINI-${index+1}] Error:`, err.message.slice(0, 50));
-        return null;
-    }
-}
-
 /** Pollinations.ai - fallback unlimited */
 async function askPollinations(userMessage, senderName, contextData = '') {
     stats.pollinations.requests++;
@@ -543,14 +510,6 @@ async function getAIResponse(userMessage, senderName) {
     }
 
 
-    for (let i = 0; i < geminiClients.length; i++) {
-        try {
-            const result = await askGemini(i, userMessage, senderName, contextData);
-            if (result) return { text: result, provider: `Gemini #${i+1}` };
-        } catch (e) {}
-    }
-
-
     try {
         const result = await askPollinations(userMessage, senderName, contextData);
         return { text: result || 'Hmm, gak tau nih.', provider: 'Pollinations' };
@@ -561,19 +520,154 @@ async function getAIResponse(userMessage, senderName) {
     }
 }
 
-/** Buat URL gambar dari Pollinations.ai */
-async function generateImageUrl(prompt) {
+/** Generate gambar menggunakan Gemini Image Generation via REST API */
+async function generateGeminiImage(prompt) {
     stats.image.requests++;
+    
+    // Terjemahkan prompt ke Bahasa Inggris pakai salah satu Gemini client yang masih bisa
+    let englishPrompt = prompt;
+    const textClientIdx = stats.gemini.findIndex(g => !g.isQuotaExceeded);
+    if (textClientIdx >= 0) {
+        try {
+            const textModel = geminiClients[textClientIdx].getGenerativeModel({ model: 'gemini-1.5-flash' });
+            const tr = await textModel.generateContent(
+                `Translate this to English and make it a vivid image generation prompt (max 20 words, anime/illustration style): "${prompt}". Only write the prompt, nothing else.`
+            );
+            englishPrompt = stripEmoji(tr.response.text().trim()) || prompt;
+        } catch {}
+    }
+    console.log(`[IMG] Prompt EN: ${englishPrompt}`);
+    
+    // Coba semua Gemini keys untuk generate gambar
+    for (let i = 0; i < CONFIG.GEMINI_KEYS.length; i++) {
+        const stat = stats.gemini[i];
+        if (stat.isQuotaExceeded) continue;
+        
+        const apiKey = CONFIG.GEMINI_KEYS[i];
+        stat.requests++;
+        try {
+            const res = await axios.post(
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${apiKey}`,
+                {
+                    contents: [{ parts: [{ text: englishPrompt }] }],
+                    generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
+                },
+                { headers: { 'Content-Type': 'application/json' }, timeout: 30000 }
+            );
+            
+            const parts = res.data?.candidates?.[0]?.content?.parts || [];
+            for (const part of parts) {
+                if (part.inlineData && part.inlineData.mimeType.startsWith('image/')) {
+                    stat.success++;
+                    stats.image.success++;
+                    console.log(`[IMG] Gemini Key #${i+1} berhasil generate gambar (${part.inlineData.mimeType})`);
+                    return {
+                        type: 'base64',
+                        mimeType: part.inlineData.mimeType,
+                        data: part.inlineData.data,
+                        provider: `Gemini #${i+1}`,
+                    };
+                }
+            }
+            throw new Error('Tidak ada data gambar di response');
+        } catch (err) {
+            const errMsg = err?.response?.data?.error?.message || err.message;
+            stat.errors++;
+            stat.lastError = errMsg.slice(0, 100);
+            if (err?.response?.status === 429 || errMsg.includes('quota') || errMsg.includes('RESOURCE_EXHAUSTED')) {
+                stat.isQuotaExceeded = true;
+                console.warn(`[IMG/GEMINI-${i+1}] Quota habis, coba key berikutnya...`);
+            } else {
+                console.warn(`[IMG/GEMINI-${i+1}] Error:`, errMsg.slice(0, 80));
+            }
+        }
+    }
+    
+    // Semua Gemini key gagal, fallback ke Pollinations
+    console.warn('[IMG] Semua Gemini key gagal/quota habis, fallback ke Pollinations');
+    stats.image.errors++;
+    stats.image.lastError = 'Semua k Gemini quota habis, pakai Pollinations';
+    return await generatePollinationsImage(prompt);
+}
+
+/** Fallback: generate gambar dari Pollinations.ai */
+async function generatePollinationsImage(prompt) {
     try {
         const res = await axios.post('https://text.pollinations.ai/', {
             messages: [{ role: 'user', content: `Translate to English, make a short image prompt (max 15 words): "${prompt}". Only write the prompt.` }],
             model: 'openai', seed: 42, private: true
         }, { headers: { 'Content-Type': 'application/json' }, timeout: 10000 });
         const refined = stripEmoji(String(res.data || prompt)).trim();
-        stats.image.success++;
-        return `https://image.pollinations.ai/prompt/${encodeURIComponent(refined)}?width=512&height=512&nologo=true`;
-    } catch {
-        return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=512&height=512&nologo=true`;
+        const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(refined)}?width=512&height=512&nologo=true`;
+        // Download gambar sebagai buffer
+        const imgRes = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 20000 });
+        const buffer = Buffer.from(imgRes.data);
+        return {
+            type: 'base64',
+            mimeType: 'image/jpeg',
+            data: buffer.toString('base64'),
+            isFromPollinations: true,
+        };
+    } catch (err) {
+        console.warn('[IMG/POLLINATIONS] Error:', err.message.slice(0, 60));
+        return null;
+    }
+}
+
+/** Upload gambar ke imgbb dan kembalikan URL publik */
+async function uploadToImgBB(base64Data, mimeType = 'image/jpeg') {
+    // Gunakan imgbb free API (tidak perlu API key untuk base64)
+    try {
+        const form = new FormData();
+        form.append('image', base64Data);
+        const res = await axios.post('https://api.imgbb.com/1/upload?key=a63b3e0c58b7b12f1ad0d1e3ab123456', form, {
+            headers: form.getHeaders(),
+            timeout: 15000,
+        });
+        if (res.data?.data?.url) return res.data.data.url;
+    } catch {}
+    return null;
+}
+
+/** Kirim pesan chat dengan gambar sebagai multipart form */
+async function sendChatWithImage(imageData, caption, replyTo = '0') {
+    try {
+        // Konversi base64 ke Buffer
+        const buffer = Buffer.from(imageData.data, 'base64');
+        let ext = imageData.mimeType.split('/')[1] || 'jpg';
+        if (ext === 'jpeg') ext = 'jpg'; // Animein API strict checks .jpg
+        const contentType = ext === 'jpg' ? 'image/jpeg' : imageData.mimeType;
+        const filename = `animein_${Date.now()}.${ext}`;
+        
+        const form = new FormData();
+        form.append('text', caption);
+        form.append('id_chat_replay', replyTo);
+        form.append('id_user', auth.userId);
+        form.append('key_client', auth.userKey);
+        // Coba append gambar sebagai file dengan tipe yang diizinkan (JPG)
+        form.append('image', buffer, { filename, contentType });
+        
+        const res = await axios.post(`${CONFIG.BASE_URL}/3/2/chat/do`, form, {
+            headers: {
+                ...form.getHeaders(),
+                'Accept': 'application/json, text/plain, */*',
+                'Origin': 'https://animeinweb.com',
+                'Referer': 'https://animeinweb.com/',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            },
+            timeout: 20000,
+        });
+        
+        // Cek apakah berhasil atau tidak (API mungkin tidak support image upload)
+        if (res.data && (res.data.status === true || res.data.message)) {
+            console.log('[CHAT/IMG] Berhasil kirim gambar via multipart!');
+            return true;
+        }
+        console.warn('[CHAT/IMG] API tidak mengembalikan sukses, response:', JSON.stringify(res.data).slice(0,100));
+        return false;
+    } catch (err) {
+        console.warn('[CHAT/IMG] Upload gambar ke chat gagal:', err.message.slice(0, 80));
+        return false;
     }
 }
 
@@ -703,10 +797,39 @@ async function processMessages(messages) {
         }
 
         if (isImageRequest(cleanText)) {
-            const reply = `@${senderName} maaf saat ini fitur tersebuat sedang di nonaktifkan`;
-            console.log(`[BOT/IMG] ${reply}`);
-            await sendChatMessage(reply, msg.id);
-            addActivity('blocked', senderName, cleanText, 'maaf saat ini fitur tersebuat sedang di nonaktifkan', 'System');
+            console.log(`[BOT/IMG] Generating image for: ${cleanText}`);
+            // Kirim pesan "sedang membuat gambar" dulu
+            await sendChatMessage(`@${senderName} Oke, tunggu sebentar ya, lagi bikin gambarnya...`, msg.id);
+            
+            try {
+                const imageResult = await generatePollinationsImage(cleanText);
+                if (imageResult) {
+                    // Coba kirim gambar langsung via multipart
+                    const sentDirect = await sendChatWithImage(
+                        imageResult,
+                        `@${senderName} Ini gambarnya!`,
+                        msg.id
+                    );
+                    
+                    if (!sentDirect) {
+                        // Fallback: konversi ke data URL dan embed di teks
+                        const imgUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanText)}?width=512&height=512&nologo=true`;
+                        const fallbackMsg = `@${senderName} Ini URL gambarnya ya kak: ${imgUrl}`;
+                        await sendChatMessage(fallbackMsg, msg.id);
+                        console.log(`[BOT/IMG] Fallback ke URL: ${imgUrl}`);
+                        addActivity('image', senderName, cleanText, `[Gambar URL] ${imgUrl}`, 'Pollinations');
+                    } else {
+                        addActivity('image', senderName, cleanText, '[Gambar berhasil dikirim di chat]', 'Pollinations');
+                    }
+                } else {
+                    await sendChatMessage(`@${senderName} Maaf, gagal generate gambar nih.`, msg.id);
+                    addActivity('image', senderName, cleanText, '[Gagal generate gambar]', 'Error');
+                }
+            } catch (imgErr) {
+                console.error('[BOT/IMG] Exception:', imgErr.message);
+                await sendChatMessage(`@${senderName} Maaf, ada error waktu bikin gambar.`, msg.id);
+                addActivity('image', senderName, cleanText, '[Error]', 'Error');
+            }
         } else {
             const question = cleanText || 'kamu manggil?';
             const { text: aiText, provider } = await getAIResponse(question, senderName);
@@ -913,7 +1036,27 @@ function getDashboardHTML() {
     <!-- Groq cards will be injected here -->
   </div>
 
-  <div class="grid grid-1" style="margin-bottom:20px">
+
+
+  <!-- IMAGE & POLLINATIONS -->
+  <div class="grid grid-2" style="margin-bottom:20px">
+    <!-- IMAGE GEN -->
+    <div class="provider-card">
+      <div class="provider-header">
+        <div class="provider-icon" style="background:linear-gradient(135deg,#a855f7,#7c3aed)">🖼</div>
+        <div>
+          <div class="provider-name">Image Generation</div>
+          <div class="provider-sub">AI Generator → Pollinations</div>
+        </div>
+        <div id="imgBadge" class="badge badge-green" style="margin-left:auto">Aktif</div>
+      </div>
+      <div class="grid grid-3" style="gap:10px">
+        <div class="stat-row"><span class="stat-label">Requests</span><span class="stat-value" id="imgReqs">-</span></div>
+        <div class="stat-row"><span class="stat-label">Berhasil</span><span class="stat-value" id="imgSuccess">-</span></div>
+        <div class="stat-row"><span class="stat-label">Errors</span><span class="stat-value" id="imgErrors">-</span></div>
+      </div>
+      <div style="font-size:12px;color:var(--red);margin-top:10px;word-break:break-all" id="imgLastErr">-</div>
+    </div>
     <!-- POLLINATIONS -->
     <div class="provider-card">
       <div class="provider-header">
@@ -1003,6 +1146,16 @@ async function refresh() {
           + '<div style="font-size:11px;color:var(--red);margin-top:8px;height:1.2em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + (g.lastError || '') + '">' + (g.lastError || '') + '</div>'
           + '</div>';
     }).join('');
+
+
+    // IMAGE stats
+    if (d.image) {
+      document.getElementById('imgReqs').textContent = d.image.requests || 0;
+      document.getElementById('imgSuccess').textContent = d.image.success || 0;
+      document.getElementById('imgErrors').textContent = d.image.errors || 0;
+      document.getElementById('imgErrors').style.color = (d.image.errors || 0) > 0 ? 'var(--red)' : 'inherit';
+      document.getElementById('imgLastErr').textContent = d.image.lastError || 'Tidak ada error';
+    }
 
 
     document.getElementById('pollSuccess').textContent = d.pollinations.success + ' / ' + d.pollinations.requests;

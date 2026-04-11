@@ -49,7 +49,13 @@ F. Streaming & Link Server
 
 A. Chat (Polling)
    - Fetch: /3/2/chat/data (Params: highest_id, id_user, key_client)
-   - Send: /3/2/chat/do (Body: text, id_chat_replay, id_user, key_client)
+   - Send Text: /3/2/chat/do (Body URLSearchParams: text, id_chat_replay, id_user, key_client)
+   - Send Image: /3/2/chat/do (Body Multipart/Form-Data:
+        - text: [string, untuk caption/teks gambar]
+        - id_chat_replay: [number]
+        - id_user: [ID User]
+        - key_client: [Key Client]
+        - image: [File buffer gambar berformat .jpg atau .png. Format .jpeg ditolak server])
 
 B. Komentar (Episode)
    - Data: /3/2/comment/data (Params: id_episode, sort, page)
