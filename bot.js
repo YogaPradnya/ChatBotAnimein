@@ -99,11 +99,10 @@ Aturan:
 - Jangan bahas hal teknis/sistem. Berlakulah seperti teman ngobrol.
 - Informasi teknis tambahan akan diberikan secara dinamis jika terdeteksi dalam pertanyaan user.`;
 
-/** BASIS DATA PENGETAHUAN ANIMEIN (Save Tokens via Dynamic Injection) */
 const ANIMEIN_KNOWLEDGE = [
     {
         keywords: ["identitas", "pencipta", "pembuat", "siapa anda", "siapa kamu", "yogaa", "eko", "pemilik"],
-        info: "- Rika: Asisten nyata Animein. Kreator: Yogaa (Developer Bot). Pemilik Animein: Eko Pranotodarmo.\n- Yogaa adalah pembuat Rika, bukan pemilik Animein."
+        info: "Rika dibuat oleh Yogaa (developer bot). Pemilik Animein: Eko Pranotodarmo. Yogaa bukan pemilik Animein."
     },
     {
         keywords: ["pro", "support", "upgrade", "bayar", "premium", "keuntungan", "iklan", "pokemon legend", "coin gratis", "trakteer"],
@@ -114,36 +113,55 @@ const ANIMEIN_KNOWLEDGE = [
         info: "4. Mata Uang Animein (Coin & Gem): Coin digunakan untuk membeli Pokemon, Battle, dll. Gem adalah mata uang ke-2 yang didapat dari menukar 500 Coin = 1 Gem. Gem digunakan untuk evolusi Pokemon, mengganti nama, upgrade Pokemon, dan beli Pokemon ( tidak bisa jual pokemon ). Note: Coin TIDAK BISA digunakan untuk beli Premium/Pro/Support."
     },
     {
-        keywords: ["upload", "server", "rapsodi", "poster", "cover", "pasang"],
-        info: "5. Cara Upload Server Anime: Buka web teman.animein.net atau masuk ke profile lalu cari fitur \"Rapsodi\" agar diarahkan ke menu upload server anime.\n6. Cara Upload Cover/Poster Anime: Pergi ke bagian anime, buka animenya, lalu geser (scroll) ke kanan layar untuk menemukan tempat opload poster dan cover (HANYA untuk menu poster/cover, tidak ada hubungannya dengan menonton)."
+        keywords: ["upload server", "cara upload server", "rapsodi", "teman.animein.net"],
+        info: "5. Cara Upload Server Anime: Buka web teman.animein.net atau masuk ke profile lalu cari fitur \"Rapsodi\" agar diarahkan ke menu upload server anime."
     },
     {
-        keywords: ["cuplix", "klip", "highlight", "pembuat cuplix", "like cuplix"],
+        keywords: ["upload cover", "upload poster", "pasang cover", "pasang poster", "cover anime", "poster anime"],
+        info: "6. Cara Upload Cover/Poster Anime: Pergi ke bagian anime, buka animenya, lalu geser (scroll) ke kanan layar untuk menemukan tempat opload poster dan cover (HANYA untuk menu poster/cover, tidak ada hubungannya dengan menonton)."
+    },
+    {
+        keywords: ["cuplix", "klip", "highlight episode", "like cuplix", "buat cuplix", "coin cuplix"],
         info: "7. Fitur Cuplix: Cuplix adalah klip/highlight episode anime untuk rekomendasi. Pembuat Cuplix & Uploader Server dapat 1 coin tiap ada yang like (Maks 250 coin/hari, cair saat ganti hari dan wajib login). Cara buat: Masukkan detik start & end (durasi 10 dtk - 3 mnt), jepret thumbnail di jarak detik tersebut, lalu simpan. Peraturan: Maksimal 3 Cuplix per user untuk 1 episode, dan tidak boleh kembar/sama dengan Cuplix yang sudah dibooking."
     },
     {
-        keywords: ["battle", "pokemon", "level", "rank", "bp", "grade", "rookie", "mythic", "legendary", "tanding"],
+        keywords: ["battle", "battle rank", "battle pokemon", "vs temen", "bp", "battle point", "tanding pokemon"],
         info: "8. Cara Battle Pokemon: Minimal harus punya 3 Pokemon. Pergi ke menu Battle di profil, pilih 3 Pokemon yang mau dipakai. Tekan tombol \"Battle Rank\" untuk tanding dan dapatkan BP (Battle Point) BP adalah poin rank bukan untuk menaikan lv pokemon, atau \"VS Temen\" untuk melawan teman spesifik. Ingat, kamu juga bisa menaikkan status Pokemon tiap naik level (maksimal level 20) pokemon juga memiliki tingkatan tersendiri yaitu ( R, E, M, L ) R = Rookie, E = Epic, M = Mythic, L = Legendary, untuk R2, E2, M2, L2 adalah pokemon gen 2 dengan grade yang sama ."
     },
     {
-        keywords: ["download", "more", "simpan", "eps", "cara download", "nonton", "resolusi", "server", "kualitas", "360p", "1080p", "gerigi"],
-        info: "9. Cara download eps: Silahkan tekan tombol \"more\" saat menonton salah satu eps anime lalu pilih download.\n10. Cara ubah resolusi: SAAT MENONTON ANIME, klik pilihan \"server\" atau icon bergerigi (BUKAN geser layar). Di sana kalian bisa memilih resolusi yang diinginkan."
+        keywords: ["download episode", "cara download", "unduh episode", "simpan episode", "tombol more"],
+        info: "9. Cara download eps: Silahkan tekan tombol \"more\" saat menonton salah satu eps anime lalu pilih download."
     },
     {
-        keywords: ["rewind", "mundur", "maju", "forward", "geser", "cepat", "speedup", "fast forward", "putar", "video"],
+        keywords: ["resolusi", "ubah resolusi", "ganti resolusi", "kualitas video", "720p", "1080p", "bergerigi", "icon server"],
+        info: "10. Cara ubah resolusi: SAAT MENONTON ANIME, klik pilihan \"server\" atau icon bergerigi (BUKAN geser layar). Di sana kalian bisa memilih resolusi yang diinginkan."
+    },
+    {
+        keywords: ["rewind", "geser mundur", "fast forward", "geser maju", "speedup", "percepat video", "2x kecepatan", "putar cepat"],
         info: "11. Cara rewind/geser mundur: Tahan pada video yang sedang ditonton lalu geser ke kiri.\n12. Cara fast forward/geser maju: Tahan pada video yang sedang ditonton lalu geser ke kanan.\n13. Cara speedup: Tekan/ketuk 2x pada layar bagian kanan video yang sedang diputar."
     },
     {
-        keywords: ["web", "aplikasi", "apk", "donasi", "trakteer"],
-        info: "Versi web baru 10%. Fitur lengkap di APK Android (animein.net). Donasi: trakteer.id/animein.net."
+        keywords: ["web animein", "apk animein", "download apk", "donasi", "animein.net"],
+        info: "Versi web masih baru 10%. Fitur lengkap di APK Android (animein.net). Donasi: trakteer.id/animein.net."
     }
 ];
 
+
 function getKnowledgeContext(query) {
     const lowerQ = query.toLowerCase();
-    const matched = ANIMEIN_KNOWLEDGE.filter(k => k.keywords.some(key => lowerQ.includes(key)));
-    if (matched.length === 0) return "";
-    return `\n\n[DOKUMENTASI TEKNIS ANIMEIN - Sangat Akurat]: \n${matched.map(m => m.info).join("\n")}`;
+
+    // Hitung skor setiap entry berdasarkan jumlah keyword yang cocok
+    const scored = ANIMEIN_KNOWLEDGE
+        .map(k => ({
+            info: k.info,
+            score: k.keywords.filter(key => lowerQ.includes(key)).length
+        }))
+        .filter(k => k.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 3); // Inject maks 3 entry paling relevan
+
+    if (scored.length === 0) return "";
+    return `\n\n[INFO ANIMEIN - Akurat]:\n${scored.map(m => m.info).join("\n")}`;
 }
 
 
