@@ -96,21 +96,55 @@ Aturan:
 - Yogaa pemilik Rika, bukan pemilik Animein. Pemilik Animein: Eko Pranotodarmo.
 - Jawab singkat, akurat, konsisten. Max 1 emoji. Jika tanya suka/tidak, jawab "suka/tidak".
 - Jangan bahas hal teknis/sistem. Berlakulah seperti teman ngobrol.
+- Informasi teknis tambahan akan diberikan secara dinamis jika terdeteksi dalam pertanyaan user.`;
 
-Informasi penting seputar fitur AnimeinWeb/Aplikasi yang WAJIB DIIKUTI:
-1. Cara Upgrade Akun Pro / Support: Melalui aplikasi Animein Komunity di Play Store atau lewat sistem Trakteer sesuai harganya. Kendala pembayaran hubungi Instagram Animein.
-2. Akun Support (IDR 10.000 / 30 Hari): Keuntungan berupa Coin gratis 50++ per hari, kemunculan 3 Pokemon Legend per minggu, diskon harga Pokemon Legend 2 gem, bisa atur foto profil gambar, dapat medal khusus, dan no iklan.
-3. Akun Pro (IDR 30.000 / 30 Hari): Keuntungan berupa Coin gratis 100++ per hari, kemunculan 6 Pokemon Legend per minggu, diskon harga Pokemon Legend 5 gem, bisa atur foto profil bebas (GIF/Gambar maks 10MB), dapat medal khusus, dan no iklan. Tidak bisa gabung dengan fitur Support (sisa waktu support akan terganti jadi pro) jika ada kendala pembayaran bisa hubingi admin atau contack suport di instagram @animein.aja.
-4. Mata Uang Animein (Coin & Gem): Coin digunakan untuk membeli Pokemon, Battle, dll. Gem adalah mata uang ke-2 yang didapat dari menukar 500 Coin = 1 Gem. Gem digunakan untuk evolusi Pokemon, mengganti nama, upgrade Pokemon, dan beli Pokemon ( tidak bisa jual pokemon ).
-5. Cara Upload Server Anime: Buka web teman.animein.net atau masuk ke profile lalu cari fitur "Rapsodi" agar diarahkan ke menu upload server anime.
-6. Cara Upload Cover/Poster Anime: Pergi ke bagian anime, buka animenya, lalu geser (scroll) ke kanan layar untuk menemukan tempat opload poster dan cover (HANYA untuk menu poster/cover, tidak ada hubungannya dengan menonton).
-7. Fitur Cuplix: Cuplix adalah klip/highlight episode anime untuk rekomendasi. Pembuat Cuplix & Uploader Server dapat 1 coin tiap ada yang like (Maks 250 coin/hari, cair saat ganti hari dan wajib login). Cara buat: Masukkan detik start & end (durasi 10 dtk - 3 mnt), jepret thumbnail di jarak detik tersebut, lalu simpan. Peraturan: Maksimal 3 Cuplix per user untuk 1 episode, dan tidak boleh kembar/sama dengan Cuplix yang sudah dibooking.
-8. Cara Battle Pokemon: Minimal harus punya 3 Pokemon. Pergi ke menu Battle di profil, pilih 3 Pokemon yang mau dipakai. Tekan tombol "Battle Rank" untuk tanding dan dapatkan BP (Battle Point) BP adalah poin rank bukan untuk menaikan lv pokemon, atau "VS Temen" untuk melawan teman spesifik. Ingat, kamu juga bisa menaikkan status Pokemon tiap naik level (maksimal level 20) pokemon juga memiliki tingkatan tersendiri yaitu ( R, E, M, L ) R = Rookie, E = Epic, M = Mythic, L = Legendary, untuk R2, E2, M2, L2 adalah pokemon gen 2 dengan grade yang sama .
-9. Cara download eps: Silahkan tekan tombol "more" saat menonton salah satu eps anime lalu pilih download.
-10. Cara ubah resolusi: SAAT MENONTON ANIME, klik pilihan "server" atau icon bergerigi (BUKAN geser layar). Di sana kalian bisa memilih resolusi yang diinginkan.
-11. Cara rewind/geser mundur: Tahan pada video yang sedang ditonton lalu geser ke kiri.
-12. Cara fast forward/geser maju: Tahan pada video yang sedang ditonton lalu geser ke kanan.
-13. Cara speedup: Tekan/ketuk 2x pada layar bagian kanan video yang sedang diputar.`;
+/** BASIS DATA PENGETAHUAN ANIMEIN (Save Tokens via Dynamic Injection) */
+const ANIMEIN_KNOWLEDGE = [
+    {
+        keywords: ['pro', 'support', 'upgrade', 'bayar', 'premium', 'keuntungan'],
+        info: "Cara Upgrade: Lewat App Animein Komunity (Play Store) atau Trakteer. Support (10rb): 50 Coin/hr, 3 Legend/minggu. Pro (30rb): 100 Coin/hr, 6 Legend/minggu, GIF PP, no iklan."
+    },
+    {
+        keywords: ['coin', 'gem', 'tukar', 'uang', 'mata uang'],
+        info: "Mata Uang: 500 Coin = 1 Gem. Gem untuk evolusi, upgrade, ganti nama. Tak bisa jual pokemon."
+    },
+    {
+        keywords: ['upload', 'server', 'rapsodi', 'poster', 'cover'],
+        info: "Upload Server: Menu Rapsodi (teman.animein.net). Upload Poster/Cover: Buka anime, geser kanan layar (menu poster)."
+    },
+    {
+        keywords: ['cuplix', 'klip', 'highlight'],
+        info: "Cuplix: Klip 10dtk-3mnt. Dapat 1 coin tiap like (Max 250/hari)."
+    },
+    {
+        keywords: ['battle', 'pokemon', 'level', 'rank', 'bp', 'grade'],
+        info: "Battle Pokemon: Min 3 pokemon. Grade: R, E, M, L (Rookie, Epic, Mythic, Legendary) & Gen 2 (R2, E2, dst). Poin Rank (BP)."
+    },
+    {
+        keywords: ['download', 'more', 'simpan', 'eps'],
+        info: "Download: Klik tombol 'More' saat menonton."
+    },
+    {
+        keywords: ['resolusi', 'kualitas', '360p', '480p', '720p', '1080p', 'gerigi', 'server'],
+        info: "Ubah Resolusi: Klik menu 'Server' (icon gerigi) saat menonton."
+    },
+    {
+        keywords: ['rewind', 'mundur', 'maju', 'forward', 'geser', 'speedup', 'cepat'],
+        info: "Player Control: Rewind (Geser Kiri), Forward (Geser Kanan), Speedup (Ketuk 2x kanan layar)."
+    },
+    {
+        keywords: ['web', 'aplikasi', 'apk', 'donasi', 'trakteer'],
+        info: "Web baru 10%. Fitur lengkap di APK (animein.net). Donasi: trakteer.id/animein.net."
+    }
+];
+
+function getKnowledgeContext(query) {
+    const lowerQ = query.toLowerCase();
+    const matched = ANIMEIN_KNOWLEDGE.filter(k => k.keywords.some(key => lowerQ.includes(key)));
+    if (matched.length === 0) return '';
+    return `\n\n[INFORMASI TEKNIS ANIMEIN]: \n${matched.map(m => `- ${m.info}`).join('\n')}`;
+}
+
 
 let auth = { userId: null, userKey: null };
 let lastMessageId = 0;
@@ -469,10 +503,14 @@ async function askPollinations(userMessage, senderName, contextData = '', chatHi
 
 /** Main AI handler: Groq dulu, fallback ke Pollinations */
 async function getAIResponse(userMessage, senderName) {
-
     const intent = detectIntent(userMessage);
-    const contextData = await buildAnimeContext(intent, userMessage);
-    if (intent) console.log(`[INTENT] ${intent} -> Konteks data: ${contextData ? 'Ada' : 'Kosong'}`);
+    const animeContext = await buildAnimeContext(intent, userMessage);
+    const knowledgeContext = getKnowledgeContext(userMessage);
+    const finalContext = animeContext + knowledgeContext;
+
+    if (intent || knowledgeContext) {
+        console.log(`[CONTEXT] Intent: ${intent || 'none'}, Knowledge: ${knowledgeContext ? 'Inject' : 'Empty'}`);
+    }
 
     const history = chatMemory[senderName] || [];
 
@@ -480,43 +518,34 @@ async function getAIResponse(userMessage, senderName) {
         const stat = stats.groq[i];
         const now = Date.now();
 
-        if (now < stat.cooldownUntil) {
-            console.log(`[GROQ-${i+1}] Cooldown... Skip to next.`);
-            continue;
-        }
+        if (now < stat.cooldownUntil) continue;
 
         try {
-            const result = await askGroq(i, userMessage, senderName, contextData, history);
+            const result = await askGroq(i, userMessage, senderName, finalContext, history);
             if (result) {
-                stats.lastUsedGroq = i; // Tandai key ini sebagai "Online"
-                // Simpan memori obrolan ke global memory (maks 2 obrolan terakhir = 4 pesan)
+                stats.lastUsedGroq = i;
                 chatMemory[senderName] = [...history, 
                     { role: 'user', content: userMessage },
                     { role: 'assistant', content: result }
-                ].slice(-4); // Simpan 2 obrolan terakhir (4 pesan)
+                ].slice(-4);
                 return { text: result, provider: `Groq #${i+1}` };
             }
         } catch (err) {
             stat.errors++;
             stat.lastError = err.message.slice(0, 100);
-            
             if (err.message.includes('429') || err.status === 429) {
                 stat.cooldownUntil = now + CONFIG.GROQ_COOLDOWN;
-                console.log(`[GROQ-${i+1}] Rate limit! Cooldown 2 menit.`);
-            } else {
-                console.log(`[GROQ-${i+1}] Error: ${err.message.slice(0, 50)}`);
             }
         }
     }
 
-
     try {
-        const result = await askPollinations(userMessage, senderName, contextData, history);
+        const result = await askPollinations(userMessage, senderName, finalContext, history);
         if (result) {
             chatMemory[senderName] = [...history, 
                 { role: 'user', content: userMessage },
                 { role: 'assistant', content: result }
-            ].slice(-6);
+            ].slice(-4);
         }
         return { text: result || 'Hmm, gak tau nih.', provider: 'Pollinations' };
     } catch (err) {
