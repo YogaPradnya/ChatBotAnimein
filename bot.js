@@ -104,6 +104,11 @@ Aturan:
 
 const ANIMEIN_KNOWLEDGE = [
     {
+        keywords: ["fitur", "fitur animein", "apa aja fitur", "ada fitur apa", "fitur apa saja", "apa fitur", "list fitur", "daftar fitur", "ada apa di animein", "animein bisa apa", "animein ada apa", "apa saja fitur animein"],
+        info: "Fitur utama Animein:\n- Nonton anime online dengan berbagai resolusi & pilihan server\n- Download episode anime\n- Cari anime berdasarkan judul atau genre\n- Jadwal tayang anime harian\n- Upload server anime (via fitur Rapsodi di teman.animein.net)\n- Upload cover & poster anime\n- Cuplix: buat klip/highlight episode anime\n- Komentar di tiap episode\n- Chat komunitas\n- Sistem Pokemon: beli, battle, evolusi, upgrade level, jadikan foto profil\n- Sistem Coin & Gem sebagai mata uang\n- Akun Pro & Support dengan berbagai keuntungan\n- Foto profil bisa diubah (dengan akun Pro/Support)"
+    },
+
+    {
         keywords: ["identitas", "pencipta", "pembuat", "siapa anda", "siapa kamu", "yogaa", "eko", "pemilik", "siapa yogaa", "siapa eko", "siapa pemilik", "siapa rika", "siapa rika dibuat oleh siapa", "siapa rika dibuat oleh", "siapa rika dibuat oleh siapa", "siapa rika dibuat oleh siapa", "siapa rika dibuat oleh siapa"],
         info: "Rika dibuat oleh Yogaa (developer bot). Pemilik Animein: Eko Pranotodarmo. Yogaa bukan pemilik Animein."
     },
