@@ -818,35 +818,9 @@ async function processMessages(messages) {
         }
 
         if (isImageRequest(cleanText)) {
-            console.log(`[BOT/IMG] Generating image for: ${cleanText}`);
-            // Kirim pesan "sedang membuat gambar" dulu
-            await sendChatMessage(`@${senderName} Oke, tunggu sebentar ya, lagi bikin gambarnya...`, msg.id);
-            
-            try {
-                const imageResult = await generatePollinationsImage(cleanText);
-                if (imageResult && imageResult.data) {
-                    // Coba kirim gambar langsung via multipart
-                    const sentDirect = await sendChatWithImage(
-                        imageResult,
-                        `@${senderName} Ini gambarnya!`,
-                        msg.id
-                    );
-                    
-                    if (!sentDirect) {
-                        await sendChatMessage(`@${senderName} Maaf kak, server chat gagal menerima gambarnya. Coba lagi nanti ya.`, msg.id);
-                        addActivity('image', senderName, cleanText, `[Upload Gambar Gagal]`, 'Error');
-                    } else {
-                        addActivity('image', senderName, cleanText, '[Gambar berhasil dikirim di chat]', 'Pollinations');
-                    }
-                } else {
-                    await sendChatMessage(`@${senderName} Maaf, server AI yang bertugas nge-gambar lagi kepenuhan nih. Coba beberapa saat lagi ya kak.`, msg.id);
-                    addActivity('image', senderName, cleanText, '[Gagal generate gambar/Timeout]', 'Error');
-                }
-            } catch (imgErr) {
-                console.error('[BOT/IMG] Exception:', imgErr.message);
-                await sendChatMessage(`@${senderName} Maaf, ada error waktu bikin gambar.`, msg.id);
-                addActivity('image', senderName, cleanText, '[Error]', 'Error');
-            }
+            console.log(`[BOT/IMG] Fitur gambar dinonaktifkan: ${cleanText}`);
+            await sendChatMessage(`@${senderName} Maaf kak, fitur pembuatan gambar saat ini sedang dinonaktifkan. 🙏`, msg.id);
+            addActivity('image', senderName, cleanText, '[Fitur Dinonaktifkan]', 'Disabled');
         } else {
             const question = cleanText || 'kamu manggil?';
             const { text: aiText, provider } = await getAIResponse(question, senderName);
