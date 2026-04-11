@@ -595,21 +595,30 @@ async function generateGeminiImage(prompt) {
 async function generatePollinationsImage(prompt) {
     let refined = prompt;
     try {
-        const res = await axios.post('https://text.pollinations.ai/', {
-            messages: [{ role: 'user', content: `Translate to English, make a short image prompt (max 15 words): "${prompt}". Only write the prompt.` }],
-            model: 'openai', seed: Math.floor(Math.random() * 9999), private: true
-        }, { headers: { 'Content-Type': 'application/json' }, timeout: 8000 });
-        refined = stripEmoji(String(res.data || prompt)).trim();
+        // Gunakan Groq untuk translate karena text.pollinations.ai sering error 500
+        if (groqClients && groqClients.length > 0) {
+            const groqRes = await groqClients[0].chat.completions.create({
+                model: 'llama-3.1-8b-instant',
+                messages: [{ role: 'user', content: `Translate this to English and make it a short image generation prompt (max 15 words). Only write the prompt: "${prompt}"` }],
+                max_tokens: 50,
+                temperature: 0.7
+            });
+            const translated = groqRes.choices[0]?.message?.content;
+            if (translated) {
+                refined = stripEmoji(translated).trim();
+            }
+        }
     } catch (err) {
-        console.warn('[IMG/POLLINATIONS] Translator API sedang gangguan, menggunakan prompt original.');
+        console.warn('[IMG/POLLINATIONS] Groq Translator error, menggunakan prompt original:', err.message.slice(0, 50));
     }
     
     try {
         const seed = Math.floor(Math.random() * 999999);
         const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(refined)}?width=512&height=512&nologo=true&seed=${seed}`;
         
-        // Download gambar sebagai buffer
-        const imgRes = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 20000 });
+        console.log(`[IMG] Mengunduh gambar dari: ${imageUrl}`);
+        // Download gambar sebagai buffer, perbesar timeout jadi 60 detik karena gambar server kadang berat
+        const imgRes = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 60000 });
         const buffer = Buffer.from(imgRes.data);
         
         return {
@@ -619,7 +628,7 @@ async function generatePollinationsImage(prompt) {
             isFromPollinations: true,
         };
     } catch (err) {
-        console.warn('[IMG/POLLINATIONS] Image API Error:', err.message.slice(0, 60));
+        console.warn('[IMG/POLLINATIONS] Image API Error:', err.message.slice(0, 80));
         return null;
     }
 }
