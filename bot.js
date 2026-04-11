@@ -27,7 +27,7 @@ const CONFIG = {
     POLL_INTERVAL: 5000,
     DASHBOARD_PORT: process.env.PORT || 3500,
     IMAGE_TRIGGERS: ['gambar', 'foto', 'ilustrasi', 'buatkan gambar', 'generate gambar'],
-    GROQ_COOLDOWN: 60 * 1000,
+    GROQ_COOLDOWN: 5 * 60 * 1000,
 };
 
 
@@ -496,7 +496,7 @@ async function getAIResponse(userMessage, senderName) {
             
             if (err.message.includes('429') || err.status === 429) {
                 stat.cooldownUntil = now + CONFIG.GROQ_COOLDOWN;
-                console.log(`[GROQ-${i+1}] Rate limit! Cooldown 1 menit.`);
+                console.log(`[GROQ-${i+1}] Rate limit! Cooldown 5 menit.`);
             } else {
                 console.log(`[GROQ-${i+1}] Error: ${err.message.slice(0, 50)}`);
             }
