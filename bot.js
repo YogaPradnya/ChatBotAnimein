@@ -62,7 +62,8 @@ const stats = {
     filter: {
         blocked: 0,
         lastBlocked: null,
-    }
+    },
+    totalTokensUsed: 0
 };
 
 function addActivity(type, from, text, response, provider) {
@@ -423,12 +424,16 @@ async function askGroq(index, userMessage, senderName, contextData = '') {
 
     if (response && response.headers) {
         stat.remainingReqs = response.headers.get('x-ratelimit-remaining-requests') || '?';
-        let rTokens = response.headers.get('x-ratelimit-remaining-tokens-per-day');
+        let rTokens = response.headers.get('x-ratelimit-remaining-tokens');
         if (rTokens) {
             stat.remainingTokensDay = parseInt(rTokens).toLocaleString('id-ID');
         } else {
             stat.remainingTokensDay = '?';
         }
+    }
+
+    if (completion.usage && completion.usage.total_tokens) {
+        stats.totalTokensUsed += completion.usage.total_tokens;
     }
 
     stat.success++;
@@ -758,11 +763,13 @@ function getDashboardHTML() {
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
   .container { max-width: 1200px; margin: 0 auto; padding: 28px 24px; }
   .grid { display: grid; gap: 20px; }
+  .grid-5 { grid-template-columns: repeat(5, 1fr); }
   .grid-4 { grid-template-columns: repeat(4, 1fr); }
-  .grid-2 { grid-template-columns: 1fr 1fr; }
-  .grid-3 { grid-template-columns: 1fr 1fr 1fr; }
-  @media(max-width:900px){.grid-4,.grid-3{grid-template-columns:1fr 1fr;}.grid-2{grid-template-columns:1fr;}}
-  @media(max-width:600px){.grid-4{grid-template-columns:1fr;}}
+  .grid-3 { grid-template-columns: repeat(3, 1fr); }
+  .grid-2 { grid-template-columns: repeat(2, 1fr); }
+  @media(max-width:1100px){.grid-5{grid-template-columns: repeat(3, 1fr);}}
+  @media(max-width:900px){.grid-4,.grid-3{grid-template-columns:1fr 1fr;}}
+  @media(max-width:600px){.grid-5,.grid-4,.grid-3{grid-template-columns:1fr;}}
   .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 20px; }
   .card-title { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 10px; }
   .metric { font-size: 32px; font-weight: 700; line-height: 1; }
@@ -811,7 +818,7 @@ function getDashboardHTML() {
 
 <div class="container">
   <!-- STAT CARDS -->
-  <div class="grid grid-4" style="margin-bottom:20px">
+  <div class="grid grid-5" style="margin-bottom:20px">
     <div class="card">
       <div class="card-title">Total Trigger</div>
       <div class="metric" id="totalTriggers">-</div>
@@ -828,9 +835,14 @@ function getDashboardHTML() {
       <div class="metric-sub" id="groqSuccessRate">Success rate</div>
     </div>
     <div class="card">
-      <div class="card-title">Pesan Diblokir</div>
+      <div class="card-title">Token Digunakan</div>
+      <div class="metric" id="totalTokens">-</div>
+      <div class="metric-sub">Total hari ini</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Filter Blokir</div>
       <div class="metric" style="color:var(--red)" id="filterBlocked">-</div>
-      <div class="metric-sub" id="filterLastBlock">kata kasar terdeteksi</div>
+      <div class="metric-sub" id="filterLastBlock">kata kasar detected</div>
     </div>
   </div>
 
@@ -893,6 +905,9 @@ async function refresh() {
 
     document.getElementById('totalTriggers').textContent = d.totalTriggers||0;
     document.getElementById('uptime').textContent = formatUptime(d.uptime||0);
+    if (document.getElementById('totalTokens')) {
+        document.getElementById('totalTokens').textContent = (d.totalTokensUsed || 0).toLocaleString('id-ID');
+    }
     
 
     const totalGroqReq = d.groq.reduce((acc, g) => acc + g.requests, 0);
