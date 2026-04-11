@@ -147,7 +147,7 @@ let auth = { userId: null, userKey: null };
 let lastMessageId = 0;
 let isFirstRun = true;
 let isGlobalCooldown = false; 
-const chatMemory = {}; 
+const chatMemory = {}; // Menyimpan memori obrolan tiap user (maks 4 obrolan terakhir = 8 pesan)
 
 
 
@@ -520,11 +520,11 @@ async function getAIResponse(userMessage, senderName) {
             const result = await askGroq(i, userMessage, senderName, contextData, history);
             if (result) {
                 stats.lastUsedGroq = i; // Tandai key ini sebagai "Online"
-                // Simpan memori obrolan ke global memory (maks 3 loop = 6 messages)
+                // Simpan memori obrolan ke global memory (maks 4 obrolan terakhir = 8 pesan)
                 chatMemory[senderName] = [...history, 
                     { role: 'user', content: userMessage },
                     { role: 'assistant', content: result }
-                ].slice(-6);
+                ].slice(-8);
                 return { text: result, provider: `Groq #${i+1}` };
             }
         } catch (err) {
