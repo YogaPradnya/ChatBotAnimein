@@ -25,7 +25,10 @@ const CONFIG = {
         process.env.GROQ_API_KEY_2,
         process.env.GROQ_API_KEY_3,
         process.env.GROQ_API_KEY_4,
-        process.env.GROQ_API_KEY_5
+        process.env.GROQ_API_KEY_5,
+        process.env.GROQ_API_KEY_6,
+        process.env.GROQ_API_KEY_7,
+        process.env.GROQ_API_KEY_8
     ].filter(Boolean),
     POLL_INTERVAL: 5000,
     DASHBOARD_PORT: process.env.PORT || 3500,
