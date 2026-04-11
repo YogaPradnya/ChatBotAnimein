@@ -45,6 +45,8 @@ const stats = {
         success: 0,
         errors: 0,
         lastError: null,
+        remainingReqs: '?',
+        remainingTokensDay: '?',
     })),
     pollinations: {
         available: true,
@@ -390,7 +392,7 @@ async function askGroq(index, userMessage, senderName, contextData = '') {
     
     stat.requests++;
     const systemContent = SYSTEM_PROMPT + contextData;
-    const completion = await client.chat.completions.create({
+    const { data: completion, response } = await client.chat.completions.create({
         model: 'llama-3.1-8b-instant',
         messages: [
             { role: 'system', content: systemContent },
@@ -398,7 +400,18 @@ async function askGroq(index, userMessage, senderName, contextData = '') {
         ],
         max_tokens: 300,
         temperature: 0.75,
-    });
+    }).withResponse();
+
+    if (response && response.headers) {
+        stat.remainingReqs = response.headers.get('x-ratelimit-remaining-requests') || '?';
+        let rTokens = response.headers.get('x-ratelimit-remaining-tokens-per-day');
+        if (rTokens) {
+            stat.remainingTokensDay = parseInt(rTokens).toLocaleString('id-ID');
+        } else {
+            stat.remainingTokensDay = '?';
+        }
+    }
+
     stat.success++;
     return stripEmoji(completion.choices[0]?.message?.content || '');
 }
@@ -889,6 +902,8 @@ async function refresh() {
           + '</div>'
           + '<div class="stat-row"><span class="stat-label">Usage</span><span class="stat-value">' + g.success + ' / ' + g.requests + '</span></div>'
           + '<div class="stat-row"><span class="stat-label">Errors</span><span class="stat-value" style="color:' + (g.errors > 0 ? 'var(--red)' : 'inherit') + '">' + g.errors + '</span></div>'
+          + '<div class="stat-row"><span class="stat-label">Req / Menit</span><span class="stat-value">' + g.remainingReqs + '</span></div>'
+          + '<div class="stat-row"><span class="stat-label">Token / Hari</span><span class="stat-value">' + g.remainingTokensDay + '</span></div>'
           + (isCooldown ? '<div class="stat-row"><span class="stat-label">Reset In</span><span class="stat-value">' + cooldownSecs + 's</span></div>' : '')
           + '<div style="font-size:11px;color:var(--red);margin-top:8px;height:1.2em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + (g.lastError || '') + '">' + (g.lastError || '') + '</div>'
           + '</div>';
