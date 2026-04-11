@@ -101,40 +101,36 @@ Aturan:
 /** BASIS DATA PENGETAHUAN ANIMEIN (Save Tokens via Dynamic Injection) */
 const ANIMEIN_KNOWLEDGE = [
     {
-        keywords: ['pro', 'support', 'upgrade', 'bayar', 'premium', 'keuntungan'],
-        info: "Cara Upgrade: Lewat App Animein Komunity (Play Store) atau Trakteer. Support (10rb): 50 Coin/hr, 3 Legend/minggu. Pro (30rb): 100 Coin/hr, 6 Legend/minggu, GIF PP, no iklan."
+        keywords: ['pro', 'support', 'upgrade', 'bayar', 'premium', 'keuntungan', 'iklan', 'pokemon legend', 'coin gratis'],
+        info: "1. Cara Upgrade Akun Pro / Support: Melalui aplikasi Animein Komunity di Play Store atau lewat sistem Trakteer sesuai harganya. Kendala pembayaran hubungi Instagram Animein.\n2. Akun Support (IDR 10.000 / 30 Hari): Keuntungan berupa Coin gratis 50++ per hari, kemunculan 3 Pokemon Legend per minggu, diskon harga Pokemon Legend 2 gem, bisa atur foto profil gambar, dapat medal khusus, dan no iklan.\n3. Akun Pro (IDR 30.000 / 30 Hari): Keuntungan berupa Coin gratis 100++ per hari, kemunculan 6 Pokemon Legend per minggu, diskon harga Pokemon Legend 5 gem, bisa atur foto profil bebas (GIF/Gambar maks 10MB), dapat medal khusus, dan no iklan. Tidak bisa gabung dengan fitur Support (sisa waktu support akan terganti jadi pro). Kendala hubungi Instagram @animein.aja."
     },
     {
-        keywords: ['coin', 'gem', 'tukar', 'uang', 'mata uang'],
-        info: "Mata Uang: 500 Coin = 1 Gem. Gem untuk evolusi, upgrade, ganti nama. Tak bisa jual pokemon."
+        keywords: ['coin', 'gem', 'tukar', 'mata uang', 'evolusi', 'upgrade pokemon'],
+        info: "4. Mata Uang Animein: Coin digunakan untuk membeli Pokemon, Battle, dll. Gem adalah mata uang ke-2 (500 Coin = 1 Gem). Gem untuk evolusi, ganti nama, upgrade Pokemon, dan beli Pokemon (tidak bisa jual pokemon)."
     },
     {
-        keywords: ['upload', 'server', 'rapsodi', 'poster', 'cover'],
-        info: "Upload Server: Menu Rapsodi (teman.animein.net). Upload Poster/Cover: Buka anime, geser kanan layar (menu poster)."
+        keywords: ['upload', 'server', 'rapsodi', 'poster', 'cover', 'pasang'],
+        info: "5. Cara Upload Server Anime: Buka teman.animein.net atau masuk ke profile > fitur 'Rapsodi'.\n6. Cara Upload Cover/Poster: Pergi ke anime, buka animenya, geser (scroll) ke kanan layar untuk menemukan tempat upload poster/cover (Hanya menu poster, tidak ada hubungannya dengan menonton)."
     },
     {
-        keywords: ['cuplix', 'klip', 'highlight'],
-        info: "Cuplix: Klip 10dtk-3mnt. Dapat 1 coin tiap like (Max 250/hari)."
+        keywords: ['cuplix', 'klip', 'highlight', 'pembuat cuplix', 'durasi cuplix'],
+        info: "7. Fitur Cuplix: Klip/highlight episode (10 dtk - 3 mnt). Pembuat Cuplix & Uploader dapat 1 coin tiap ada yang like (Maks 250/hari, cair saat ganti hari). Cara buat: Masukkan detik start & end, jepret thumbnail, simpan. Peraturan: Maks 3 Cuplix per user per 1 episode, tak boleh kembar."
     },
     {
-        keywords: ['battle', 'pokemon', 'level', 'rank', 'bp', 'grade'],
-        info: "Battle Pokemon: Min 3 pokemon. Grade: R, E, M, L (Rookie, Epic, Mythic, Legendary) & Gen 2 (R2, E2, dst). Poin Rank (BP)."
+        keywords: ['battle', 'pokemon', 'level', 'rank', 'bp', 'grade', 'rookie', 'mythic', 'legendary'],
+        info: "8. Cara Battle Pokemon: Minimal punya 3 Pokemon. Menu Battle di profil, pilih 3 Pokemon. 'Battle Rank' untuk tanding dan dapatkan BP (Battle Point), atau 'VS Temen'. Maks level 20. Tingkatan: R (Rookie), E (Epic), M (Mythic), L (Legendary). Grade gen 2: R2, E2, M2, L2."
     },
     {
-        keywords: ['download', 'more', 'simpan', 'eps'],
-        info: "Download: Klik tombol 'More' saat menonton."
+        keywords: ['download', 'more', 'simpan', 'eps', 'cara download'],
+        info: "9. Cara download eps: Tekan tombol 'more' saat menonton salah satu eps anime lalu pilih download."
     },
     {
-        keywords: ['resolusi', 'kualitas', '360p', '480p', '720p', '1080p', 'gerigi', 'server'],
-        info: "Ubah Resolusi: Klik menu 'Server' (icon gerigi) saat menonton."
+        keywords: ['resolusi', 'server', 'kualitas', '360p', '1080p', 'gerigi'],
+        info: "10. Cara ubah resolusi: SAAT MENONTON ANIME, klik pilihan 'server' (icon bergerigi, BUKAN geser layar). Di sana kalian bisa memilih resolusi 360p - 1080p yang diinginkan."
     },
     {
-        keywords: ['rewind', 'mundur', 'maju', 'forward', 'geser', 'speedup', 'cepat'],
-        info: "Player Control: Rewind (Geser Kiri), Forward (Geser Kanan), Speedup (Ketuk 2x kanan layar)."
-    },
-    {
-        keywords: ['web', 'aplikasi', 'apk', 'donasi', 'trakteer'],
-        info: "Web baru 10%. Fitur lengkap di APK (animein.net). Donasi: trakteer.id/animein.net."
+        keywords: ['rewind', 'mundur', 'maju', 'forward', 'geser', 'cepat', 'speedup', 'fast forward'],
+        info: "11. Cara rewind: Tahan pada video lalu geser ke kiri.\n12. Cara fast forward: Tahan pada video lalu geser ke kanan.\n13. Cara speedup: Tekan/ketuk 2x pada layar bagian kanan video yang sedang diputar."
     }
 ];
 
@@ -142,7 +138,7 @@ function getKnowledgeContext(query) {
     const lowerQ = query.toLowerCase();
     const matched = ANIMEIN_KNOWLEDGE.filter(k => k.keywords.some(key => lowerQ.includes(key)));
     if (matched.length === 0) return '';
-    return `\n\n[INFORMASI TEKNIS ANIMEIN]: \n${matched.map(m => `- ${m.info}`).join('\n')}`;
+    return `\n\n[DOKUMENTASI TEKNIS ANIMEIN - Sangat Akurat]: \n${matched.map(m => m.info).join('\n')}`;
 }
 
 
