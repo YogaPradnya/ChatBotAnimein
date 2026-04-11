@@ -593,16 +593,25 @@ async function generateGeminiImage(prompt) {
 
 /** Fallback: generate gambar dari Pollinations.ai */
 async function generatePollinationsImage(prompt) {
+    let refined = prompt;
     try {
         const res = await axios.post('https://text.pollinations.ai/', {
             messages: [{ role: 'user', content: `Translate to English, make a short image prompt (max 15 words): "${prompt}". Only write the prompt.` }],
-            model: 'openai', seed: 42, private: true
-        }, { headers: { 'Content-Type': 'application/json' }, timeout: 10000 });
-        const refined = stripEmoji(String(res.data || prompt)).trim();
-        const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(refined)}?width=512&height=512&nologo=true`;
+            model: 'openai', seed: Math.floor(Math.random() * 9999), private: true
+        }, { headers: { 'Content-Type': 'application/json' }, timeout: 8000 });
+        refined = stripEmoji(String(res.data || prompt)).trim();
+    } catch (err) {
+        console.warn('[IMG/POLLINATIONS] Translator API sedang gangguan, menggunakan prompt original.');
+    }
+    
+    try {
+        const seed = Math.floor(Math.random() * 999999);
+        const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(refined)}?width=512&height=512&nologo=true&seed=${seed}`;
+        
         // Download gambar sebagai buffer
         const imgRes = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 20000 });
         const buffer = Buffer.from(imgRes.data);
+        
         return {
             type: 'base64',
             mimeType: 'image/jpeg',
@@ -610,7 +619,7 @@ async function generatePollinationsImage(prompt) {
             isFromPollinations: true,
         };
     } catch (err) {
-        console.warn('[IMG/POLLINATIONS] Error:', err.message.slice(0, 60));
+        console.warn('[IMG/POLLINATIONS] Image API Error:', err.message.slice(0, 60));
         return null;
     }
 }
