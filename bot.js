@@ -16,7 +16,7 @@ try {
 }
 
 const CONFIG = {
-    BASE_URL: 'https://purple-hall-e016.yogapradnyana988.workers.dev/api/proxy',
+    BASE_URL: process.env.ANIMEIN_API_URL,
     USERNAME: process.env.ANIMEIN_USERNAME,
     PASSWORD: process.env.ANIMEIN_PASSWORD,
 
