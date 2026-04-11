@@ -1,5 +1,6 @@
 const axios = require('axios');
 const Groq = require('groq-sdk');
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -30,6 +31,10 @@ const CONFIG = {
     DASHBOARD_PORT: process.env.PORT || 3500,
     IMAGE_TRIGGERS: ['gambar', 'foto', 'ilustrasi', 'buatkan gambar', 'generate gambar'],
     GROQ_COOLDOWN: 2 * 60 * 1000,
+    GEMINI_KEYS: [
+        process.env.GEMINI_API_KEY,
+        process.env.GEMINI_API_KEY_2
+    ].filter(Boolean),
 };
 
 
@@ -57,6 +62,15 @@ const stats = {
         errors: 0,
         lastError: null,
     },
+    gemini: CONFIG.GEMINI_KEYS.map((key, index) => ({
+        id: index + 1,
+        active: true,
+        cooldownUntil: 0,
+        requests: 0,
+        success: 0,
+        errors: 0,
+        lastError: null,
+    })),
     image: {
         requests: 0,
         success: 0,
@@ -79,6 +93,7 @@ function addActivity(type, from, text, response, provider) {
 
 
 const groqClients = CONFIG.GROQ_KEYS.map(key => new Groq({ apiKey: key }));
+const geminiClients = CONFIG.GEMINI_KEYS.map(key => new GoogleGenerativeAI(key));
 
 const SYSTEM_PROMPT = `Kamu adalah asisten chat Animein yang di buat oleh Yogaa. 
 Aturan menjawab:
@@ -457,6 +472,27 @@ async function askGroq(index, userMessage, senderName, contextData = '') {
     return completion.choices[0]?.message?.content || '';
 }
 
+/** Google Gemini - cadangan utama */
+async function askGemini(index, userMessage, senderName, contextData = '') {
+    const genAI = geminiClients[index];
+    const stat = stats.gemini[index];
+    
+    stat.requests++;
+    try {
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const prompt = `${SYSTEM_PROMPT}${contextData}\n\n${senderName} berkata: "${userMessage}".`;
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        stat.success++;
+        return response.text().trim();
+    } catch (err) {
+        stat.errors++;
+        stat.lastError = err.message.slice(0, 100);
+        console.warn(`[GEMINI-${index+1}] Error:`, err.message.slice(0, 50));
+        return null;
+    }
+}
+
 /** Pollinations.ai - fallback unlimited */
 async function askPollinations(userMessage, senderName, contextData = '') {
     stats.pollinations.requests++;
@@ -504,6 +540,14 @@ async function getAIResponse(userMessage, senderName) {
                 console.log(`[GROQ-${i+1}] Error: ${err.message.slice(0, 50)}`);
             }
         }
+    }
+
+
+    for (let i = 0; i < geminiClients.length; i++) {
+        try {
+            const result = await askGemini(i, userMessage, senderName, contextData);
+            if (result) return { text: result, provider: `Gemini #${i+1}` };
+        } catch (e) {}
     }
 
 
