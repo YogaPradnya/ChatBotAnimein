@@ -630,8 +630,8 @@ async function generatePollinationsImage(prompt) {
         };
     } catch (err) {
         console.warn('[IMG/POLLINATIONS] Image API Error lambat/rate-limit:', err.message.slice(0, 80));
-        // Kembalikan URL fallback agar user tetap mendapatkan gambar walau berbentuk link
-        return { fallbackUrl: imageUrl };
+        // Jika gagal download, cukup kirim null sesuai permintaan agar tidak jadi link
+        return null;
     }
 }
 
@@ -824,10 +824,7 @@ async function processMessages(messages) {
             
             try {
                 const imageResult = await generatePollinationsImage(cleanText);
-                if (imageResult && imageResult.fallbackUrl) {
-                    await sendChatMessage(`@${senderName} Server gambar lagi penuh kak (error/timeout). Coba langsung klik link ini aja ya: ${imageResult.fallbackUrl}`, msg.id);
-                    addActivity('image', senderName, cleanText, `[Gambar URL/Fallback]`, 'Pollinations');
-                } else if (imageResult && imageResult.data) {
+                if (imageResult && imageResult.data) {
                     // Coba kirim gambar langsung via multipart
                     const sentDirect = await sendChatWithImage(
                         imageResult,
@@ -836,18 +833,14 @@ async function processMessages(messages) {
                     );
                     
                     if (!sentDirect) {
-                        // Fallback: konversi ke data URL dan embed di teks
-                        const imgUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanText)}?width=512&height=512&nologo=true`;
-                        const fallbackMsg = `@${senderName} Ini URL gambarnya ya kak: ${imgUrl}`;
-                        await sendChatMessage(fallbackMsg, msg.id);
-                        console.log(`[BOT/IMG] Fallback ke URL: ${imgUrl}`);
-                        addActivity('image', senderName, cleanText, `[Gambar URL] ${imgUrl}`, 'Pollinations');
+                        await sendChatMessage(`@${senderName} Maaf kak, server chat gagal menerima gambarnya. Coba lagi nanti ya.`, msg.id);
+                        addActivity('image', senderName, cleanText, `[Upload Gambar Gagal]`, 'Error');
                     } else {
                         addActivity('image', senderName, cleanText, '[Gambar berhasil dikirim di chat]', 'Pollinations');
                     }
                 } else {
-                    await sendChatMessage(`@${senderName} Maaf, gagal generate gambar nih.`, msg.id);
-                    addActivity('image', senderName, cleanText, '[Gagal generate gambar]', 'Error');
+                    await sendChatMessage(`@${senderName} Maaf, server AI yang bertugas nge-gambar lagi kepenuhan nih. Coba beberapa saat lagi ya kak.`, msg.id);
+                    addActivity('image', senderName, cleanText, '[Gagal generate gambar/Timeout]', 'Error');
                 }
             } catch (imgErr) {
                 console.error('[BOT/IMG] Exception:', imgErr.message);
