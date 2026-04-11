@@ -41,6 +41,7 @@ const stats = {
     startTime: new Date().toISOString(),
     botStatus: 'starting',
     totalTriggers: 0,
+    lastUsedGroq: -1, // Indeks Groq key terakhir yang berhasil digunakan
     recentActivity: [],
 
     groq: CONFIG.GROQ_KEYS.map((key, index) => ({
@@ -518,6 +519,7 @@ async function getAIResponse(userMessage, senderName) {
         try {
             const result = await askGroq(i, userMessage, senderName, contextData, history);
             if (result) {
+                stats.lastUsedGroq = i; // Tandai key ini sebagai "Online"
                 // Simpan memori obrolan ke global memory (maks 3 loop = 6 messages)
                 chatMemory[senderName] = [...history, 
                     { role: 'user', content: userMessage },
@@ -1025,7 +1027,22 @@ function getDashboardHTML() {
   .type-blocked { background: rgba(239,68,68,.15); color: var(--red); }
   .section-title { font-size: 16px; font-weight: 600; margin-bottom: 14px; }
   .uptime { font-size: 13px; color: var(--muted); }
-  ::-webkit-scrollbar{width:4px} ::-webkit-scrollbar-track{background:transparent} ::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+  
+  /* Accordion Styles */
+  .groq-accordion { display: flex; flex-direction: column; gap: 10px; }
+  .groq-item { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; transition: all 0.3s ease; }
+  .groq-item.is-online { border-color: var(--accent); box-shadow: 0 0 15px rgba(124,111,247,0.1); }
+  .groq-trigger { padding: 16px 20px; cursor: pointer; display: flex; align-items: center; gap: 15px; user-select: none; }
+  .groq-content { padding: 0 20px 20px 20px; display: none; }
+  .groq-item.is-open .groq-content { display: block; }
+  .groq-number { width: 28px; height: 28px; border-radius: 8px; background: var(--border); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+  .is-online .groq-number { background: var(--accent); color: white; }
+  .groq-info { flex: 1; }
+  .groq-name { font-size: 14px; font-weight: 600; }
+  .groq-status-row { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+  .badge-online { background: rgba(34,197,94,.2); color: var(--green); border: 1px solid rgba(34,197,94,.3); }
+  
+  ::-webkit-scrollbar { width: 4px } ::-webkit-scrollbar-track { background: transparent } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px }
 </style>
 </head>
 <body>
@@ -1064,11 +1081,11 @@ function getDashboardHTML() {
     </div>
   </div>
 
-  <div class="section-title">Provider Status</div>
-  <!-- PROVIDER CARDS -->
-  <div class="grid grid-3" style="margin-bottom:20px" id="groqCards">
-    <!-- Groq cards will be injected here -->
+  <div class="section-title">Groq Providers (Auto Rotation)</div>
+  <div class="groq-accordion" id="groqAccordion">
+    <!-- Groq items will be injected here -->
   </div>
+  <div style="margin-bottom: 25px;"></div>
 
 
 
@@ -1154,30 +1171,60 @@ async function refresh() {
     document.getElementById('groqSuccessRate').textContent = rate(totalGroqSuccess, totalGroqReq)+' success';
 
 
+
     const now = Date.now();
-    const groqCardsContainer = document.getElementById('groqCards');
-    groqCardsContainer.innerHTML = d.groq.map((g, i) => {
+    const groqContainer = document.getElementById('groqAccordion');
+    groqContainer.innerHTML = d.groq.map((g, i) => {
       const isCooldown = now < g.cooldownUntil;
-      const statusText = isCooldown ? 'COOLDOWN' : 'READY';
+      const isOnline = d.lastUsedGroq === i;
+      
+      let statusText = 'READY';
+      let badgeClass = 'badge-green';
+      if (isCooldown) {
+          statusText = 'COOLDOWN';
+          badgeClass = 'badge-yellow';
+      } else if (isOnline) {
+          statusText = 'ONLINE';
+          badgeClass = 'badge-online';
+      }
+      
+      const isOpen = isOnline; // Dropdown yang dibuka hanya yang sedang aktif (Online) saja
       const cooldownSecs = isCooldown ? Math.round((g.cooldownUntil - now) / 1000) : 0;
       
-      return '<div class="provider-card">'
-          + '<div class="provider-header">'
-          + '<div class="provider-icon" style="background:linear-gradient(135deg,#f97316,#ea580c)">' + (i+1) + '</div>'
-          + '<div>'
-          + '<div class="provider-name">Groq Key #' + (i+1) + '</div>'
-          + '<div class="provider-sub">' + (i === 0 ? 'Primary' : 'Backup') + '</div>'
+      return '<div class="groq-item ' + (isOpen ? 'is-open' : '') + ' ' + (isOnline ? 'is-online' : '') + '">'
+          + '<div class="groq-trigger" onclick="this.parentElement.classList.toggle(\'is-open\')">'
+          + '<div class="groq-number">' + (i+1) + '</div>'
+          + '<div class="groq-info">'
+          + '<div class="groq-name">Groq Key #' + (i+1) + '</div>'
+          + '<div class="groq-status-row">'
+          + '<span class="badge ' + badgeClass + '" style="font-size:10px; padding: 2px 8px;">' + statusText + '</span>'
+          + '<span style="font-size:11px; color:var(--muted)">' + (i === 0 ? 'Primary' : 'Backup') + '</span>'
           + '</div>'
-          + '<div style="margin-left:auto">'
-          + '<span class="badge ' + (isCooldown ? 'badge-yellow' : 'badge-green') + '">' + statusText + '</span>'
+          + '</div>'
+          + '<div style="font-size:12px; color:var(--muted)">' + (isOnline ? 'Active Now' : '') + '</div>'
+          + '</div>'
+          + '<div class="groq-content">'
+          + '<div class="grid grid-4" style="gap:15px; border-top: 1px solid var(--border); padding-top:15px;">'
+          + '<div class="stat-row" style="flex-direction:column; align-items:flex-start;">'
+          + '<span class="stat-label">Usage Scs/Req</span>'
+          + '<span class="stat-value">' + g.success + ' / ' + g.requests + '</span>'
+          + '</div>'
+          + '<div class="stat-row" style="flex-direction:column; align-items:flex-start;">'
+          + '<span class="stat-label">RPM Remaining</span>'
+          + '<span class="stat-value">' + g.remainingReqs + '</span>'
+          + '</div>'
+          + '<div class="stat-row" style="flex-direction:column; align-items:flex-start;">'
+          + '<span class="stat-label">Token Daily</span>'
+          + '<span class="stat-value">' + g.remainingTokensDay + '</span>'
+          + '</div>'
+          + '<div class="stat-row" style="flex-direction:column; align-items:flex-start;">'
+          + '<span class="stat-label">Errors</span>'
+          + '<span class="stat-value" style="color:' + (g.errors > 0 ? 'var(--red)' : 'inherit') + '">' + g.errors + '</span>'
           + '</div>'
           + '</div>'
-          + '<div class="stat-row"><span class="stat-label">Usage</span><span class="stat-value">' + g.success + ' / ' + g.requests + '</span></div>'
-          + '<div class="stat-row"><span class="stat-label">Errors</span><span class="stat-value" style="color:' + (g.errors > 0 ? 'var(--red)' : 'inherit') + '">' + g.errors + '</span></div>'
-          + '<div class="stat-row"><span class="stat-label">Req / Menit</span><span class="stat-value">' + g.remainingReqs + '</span></div>'
-          + '<div class="stat-row"><span class="stat-label">Token / Hari</span><span class="stat-value">' + g.remainingTokensDay + '</span></div>'
-          + (isCooldown ? '<div class="stat-row"><span class="stat-label">Reset In</span><span class="stat-value">' + cooldownSecs + 's</span></div>' : '')
-          + '<div style="font-size:11px;color:var(--red);margin-top:8px;height:1.2em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + (g.lastError || '') + '">' + (g.lastError || '') + '</div>'
+          + (isCooldown ? '<div style="margin-top:10px; font-size:12px; color:var(--yellow)">Cooldown: Reset in ' + cooldownSecs + 's</div>' : '')
+          + (g.lastError ? '<div style="margin-top:10px; font-size:11px; color:var(--red); background:rgba(239, 68, 68, 0.05); padding:8px; border-radius:8px;">Error: ' + g.lastError + '</div>' : '')
+          + '</div>'
           + '</div>';
     }).join('');
 
