@@ -100,20 +100,17 @@ Aturan:
 Informasi penting seputar fitur AnimeinWeb/Aplikasi yang WAJIB DIIKUTI:
 1. Cara Upgrade Akun Pro / Support: Melalui aplikasi Animein Komunity di Play Store atau lewat sistem Trakteer sesuai harganya. Kendala pembayaran hubungi Instagram Animein.
 2. Akun Support (IDR 10.000 / 30 Hari): Keuntungan berupa Coin gratis 50++ per hari, kemunculan 3 Pokemon Legend per minggu, diskon harga Pokemon Legend 2 gem, bisa atur foto profil gambar, dapat medal khusus, dan no iklan.
-3. Akun Pro (30 Hari): Keuntungan berupa Coin gratis 100++ per hari, kemunculan 6 Pokemon Legend per minggu, diskon harga Pokemon Legend 5 gem, bisa atur foto profil bebas (GIF/Gambar maks 10MB), dapat medal khusus, dan no iklan. Tidak bisa gabung dengan fitur Support (sisa waktu support akan terganti jadi pro) jika ada kendala pembayaran bisa hubingi admin atau contack suport di instagram @animein.aja.
+3. Akun Pro (IDR 30.000 / 30 Hari): Keuntungan berupa Coin gratis 100++ per hari, kemunculan 6 Pokemon Legend per minggu, diskon harga Pokemon Legend 5 gem, bisa atur foto profil bebas (GIF/Gambar maks 10MB), dapat medal khusus, dan no iklan. Tidak bisa gabung dengan fitur Support (sisa waktu support akan terganti jadi pro) jika ada kendala pembayaran bisa hubingi admin atau contack suport di instagram @animein.aja.
 4. Mata Uang Animein (Coin & Gem): Coin digunakan untuk membeli Pokemon, Battle, dll. Gem adalah mata uang ke-2 yang didapat dari menukar 500 Coin = 1 Gem. Gem digunakan untuk evolusi Pokemon, mengganti nama, upgrade Pokemon, dan beli Pokemon ( tidak bisa jual pokemon ).
 5. Cara Upload Server Anime: Buka web teman.animein.net atau masuk ke profile lalu cari fitur "Rapsodi" agar diarahkan ke menu upload server anime.
 6. Cara Upload Cover/Poster Anime: Pergi ke bagian anime, buka animenya, lalu geser (scroll) ke kanan layar untuk menemukan tempat opload poster dan cover (HANYA untuk menu poster/cover, tidak ada hubungannya dengan menonton).
 7. Fitur Cuplix: Cuplix adalah klip/highlight episode anime untuk rekomendasi. Pembuat Cuplix & Uploader Server dapat 1 coin tiap ada yang like (Maks 250 coin/hari, cair saat ganti hari dan wajib login). Cara buat: Masukkan detik start & end (durasi 10 dtk - 3 mnt), jepret thumbnail di jarak detik tersebut, lalu simpan. Peraturan: Maksimal 3 Cuplix per user untuk 1 episode, dan tidak boleh kembar/sama dengan Cuplix yang sudah dibooking.
-8. Status Website vs Aplikasi: Versi web (animeinweb.com) masih dalam tahap pengembangan (progress sekitar 10%). Jika user ingin fitur yang jauh lebih lengkap, arahkan mereka untuk download APK Android di animein.net.
-9. Dukungan / Donasi: Beri tahu user yang ingin mendukung pengembangan Animein bahwa mereka bisa berdonasi melalui Trakteer di trakteer.id/animein.net.
-10. Fitur Website Lainnya: Web mendukung kategori streaming (Sedang Hangat, Populer), Jadwal Rilis berupa kalender harian , serta fitur komunitas live chat tempat user berkumpul.
-11. Cara Battle Pokemon: Minimal harus punya 3 Pokemon. Pergi ke menu Battle di profil, pilih 3 Pokemon yang mau dipakai. Tekan tombol "Battle Rank" untuk tanding dan dapatkan BP (Battle Point) BP adalah poin rank bukan untuk menaikan lv pokemon, atau "VS Temen" untuk melawan teman spesifik. Ingat, kamu juga bisa menaikkan status Pokemon tiap naik level (maksimal level 20) pokemon juga memiliki tingkatan tersendiri yaitu ( R, E, M, L ) R = Rookie, E = Epic, M = Mythic, L = Legendary, untuk R2, E2, M2, L2 adalah pokemon gen 2 dengan grade yang sama .
-12. Cara download eps: Silahkan tekan tombol "more" saat menonton salah satu eps anime lalu pilih download. (PENTING) sebelum download pastikan pilih resolusinya dulu ya dengan cara klik menu "server" (tombol/icon bergerigi) lalu pilih resolusi 360p-1080p yang tersedia di sana.
-13. Cara ubah resolusi: SAAT MENONTON ANIME, klik pilihan "server" atau icon bergerigi (BUKAN geser layar). Di sana kalian bisa memilih resolusi yang diinginkan.
-14. Cara rewind/geser mundur: Tahan pada video yang sedang ditonton lalu geser ke kiri.
-15. Cara fast forward/geser maju: Tahan pada video yang sedang ditonton lalu geser ke kanan.
-16. Cara speedup: Tekan/ketuk 2x pada layar bagian kanan video yang sedang diputar.`;
+8. Cara Battle Pokemon: Minimal harus punya 3 Pokemon. Pergi ke menu Battle di profil, pilih 3 Pokemon yang mau dipakai. Tekan tombol "Battle Rank" untuk tanding dan dapatkan BP (Battle Point) BP adalah poin rank bukan untuk menaikan lv pokemon, atau "VS Temen" untuk melawan teman spesifik. Ingat, kamu juga bisa menaikkan status Pokemon tiap naik level (maksimal level 20) pokemon juga memiliki tingkatan tersendiri yaitu ( R, E, M, L ) R = Rookie, E = Epic, M = Mythic, L = Legendary, untuk R2, E2, M2, L2 adalah pokemon gen 2 dengan grade yang sama .
+9. Cara download eps: Silahkan tekan tombol "more" saat menonton salah satu eps anime lalu pilih download.
+10. Cara ubah resolusi: SAAT MENONTON ANIME, klik pilihan "server" atau icon bergerigi (BUKAN geser layar). Di sana kalian bisa memilih resolusi yang diinginkan.
+11. Cara rewind/geser mundur: Tahan pada video yang sedang ditonton lalu geser ke kiri.
+12. Cara fast forward/geser maju: Tahan pada video yang sedang ditonton lalu geser ke kanan.
+13. Cara speedup: Tekan/ketuk 2x pada layar bagian kanan video yang sedang diputar.`;
 
 let auth = { userId: null, userKey: null };
 let lastMessageId = 0;
