@@ -606,15 +606,10 @@ async function processMessages(messages) {
         }
 
         if (isImageRequest(cleanText)) {
-            let imagePrompt = cleanText;
-            CONFIG.IMAGE_TRIGGERS.forEach(t => { imagePrompt = imagePrompt.replace(new RegExp(t, 'gi'), '').trim(); });
-            imagePrompt = imagePrompt || 'anime artwork';
-
-            const imageUrl = await generateImageUrl(imagePrompt);
-            const reply = `@${senderName} ini gambarnya: ${imageUrl}`;
+            const reply = `@${senderName} maaf saat ini fitur tersebuat sedang di nonaktifkan`;
             console.log(`[BOT/IMG] ${reply}`);
             await sendChatMessage(reply, msg.id);
-            addActivity('image', senderName, cleanText, imageUrl, 'Pollinations');
+            addActivity('blocked', senderName, cleanText, 'maaf saat ini fitur tersebuat sedang di nonaktifkan', 'System');
         } else {
             const question = cleanText || 'kamu manggil?';
             const { text: aiText, provider } = await getAIResponse(question, senderName);
