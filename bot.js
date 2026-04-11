@@ -107,31 +107,31 @@ const ANIMEIN_KNOWLEDGE = [
     },
     {
         keywords: ["pro", "support", "upgrade", "bayar", "premium", "keuntungan", "iklan", "pokemon legend", "coin gratis", "trakteer"],
-        info: "1. Cara Upgrade Akun Pro / Support: Melalui aplikasi Animein Komunity di Play Store atau lewat sistem Trakteer sesuai harganya. Kendala pembayaran hubungi Instagram Animein.\n2. Akun Support (IDR 10.000 / 30 Hari): Keuntungan berupa Coin gratis 50++ per hari, kemunculan 3 Pokemon Legend per minggu, diskon harga Pokemon Legend 2 gem, bisa atur foto profil gambar, dapat medal khusus, dan no iklan.\n3. Akun Pro (IDR 30.000 / 30 Hari): Keuntungan berupa Coin gratis 100++ per hari, kemunculan 6 Pokemon Legend per minggu, diskon harga Pokemon Legend 5 gem, bisa atur foto profil bebas (GIF/Gambar maks 10MB), dapat medal khusus, dan no iklan. Tidak bisa gabung dengan fitur Support (sisa waktu support akan terganti jadi pro). Kendala hubungi Instagram @animein.aja."
+        info: "1. Cara Upgrade Akun Pro / Support: Melalui aplikasi Animein Komunity di Play Store atau lewat sistem Trakteer sesuai harganya. Kendala pembayaran hubungi Instagram Animein.\n2. Akun Support (IDR 10.000 / 30 Hari): Keuntungan berupa Coin gratis 50++ per hari, kemunculan 3 Pokemon Legend per minggu, diskon harga Pokemon Legend 2 gem, bisa atur foto profil gambar, dapat medal khusus, dan no iklan.\n3. Akun Pro (IDR 30.000 / 30 Hari): Keuntungan berupa Coin gratis 100++ per hari, kemunculan 6 Pokemon Legend per minggu, diskon harga Pokemon Legend 5 gem, bisa atur foto profil bebas (GIF/Gambar maks 10MB), dapat medal khusus, dan no iklan. Tidak bisa gabung dengan fitur Support (sisa waktu support akan terganti jadi pro) jika ada kendala pembayaran bisa hubingi admin atau contack suport di instagram @animein.aja."
     },
     {
         keywords: ["coin", "koin", "gem", "tukar", "uang", "mata uang", "evolusi", "upgrade pokemon"],
-        info: "4. Mata Uang Animein: Coin digunakan HANYA untuk membeli Pokemon, Battle, dll. Coin TIDAK BISA digunakan untuk beli Premium/Pro/Support. Gem adalah mata uang ke-2 (500 Coin = 1 Gem). Gem digunakan untuk evolusi Pokemon, mengganti nama, upgrade Pokemon, dan beli Pokemon (tidak bisa jual pokemon)."
+        info: "4. Mata Uang Animein (Coin & Gem): Coin digunakan untuk membeli Pokemon, Battle, dll. Gem adalah mata uang ke-2 yang didapat dari menukar 500 Coin = 1 Gem. Gem digunakan untuk evolusi Pokemon, mengganti nama, upgrade Pokemon, dan beli Pokemon ( tidak bisa jual pokemon ). Note: Coin TIDAK BISA digunakan untuk beli Premium/Pro/Support."
     },
     {
         keywords: ["upload", "server", "rapsodi", "poster", "cover", "pasang"],
-        info: "5. Cara Upload Server Anime: Buka teman.animein.net atau masuk ke profile lalu cari fitur \"Rapsodi\" agar diarahkan ke menu upload server anime.\n6. Cara Upload Cover/Poster Anime: Pergi ke anime, buka animenya, lalu geser (scroll) ke kanan layar untuk menemukan tempat upload poster dan cover (HANYA untuk menu poster/cover)."
+        info: "5. Cara Upload Server Anime: Buka web teman.animein.net atau masuk ke profile lalu cari fitur \"Rapsodi\" agar diarahkan ke menu upload server anime.\n6. Cara Upload Cover/Poster Anime: Pergi ke bagian anime, buka animenya, lalu geser (scroll) ke kanan layar untuk menemukan tempat opload poster dan cover (HANYA untuk menu poster/cover, tidak ada hubungannya dengan menonton)."
     },
     {
         keywords: ["cuplix", "klip", "highlight", "pembuat cuplix", "like cuplix"],
-        info: "7. Fitur Cuplix: Klip/highlight episode (10 dtk - 3 mnt). Pembuat & Uploader dapat 1 coin tiap ada yang like (Maks 250/hari, cair saat ganti hari). Cara buat: Masukkan detik start & end, jepret thumbnail, simpan. Peraturan: Maks 3 Cuplix per user per 1 episode, tak boleh kembar."
+        info: "7. Fitur Cuplix: Cuplix adalah klip/highlight episode anime untuk rekomendasi. Pembuat Cuplix & Uploader Server dapat 1 coin tiap ada yang like (Maks 250 coin/hari, cair saat ganti hari dan wajib login). Cara buat: Masukkan detik start & end (durasi 10 dtk - 3 mnt), jepret thumbnail di jarak detik tersebut, lalu simpan. Peraturan: Maksimal 3 Cuplix per user untuk 1 episode, dan tidak boleh kembar/sama dengan Cuplix yang sudah dibooking."
     },
     {
         keywords: ["battle", "pokemon", "level", "rank", "bp", "grade", "rookie", "mythic", "legendary", "tanding"],
-        info: "8. Cara Battle Pokemon: Minimal punya 3 Pokemon. Menu Battle di profil, pilih 3 Pokemon. \"Battle Rank\" untuk tanding dan dapatkan BP (Battle Point), atau \"VS Temen\". Maks level 20. Tingkatan: R (Rookie), E (Epic), M (Mythic), L (Legendary). Grade gen 2: R2, E2, M2, L2."
+        info: "8. Cara Battle Pokemon: Minimal harus punya 3 Pokemon. Pergi ke menu Battle di profil, pilih 3 Pokemon yang mau dipakai. Tekan tombol \"Battle Rank\" untuk tanding dan dapatkan BP (Battle Point) BP adalah poin rank bukan untuk menaikan lv pokemon, atau \"VS Temen\" untuk melawan teman spesifik. Ingat, kamu juga bisa menaikkan status Pokemon tiap naik level (maksimal level 20) pokemon juga memiliki tingkatan tersendiri yaitu ( R, E, M, L ) R = Rookie, E = Epic, M = Mythic, L = Legendary, untuk R2, E2, M2, L2 adalah pokemon gen 2 dengan grade yang sama ."
     },
     {
         keywords: ["download", "more", "simpan", "eps", "cara download", "nonton", "resolusi", "server", "kualitas", "360p", "1080p", "gerigi"],
-        info: "9. Cara download eps: Tekan tombol \"more\" saat menonton salah satu eps anime lalu pilih download.\n10. Cara ubah resolusi: SAAT MENONTON ANIME, klik pilihan \"server\" atau icon bergerigi (BUKAN geser layar). Di sana kalian bisa memilih resolusi 360p - 1080p."
+        info: "9. Cara download eps: Silahkan tekan tombol \"more\" saat menonton salah satu eps anime lalu pilih download.\n10. Cara ubah resolusi: SAAT MENONTON ANIME, klik pilihan \"server\" atau icon bergerigi (BUKAN geser layar). Di sana kalian bisa memilih resolusi yang diinginkan."
     },
     {
         keywords: ["rewind", "mundur", "maju", "forward", "geser", "cepat", "speedup", "fast forward", "putar", "video"],
-        info: "11. Cara rewind: Tahan pada video lalu geser ke kiri.\n12. Cara fast forward: Tahan pada video lalu geser ke kanan.\n13. Cara speedup: Tekan/ketuk 2x pada layar bagian kanan video yang sedang diputar."
+        info: "11. Cara rewind/geser mundur: Tahan pada video yang sedang ditonton lalu geser ke kiri.\n12. Cara fast forward/geser maju: Tahan pada video yang sedang ditonton lalu geser ke kanan.\n13. Cara speedup: Tekan/ketuk 2x pada layar bagian kanan video yang sedang diputar."
     },
     {
         keywords: ["web", "aplikasi", "apk", "donasi", "trakteer"],
