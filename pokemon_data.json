@@ -5,12 +5,10 @@
       "Grass",
       "Poison"
     ],
-    "total": 318,
+    "cp": 318,
     "hp": 45,
     "atk": 49,
     "def": 49,
-    "spAtk": 65,
-    "spDef": 65,
     "spd": 45
   },
   {
@@ -19,12 +17,10 @@
       "Grass",
       "Poison"
     ],
-    "total": 405,
+    "cp": 405,
     "hp": 60,
     "atk": 62,
     "def": 63,
-    "spAtk": 80,
-    "spDef": 80,
     "spd": 60
   },
   {
@@ -33,12 +29,10 @@
       "Grass",
       "Poison"
     ],
-    "total": 525,
+    "cp": 525,
     "hp": 80,
     "atk": 82,
     "def": 83,
-    "spAtk": 100,
-    "spDef": 100,
     "spd": 80
   },
   {
@@ -46,12 +40,10 @@
     "types": [
       "Fire"
     ],
-    "total": 309,
+    "cp": 309,
     "hp": 39,
     "atk": 52,
     "def": 43,
-    "spAtk": 60,
-    "spDef": 50,
     "spd": 65
   },
   {
@@ -59,12 +51,10 @@
     "types": [
       "Fire"
     ],
-    "total": 405,
+    "cp": 405,
     "hp": 58,
     "atk": 64,
     "def": 58,
-    "spAtk": 80,
-    "spDef": 65,
     "spd": 80
   },
   {
@@ -73,12 +63,10 @@
       "Fire",
       "Flying"
     ],
-    "total": 534,
+    "cp": 534,
     "hp": 78,
     "atk": 84,
     "def": 78,
-    "spAtk": 109,
-    "spDef": 85,
     "spd": 100
   },
   {
@@ -86,12 +74,10 @@
     "types": [
       "Water"
     ],
-    "total": 314,
+    "cp": 314,
     "hp": 44,
     "atk": 48,
     "def": 65,
-    "spAtk": 50,
-    "spDef": 64,
     "spd": 43
   },
   {
@@ -99,12 +85,10 @@
     "types": [
       "Water"
     ],
-    "total": 405,
+    "cp": 405,
     "hp": 59,
     "atk": 63,
     "def": 80,
-    "spAtk": 65,
-    "spDef": 80,
     "spd": 58
   },
   {
@@ -112,12 +96,10 @@
     "types": [
       "Water"
     ],
-    "total": 530,
+    "cp": 530,
     "hp": 79,
     "atk": 83,
     "def": 100,
-    "spAtk": 85,
-    "spDef": 105,
     "spd": 78
   },
   {
@@ -125,12 +107,10 @@
     "types": [
       "Bug"
     ],
-    "total": 195,
+    "cp": 195,
     "hp": 45,
     "atk": 30,
     "def": 35,
-    "spAtk": 20,
-    "spDef": 20,
     "spd": 45
   },
   {
@@ -138,12 +118,10 @@
     "types": [
       "Bug"
     ],
-    "total": 205,
+    "cp": 205,
     "hp": 50,
     "atk": 20,
     "def": 55,
-    "spAtk": 25,
-    "spDef": 25,
     "spd": 30
   },
   {
@@ -152,12 +130,10 @@
       "Bug",
       "Flying"
     ],
-    "total": 395,
+    "cp": 395,
     "hp": 60,
     "atk": 45,
     "def": 50,
-    "spAtk": 90,
-    "spDef": 80,
     "spd": 70
   },
   {
@@ -166,12 +142,10 @@
       "Bug",
       "Poison"
     ],
-    "total": 195,
+    "cp": 195,
     "hp": 40,
     "atk": 35,
     "def": 30,
-    "spAtk": 20,
-    "spDef": 20,
     "spd": 50
   },
   {
@@ -180,12 +154,10 @@
       "Bug",
       "Poison"
     ],
-    "total": 205,
+    "cp": 205,
     "hp": 45,
     "atk": 25,
     "def": 50,
-    "spAtk": 25,
-    "spDef": 25,
     "spd": 35
   },
   {
@@ -194,12 +166,10 @@
       "Bug",
       "Poison"
     ],
-    "total": 395,
+    "cp": 395,
     "hp": 65,
     "atk": 90,
     "def": 40,
-    "spAtk": 45,
-    "spDef": 80,
     "spd": 75
   },
   {
@@ -208,12 +178,10 @@
       "Normal",
       "Flying"
     ],
-    "total": 251,
+    "cp": 251,
     "hp": 40,
     "atk": 45,
     "def": 40,
-    "spAtk": 35,
-    "spDef": 35,
     "spd": 56
   },
   {
@@ -222,12 +190,10 @@
       "Normal",
       "Flying"
     ],
-    "total": 349,
+    "cp": 349,
     "hp": 63,
     "atk": 60,
     "def": 55,
-    "spAtk": 50,
-    "spDef": 50,
     "spd": 71
   },
   {
@@ -236,12 +202,10 @@
       "Normal",
       "Flying"
     ],
-    "total": 479,
+    "cp": 479,
     "hp": 83,
     "atk": 80,
     "def": 75,
-    "spAtk": 70,
-    "spDef": 70,
     "spd": 101
   },
   {
@@ -249,12 +213,10 @@
     "types": [
       "Normal"
     ],
-    "total": 253,
+    "cp": 253,
     "hp": 30,
     "atk": 56,
     "def": 35,
-    "spAtk": 25,
-    "spDef": 35,
     "spd": 72
   },
   {
@@ -262,12 +224,10 @@
     "types": [
       "Normal"
     ],
-    "total": 413,
+    "cp": 413,
     "hp": 55,
     "atk": 81,
     "def": 60,
-    "spAtk": 50,
-    "spDef": 70,
     "spd": 97
   },
   {
@@ -276,12 +236,10 @@
       "Normal",
       "Flying"
     ],
-    "total": 262,
+    "cp": 262,
     "hp": 40,
     "atk": 60,
     "def": 30,
-    "spAtk": 31,
-    "spDef": 31,
     "spd": 70
   },
   {
@@ -290,12 +248,10 @@
       "Normal",
       "Flying"
     ],
-    "total": 442,
+    "cp": 442,
     "hp": 65,
     "atk": 90,
     "def": 65,
-    "spAtk": 61,
-    "spDef": 61,
     "spd": 100
   },
   {
@@ -303,12 +259,10 @@
     "types": [
       "Poison"
     ],
-    "total": 288,
+    "cp": 288,
     "hp": 35,
     "atk": 60,
     "def": 44,
-    "spAtk": 40,
-    "spDef": 54,
     "spd": 55
   },
   {
@@ -316,12 +270,10 @@
     "types": [
       "Poison"
     ],
-    "total": 448,
+    "cp": 448,
     "hp": 60,
     "atk": 95,
     "def": 69,
-    "spAtk": 65,
-    "spDef": 79,
     "spd": 80
   },
   {
@@ -329,12 +281,10 @@
     "types": [
       "Electric"
     ],
-    "total": 320,
+    "cp": 320,
     "hp": 35,
     "atk": 55,
     "def": 40,
-    "spAtk": 50,
-    "spDef": 50,
     "spd": 90
   },
   {
@@ -342,12 +292,10 @@
     "types": [
       "Electric"
     ],
-    "total": 485,
+    "cp": 485,
     "hp": 60,
     "atk": 90,
     "def": 55,
-    "spAtk": 90,
-    "spDef": 80,
     "spd": 110
   },
   {
@@ -355,12 +303,10 @@
     "types": [
       "Ground"
     ],
-    "total": 300,
+    "cp": 300,
     "hp": 50,
     "atk": 75,
     "def": 85,
-    "spAtk": 20,
-    "spDef": 30,
     "spd": 40
   },
   {
@@ -368,12 +314,10 @@
     "types": [
       "Ground"
     ],
-    "total": 450,
+    "cp": 450,
     "hp": 75,
     "atk": 100,
     "def": 110,
-    "spAtk": 45,
-    "spDef": 55,
     "spd": 65
   },
   {
@@ -381,12 +325,10 @@
     "types": [
       "Poison"
     ],
-    "total": 275,
+    "cp": 275,
     "hp": 55,
     "atk": 47,
     "def": 52,
-    "spAtk": 40,
-    "spDef": 40,
     "spd": 41
   },
   {
@@ -394,12 +336,10 @@
     "types": [
       "Poison"
     ],
-    "total": 365,
+    "cp": 365,
     "hp": 70,
     "atk": 62,
     "def": 67,
-    "spAtk": 55,
-    "spDef": 55,
     "spd": 56
   },
   {
@@ -408,12 +348,10 @@
       "Poison",
       "Ground"
     ],
-    "total": 505,
+    "cp": 505,
     "hp": 90,
     "atk": 92,
     "def": 87,
-    "spAtk": 75,
-    "spDef": 85,
     "spd": 76
   },
   {
@@ -421,12 +359,10 @@
     "types": [
       "Poison"
     ],
-    "total": 273,
+    "cp": 273,
     "hp": 46,
     "atk": 57,
     "def": 40,
-    "spAtk": 40,
-    "spDef": 40,
     "spd": 50
   },
   {
@@ -434,12 +370,10 @@
     "types": [
       "Poison"
     ],
-    "total": 365,
+    "cp": 365,
     "hp": 61,
     "atk": 72,
     "def": 57,
-    "spAtk": 55,
-    "spDef": 55,
     "spd": 65
   },
   {
@@ -448,12 +382,10 @@
       "Poison",
       "Ground"
     ],
-    "total": 505,
+    "cp": 505,
     "hp": 81,
     "atk": 102,
     "def": 77,
-    "spAtk": 85,
-    "spDef": 75,
     "spd": 85
   },
   {
@@ -461,12 +393,10 @@
     "types": [
       "Fairy"
     ],
-    "total": 323,
+    "cp": 323,
     "hp": 70,
     "atk": 45,
     "def": 48,
-    "spAtk": 60,
-    "spDef": 65,
     "spd": 35
   },
   {
@@ -474,12 +404,10 @@
     "types": [
       "Fairy"
     ],
-    "total": 483,
+    "cp": 483,
     "hp": 95,
     "atk": 70,
     "def": 73,
-    "spAtk": 95,
-    "spDef": 90,
     "spd": 60
   },
   {
@@ -487,12 +415,10 @@
     "types": [
       "Fire"
     ],
-    "total": 299,
+    "cp": 299,
     "hp": 38,
     "atk": 41,
     "def": 40,
-    "spAtk": 50,
-    "spDef": 65,
     "spd": 65
   },
   {
@@ -500,12 +426,10 @@
     "types": [
       "Fire"
     ],
-    "total": 505,
+    "cp": 505,
     "hp": 73,
     "atk": 76,
     "def": 75,
-    "spAtk": 81,
-    "spDef": 100,
     "spd": 100
   },
   {
@@ -514,12 +438,10 @@
       "Normal",
       "Fairy"
     ],
-    "total": 270,
+    "cp": 270,
     "hp": 115,
     "atk": 45,
     "def": 20,
-    "spAtk": 45,
-    "spDef": 25,
     "spd": 20
   },
   {
@@ -528,12 +450,10 @@
       "Normal",
       "Fairy"
     ],
-    "total": 435,
+    "cp": 435,
     "hp": 140,
     "atk": 70,
     "def": 45,
-    "spAtk": 85,
-    "spDef": 50,
     "spd": 45
   },
   {
@@ -542,12 +462,10 @@
       "Poison",
       "Flying"
     ],
-    "total": 245,
+    "cp": 245,
     "hp": 40,
     "atk": 45,
     "def": 35,
-    "spAtk": 30,
-    "spDef": 40,
     "spd": 55
   },
   {
@@ -556,12 +474,10 @@
       "Poison",
       "Flying"
     ],
-    "total": 455,
+    "cp": 455,
     "hp": 75,
     "atk": 80,
     "def": 70,
-    "spAtk": 65,
-    "spDef": 75,
     "spd": 90
   },
   {
@@ -570,12 +486,10 @@
       "Grass",
       "Poison"
     ],
-    "total": 320,
+    "cp": 320,
     "hp": 45,
     "atk": 50,
     "def": 55,
-    "spAtk": 75,
-    "spDef": 65,
     "spd": 30
   },
   {
@@ -584,12 +498,10 @@
       "Grass",
       "Poison"
     ],
-    "total": 395,
+    "cp": 395,
     "hp": 60,
     "atk": 65,
     "def": 70,
-    "spAtk": 85,
-    "spDef": 75,
     "spd": 40
   },
   {
@@ -598,12 +510,10 @@
       "Grass",
       "Poison"
     ],
-    "total": 490,
+    "cp": 490,
     "hp": 75,
     "atk": 80,
     "def": 85,
-    "spAtk": 110,
-    "spDef": 90,
     "spd": 50
   },
   {
@@ -612,12 +522,10 @@
       "Bug",
       "Grass"
     ],
-    "total": 285,
+    "cp": 285,
     "hp": 35,
     "atk": 70,
     "def": 55,
-    "spAtk": 45,
-    "spDef": 55,
     "spd": 25
   },
   {
@@ -626,12 +534,10 @@
       "Bug",
       "Grass"
     ],
-    "total": 405,
+    "cp": 405,
     "hp": 60,
     "atk": 95,
     "def": 80,
-    "spAtk": 60,
-    "spDef": 80,
     "spd": 30
   },
   {
@@ -640,12 +546,10 @@
       "Bug",
       "Poison"
     ],
-    "total": 305,
+    "cp": 305,
     "hp": 60,
     "atk": 55,
     "def": 50,
-    "spAtk": 40,
-    "spDef": 55,
     "spd": 45
   },
   {
@@ -654,12 +558,10 @@
       "Bug",
       "Poison"
     ],
-    "total": 450,
+    "cp": 450,
     "hp": 70,
     "atk": 65,
     "def": 60,
-    "spAtk": 90,
-    "spDef": 75,
     "spd": 90
   },
   {
@@ -667,12 +569,10 @@
     "types": [
       "Ground"
     ],
-    "total": 265,
+    "cp": 265,
     "hp": 10,
     "atk": 55,
     "def": 25,
-    "spAtk": 35,
-    "spDef": 45,
     "spd": 95
   },
   {
@@ -680,12 +580,10 @@
     "types": [
       "Ground"
     ],
-    "total": 425,
+    "cp": 425,
     "hp": 35,
     "atk": 100,
     "def": 50,
-    "spAtk": 50,
-    "spDef": 70,
     "spd": 120
   },
   {
@@ -693,12 +591,10 @@
     "types": [
       "Normal"
     ],
-    "total": 290,
+    "cp": 290,
     "hp": 40,
     "atk": 45,
     "def": 35,
-    "spAtk": 40,
-    "spDef": 40,
     "spd": 90
   },
   {
@@ -706,12 +602,10 @@
     "types": [
       "Normal"
     ],
-    "total": 440,
+    "cp": 440,
     "hp": 65,
     "atk": 70,
     "def": 60,
-    "spAtk": 65,
-    "spDef": 65,
     "spd": 115
   },
   {
@@ -719,12 +613,10 @@
     "types": [
       "Water"
     ],
-    "total": 320,
+    "cp": 320,
     "hp": 50,
     "atk": 52,
     "def": 48,
-    "spAtk": 65,
-    "spDef": 50,
     "spd": 55
   },
   {
@@ -732,12 +624,10 @@
     "types": [
       "Water"
     ],
-    "total": 500,
+    "cp": 500,
     "hp": 80,
     "atk": 82,
     "def": 78,
-    "spAtk": 95,
-    "spDef": 80,
     "spd": 85
   },
   {
@@ -745,12 +635,10 @@
     "types": [
       "Fighting"
     ],
-    "total": 305,
+    "cp": 305,
     "hp": 40,
     "atk": 80,
     "def": 35,
-    "spAtk": 35,
-    "spDef": 45,
     "spd": 70
   },
   {
@@ -758,12 +646,10 @@
     "types": [
       "Fighting"
     ],
-    "total": 455,
+    "cp": 455,
     "hp": 65,
     "atk": 105,
     "def": 60,
-    "spAtk": 60,
-    "spDef": 70,
     "spd": 95
   },
   {
@@ -771,12 +657,10 @@
     "types": [
       "Fire"
     ],
-    "total": 350,
+    "cp": 350,
     "hp": 55,
     "atk": 70,
     "def": 45,
-    "spAtk": 70,
-    "spDef": 50,
     "spd": 60
   },
   {
@@ -784,12 +668,10 @@
     "types": [
       "Fire"
     ],
-    "total": 555,
+    "cp": 555,
     "hp": 90,
     "atk": 110,
     "def": 80,
-    "spAtk": 100,
-    "spDef": 80,
     "spd": 95
   },
   {
@@ -797,12 +679,10 @@
     "types": [
       "Water"
     ],
-    "total": 300,
+    "cp": 300,
     "hp": 40,
     "atk": 50,
     "def": 40,
-    "spAtk": 40,
-    "spDef": 40,
     "spd": 90
   },
   {
@@ -810,12 +690,10 @@
     "types": [
       "Water"
     ],
-    "total": 385,
+    "cp": 385,
     "hp": 65,
     "atk": 65,
     "def": 65,
-    "spAtk": 50,
-    "spDef": 50,
     "spd": 90
   },
   {
@@ -824,12 +702,10 @@
       "Water",
       "Fighting"
     ],
-    "total": 510,
+    "cp": 510,
     "hp": 90,
     "atk": 95,
     "def": 95,
-    "spAtk": 70,
-    "spDef": 90,
     "spd": 70
   },
   {
@@ -837,12 +713,10 @@
     "types": [
       "Psychic"
     ],
-    "total": 310,
+    "cp": 310,
     "hp": 25,
     "atk": 20,
     "def": 15,
-    "spAtk": 105,
-    "spDef": 55,
     "spd": 90
   },
   {
@@ -850,12 +724,10 @@
     "types": [
       "Psychic"
     ],
-    "total": 400,
+    "cp": 400,
     "hp": 40,
     "atk": 35,
     "def": 30,
-    "spAtk": 120,
-    "spDef": 70,
     "spd": 105
   },
   {
@@ -863,12 +735,10 @@
     "types": [
       "Psychic"
     ],
-    "total": 500,
+    "cp": 500,
     "hp": 55,
     "atk": 50,
     "def": 45,
-    "spAtk": 135,
-    "spDef": 95,
     "spd": 120
   },
   {
@@ -876,12 +746,10 @@
     "types": [
       "Fighting"
     ],
-    "total": 305,
+    "cp": 305,
     "hp": 70,
     "atk": 80,
     "def": 50,
-    "spAtk": 35,
-    "spDef": 35,
     "spd": 35
   },
   {
@@ -889,12 +757,10 @@
     "types": [
       "Fighting"
     ],
-    "total": 405,
+    "cp": 405,
     "hp": 80,
     "atk": 100,
     "def": 70,
-    "spAtk": 50,
-    "spDef": 60,
     "spd": 45
   },
   {
@@ -902,12 +768,10 @@
     "types": [
       "Fighting"
     ],
-    "total": 505,
+    "cp": 505,
     "hp": 90,
     "atk": 130,
     "def": 80,
-    "spAtk": 65,
-    "spDef": 85,
     "spd": 55
   },
   {
@@ -916,12 +780,10 @@
       "Grass",
       "Poison"
     ],
-    "total": 300,
+    "cp": 300,
     "hp": 50,
     "atk": 75,
     "def": 35,
-    "spAtk": 70,
-    "spDef": 30,
     "spd": 40
   },
   {
@@ -930,12 +792,10 @@
       "Grass",
       "Poison"
     ],
-    "total": 390,
+    "cp": 390,
     "hp": 65,
     "atk": 90,
     "def": 50,
-    "spAtk": 85,
-    "spDef": 45,
     "spd": 55
   },
   {
@@ -944,12 +804,10 @@
       "Grass",
       "Poison"
     ],
-    "total": 490,
+    "cp": 490,
     "hp": 80,
     "atk": 105,
     "def": 65,
-    "spAtk": 100,
-    "spDef": 70,
     "spd": 70
   },
   {
@@ -958,12 +816,10 @@
       "Water",
       "Poison"
     ],
-    "total": 335,
+    "cp": 335,
     "hp": 40,
     "atk": 40,
     "def": 35,
-    "spAtk": 50,
-    "spDef": 100,
     "spd": 70
   },
   {
@@ -972,12 +828,10 @@
       "Water",
       "Poison"
     ],
-    "total": 515,
+    "cp": 515,
     "hp": 80,
     "atk": 70,
     "def": 65,
-    "spAtk": 80,
-    "spDef": 120,
     "spd": 100
   },
   {
@@ -986,12 +840,10 @@
       "Rock",
       "Ground"
     ],
-    "total": 300,
+    "cp": 300,
     "hp": 40,
     "atk": 80,
     "def": 100,
-    "spAtk": 30,
-    "spDef": 30,
     "spd": 20
   },
   {
@@ -1000,12 +852,10 @@
       "Rock",
       "Ground"
     ],
-    "total": 390,
+    "cp": 390,
     "hp": 55,
     "atk": 95,
     "def": 115,
-    "spAtk": 45,
-    "spDef": 45,
     "spd": 35
   },
   {
@@ -1014,12 +864,10 @@
       "Rock",
       "Ground"
     ],
-    "total": 495,
+    "cp": 495,
     "hp": 80,
     "atk": 120,
     "def": 130,
-    "spAtk": 55,
-    "spDef": 65,
     "spd": 45
   },
   {
@@ -1027,12 +875,10 @@
     "types": [
       "Fire"
     ],
-    "total": 410,
+    "cp": 410,
     "hp": 50,
     "atk": 85,
     "def": 55,
-    "spAtk": 65,
-    "spDef": 65,
     "spd": 90
   },
   {
@@ -1040,12 +886,10 @@
     "types": [
       "Fire"
     ],
-    "total": 500,
+    "cp": 500,
     "hp": 65,
     "atk": 100,
     "def": 70,
-    "spAtk": 80,
-    "spDef": 80,
     "spd": 105
   },
   {
@@ -1054,12 +898,10 @@
       "Water",
       "Psychic"
     ],
-    "total": 315,
+    "cp": 315,
     "hp": 90,
     "atk": 65,
     "def": 65,
-    "spAtk": 40,
-    "spDef": 40,
     "spd": 15
   },
   {
@@ -1068,12 +910,10 @@
       "Water",
       "Psychic"
     ],
-    "total": 490,
+    "cp": 490,
     "hp": 95,
     "atk": 75,
     "def": 110,
-    "spAtk": 100,
-    "spDef": 80,
     "spd": 30
   },
   {
@@ -1082,12 +922,10 @@
       "Electric",
       "Steel"
     ],
-    "total": 325,
+    "cp": 325,
     "hp": 25,
     "atk": 35,
     "def": 70,
-    "spAtk": 95,
-    "spDef": 55,
     "spd": 45
   },
   {
@@ -1096,12 +934,10 @@
       "Electric",
       "Steel"
     ],
-    "total": 465,
+    "cp": 465,
     "hp": 50,
     "atk": 60,
     "def": 95,
-    "spAtk": 120,
-    "spDef": 70,
     "spd": 70
   },
   {
@@ -1110,12 +946,10 @@
       "Normal",
       "Flying"
     ],
-    "total": 377,
+    "cp": 377,
     "hp": 52,
     "atk": 90,
     "def": 55,
-    "spAtk": 58,
-    "spDef": 62,
     "spd": 60
   },
   {
@@ -1124,12 +958,10 @@
       "Normal",
       "Flying"
     ],
-    "total": 310,
+    "cp": 310,
     "hp": 35,
     "atk": 85,
     "def": 45,
-    "spAtk": 35,
-    "spDef": 35,
     "spd": 75
   },
   {
@@ -1138,12 +970,10 @@
       "Normal",
       "Flying"
     ],
-    "total": 470,
+    "cp": 470,
     "hp": 60,
     "atk": 110,
     "def": 70,
-    "spAtk": 60,
-    "spDef": 60,
     "spd": 110
   },
   {
@@ -1151,12 +981,10 @@
     "types": [
       "Water"
     ],
-    "total": 325,
+    "cp": 325,
     "hp": 65,
     "atk": 45,
     "def": 55,
-    "spAtk": 45,
-    "spDef": 70,
     "spd": 45
   },
   {
@@ -1165,12 +993,10 @@
       "Water",
       "Ice"
     ],
-    "total": 475,
+    "cp": 475,
     "hp": 90,
     "atk": 70,
     "def": 80,
-    "spAtk": 70,
-    "spDef": 95,
     "spd": 70
   },
   {
@@ -1178,12 +1004,10 @@
     "types": [
       "Poison"
     ],
-    "total": 325,
+    "cp": 325,
     "hp": 80,
     "atk": 80,
     "def": 50,
-    "spAtk": 40,
-    "spDef": 50,
     "spd": 25
   },
   {
@@ -1191,12 +1015,10 @@
     "types": [
       "Poison"
     ],
-    "total": 500,
+    "cp": 500,
     "hp": 105,
     "atk": 105,
     "def": 75,
-    "spAtk": 65,
-    "spDef": 100,
     "spd": 50
   },
   {
@@ -1204,12 +1026,10 @@
     "types": [
       "Water"
     ],
-    "total": 305,
+    "cp": 305,
     "hp": 30,
     "atk": 65,
     "def": 100,
-    "spAtk": 45,
-    "spDef": 25,
     "spd": 40
   },
   {
@@ -1218,12 +1038,10 @@
       "Water",
       "Ice"
     ],
-    "total": 525,
+    "cp": 525,
     "hp": 50,
     "atk": 95,
     "def": 180,
-    "spAtk": 85,
-    "spDef": 45,
     "spd": 70
   },
   {
@@ -1232,12 +1050,10 @@
       "Ghost",
       "Poison"
     ],
-    "total": 310,
+    "cp": 310,
     "hp": 30,
     "atk": 35,
     "def": 30,
-    "spAtk": 100,
-    "spDef": 35,
     "spd": 80
   },
   {
@@ -1246,12 +1062,10 @@
       "Ghost",
       "Poison"
     ],
-    "total": 405,
+    "cp": 405,
     "hp": 45,
     "atk": 50,
     "def": 45,
-    "spAtk": 115,
-    "spDef": 55,
     "spd": 95
   },
   {
@@ -1260,12 +1074,10 @@
       "Ghost",
       "Poison"
     ],
-    "total": 500,
+    "cp": 500,
     "hp": 60,
     "atk": 65,
     "def": 60,
-    "spAtk": 130,
-    "spDef": 75,
     "spd": 110
   },
   {
@@ -1274,12 +1086,10 @@
       "Rock",
       "Ground"
     ],
-    "total": 385,
+    "cp": 385,
     "hp": 35,
     "atk": 45,
     "def": 160,
-    "spAtk": 30,
-    "spDef": 45,
     "spd": 70
   },
   {
@@ -1287,12 +1097,10 @@
     "types": [
       "Psychic"
     ],
-    "total": 328,
+    "cp": 328,
     "hp": 60,
     "atk": 48,
     "def": 45,
-    "spAtk": 43,
-    "spDef": 90,
     "spd": 42
   },
   {
@@ -1300,12 +1108,10 @@
     "types": [
       "Psychic"
     ],
-    "total": 483,
+    "cp": 483,
     "hp": 85,
     "atk": 73,
     "def": 70,
-    "spAtk": 73,
-    "spDef": 115,
     "spd": 67
   },
   {
@@ -1313,12 +1119,10 @@
     "types": [
       "Water"
     ],
-    "total": 325,
+    "cp": 325,
     "hp": 30,
     "atk": 105,
     "def": 90,
-    "spAtk": 25,
-    "spDef": 25,
     "spd": 50
   },
   {
@@ -1326,12 +1130,10 @@
     "types": [
       "Water"
     ],
-    "total": 475,
+    "cp": 475,
     "hp": 55,
     "atk": 130,
     "def": 115,
-    "spAtk": 50,
-    "spDef": 50,
     "spd": 75
   },
   {
@@ -1339,12 +1141,10 @@
     "types": [
       "Electric"
     ],
-    "total": 330,
+    "cp": 330,
     "hp": 40,
     "atk": 30,
     "def": 50,
-    "spAtk": 55,
-    "spDef": 55,
     "spd": 100
   },
   {
@@ -1352,12 +1152,10 @@
     "types": [
       "Electric"
     ],
-    "total": 490,
+    "cp": 490,
     "hp": 60,
     "atk": 50,
     "def": 70,
-    "spAtk": 80,
-    "spDef": 80,
     "spd": 150
   },
   {
@@ -1366,12 +1164,10 @@
       "Grass",
       "Psychic"
     ],
-    "total": 325,
+    "cp": 325,
     "hp": 60,
     "atk": 40,
     "def": 80,
-    "spAtk": 60,
-    "spDef": 45,
     "spd": 40
   },
   {
@@ -1380,12 +1176,10 @@
       "Grass",
       "Psychic"
     ],
-    "total": 530,
+    "cp": 530,
     "hp": 95,
     "atk": 95,
     "def": 85,
-    "spAtk": 125,
-    "spDef": 75,
     "spd": 55
   },
   {
@@ -1393,12 +1187,10 @@
     "types": [
       "Ground"
     ],
-    "total": 320,
+    "cp": 320,
     "hp": 50,
     "atk": 50,
     "def": 95,
-    "spAtk": 40,
-    "spDef": 50,
     "spd": 35
   },
   {
@@ -1406,12 +1198,10 @@
     "types": [
       "Ground"
     ],
-    "total": 425,
+    "cp": 425,
     "hp": 60,
     "atk": 80,
     "def": 110,
-    "spAtk": 50,
-    "spDef": 80,
     "spd": 45
   },
   {
@@ -1419,12 +1209,10 @@
     "types": [
       "Fighting"
     ],
-    "total": 455,
+    "cp": 455,
     "hp": 50,
     "atk": 120,
     "def": 53,
-    "spAtk": 35,
-    "spDef": 110,
     "spd": 87
   },
   {
@@ -1432,12 +1220,10 @@
     "types": [
       "Fighting"
     ],
-    "total": 455,
+    "cp": 455,
     "hp": 50,
     "atk": 105,
     "def": 79,
-    "spAtk": 35,
-    "spDef": 110,
     "spd": 76
   },
   {
@@ -1445,12 +1231,10 @@
     "types": [
       "Normal"
     ],
-    "total": 385,
+    "cp": 385,
     "hp": 90,
     "atk": 55,
     "def": 75,
-    "spAtk": 60,
-    "spDef": 75,
     "spd": 30
   },
   {
@@ -1458,12 +1242,10 @@
     "types": [
       "Poison"
     ],
-    "total": 340,
+    "cp": 340,
     "hp": 40,
     "atk": 65,
     "def": 95,
-    "spAtk": 60,
-    "spDef": 45,
     "spd": 35
   },
   {
@@ -1471,12 +1253,10 @@
     "types": [
       "Poison"
     ],
-    "total": 490,
+    "cp": 490,
     "hp": 65,
     "atk": 90,
     "def": 120,
-    "spAtk": 85,
-    "spDef": 70,
     "spd": 60
   },
   {
@@ -1485,12 +1265,10 @@
       "Ground",
       "Rock"
     ],
-    "total": 345,
+    "cp": 345,
     "hp": 80,
     "atk": 85,
     "def": 95,
-    "spAtk": 30,
-    "spDef": 30,
     "spd": 25
   },
   {
@@ -1499,12 +1277,10 @@
       "Ground",
       "Rock"
     ],
-    "total": 485,
+    "cp": 485,
     "hp": 105,
     "atk": 130,
     "def": 120,
-    "spAtk": 45,
-    "spDef": 45,
     "spd": 40
   },
   {
@@ -1512,12 +1288,10 @@
     "types": [
       "Normal"
     ],
-    "total": 450,
+    "cp": 450,
     "hp": 250,
     "atk": 5,
     "def": 5,
-    "spAtk": 35,
-    "spDef": 105,
     "spd": 50
   },
   {
@@ -1525,12 +1299,10 @@
     "types": [
       "Grass"
     ],
-    "total": 435,
+    "cp": 435,
     "hp": 65,
     "atk": 55,
     "def": 115,
-    "spAtk": 100,
-    "spDef": 40,
     "spd": 60
   },
   {
@@ -1538,12 +1310,10 @@
     "types": [
       "Normal"
     ],
-    "total": 490,
+    "cp": 490,
     "hp": 105,
     "atk": 95,
     "def": 80,
-    "spAtk": 40,
-    "spDef": 80,
     "spd": 90
   },
   {
@@ -1551,12 +1321,10 @@
     "types": [
       "Water"
     ],
-    "total": 295,
+    "cp": 295,
     "hp": 30,
     "atk": 40,
     "def": 70,
-    "spAtk": 70,
-    "spDef": 25,
     "spd": 60
   },
   {
@@ -1564,12 +1332,10 @@
     "types": [
       "Water"
     ],
-    "total": 440,
+    "cp": 440,
     "hp": 55,
     "atk": 65,
     "def": 95,
-    "spAtk": 95,
-    "spDef": 45,
     "spd": 85
   },
   {
@@ -1577,12 +1343,10 @@
     "types": [
       "Water"
     ],
-    "total": 320,
+    "cp": 320,
     "hp": 45,
     "atk": 67,
     "def": 60,
-    "spAtk": 35,
-    "spDef": 50,
     "spd": 63
   },
   {
@@ -1590,12 +1354,10 @@
     "types": [
       "Water"
     ],
-    "total": 450,
+    "cp": 450,
     "hp": 80,
     "atk": 92,
     "def": 65,
-    "spAtk": 65,
-    "spDef": 80,
     "spd": 68
   },
   {
@@ -1603,12 +1365,10 @@
     "types": [
       "Water"
     ],
-    "total": 340,
+    "cp": 340,
     "hp": 30,
     "atk": 45,
     "def": 55,
-    "spAtk": 70,
-    "spDef": 55,
     "spd": 85
   },
   {
@@ -1617,12 +1377,10 @@
       "Water",
       "Psychic"
     ],
-    "total": 520,
+    "cp": 520,
     "hp": 60,
     "atk": 75,
     "def": 85,
-    "spAtk": 100,
-    "spDef": 85,
     "spd": 115
   },
   {
@@ -1631,12 +1389,10 @@
       "Psychic",
       "Fairy"
     ],
-    "total": 460,
+    "cp": 460,
     "hp": 40,
     "atk": 45,
     "def": 65,
-    "spAtk": 100,
-    "spDef": 120,
     "spd": 90
   },
   {
@@ -1645,12 +1401,10 @@
       "Bug",
       "Flying"
     ],
-    "total": 500,
+    "cp": 500,
     "hp": 70,
     "atk": 110,
     "def": 80,
-    "spAtk": 55,
-    "spDef": 80,
     "spd": 105
   },
   {
@@ -1659,12 +1413,10 @@
       "Ice",
       "Psychic"
     ],
-    "total": 455,
+    "cp": 455,
     "hp": 65,
     "atk": 50,
     "def": 35,
-    "spAtk": 115,
-    "spDef": 95,
     "spd": 95
   },
   {
@@ -1672,12 +1424,10 @@
     "types": [
       "Electric"
     ],
-    "total": 490,
+    "cp": 490,
     "hp": 65,
     "atk": 83,
     "def": 57,
-    "spAtk": 95,
-    "spDef": 85,
     "spd": 105
   },
   {
@@ -1685,12 +1435,10 @@
     "types": [
       "Fire"
     ],
-    "total": 495,
+    "cp": 495,
     "hp": 65,
     "atk": 95,
     "def": 57,
-    "spAtk": 100,
-    "spDef": 85,
     "spd": 93
   },
   {
@@ -1698,12 +1446,10 @@
     "types": [
       "Bug"
     ],
-    "total": 500,
+    "cp": 500,
     "hp": 65,
     "atk": 125,
     "def": 100,
-    "spAtk": 55,
-    "spDef": 70,
     "spd": 85
   },
   {
@@ -1711,12 +1457,10 @@
     "types": [
       "Normal"
     ],
-    "total": 490,
+    "cp": 490,
     "hp": 75,
     "atk": 100,
     "def": 95,
-    "spAtk": 40,
-    "spDef": 70,
     "spd": 110
   },
   {
@@ -1724,12 +1468,10 @@
     "types": [
       "Water"
     ],
-    "total": 200,
+    "cp": 200,
     "hp": 20,
     "atk": 10,
     "def": 55,
-    "spAtk": 15,
-    "spDef": 20,
     "spd": 80
   },
   {
@@ -1738,12 +1480,10 @@
       "Water",
       "Flying"
     ],
-    "total": 540,
+    "cp": 540,
     "hp": 95,
     "atk": 125,
     "def": 79,
-    "spAtk": 60,
-    "spDef": 100,
     "spd": 81
   },
   {
@@ -1752,12 +1492,10 @@
       "Water",
       "Ice"
     ],
-    "total": 535,
+    "cp": 535,
     "hp": 130,
     "atk": 85,
     "def": 80,
-    "spAtk": 85,
-    "spDef": 95,
     "spd": 60
   },
   {
@@ -1765,12 +1503,10 @@
     "types": [
       "Normal"
     ],
-    "total": 288,
+    "cp": 288,
     "hp": 48,
     "atk": 48,
     "def": 48,
-    "spAtk": 48,
-    "spDef": 48,
     "spd": 48
   },
   {
@@ -1778,12 +1514,10 @@
     "types": [
       "Normal"
     ],
-    "total": 325,
+    "cp": 325,
     "hp": 55,
     "atk": 55,
     "def": 50,
-    "spAtk": 45,
-    "spDef": 65,
     "spd": 55
   },
   {
@@ -1791,12 +1525,10 @@
     "types": [
       "Water"
     ],
-    "total": 525,
+    "cp": 525,
     "hp": 130,
     "atk": 65,
     "def": 60,
-    "spAtk": 110,
-    "spDef": 95,
     "spd": 65
   },
   {
@@ -1804,12 +1536,10 @@
     "types": [
       "Electric"
     ],
-    "total": 525,
+    "cp": 525,
     "hp": 65,
     "atk": 65,
     "def": 60,
-    "spAtk": 110,
-    "spDef": 95,
     "spd": 130
   },
   {
@@ -1817,12 +1547,10 @@
     "types": [
       "Fire"
     ],
-    "total": 525,
+    "cp": 525,
     "hp": 65,
     "atk": 130,
     "def": 60,
-    "spAtk": 95,
-    "spDef": 110,
     "spd": 65
   },
   {
@@ -1830,12 +1558,10 @@
     "types": [
       "Normal"
     ],
-    "total": 395,
+    "cp": 395,
     "hp": 65,
     "atk": 60,
     "def": 70,
-    "spAtk": 85,
-    "spDef": 75,
     "spd": 40
   },
   {
@@ -1844,12 +1570,10 @@
       "Rock",
       "Water"
     ],
-    "total": 355,
+    "cp": 355,
     "hp": 35,
     "atk": 40,
     "def": 100,
-    "spAtk": 90,
-    "spDef": 55,
     "spd": 35
   },
   {
@@ -1858,12 +1582,10 @@
       "Rock",
       "Water"
     ],
-    "total": 495,
+    "cp": 495,
     "hp": 70,
     "atk": 60,
     "def": 125,
-    "spAtk": 115,
-    "spDef": 70,
     "spd": 55
   },
   {
@@ -1872,12 +1594,10 @@
       "Rock",
       "Water"
     ],
-    "total": 355,
+    "cp": 355,
     "hp": 30,
     "atk": 80,
     "def": 90,
-    "spAtk": 55,
-    "spDef": 45,
     "spd": 55
   },
   {
@@ -1886,12 +1606,10 @@
       "Rock",
       "Water"
     ],
-    "total": 495,
+    "cp": 495,
     "hp": 60,
     "atk": 115,
     "def": 105,
-    "spAtk": 65,
-    "spDef": 70,
     "spd": 80
   },
   {
@@ -1900,12 +1618,10 @@
       "Rock",
       "Flying"
     ],
-    "total": 515,
+    "cp": 515,
     "hp": 80,
     "atk": 105,
     "def": 65,
-    "spAtk": 60,
-    "spDef": 75,
     "spd": 130
   },
   {
@@ -1913,12 +1629,10 @@
     "types": [
       "Normal"
     ],
-    "total": 540,
+    "cp": 540,
     "hp": 160,
     "atk": 110,
     "def": 65,
-    "spAtk": 65,
-    "spDef": 110,
     "spd": 30
   },
   {
@@ -1927,12 +1641,10 @@
       "Ice",
       "Flying"
     ],
-    "total": 580,
+    "cp": 580,
     "hp": 90,
     "atk": 85,
     "def": 100,
-    "spAtk": 95,
-    "spDef": 125,
     "spd": 85
   },
   {
@@ -1941,12 +1653,10 @@
       "Electric",
       "Flying"
     ],
-    "total": 580,
+    "cp": 580,
     "hp": 90,
     "atk": 90,
     "def": 85,
-    "spAtk": 125,
-    "spDef": 90,
     "spd": 100
   },
   {
@@ -1955,12 +1665,10 @@
       "Fire",
       "Flying"
     ],
-    "total": 580,
+    "cp": 580,
     "hp": 90,
     "atk": 100,
     "def": 90,
-    "spAtk": 125,
-    "spDef": 85,
     "spd": 90
   },
   {
@@ -1968,12 +1676,10 @@
     "types": [
       "Dragon"
     ],
-    "total": 300,
+    "cp": 300,
     "hp": 41,
     "atk": 64,
     "def": 45,
-    "spAtk": 50,
-    "spDef": 50,
     "spd": 50
   },
   {
@@ -1981,12 +1687,10 @@
     "types": [
       "Dragon"
     ],
-    "total": 420,
+    "cp": 420,
     "hp": 61,
     "atk": 84,
     "def": 65,
-    "spAtk": 70,
-    "spDef": 70,
     "spd": 70
   },
   {
@@ -1995,12 +1699,10 @@
       "Dragon",
       "Flying"
     ],
-    "total": 600,
+    "cp": 600,
     "hp": 91,
     "atk": 134,
     "def": 95,
-    "spAtk": 100,
-    "spDef": 100,
     "spd": 80
   },
   {
@@ -2008,12 +1710,10 @@
     "types": [
       "Psychic"
     ],
-    "total": 680,
+    "cp": 680,
     "hp": 106,
     "atk": 110,
     "def": 90,
-    "spAtk": 154,
-    "spDef": 90,
     "spd": 130
   },
   {
@@ -2021,12 +1721,10 @@
     "types": [
       "Psychic"
     ],
-    "total": 600,
+    "cp": 600,
     "hp": 100,
     "atk": 100,
     "def": 100,
-    "spAtk": 100,
-    "spDef": 100,
     "spd": 100
   },
   {
@@ -2034,12 +1732,10 @@
     "types": [
       "Grass"
     ],
-    "total": 318,
+    "cp": 318,
     "hp": 45,
     "atk": 49,
     "def": 65,
-    "spAtk": 49,
-    "spDef": 65,
     "spd": 45
   },
   {
@@ -2047,12 +1743,10 @@
     "types": [
       "Grass"
     ],
-    "total": 405,
+    "cp": 405,
     "hp": 60,
     "atk": 62,
     "def": 80,
-    "spAtk": 63,
-    "spDef": 80,
     "spd": 60
   },
   {
@@ -2060,12 +1754,10 @@
     "types": [
       "Grass"
     ],
-    "total": 525,
+    "cp": 525,
     "hp": 80,
     "atk": 82,
     "def": 100,
-    "spAtk": 83,
-    "spDef": 100,
     "spd": 80
   },
   {
@@ -2073,12 +1765,10 @@
     "types": [
       "Fire"
     ],
-    "total": 309,
+    "cp": 309,
     "hp": 39,
     "atk": 52,
     "def": 43,
-    "spAtk": 60,
-    "spDef": 50,
     "spd": 65
   },
   {
@@ -2086,12 +1776,10 @@
     "types": [
       "Fire"
     ],
-    "total": 405,
+    "cp": 405,
     "hp": 58,
     "atk": 64,
     "def": 58,
-    "spAtk": 80,
-    "spDef": 65,
     "spd": 80
   },
   {
@@ -2099,12 +1787,10 @@
     "types": [
       "Fire"
     ],
-    "total": 534,
+    "cp": 534,
     "hp": 78,
     "atk": 84,
     "def": 78,
-    "spAtk": 109,
-    "spDef": 85,
     "spd": 100
   },
   {
@@ -2112,12 +1798,10 @@
     "types": [
       "Water"
     ],
-    "total": 314,
+    "cp": 314,
     "hp": 50,
     "atk": 65,
     "def": 64,
-    "spAtk": 44,
-    "spDef": 48,
     "spd": 43
   },
   {
@@ -2125,12 +1809,10 @@
     "types": [
       "Water"
     ],
-    "total": 405,
+    "cp": 405,
     "hp": 65,
     "atk": 80,
     "def": 80,
-    "spAtk": 59,
-    "spDef": 63,
     "spd": 58
   },
   {
@@ -2138,12 +1820,10 @@
     "types": [
       "Water"
     ],
-    "total": 530,
+    "cp": 530,
     "hp": 85,
     "atk": 105,
     "def": 100,
-    "spAtk": 79,
-    "spDef": 83,
     "spd": 78
   },
   {
@@ -2151,12 +1831,10 @@
     "types": [
       "Normal"
     ],
-    "total": 215,
+    "cp": 215,
     "hp": 35,
     "atk": 46,
     "def": 34,
-    "spAtk": 35,
-    "spDef": 45,
     "spd": 20
   },
   {
@@ -2164,12 +1842,10 @@
     "types": [
       "Normal"
     ],
-    "total": 415,
+    "cp": 415,
     "hp": 85,
     "atk": 76,
     "def": 64,
-    "spAtk": 45,
-    "spDef": 55,
     "spd": 90
   },
   {
@@ -2178,12 +1854,10 @@
       "Normal",
       "Flying"
     ],
-    "total": 262,
+    "cp": 262,
     "hp": 60,
     "atk": 30,
     "def": 30,
-    "spAtk": 36,
-    "spDef": 56,
     "spd": 50
   },
   {
@@ -2192,12 +1866,10 @@
       "Normal",
       "Flying"
     ],
-    "total": 452,
+    "cp": 452,
     "hp": 100,
     "atk": 50,
     "def": 50,
-    "spAtk": 86,
-    "spDef": 96,
     "spd": 70
   },
   {
@@ -2206,12 +1878,10 @@
       "Bug",
       "Flying"
     ],
-    "total": 265,
+    "cp": 265,
     "hp": 40,
     "atk": 20,
     "def": 30,
-    "spAtk": 40,
-    "spDef": 80,
     "spd": 55
   },
   {
@@ -2220,12 +1890,10 @@
       "Bug",
       "Flying"
     ],
-    "total": 390,
+    "cp": 390,
     "hp": 55,
     "atk": 35,
     "def": 50,
-    "spAtk": 55,
-    "spDef": 110,
     "spd": 85
   },
   {
@@ -2234,12 +1902,10 @@
       "Bug",
       "Poison"
     ],
-    "total": 250,
+    "cp": 250,
     "hp": 40,
     "atk": 60,
     "def": 40,
-    "spAtk": 40,
-    "spDef": 40,
     "spd": 30
   },
   {
@@ -2248,12 +1914,10 @@
       "Bug",
       "Poison"
     ],
-    "total": 400,
+    "cp": 400,
     "hp": 70,
     "atk": 90,
     "def": 70,
-    "spAtk": 60,
-    "spDef": 70,
     "spd": 40
   },
   {
@@ -2262,12 +1926,10 @@
       "Poison",
       "Flying"
     ],
-    "total": 535,
+    "cp": 535,
     "hp": 85,
     "atk": 90,
     "def": 80,
-    "spAtk": 70,
-    "spDef": 80,
     "spd": 130
   },
   {
@@ -2276,12 +1938,10 @@
       "Water",
       "Electric"
     ],
-    "total": 330,
+    "cp": 330,
     "hp": 75,
     "atk": 38,
     "def": 38,
-    "spAtk": 56,
-    "spDef": 56,
     "spd": 67
   },
   {
@@ -2290,12 +1950,10 @@
       "Water",
       "Electric"
     ],
-    "total": 460,
+    "cp": 460,
     "hp": 125,
     "atk": 58,
     "def": 58,
-    "spAtk": 76,
-    "spDef": 76,
     "spd": 67
   },
   {
@@ -2303,12 +1961,10 @@
     "types": [
       "Electric"
     ],
-    "total": 205,
+    "cp": 205,
     "hp": 20,
     "atk": 40,
     "def": 15,
-    "spAtk": 35,
-    "spDef": 35,
     "spd": 60
   },
   {
@@ -2316,12 +1972,10 @@
     "types": [
       "Fairy"
     ],
-    "total": 218,
+    "cp": 218,
     "hp": 50,
     "atk": 25,
     "def": 28,
-    "spAtk": 45,
-    "spDef": 55,
     "spd": 15
   },
   {
@@ -2330,12 +1984,10 @@
       "Normal",
       "Fairy"
     ],
-    "total": 210,
+    "cp": 210,
     "hp": 90,
     "atk": 30,
     "def": 15,
-    "spAtk": 40,
-    "spDef": 20,
     "spd": 15
   },
   {
@@ -2343,12 +1995,10 @@
     "types": [
       "Fairy"
     ],
-    "total": 245,
+    "cp": 245,
     "hp": 35,
     "atk": 20,
     "def": 65,
-    "spAtk": 40,
-    "spDef": 65,
     "spd": 20
   },
   {
@@ -2357,12 +2007,10 @@
       "Fairy",
       "Flying"
     ],
-    "total": 405,
+    "cp": 405,
     "hp": 55,
     "atk": 40,
     "def": 85,
-    "spAtk": 80,
-    "spDef": 105,
     "spd": 40
   },
   {
@@ -2371,12 +2019,10 @@
       "Psychic",
       "Flying"
     ],
-    "total": 320,
+    "cp": 320,
     "hp": 40,
     "atk": 50,
     "def": 45,
-    "spAtk": 70,
-    "spDef": 45,
     "spd": 70
   },
   {
@@ -2385,12 +2031,10 @@
       "Psychic",
       "Flying"
     ],
-    "total": 470,
+    "cp": 470,
     "hp": 65,
     "atk": 75,
     "def": 70,
-    "spAtk": 95,
-    "spDef": 70,
     "spd": 95
   },
   {
@@ -2398,12 +2042,10 @@
     "types": [
       "Electric"
     ],
-    "total": 280,
+    "cp": 280,
     "hp": 55,
     "atk": 40,
     "def": 40,
-    "spAtk": 65,
-    "spDef": 45,
     "spd": 35
   },
   {
@@ -2411,12 +2053,10 @@
     "types": [
       "Electric"
     ],
-    "total": 365,
+    "cp": 365,
     "hp": 70,
     "atk": 55,
     "def": 55,
-    "spAtk": 80,
-    "spDef": 60,
     "spd": 45
   },
   {
@@ -2424,12 +2064,10 @@
     "types": [
       "Electric"
     ],
-    "total": 510,
+    "cp": 510,
     "hp": 90,
     "atk": 75,
     "def": 85,
-    "spAtk": 115,
-    "spDef": 90,
     "spd": 55
   },
   {
@@ -2437,12 +2075,10 @@
     "types": [
       "Grass"
     ],
-    "total": 490,
+    "cp": 490,
     "hp": 75,
     "atk": 80,
     "def": 95,
-    "spAtk": 90,
-    "spDef": 100,
     "spd": 50
   },
   {
@@ -2451,12 +2087,10 @@
       "Water",
       "Fairy"
     ],
-    "total": 250,
+    "cp": 250,
     "hp": 70,
     "atk": 20,
     "def": 50,
-    "spAtk": 20,
-    "spDef": 50,
     "spd": 40
   },
   {
@@ -2465,12 +2099,10 @@
       "Water",
       "Fairy"
     ],
-    "total": 420,
+    "cp": 420,
     "hp": 100,
     "atk": 50,
     "def": 80,
-    "spAtk": 60,
-    "spDef": 80,
     "spd": 50
   },
   {
@@ -2478,12 +2110,10 @@
     "types": [
       "Rock"
     ],
-    "total": 410,
+    "cp": 410,
     "hp": 70,
     "atk": 100,
     "def": 115,
-    "spAtk": 30,
-    "spDef": 65,
     "spd": 30
   },
   {
@@ -2491,12 +2121,10 @@
     "types": [
       "Water"
     ],
-    "total": 500,
+    "cp": 500,
     "hp": 90,
     "atk": 75,
     "def": 75,
-    "spAtk": 90,
-    "spDef": 100,
     "spd": 70
   },
   {
@@ -2505,12 +2133,10 @@
       "Grass",
       "Flying"
     ],
-    "total": 250,
+    "cp": 250,
     "hp": 35,
     "atk": 35,
     "def": 40,
-    "spAtk": 35,
-    "spDef": 55,
     "spd": 50
   },
   {
@@ -2519,12 +2145,10 @@
       "Grass",
       "Flying"
     ],
-    "total": 340,
+    "cp": 340,
     "hp": 55,
     "atk": 45,
     "def": 50,
-    "spAtk": 45,
-    "spDef": 65,
     "spd": 80
   },
   {
@@ -2533,12 +2157,10 @@
       "Grass",
       "Flying"
     ],
-    "total": 460,
+    "cp": 460,
     "hp": 75,
     "atk": 55,
     "def": 70,
-    "spAtk": 55,
-    "spDef": 95,
     "spd": 110
   },
   {
@@ -2546,12 +2168,10 @@
     "types": [
       "Normal"
     ],
-    "total": 360,
+    "cp": 360,
     "hp": 55,
     "atk": 70,
     "def": 55,
-    "spAtk": 40,
-    "spDef": 55,
     "spd": 85
   },
   {
@@ -2559,12 +2179,10 @@
     "types": [
       "Grass"
     ],
-    "total": 180,
+    "cp": 180,
     "hp": 30,
     "atk": 30,
     "def": 30,
-    "spAtk": 30,
-    "spDef": 30,
     "spd": 30
   },
   {
@@ -2572,12 +2190,10 @@
     "types": [
       "Grass"
     ],
-    "total": 425,
+    "cp": 425,
     "hp": 75,
     "atk": 75,
     "def": 55,
-    "spAtk": 105,
-    "spDef": 85,
     "spd": 30
   },
   {
@@ -2586,12 +2202,10 @@
       "Bug",
       "Flying"
     ],
-    "total": 390,
+    "cp": 390,
     "hp": 65,
     "atk": 65,
     "def": 45,
-    "spAtk": 75,
-    "spDef": 45,
     "spd": 95
   },
   {
@@ -2600,12 +2214,10 @@
       "Water",
       "Ground"
     ],
-    "total": 210,
+    "cp": 210,
     "hp": 55,
     "atk": 45,
     "def": 45,
-    "spAtk": 25,
-    "spDef": 25,
     "spd": 15
   },
   {
@@ -2614,12 +2226,10 @@
       "Water",
       "Ground"
     ],
-    "total": 430,
+    "cp": 430,
     "hp": 95,
     "atk": 85,
     "def": 85,
-    "spAtk": 65,
-    "spDef": 65,
     "spd": 35
   },
   {
@@ -2627,12 +2237,10 @@
     "types": [
       "Psychic"
     ],
-    "total": 525,
+    "cp": 525,
     "hp": 65,
     "atk": 65,
     "def": 60,
-    "spAtk": 130,
-    "spDef": 95,
     "spd": 110
   },
   {
@@ -2640,12 +2248,10 @@
     "types": [
       "Dark"
     ],
-    "total": 525,
+    "cp": 525,
     "hp": 95,
     "atk": 65,
     "def": 110,
-    "spAtk": 60,
-    "spDef": 130,
     "spd": 65
   },
   {
@@ -2654,12 +2260,10 @@
       "Dark",
       "Flying"
     ],
-    "total": 405,
+    "cp": 405,
     "hp": 60,
     "atk": 85,
     "def": 42,
-    "spAtk": 85,
-    "spDef": 42,
     "spd": 91
   },
   {
@@ -2668,12 +2272,10 @@
       "Water",
       "Psychic"
     ],
-    "total": 490,
+    "cp": 490,
     "hp": 95,
     "atk": 75,
     "def": 80,
-    "spAtk": 100,
-    "spDef": 110,
     "spd": 30
   },
   {
@@ -2681,12 +2283,10 @@
     "types": [
       "Ghost"
     ],
-    "total": 435,
+    "cp": 435,
     "hp": 60,
     "atk": 60,
     "def": 60,
-    "spAtk": 85,
-    "spDef": 85,
     "spd": 85
   },
   {
@@ -2694,12 +2294,10 @@
     "types": [
       "Psychic"
     ],
-    "total": 336,
+    "cp": 336,
     "hp": 48,
     "atk": 72,
     "def": 48,
-    "spAtk": 72,
-    "spDef": 48,
     "spd": 48
   },
   {
@@ -2707,12 +2305,10 @@
     "types": [
       "Psychic"
     ],
-    "total": 405,
+    "cp": 405,
     "hp": 190,
     "atk": 33,
     "def": 58,
-    "spAtk": 33,
-    "spDef": 58,
     "spd": 33
   },
   {
@@ -2721,12 +2317,10 @@
       "Normal",
       "Psychic"
     ],
-    "total": 455,
+    "cp": 455,
     "hp": 70,
     "atk": 80,
     "def": 65,
-    "spAtk": 90,
-    "spDef": 65,
     "spd": 85
   },
   {
@@ -2734,12 +2328,10 @@
     "types": [
       "Bug"
     ],
-    "total": 290,
+    "cp": 290,
     "hp": 50,
     "atk": 65,
     "def": 90,
-    "spAtk": 35,
-    "spDef": 35,
     "spd": 15
   },
   {
@@ -2748,12 +2340,10 @@
       "Bug",
       "Steel"
     ],
-    "total": 465,
+    "cp": 465,
     "hp": 75,
     "atk": 90,
     "def": 140,
-    "spAtk": 60,
-    "spDef": 60,
     "spd": 40
   },
   {
@@ -2761,12 +2351,10 @@
     "types": [
       "Normal"
     ],
-    "total": 415,
+    "cp": 415,
     "hp": 100,
     "atk": 70,
     "def": 70,
-    "spAtk": 65,
-    "spDef": 65,
     "spd": 45
   },
   {
@@ -2775,12 +2363,10 @@
       "Ground",
       "Flying"
     ],
-    "total": 430,
+    "cp": 430,
     "hp": 65,
     "atk": 75,
     "def": 105,
-    "spAtk": 35,
-    "spDef": 65,
     "spd": 85
   },
   {
@@ -2789,12 +2375,10 @@
       "Steel",
       "Ground"
     ],
-    "total": 510,
+    "cp": 510,
     "hp": 75,
     "atk": 85,
     "def": 200,
-    "spAtk": 55,
-    "spDef": 65,
     "spd": 30
   },
   {
@@ -2802,12 +2386,10 @@
     "types": [
       "Fairy"
     ],
-    "total": 300,
+    "cp": 300,
     "hp": 60,
     "atk": 80,
     "def": 50,
-    "spAtk": 40,
-    "spDef": 40,
     "spd": 30
   },
   {
@@ -2815,12 +2397,10 @@
     "types": [
       "Fairy"
     ],
-    "total": 450,
+    "cp": 450,
     "hp": 90,
     "atk": 120,
     "def": 75,
-    "spAtk": 60,
-    "spDef": 60,
     "spd": 45
   },
   {
@@ -2829,12 +2409,10 @@
       "Water",
       "Poison"
     ],
-    "total": 440,
+    "cp": 440,
     "hp": 65,
     "atk": 95,
     "def": 85,
-    "spAtk": 55,
-    "spDef": 55,
     "spd": 85
   },
   {
@@ -2843,12 +2421,10 @@
       "Bug",
       "Steel"
     ],
-    "total": 500,
+    "cp": 500,
     "hp": 70,
     "atk": 130,
     "def": 100,
-    "spAtk": 55,
-    "spDef": 80,
     "spd": 65
   },
   {
@@ -2857,12 +2433,10 @@
       "Bug",
       "Rock"
     ],
-    "total": 505,
+    "cp": 505,
     "hp": 20,
     "atk": 10,
     "def": 514,
-    "spAtk": 10,
-    "spDef": 230,
     "spd": 5
   },
   {
@@ -2871,12 +2445,10 @@
       "Bug",
       "Fighting"
     ],
-    "total": 500,
+    "cp": 500,
     "hp": 80,
     "atk": 125,
     "def": 75,
-    "spAtk": 40,
-    "spDef": 95,
     "spd": 85
   },
   {
@@ -2885,12 +2457,10 @@
       "Dark",
       "Ice"
     ],
-    "total": 430,
+    "cp": 430,
     "hp": 55,
     "atk": 95,
     "def": 55,
-    "spAtk": 35,
-    "spDef": 75,
     "spd": 115
   },
   {
@@ -2898,12 +2468,10 @@
     "types": [
       "Normal"
     ],
-    "total": 330,
+    "cp": 330,
     "hp": 60,
     "atk": 80,
     "def": 50,
-    "spAtk": 50,
-    "spDef": 50,
     "spd": 40
   },
   {
@@ -2911,12 +2479,10 @@
     "types": [
       "Normal"
     ],
-    "total": 500,
+    "cp": 500,
     "hp": 90,
     "atk": 130,
     "def": 75,
-    "spAtk": 75,
-    "spDef": 75,
     "spd": 55
   },
   {
@@ -2924,12 +2490,10 @@
     "types": [
       "Fire"
     ],
-    "total": 250,
+    "cp": 250,
     "hp": 40,
     "atk": 40,
     "def": 40,
-    "spAtk": 70,
-    "spDef": 40,
     "spd": 20
   },
   {
@@ -2938,12 +2502,10 @@
       "Fire",
       "Rock"
     ],
-    "total": 430,
+    "cp": 430,
     "hp": 60,
     "atk": 50,
     "def": 120,
-    "spAtk": 90,
-    "spDef": 80,
     "spd": 30
   },
   {
@@ -2952,12 +2514,10 @@
       "Ice",
       "Ground"
     ],
-    "total": 250,
+    "cp": 250,
     "hp": 50,
     "atk": 50,
     "def": 40,
-    "spAtk": 30,
-    "spDef": 30,
     "spd": 50
   },
   {
@@ -2966,12 +2526,10 @@
       "Ice",
       "Ground"
     ],
-    "total": 450,
+    "cp": 450,
     "hp": 100,
     "atk": 100,
     "def": 80,
-    "spAtk": 60,
-    "spDef": 60,
     "spd": 50
   },
   {
@@ -2980,12 +2538,10 @@
       "Water",
       "Rock"
     ],
-    "total": 410,
+    "cp": 410,
     "hp": 65,
     "atk": 55,
     "def": 95,
-    "spAtk": 65,
-    "spDef": 95,
     "spd": 35
   },
   {
@@ -2993,12 +2549,10 @@
     "types": [
       "Water"
     ],
-    "total": 300,
+    "cp": 300,
     "hp": 35,
     "atk": 65,
     "def": 35,
-    "spAtk": 65,
-    "spDef": 35,
     "spd": 65
   },
   {
@@ -3006,12 +2560,10 @@
     "types": [
       "Water"
     ],
-    "total": 480,
+    "cp": 480,
     "hp": 75,
     "atk": 105,
     "def": 75,
-    "spAtk": 105,
-    "spDef": 75,
     "spd": 45
   },
   {
@@ -3020,12 +2572,10 @@
       "Ice",
       "Flying"
     ],
-    "total": 330,
+    "cp": 330,
     "hp": 45,
     "atk": 55,
     "def": 45,
-    "spAtk": 65,
-    "spDef": 45,
     "spd": 75
   },
   {
@@ -3034,12 +2584,10 @@
       "Water",
       "Flying"
     ],
-    "total": 485,
+    "cp": 485,
     "hp": 85,
     "atk": 40,
     "def": 70,
-    "spAtk": 80,
-    "spDef": 140,
     "spd": 70
   },
   {
@@ -3048,12 +2596,10 @@
       "Steel",
       "Flying"
     ],
-    "total": 465,
+    "cp": 465,
     "hp": 65,
     "atk": 80,
     "def": 140,
-    "spAtk": 40,
-    "spDef": 70,
     "spd": 70
   },
   {
@@ -3062,12 +2608,10 @@
       "Dark",
       "Fire"
     ],
-    "total": 330,
+    "cp": 330,
     "hp": 45,
     "atk": 60,
     "def": 30,
-    "spAtk": 80,
-    "spDef": 50,
     "spd": 65
   },
   {
@@ -3076,12 +2620,10 @@
       "Dark",
       "Fire"
     ],
-    "total": 500,
+    "cp": 500,
     "hp": 75,
     "atk": 90,
     "def": 50,
-    "spAtk": 110,
-    "spDef": 80,
     "spd": 95
   },
   {
@@ -3090,12 +2632,10 @@
       "Water",
       "Dragon"
     ],
-    "total": 540,
+    "cp": 540,
     "hp": 75,
     "atk": 95,
     "def": 95,
-    "spAtk": 95,
-    "spDef": 95,
     "spd": 85
   },
   {
@@ -3103,12 +2643,10 @@
     "types": [
       "Ground"
     ],
-    "total": 330,
+    "cp": 330,
     "hp": 90,
     "atk": 60,
     "def": 60,
-    "spAtk": 40,
-    "spDef": 40,
     "spd": 40
   },
   {
@@ -3116,12 +2654,10 @@
     "types": [
       "Ground"
     ],
-    "total": 500,
+    "cp": 500,
     "hp": 90,
     "atk": 120,
     "def": 120,
-    "spAtk": 60,
-    "spDef": 60,
     "spd": 50
   },
   {
@@ -3129,12 +2665,10 @@
     "types": [
       "Normal"
     ],
-    "total": 515,
+    "cp": 515,
     "hp": 85,
     "atk": 80,
     "def": 90,
-    "spAtk": 105,
-    "spDef": 95,
     "spd": 60
   },
   {
@@ -3142,12 +2676,10 @@
     "types": [
       "Normal"
     ],
-    "total": 465,
+    "cp": 465,
     "hp": 73,
     "atk": 95,
     "def": 62,
-    "spAtk": 85,
-    "spDef": 65,
     "spd": 85
   },
   {
@@ -3155,12 +2687,10 @@
     "types": [
       "Normal"
     ],
-    "total": 250,
+    "cp": 250,
     "hp": 55,
     "atk": 20,
     "def": 35,
-    "spAtk": 20,
-    "spDef": 45,
     "spd": 75
   },
   {
@@ -3168,12 +2698,10 @@
     "types": [
       "Fighting"
     ],
-    "total": 210,
+    "cp": 210,
     "hp": 35,
     "atk": 35,
     "def": 35,
-    "spAtk": 35,
-    "spDef": 35,
     "spd": 35
   },
   {
@@ -3181,12 +2709,10 @@
     "types": [
       "Fighting"
     ],
-    "total": 455,
+    "cp": 455,
     "hp": 50,
     "atk": 95,
     "def": 95,
-    "spAtk": 35,
-    "spDef": 110,
     "spd": 70
   },
   {
@@ -3195,12 +2721,10 @@
       "Ice",
       "Psychic"
     ],
-    "total": 305,
+    "cp": 305,
     "hp": 45,
     "atk": 30,
     "def": 15,
-    "spAtk": 85,
-    "spDef": 65,
     "spd": 65
   },
   {
@@ -3208,12 +2732,10 @@
     "types": [
       "Electric"
     ],
-    "total": 360,
+    "cp": 360,
     "hp": 45,
     "atk": 63,
     "def": 37,
-    "spAtk": 65,
-    "spDef": 55,
     "spd": 95
   },
   {
@@ -3221,12 +2743,10 @@
     "types": [
       "Fire"
     ],
-    "total": 365,
+    "cp": 365,
     "hp": 45,
     "atk": 75,
     "def": 37,
-    "spAtk": 70,
-    "spDef": 55,
     "spd": 83
   },
   {
@@ -3234,12 +2754,10 @@
     "types": [
       "Normal"
     ],
-    "total": 490,
+    "cp": 490,
     "hp": 95,
     "atk": 80,
     "def": 105,
-    "spAtk": 40,
-    "spDef": 70,
     "spd": 100
   },
   {
@@ -3247,12 +2765,10 @@
     "types": [
       "Normal"
     ],
-    "total": 540,
+    "cp": 540,
     "hp": 255,
     "atk": 10,
     "def": 10,
-    "spAtk": 75,
-    "spDef": 135,
     "spd": 55
   },
   {
@@ -3260,12 +2776,10 @@
     "types": [
       "Electric"
     ],
-    "total": 580,
+    "cp": 580,
     "hp": 90,
     "atk": 85,
     "def": 75,
-    "spAtk": 115,
-    "spDef": 100,
     "spd": 115
   },
   {
@@ -3273,12 +2787,10 @@
     "types": [
       "Fire"
     ],
-    "total": 580,
+    "cp": 580,
     "hp": 115,
     "atk": 115,
     "def": 85,
-    "spAtk": 90,
-    "spDef": 75,
     "spd": 100
   },
   {
@@ -3286,12 +2798,10 @@
     "types": [
       "Water"
     ],
-    "total": 580,
+    "cp": 580,
     "hp": 100,
     "atk": 75,
     "def": 115,
-    "spAtk": 90,
-    "spDef": 115,
     "spd": 85
   },
   {
@@ -3300,12 +2810,10 @@
       "Rock",
       "Ground"
     ],
-    "total": 300,
+    "cp": 300,
     "hp": 50,
     "atk": 64,
     "def": 50,
-    "spAtk": 45,
-    "spDef": 50,
     "spd": 41
   },
   {
@@ -3314,12 +2822,10 @@
       "Rock",
       "Ground"
     ],
-    "total": 410,
+    "cp": 410,
     "hp": 70,
     "atk": 84,
     "def": 70,
-    "spAtk": 65,
-    "spDef": 70,
     "spd": 51
   },
   {
@@ -3328,12 +2834,10 @@
       "Rock",
       "Dark"
     ],
-    "total": 600,
+    "cp": 600,
     "hp": 100,
     "atk": 134,
     "def": 110,
-    "spAtk": 95,
-    "spDef": 100,
     "spd": 61
   },
   {
@@ -3342,12 +2846,10 @@
       "Psychic",
       "Flying"
     ],
-    "total": 680,
+    "cp": 680,
     "hp": 106,
     "atk": 90,
     "def": 130,
-    "spAtk": 90,
-    "spDef": 154,
     "spd": 110
   },
   {
@@ -3356,12 +2858,10 @@
       "Fire",
       "Flying"
     ],
-    "total": 680,
+    "cp": 680,
     "hp": 106,
     "atk": 130,
     "def": 90,
-    "spAtk": 110,
-    "spDef": 154,
     "spd": 90
   }
 ]

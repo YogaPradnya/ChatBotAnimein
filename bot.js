@@ -270,24 +270,24 @@ function getKnowledgeContext(query) {
 
     pokemonData.forEach(p => {
         if (expandedQuery.includes(p.name.toLowerCase())) {
-            extraStats += `\n- STATS DATABASE ${p.name}: Tipe: ${p.types.join('/')}, Total: ${p.total}, HP: ${p.hp}, Atk: ${p.atk}, Def: ${p.def}, Sp.Atk: ${p.spAtk}, Sp.Def: ${p.spDef}, Speed: ${p.spd}.`;
+            extraStats += `\n- STATS DATABASE ${p.name}: Tipe: ${p.types.join('/')}, CP: ${p.cp}, HP: ${p.hp}, Atk: ${p.atk}, Def: ${p.def}, Speed: ${p.spd}.`;
         }
     });
 
     // Fitur pembanding Pokemon Terkuat/Terlemah
     let comparisonData = "";
     if (lowerQ.match(/kuat|lemah|op|bagus|top|bot|pro|noob|dewa|terbaik|terburuk/)) {
-        const sorted = [...pokemonData].sort((a, b) => b.total - a.total);
+        const sorted = [...pokemonData].sort((a, b) => b.cp - a.cp);
         const top5 = sorted.slice(0, 5);
         const bottom5 = sorted.slice(-5).reverse();
         
         comparisonData = `\n[DATA PERBANDINGAN STRATEGIS]:
-* 5 POKEMON TERKUAT (Berdasarkan Total Stats):
-${top5.map((p, i) => `${i+1}. ${p.name} (Total: ${p.total}, HP: ${p.hp}, Atk: ${p.atk}, Def: ${p.def})`).join('\n')}
+* 5 POKEMON TERKUAT (Berdasarkan CP Terbaik):
+${top5.map((p, i) => `${i+1}. ${p.name} (CP: ${p.cp}, HP: ${p.hp}, Atk: ${p.atk}, Def: ${p.def})`).join('\n')}
 
-* 5 POKEMON TERLEMAH (Berdasarkan Total Stats):
-${bottom5.map((p, i) => `${i+1}. ${p.name} (Total: ${p.total}, HP: ${p.hp}, Atk: ${p.atk}, Def: ${p.def})`).join('\n')}
-(Gunakan data ini untuk menjawab pertanyaan tentang siapa yang terkuat/terlemah/paling OP secara objektif.)`;
+* 5 POKEMON TERLEMAH (Berdasarkan CP Terendah):
+${bottom5.map((p, i) => `${i+1}. ${p.name} (CP: ${p.cp}, HP: ${p.hp}, Atk: ${p.atk}, Def: ${p.def})`).join('\n')}
+(Gunakan data ini untuk menjawab pertanyaan tentang siapa yang terkuat/terlemah/paling OP secara objektif berdasarkan CP.)`;
     }
 
     if (scored.length === 0 && extraStats === "" && comparisonData === "") return "";
