@@ -206,19 +206,15 @@ const ANIMEIN_KNOWLEDGE = [
         info: "8. Cara Battle Pokemon: Minimal harus punya 3 Pokemon. Pergi ke menu Battle di profil, pilih 3 Pokemon yang mau dipakai. Tekan tombol \"Battle Rank\" untuk tanding dan dapatkan BP (Battle Point) BP adalah poin rank bukan untuk menaikan lv pokemon, atau \"VS Temen\" untuk melawan teman spesifik."
     },
     {
-        keywords: ["pokemon", "evolusi", "menu tas", "level pokemon", "exp pokemon", "naik level", "upgrade level", "grade pokemon", "rookie", "epic", "mythic", "legendary", "tingkatan pokemon", "gen 2", "gen 3", "r2", "e2", "m2", "l2", "foto profil pokemon", "profile pokemon", "cara evolusi", "cara naik level", "cara upgrade level", "cara grade pokemon", "cara rookie", "cara epic", "cara mythic", "cara legendary", "cara tingkatan pokemon", "cara gen 2", "cara r2", "cara e2", "cara m2", "cara l2", "cara foto profil pokemon", "cara profile pokemon", "update pokemon", "kapan update pokemon", "pokemon update", "pokemon baru", "reset toko pokemon", "reset toko merah", "reset battle pokemon", "reset battel pokemon", "kapan reset toko pokemon", "kapan reset toko merah", "cara evolusi gimana", "cara evolusi bagaimana", "bagaimana cara evolusi", "cara naik level gimana", "cara naik level bagaimana", "bagaimana cara naik level", "cara upgrade level gimana", "cara upgrade level bagaimana", "bagaimana cara upgrade level", "cara ganti foto profil pokemon", "bagaimana cara foto profil pokemon"],
-        info: `Pokemon di Animein memiliki tingkatan (Grade):
-R (Rookie): ${POKEMON_GRADES.R.length} Pokemon Gen 1.
-E (Epic): ${POKEMON_GRADES.E.length} Pokemon Gen 1.
-M (Mythic): ${POKEMON_GRADES.M.length} Pokemon Gen 1.
-L (Legendary): ${POKEMON_GRADES.L.length} Pokemon Gen 1.
-R2 (Rookie Gen 2): ${POKEMON_GRADES.R2.length} Pokemon Gen 2.
-E2 (Epic Gen 2): ${POKEMON_GRADES.E2.length} Pokemon Gen 2.
-M2 (Mythic Gen 2): ${POKEMON_GRADES.M2.length} Pokemon Gen 2.
-L2 (Legendary Gen 2): ${POKEMON_GRADES.L2.length} Pokemon Gen 2.
-
-Cara mendapatkan Pokemon: Beli menggunakan Coin atau Gem di menu Shop/Toko, dan bisa di toko pro yang reset setiap minggu, atau melalui event-event tertentu dari Admin.
-Aturan: Pokemon Gen 3 belum tersedia. Evolusi di menu Tas (butuh Gem). Naik level (maks 20) di menu Battle.`
+        keywords: ["pokemon", "evolusi", "menu tas", "level pokemon", "exp pokemon", "naik level", "upgrade level", "grade pokemon", "rookie", "epic", "mythic", "legendary", "tingkatan pokemon", "gen 2", "gen 3", "r2", "e2", "m2", "l2", "foto profil pokemon", "profile pokemon", "cara evolusi", "cara naik level", "cara upgrade level", "cara grade pokemon", "cara rookie", "cara epic", "cara mythic", "cara legendary", "cara tingkatan pokemon", "cara gen 2", "cara r2", "cara e2", "cara m2", "cara l2", "cara foto profil pokemon", "cara profile pokemon", "update pokemon", "kapan update pokemon", "pokemon update", "pokemon baru", "reset toko pokemon", "reset toko merah", "reset battle pokemon", "reset battel pokemon", "kapan reset toko pokemon", "kapan reset toko merah", "cara evolusi gimana", "cara evolusi bagaimana", "bagaimana cara evolusi", "cara naik level gimana", "cara naik level bagaimana", "bagaimana cara naik level", "cara upgrade level gimana", "cara upgrade level bagaimana", "bagaimana cara upgrade level", "cara ganti foto profil pokemon", "bagaimana cara foto profil pokemon", "cara dapat pokemon", "cara mendapatkan pokemon", "gimana cara dapet", "dapetin pokemon", "cara dapet pikachu", "cara dapet mewtwo", "cara dapat legend", ...POKEMON_LIST.map(p => "cara dapat " + p.toLowerCase())],
+        info: `Info Pokemon:
+- Tingkatan (Grade):
+  * Gen 1: R (${POKEMON_GRADES.R.length} Pokemon), E (${POKEMON_GRADES.E.length} Pokemon), M (${POKEMON_GRADES.M.length} Pokemon), L (${POKEMON_GRADES.L.length} Pokemon).
+  * Gen 2: R2 (${POKEMON_GRADES.R2.length} Pokemon), E2 (${POKEMON_GRADES.E2.length} Pokemon), M2 (${POKEMON_GRADES.M2.length} Pokemon), L2 (${POKEMON_GRADES.L2.length} Pokemon).
+- Cara Mendapatkan: Membeli menggunakan Coin/Gem di menu Shop/Toko (Toko Pro reset tiap minggu) atau melalui Event khusus dari Admin.
+- Evolusi: Melalui menu Tas (butuh Gem).
+- Leveling: Maks level 20 di menu Battle (dapat EXP tiap menang).
+- PENTING: Hanya tersedia Gen 1 & 2. Gen 3 dan seterusnya belum tersedia.`
     },
     {
         keywords: ["harga pokemon", "berapa koin", "berapa gem", "beli pokemon berapa", "harga pikachu", "berapa harga pokemon", "harga pokemon legend", "harga pokemon mythic", "harga pokemon ", "berapa harga pokemon", "berapa harga pokemon legend", "berapa harga pokemon mythic", "berapa harga pokemon rookie", "berapa harga pokemon epic", "berapa harga pokemon rookie gen 2", "berapa harga pokemon epic gen 2", "berapa harga pokemon mythic gen 2", "berapa harga pokemon legendary gen 2"],
