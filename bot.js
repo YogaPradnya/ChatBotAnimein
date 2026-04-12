@@ -270,7 +270,7 @@ function getKnowledgeContext(query) {
 
     pokemonData.forEach(p => {
         if (expandedQuery.includes(p.name.toLowerCase())) {
-            extraStats += `\n- STATS DATABASE ${p.name}: Tipe: ${p.types.join('/')}, CP: ${p.cp}, HP: ${p.hp}, Atk: ${p.atk}, Def: ${p.def}, Speed: ${p.spd}.`;
+            extraStats += `\n- Stats ${p.name}:\n- Tipe: ${p.types.join('/')}\n- CP: ${p.cp}\n- HP: ${p.hp}\n- Atk: ${p.atk}\n- Def: ${p.def}\n- Speed: ${p.spd}`;
         }
     });
 
