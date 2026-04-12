@@ -274,7 +274,23 @@ function getKnowledgeContext(query) {
         }
     });
 
-    if (scored.length === 0 && extraStats === "") return "";
+    // Fitur pembanding Pokemon Terkuat/Terlemah
+    let comparisonData = "";
+    if (lowerQ.match(/kuat|lemah|op|bagus|top|bot|pro|noob|dewa|terbaik|terburuk/)) {
+        const sorted = [...pokemonData].sort((a, b) => b.total - a.total);
+        const top5 = sorted.slice(0, 5);
+        const bottom5 = sorted.slice(-5).reverse();
+        
+        comparisonData = `\n[DATA PERBANDINGAN STRATEGIS]:
+* 5 POKEMON TERKUAT (Berdasarkan Total Stats):
+${top5.map((p, i) => `${i+1}. ${p.name} (Total: ${p.total}, HP: ${p.hp}, Atk: ${p.atk}, Def: ${p.def})`).join('\n')}
+
+* 5 POKEMON TERLEMAH (Berdasarkan Total Stats):
+${bottom5.map((p, i) => `${i+1}. ${p.name} (Total: ${p.total}, HP: ${p.hp}, Atk: ${p.atk}, Def: ${p.def})`).join('\n')}
+(Gunakan data ini untuk menjawab pertanyaan tentang siapa yang terkuat/terlemah/paling OP secara objektif.)`;
+    }
+
+    if (scored.length === 0 && extraStats === "" && comparisonData === "") return "";
     
     let resultContext = `\n\n[INFO ANIMEIN - Akurat]:`;
     if (scored.length > 0) {
@@ -282,6 +298,9 @@ function getKnowledgeContext(query) {
     }
     if (extraStats !== "") {
         resultContext += `\n[Info Statistik Pokemon dari database asli]:\n${extraStats}\n(PENTING: Gunakan angka-angka dari stats database di atas untuk menjawab, dilarang mengarang!)`;
+    }
+    if (comparisonData !== "") {
+        resultContext += `\n${comparisonData}`;
     }
     return resultContext;
 }
@@ -1000,7 +1019,13 @@ async function processMessages(messages) {
             await sendChatMessage(`@${senderName} Maaf kak, fitur pembuatan gambar saat ini sedang dinonaktifkan. 🙏`, msg.id);
             addActivity('image', senderName, cleanText, '[Fitur Dinonaktifkan]', 'Disabled');
         } else {
-            const question = cleanText || 'kamu manggil?';
+            // Gabungkan pesan yang di-replay jika ada
+            let combinedText = cleanText;
+            if (msg.replay_text) {
+                combinedText = `[Pesan yang dibalas dari ${msg.replay_user_name || 'User'}: "${msg.replay_text}"]\n${cleanText}`;
+            }
+
+            const question = combinedText || 'kamu manggil?';
             const { text: aiText, provider } = await getAIResponse(question, senderName);
             const reply = `@${senderName} ${aiText}`;
             console.log(`[BOT/${provider}] ${reply}`);
