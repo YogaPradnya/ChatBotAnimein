@@ -260,9 +260,17 @@ function getKnowledgeContext(query) {
         .slice(0, 3); // Inject maks 3 entry paling relevan
 
     let extraStats = "";
+    
+    // Mapping singkatan ke nama asli agar data JSON tetap terpanggil
+    const nicknames = { "mew2": "mewtwo", "mew1": "mew", "pika": "pikachu", "chari": "charizard" };
+    let expandedQuery = lowerQ;
+    for (const [nick, real] of Object.entries(nicknames)) {
+        if (lowerQ.includes(nick)) expandedQuery += " " + real;
+    }
+
     pokemonData.forEach(p => {
-        if (lowerQ.includes(p.name.toLowerCase())) {
-            extraStats += `\n* Stats ${p.name}: Tipe: ${p.types.join('/')}, Total: ${p.total}, HP: ${p.hp}, Atk: ${p.atk}, Def: ${p.def}, Sp.Atk: ${p.spAtk}, Sp.Def: ${p.spDef}, Speed: ${p.spd}.`;
+        if (expandedQuery.includes(p.name.toLowerCase())) {
+            extraStats += `\n- STATS DATABASE ${p.name}: Tipe: ${p.types.join('/')}, Total: ${p.total}, HP: ${p.hp}, Atk: ${p.atk}, Def: ${p.def}, Sp.Atk: ${p.spAtk}, Sp.Def: ${p.spDef}, Speed: ${p.spd}.`;
         }
     });
 
@@ -273,7 +281,7 @@ function getKnowledgeContext(query) {
         resultContext += `\n${scored.map(m => m.info).join("\n")}`;
     }
     if (extraStats !== "") {
-        resultContext += `\n[Info Statistik Pokemon dari database rahasia]:${extraStats}`;
+        resultContext += `\n[Info Statistik Pokemon dari database asli]:\n${extraStats}\n(PENTING: Gunakan angka-angka dari stats database di atas untuk menjawab, dilarang mengarang!)`;
     }
     return resultContext;
 }
