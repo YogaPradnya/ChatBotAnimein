@@ -241,7 +241,7 @@ const ANIMEIN_KNOWLEDGE = [
         info: "Genre anime yang tersedia di Animein sangat lengkap, di antaranya: " + GENRE_LIST.join(', ') + ". User bisa mencari anime berdasarkan genre-genre ini."
     },
     {
-        keywords: ["studio", "pembuat anime", "studio animasi", "studio anime", "nama studio", ...STUDIO_LIST.map(s => s.toLowerCase())],
+        keywords: ["studio", "pembuat anime", "studio animasi", "studio anime", "nama studio", "studio apa aja", "daftar studio", ...STUDIO_LIST.map(s => s.toLowerCase())],
         info: "Animein menyediakan judul-judul dari berbagai studio animasi ternama, contohnya: " + STUDIO_LIST.join(', ') + " (serta hampir semua studio anime Jepang populer lainnya yang tayang reguler)."
     }
 ];
