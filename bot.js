@@ -104,6 +104,40 @@ Aturan:
 - jangan Sebut Nama Yogaa atau Eko Pranotodarmo setiap percakapan jika tidak ada keyword yang mengharuskan untuk menyebutnya.
 - Informasi teknis tambahan akan diberikan secara dinamis jika terdeteksi dalam pertanyaan user.`;
 
+const POKEMON_LIST = [
+  "Bulbasaur", "Ivysaur", "Venusaur", "Charmander", "Charmeleon", "Charizard", "Squirtle", "Wartortle", "Blastoise", "Caterpie", 
+  "Metapod", "Butterfree", "Weedle", "Kakuna", "Beedrill", "Pidgey", "Pidgeotto", "Pidgeot", "Rattata", "Raticate", 
+  "Spearow", "Fearow", "Ekans", "Arbok", "Pikachu", "Raichu", "Sandshrew", "Sandslash", "Nidoran-f", "Nidorina", 
+  "Nidoqueen", "Nidoran-m", "Nidorino", "Nidoking", "Clefairy", "Clefable", "Vulpix", "Ninetales", "Jigglypuff", "Wigglytuff", 
+  "Zubat", "Golbat", "Oddish", "Gloom", "Vileplume", "Paras", "Parasect", "Venonat", "Venomoth", "Diglett", 
+  "Dugtrio", "Meowth", "Persian", "Psyduck", "Golduck", "Mankey", "Primeape", "Growlithe", "Arcanine", "Poliwag", 
+  "Poliwhirl", "Poliwrath", "Abra", "Kadabra", "Alakazam", "Machop", "Machoke", "Machamp", "Bellsprout", "Weepinbell", 
+  "Victreebel", "Tentacool", "Tentacruel", "Geodude", "Graveler", "Golem", "Ponyta", "Rapidash", "Slowpoke", "Slowbro", 
+  "Magnemite", "Magneton", "Farfetchd", "Doduo", "Dodrio", "Seel", "Dewgong", "Grimer", "Muk", "Shellder", 
+  "Cloyster", "Gastly", "Haunter", "Gengar", "Onix", "Drowzee", "Hypno", "Krabby", "Kingler", "Voltorb", 
+  "Electrode", "Exeggcute", "Exeggutor", "Cubone", "Marowak", "Hitmonlee", "Hitmonchan", "Lickitung", "Koffing", "Weezing", 
+  "Rhyhorn", "Rhydon", "Chansey", "Tangela", "Kangaskhan", "Horsea", "Seadra", "Goldeen", "Seaking", "Staryu", 
+  "Starmie", "Mr-mime", "Scyther", "Jynx", "Electabuzz", "Magmar", "Pinsir", "Tauros", "Magikarp", "Gyarados", 
+  "Lapras", "Ditto", "Eevee", "Vaporeon", "Jolteon", "Flareon", "Porygon", "Omanyte", "Omastar", "Kabuto", 
+  "Kabutops", "Aerodactyl", "Snorlax", "Articuno", "Zapdos", "Moltres", "Dratini", "Dragonair", "Dragonite", "Mewtwo", 
+  "Mew", "Chikorita", "Bayleef", "Meganium", "Cyndaquil", "Quilava", "Typhlosion", "Totodile", "Croconaw", "Feraligatr", 
+  "Sentret", "Furret", "Hoothoot", "Noctowl", "Ledyba", "Ledian", "Spinarak", "Ariados", "Crobat", "Chinchou", 
+  "Lanturn", "Pichu", "Cleffa", "Igglybuff", "Togepi", "Togetic", "Natu", "Xatu", "Mareep", "Flaaffy", 
+  "Ampharos", "Bellossom", "Marill", "Azumarill", "Sudowoodo", "Politoed", "Hoppip", "Skiploom", "Jumpluff", "Aipom", 
+  "Sunkern", "Sunflora", "Yanma", "Wooper", "Quagsire", "Espeon", "Umbreon", "Murkrow", "Slowking", "Misdreavus", 
+  "Unown", "Wobbuffet", "Girafarig", "Pineco", "Forretress", "Dunsparce", "Gligar", "Steelix", "Snubbull", "Granbull", 
+  "Qwilfish", "Scizor", "Shuckle", "Heracross", "Sneasel", "Teddiursa", "Ursaring", "Slugma", "Magcargo", "Swinub", 
+  "Piloswine", "Corsola", "Remoraid", "Octillery", "Delibird", "Mantine", "Skarmory", "Houndour", "Houndoom", "Kingdra", 
+  "Phanpy", "Donphan", "Porygon2", "Stantler", "Smeargle", "Tyrogue", "Hitmontop", "Smoochum", "Elekid", "Magby", 
+  "Miltank", "Blissey", "Raikou", "Entei", "Suicune", "Larvitar", "Pupitar", "Tyranitar", "Lugia", "Ho-oh"
+];
+
+const GEN_1 = POKEMON_LIST.slice(0, 151);
+const GEN_2 = POKEMON_LIST.slice(151);
+
+const GENRE_LIST = ["Action", "Adventure", "Comedy", "Demons", "Drama", "Ecchi", "Fantasy", "Game", "Harem", "Historical", "Horror", "Magic", "Martial Arts", "Mecha", "Military", "Music", "Mystery", "Parody", "Psychological", "Romance", "School", "Sci-Fi", "Seinen", "Shoujo", "Shoujo Ai", "Shounen", "Shounen Ai", "Slice of Life", "Sports", "Super Power", "Supernatural", "Thriller", "Tokusatsu"];
+const STUDIO_LIST = ["MAPPA", "Ufotable", "Kyoto Animation", "Bones", "Madhouse", "A-1 Pictures", "CloverWorks", "Toei Animation", "Sunrise", "Wit Studio", "Pierrot", "Production I.G", "J.C.Staff", "Trigger", "Shaft", "OLM", "Doga Kobo", "White Fox", "Kinema Citrus", "David Production", "P.A. Works", "Feel.", "LIDENFILMS"];
+
 const ANIMEIN_KNOWLEDGE = [
     {
         keywords: ["fitur", "fitur animein", "apa aja fitur", "ada fitur apa", "fitur apa saja", "apa fitur", "list fitur", "daftar fitur", "ada apa di animein", "animein bisa apa", "animein ada apa", "apa saja fitur animein"],
@@ -151,8 +185,8 @@ const ANIMEIN_KNOWLEDGE = [
         info: "8. Cara Battle Pokemon: Minimal harus punya 3 Pokemon. Pergi ke menu Battle di profil, pilih 3 Pokemon yang mau dipakai. Tekan tombol \"Battle Rank\" untuk tanding dan dapatkan BP (Battle Point) BP adalah poin rank bukan untuk menaikan lv pokemon, atau \"VS Temen\" untuk melawan teman spesifik."
     },
     {
-        keywords: ["pokemon", "evolusi", "menu tas", "level pokemon", "exp pokemon", "naik level", "upgrade level", "grade pokemon", "rookie", "epic", "mythic", "legendary", "tingkatan pokemon", "gen 2", "gen 3", "r2", "e2", "m2", "l2", "foto profil pokemon", "profile pokemon", "cara evolusi", "cara naik level", "cara upgrade level", "cara grade pokemon", "cara rookie", "cara epic", "cara mythic", "cara legendary", "cara tingkatan pokemon", "cara gen 2", "cara r2", "cara e2", "cara m2", "cara l2", "cara foto profil pokemon", "cara profile pokemon", "update pokemon", "kapan update pokemon", "pokemon update", "pokemon baru", "reset toko pokemon", "reset toko merah", "reset battle pokemon", "reset battel pokemon", "kapan reset toko pokemon", "kapan reset toko merah", "cara evolusi gimana", "cara evolusi bagaimana", "bagaimana cara evolusi", "cara naik level gimana", "cara naik level bagaimana", "bagaimana cara naik level", "cara upgrade level gimana", "cara upgrade level bagaimana", "bagaimana cara upgrade level", "cara ganti foto profil pokemon", "bagaimana cara foto profil pokemon"],
-        info: "Pokemon adalah fitur spesial di Animein. Pokemon bisa digunakan untuk Battle dan dijadikan foto profil. Evolusi Pokemon dilakukan melalui menu Tas. Upgrade level Pokemon dilakukan di menu Battle, setiap menang Battle Pokemon mendapatkan EXP. Tiap naik level bisa menaikkan status Pokemon (maksimal level 20). Tingkatan Pokemon: R = Rookie, E = Epic, M = Mythic, L = Legendary. R2, E2, M2, L2 adalah Pokemon Gen 2 dengan grade yang sama. PENTING: Di Animein hanya tersedia Pokemon Gen 1 dan Gen 2. Gen 3 masih ongoing dan belum tersedia, tidak ada gen lain selain itu. Untuk perihal update pokemon, reset toko pokemon, reset toko merah, maupun reset battle pokemon, Rika tidak tau, silahkan tanyakan langsung ke admin."
+        keywords: ["pokemon", "evolusi", "menu tas", "level pokemon", "exp pokemon", "naik level", "upgrade level", "grade pokemon", "rookie", "epic", "mythic", "legendary", "tingkatan pokemon", "gen 2", "gen 3", "r2", "e2", "m2", "l2", "foto profil pokemon", "profile pokemon", "cara evolusi", "cara naik level", "cara upgrade level", "cara grade pokemon", "cara rookie", "cara epic", "cara mythic", "cara legendary", "cara tingkatan pokemon", "cara gen 2", "cara r2", "cara e2", "cara m2", "cara l2", "cara foto profil pokemon", "cara profile pokemon", "update pokemon", "kapan update pokemon", "pokemon update", "pokemon baru", "reset toko pokemon", "reset toko merah", "reset battle pokemon", "reset battel pokemon", "kapan reset toko pokemon", "kapan reset toko merah", "cara evolusi gimana", "cara evolusi bagaimana", "bagaimana cara evolusi", "cara naik level gimana", "cara naik level bagaimana", "bagaimana cara naik level", "cara upgrade level gimana", "cara upgrade level bagaimana", "bagaimana cara upgrade level", "cara ganti foto profil pokemon", "bagaimana cara foto profil pokemon", ...POKEMON_LIST.map(p => p.toLowerCase())],
+        info: "Pokemon adalah fitur spesial di Animein. Pokemon bisa digunakan untuk Battle dan dijadikan foto profil. Evolusi Pokemon dilakukan melalui menu Tas. Upgrade level Pokemon dilakukan di menu Battle, setiap menang Battle Pokemon mendapatkan EXP. Tiap naik level bisa menaikkan status Pokemon (maksimal level 20). Tingkatan Pokemon: R = Rookie, E = Epic, M = Mythic, L = Legendary. R2, E2, M2, L2 adalah Pokemon Gen 2 dengan grade yang sama. PENTING: Di Animein hanya tersedia Pokemon Gen 1 dan Gen 2. Gen 3 masih ongoing dan belum tersedia, tidak ada gen lain selain itu. Untuk perihal update pokemon, reset toko pokemon, reset toko merah, maupun reset battle pokemon, Rika tidak tau, silahkan tanyakan langsung ke admin. Daftar Pokemon Gen 1 (Total 151): " + GEN_1.join(', ') + ". Daftar Pokemon Gen 2 (Total 99, tanpa Celebi): " + GEN_2.join(', ') + "."
     },
     {
         keywords: ["download episode", "cara download", "unduh episode", "simpan episode", "tombol more", "cara download episode", "cara unduh episode", "cara simpan episode", "cara tombol more", "cara download gimana", "cara download bagaimana", "bagaimana cara download", "cara download episode gimana", "cara download episode bagaimana", "bagaimana cara download episode"],
@@ -169,6 +203,14 @@ const ANIMEIN_KNOWLEDGE = [
     {
         keywords: ["web animein", "apk animein", "download apk", "donasi", "animein.net", "cara donasi", "cara donasi gimana", "cara donasi bagaimana", "bagaimana cara donasi", "cara download apk gimana", "cara download apk bagaimana", "bagaimana cara download apk"],
         info: "Versi web masih baru 10%. Fitur lengkap di APK Android (animein.net). Donasi: trakteer.id/animein.net."
+    },
+    {
+        keywords: ["genre", "tipe anime", "jenis anime", "kategori anime", "genre animein", "genre apa aja", "daftar genre", ...GENRE_LIST.map(g => g.toLowerCase())],
+        info: "Genre anime yang tersedia di Animein sangat lengkap, di antaranya: " + GENRE_LIST.join(', ') + ". User bisa mencari anime berdasarkan genre-genre ini."
+    },
+    {
+        keywords: ["studio", "pembuat anime", "studio animasi", "studio anime", "nama studio", ...STUDIO_LIST.map(s => s.toLowerCase())],
+        info: "Animein menyediakan judul-judul dari berbagai studio animasi ternama, contohnya: " + STUDIO_LIST.join(', ') + " (serta hampir semua studio anime Jepang populer lainnya yang tayang reguler)."
     }
 ];
 
