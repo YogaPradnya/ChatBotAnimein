@@ -6,6 +6,13 @@ const path = require('path');
 const FormData = require('form-data');
 require('dotenv').config();
 
+let pokemonData = [];
+try {
+    pokemonData = JSON.parse(fs.readFileSync(path.join(__dirname, 'pokemon_data.json'), 'utf-8'));
+    console.log(`[POKEMON] Loaded ${pokemonData.length} data statistik Pokemon.`);
+} catch (e) {
+    console.warn('[POKEMON] Gagal memuat pokemon_data.json', e.message);
+}
 const filterPath = path.join(__dirname, 'filters.json');
 let FILTER_DATA = { profanities: [], response: 'Maaf, saya tidak akan menjawab pesan tersebut.' };
 try {
@@ -145,7 +152,7 @@ const POKEMON_GRADES = {
     R2: ["Chikorita", "Bayleef", "Cyndaquil", "Quilava", "Totodile", "Croconaw", "Sentret", "Hoothoot", "Ledyba", "Spinarak", "Chinchou", "Pichu", "Cleffa", "Igglybuff", "Togepi", "Natu", "Mareep", "Flaaffy", "Marill", "Hoppip", "Skiploom", "Sunkern", "Wooper", "Unown", "Pineco", "Dunsparce", "Snubbull", "Teddiursa", "Slugma", "Swinub", "Remoraid", "Houndour", "Phanpy", "Tyrogue", "Smoochum", "Elekid", "Magby", "Larvitar", "Pupitar"],
     E2: ["Furret", "Noctowl", "Ledian", "Ariados", "Lanturn", "Togetic", "Xatu", "Bellossom", "Azumarill", "Sudowoodo", "Politoed", "Jumpluff", "Aipom", "Sunflora", "Yanma", "Quagsire", "Murkrow", "Slowking", "Misdreavus", "Wobbuffet", "Girafarig", "Forretress", "Gligar", "Granbull", "Qwilfish", "Shuckle", "Magcargo", "Piloswine", "Corsola", "Octillery", "Delibird", "Mantine", "Houndoom", "Stantler", "Smeargle", "Miltank", "Donphan"],
     M2: ["Ampharos", "Espeon", "Umbreon", "Steelix", "Scizor", "Heracross", "Sneasel", "Ursaring", "Skarmory", "Porygon2", "Hitmontop", "Blissey", "Crobat", "Tyranitar"],
-    L2: ["Entei", "Lugia"]
+    L2: ["Entei", "Lugia", "Raikou", "Suicune", "Ho-oh"]
 };
 
 const GENRE_LIST = ["Action", "Adventure", "Comedy", "Demons", "Drama", "Ecchi", "Fantasy", "Game", "Harem", "Historical", "Horror", "Magic", "Martial Arts", "Mecha", "Military", "Music", "Mystery", "Parody", "Psychological", "Romance", "School", "Sci-Fi", "Seinen", "Shoujo", "Shoujo Ai", "Shounen", "Shounen Ai", "Slice of Life", "Sports", "Super Power", "Supernatural", "Thriller", "Tokusatsu"];
@@ -252,8 +259,23 @@ function getKnowledgeContext(query) {
         .sort((a, b) => b.score - a.score)
         .slice(0, 3); // Inject maks 3 entry paling relevan
 
-    if (scored.length === 0) return "";
-    return `\n\n[INFO ANIMEIN - Akurat]:\n${scored.map(m => m.info).join("\n")}`;
+    let extraStats = "";
+    pokemonData.forEach(p => {
+        if (lowerQ.includes(p.name.toLowerCase())) {
+            extraStats += `\n* Stats ${p.name}: Tipe: ${p.types.join('/')}, Total: ${p.total}, HP: ${p.hp}, Atk: ${p.atk}, Def: ${p.def}, Sp.Atk: ${p.spAtk}, Sp.Def: ${p.spDef}, Speed: ${p.spd}.`;
+        }
+    });
+
+    if (scored.length === 0 && extraStats === "") return "";
+    
+    let resultContext = `\n\n[INFO ANIMEIN - Akurat]:`;
+    if (scored.length > 0) {
+        resultContext += `\n${scored.map(m => m.info).join("\n")}`;
+    }
+    if (extraStats !== "") {
+        resultContext += `\n[Info Statistik Pokemon dari database rahasia]:${extraStats}`;
+    }
+    return resultContext;
 }
 
 
