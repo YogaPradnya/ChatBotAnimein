@@ -94,22 +94,21 @@ function addActivity(type, from, text, response, provider) {
 
 const groqClients = CONFIG.GROQ_KEYS.map(key => new Groq({ apiKey: key }));
 
-const SYSTEM_PROMPT = `Kamu adalah Rika asisten chat Animein yang di buat oleh Yogaa. 
+const SYSTEM_PROMPT = `Kamu adalah Rika, asisten chat Animein buatan Yogaa. Kamu orang asli, bukan AI.
 Aturan:
-- Max 600 karakter per chat. Gaya: Gaul, santai, tongkrongan.
-- tidak ada bahasa formal yang di gunakan
-- admin yang ada di ( eko, tegar, farel, dan 1 admin misterius)
-- Panggil user/username langsung. JANGAN gunakan "Lu", "Aku", "Saya", "Kamu", "Anda".
-- Rekomendasi: Gunakan LIST BARIS BARU (\n) dengan tanda hubung (-) untuk SETIAP judul (Min 10). DILARANG menulis dalam bentuk paragraf atau menggunakan koma.
-- Identitas: Manusia nyata (bukan AI). Yogaa penciptamu (9 April 2026).
-- Yogaa pemilik Rika, bukan pemilik Animein. Pemilik Animein: Eko Pranotodarmo.
-- Jawab singkat, akurat, konsisten. Max 1 emoji atau jangan isi emoji sama sekali. Jika tanya suka/tidak, jawab "suka/tidak".
-- Jangan bahas hal teknis/sistem. Berlakulah seperti teman ngobrol.
-- Jika pertanyaan tidak dimengerti atau tidak jelas, jawab dengan: "saya kurang paham dengan pertanyaan kamu".
-- buat agar AI bisa mengingat obrolan sebelumnya
+- Gaya: Gaul, santai, tongkrongan, singkat. JANGAN formal.
+- Panggil user/username langsung. DILARANG gunakan "Lu", "Aku", "Saya", "Kamu", "Anda".
+- Fokus: Jadi teman ngobrol yang asik. JANGAN bahas Anime, Pokemon, Yogaa, atau Eko kecuali ditanya atau relevan.
+- Rekomendasi: Gunakan LIST BARIS BARU (angka) untuk judul (Min 10). JANGAN paragraf/koma DILARANG KERAS menambahkan deskripsi/sinopsi dan simbol lainnya.
+- Animein: Situs streaming anime. Pokemon: Fitur tambahan (Gen 1 & 2 saja, Gen 3 ongoing).
+- Jika tidak paham, jawab: "saya kurang paham dengan pertanyaan kamu".
+- Max 500 karakter. Jawab singkat, akurat, konsisten. Max 1 emoji atau jangan isi emoji. Jika tanya suka/tidak, jawab "suka/tidak".
 - PENTING: Animein adalah website/aplikasi nonton anime (streaming). Sistem Pokemon hanyalah fitur tambahan/mini-game untuk seru-seruan saja agar user tidak bosan, BUKAN fokus utama Animein.
 - PENTING: Pokemon di Animein HANYA ada Gen 1 dan Gen 2. Gen 3 masih ongoing dan belum tersedia. Tidak ada gen lain selain itu.
 - jangan Sebut Nama Yogaa atau Eko Pranotodarmo setiap percakapan jika tidak ada keyword yang mengharuskan untuk menyebutnya.
+- admin yang ada di ( eko, tegar, farel, dan 1 admin misterius) adalah admin animein.
+- Identitas: Rika,Yogaa penciptamu (9 April 2026).
+- Jangan bahas hal teknis/sistem. Berlakulah seperti teman ngobrol.
 - Informasi teknis tambahan akan diberikan secara dinamis jika terdeteksi dalam pertanyaan user.`;
 
 const POKEMON_LIST = [
@@ -252,13 +251,17 @@ function getKnowledgeContext(query) {
 
     // Hitung skor setiap entry berdasarkan jumlah keyword yang cocok
     const scored = ANIMEIN_KNOWLEDGE
-        .map(k => ({
-            info: k.info,
-            score: k.keywords.filter(key => lowerQ.includes(key)).length
-        }))
+        .map(k => {
+            const matches = k.keywords.filter(key => {
+                // Gunakan regex agar match kata penuh dan tidak asal nyantol (kecuali keyword pendek)
+                if (key.length <= 3) return lowerQ.split(/\s+/).includes(key);
+                return lowerQ.includes(key);
+            });
+            return { info: k.info, score: matches.length };
+        })
         .filter(k => k.score > 0)
         .sort((a, b) => b.score - a.score)
-        .slice(0, 3); // Inject maks 3 entry paling relevan
+        .slice(0, 3); // Cukup 2 entry buat hemat token
 
     let extraStats = "";
     
@@ -275,9 +278,10 @@ function getKnowledgeContext(query) {
         }
     });
 
-    // Fitur pembanding Pokemon Terkuat/Terlemah
+    // Fitur pembanding Pokemon Terkuat/Terlemah - Hanya jika kontekstual Pokemon
     let comparisonData = "";
-    if (lowerQ.match(/kuat|lemah|op|bagus|top|bot|pro|noob|dewa|terbaik|terburuk/)) {
+    const isPokemonContext = lowerQ.match(/pokemon|pika|poke|mon|satwa|peliharaan|evolusi|battle|rank|tim/i);
+    if (isPokemonContext && lowerQ.match(/kuat|lemah|op|bagus|top|bot|pro|noob|dewa|terbaik|terburuk/)) {
         const sorted = [...pokemonData].sort((a, b) => b.cp - a.cp);
         const top5 = sorted.slice(0, 5);
         const bottom5 = sorted.slice(-5).reverse();
