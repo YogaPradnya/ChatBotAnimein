@@ -40,7 +40,7 @@ const CONFIG = {
     POLL_INTERVAL: 5000,
     DASHBOARD_PORT: process.env.PORT || 3500,
     IMAGE_TRIGGERS: ['gambar', 'foto', 'ilustrasi', 'buatkan gambar', 'generate gambar'],
-    GROQ_COOLDOWN: 2 * 60 * 1000,
+    GROQ_COOLDOWN: 5 * 60 * 1000,
 };
 
 
@@ -107,6 +107,7 @@ Aturan:
 - Jangan bahas hal teknis/sistem. Berlakulah seperti teman ngobrol.
 - Jika pertanyaan tidak dimengerti atau tidak jelas, jawab dengan: "saya kurang paham dengan pertanyaan kamu".
 - buat agar AI bisa mengingat obrolan sebelumnya
+- PENTING: Animein adalah website/aplikasi nonton anime (streaming). Sistem Pokemon hanyalah fitur tambahan/mini-game untuk seru-seruan saja agar user tidak bosan, BUKAN fokus utama Animein.
 - PENTING: Pokemon di Animein HANYA ada Gen 1 dan Gen 2. Gen 3 masih ongoing dan belum tersedia. Tidak ada gen lain selain itu.
 - jangan Sebut Nama Yogaa atau Eko Pranotodarmo setiap percakapan jika tidak ada keyword yang mengharuskan untuk menyebutnya.
 - Informasi teknis tambahan akan diberikan secara dinamis jika terdeteksi dalam pertanyaan user.`;
@@ -354,10 +355,19 @@ function containsProfanity(text) {
 /** Deteksi intent user untuk konteks data */
 function detectIntent(text) {
     const lower = text.toLowerCase();
-    if (/rekomendasi hari ini|sedang hangat|hangat|trending|tranding|viral/.test(lower)) return 'trending';
-    if (/jadwal|tayang|hari ini|schedule|kapan rilis/.test(lower)) return 'schedule';
-    if (/populer|popular|terpopuler|rekomendasi|rekomen|recommend/.test(lower)) return 'popular';
-    if (/cari|search|ada ga|ada gak|ada tidak/.test(lower)) return 'search';
+    
+    // Intent: Anime yang sedang viral/hangat
+    if (/rekomendasi hari ini|sedang hangat|hangat|trending|tranding|viral|rame|lagi rame|lagi hits|hits|update hari ini|seru/.test(lower)) return 'trending';
+    
+    // Intent: Jadwal rilis/update
+    if (/jadwal|tayang|hari ini|schedule|kapan rilis|jam berapa|hari apa|update eps|episode baru|rilis kapan|kapan tayang/.test(lower)) return 'schedule';
+    
+    // Intent: Rekomendasi umum/populer
+    if (/populer|popular|terpopuler|rekomendasi|rekomen|recommend|paling bagus|rating tinggi|top anime|apa yang bagus|saran anime|saranin|kasih tau anime/.test(lower)) return 'popular';
+    
+    // Intent: Pencarian judul spesifik
+    if (/cari|search|ada ga|ada gak|ada tidak|punya anime|judul|cek|cariin|nyari/.test(lower)) return 'search';
+    
     return null;
 }
 
