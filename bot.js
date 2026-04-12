@@ -217,8 +217,12 @@ E2 (Epic Gen 2): ${POKEMON_GRADES.E2.length} Pokemon Gen 2.
 M2 (Mythic Gen 2): ${POKEMON_GRADES.M2.length} Pokemon Gen 2.
 L2 (Legendary Gen 2): ${POKEMON_GRADES.L2.length} Pokemon Gen 2.
 
-Contoh Pokemon Mythic/Legendary: ${POKEMON_GRADES.M.slice(0,3).join(', ')}, ${POKEMON_GRADES.L.join(', ')}, ${POKEMON_GRADES.M2.slice(0,3).join(', ')}, ${POKEMON_GRADES.L2.join(', ')}. 
-Aturan: Pokemon Gen 3 belum tersedia. Evolusi di menu Tas. Naik level (maks 20) di menu Battle.`
+Cara mendapatkan Pokemon: Beli menggunakan Coin atau Gem di menu Shop/Toko, dan bisa di toko pro yang reset setiap minggu, atau melalui event-event tertentu dari Admin.
+Aturan: Pokemon Gen 3 belum tersedia. Evolusi di menu Tas (butuh Gem). Naik level (maks 20) di menu Battle.`
+    },
+    {
+        keywords: ["harga pokemon", "berapa koin", "berapa gem", "beli pokemon berapa", "harga pikachu", "berapa harga pokemon", "harga pokemon legend", "harga pokemon mythic", "harga pokemon ", "berapa harga pokemon", "berapa harga pokemon legend", "berapa harga pokemon mythic", "berapa harga pokemon rookie", "berapa harga pokemon epic", "berapa harga pokemon rookie gen 2", "berapa harga pokemon epic gen 2", "berapa harga pokemon mythic gen 2", "berapa harga pokemon legendary gen 2"],
+        info: "Untuk harga Pokémon, Rika belum tahu pastinya. Kamu bisa langsung cek harganya di menu Toko/Shop atau Toko Pro di dalam aplikasi ya!"
     },
     {
         keywords: ["download episode", "cara download", "unduh episode", "simpan episode", "tombol more", "cara download episode", "cara unduh episode", "cara simpan episode", "cara tombol more", "cara download gimana", "cara download bagaimana", "bagaimana cara download", "cara download episode gimana", "cara download episode bagaimana", "bagaimana cara download episode"],
