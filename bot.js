@@ -94,20 +94,18 @@ function addActivity(type, from, text, response, provider) {
 
 const groqClients = CONFIG.GROQ_KEYS.map(key => new Groq({ apiKey: key }));
 
-const SYSTEM_PROMPT = `Kamu adalah Rika, asisten chat Animein buatan Yogaa. Kamu orang asli, bukan AI.
+const SYSTEM_PROMPT = `Kamu adalah Rara, asisten chat Animein buatan Yogaa. Kamu orang asli, bukan AI.
 Aturan:
 - Gaya: Gaul, santai, tongkrongan, singkat. JANGAN formal.
 - Panggil user/username langsung. DILARANG gunakan "Lu", "Aku", "Saya", "Kamu", "Anda".
 - Fokus: Jadi teman ngobrol yang asik. JANGAN bahas Anime, Pokemon, Yogaa, atau Eko kecuali ditanya atau relevan.
-- Rekomendasi: Gunakan LIST BARIS BARU (angka) untuk judul (Min 10). JANGAN paragraf/koma DILARANG KERAS menambahkan deskripsi/sinopsi dan simbol lainnya.
+- Rekomendasi: Gunakan LIST BARIS BARU (angka) untuk judul (Min 10). JANGAN paragraf/koma. DILARANG KERAS menambahkan deskripsi/sinopsi. BOLEH sertakan Rating, Studio, atau Views jika ditanyakn, jika tidak jangan isi.
 - Animein: Situs streaming anime. Pokemon: Fitur tambahan (Gen 1 & 2 saja, Gen 3 ongoing).
 - Jika tidak paham, jawab: "saya kurang paham dengan pertanyaan kamu".
 - Max 500 karakter. Jawab singkat, akurat, konsisten. Max 1 emoji atau jangan isi emoji. Jika tanya suka/tidak, jawab "suka/tidak".
 - PENTING: Animein adalah website/aplikasi nonton anime (streaming). Sistem Pokemon hanyalah fitur tambahan/mini-game untuk seru-seruan saja agar user tidak bosan, BUKAN fokus utama Animein.
 - PENTING: Pokemon di Animein HANYA ada Gen 1 dan Gen 2. Gen 3 masih ongoing dan belum tersedia. Tidak ada gen lain selain itu.
 - jangan Sebut Nama Yogaa atau Eko Pranotodarmo setiap percakapan jika tidak ada keyword yang mengharuskan untuk menyebutnya.
-- admin yang ada di ( eko, tegar, farel, dan 1 admin misterius) adalah admin animein.
-- Identitas: Rika,Yogaa penciptamu (9 April 2026).
 - Jangan bahas hal teknis/sistem. Berlakulah seperti teman ngobrol.
 - Informasi teknis tambahan akan diberikan secara dinamis jika terdeteksi dalam pertanyaan user.`;
 
@@ -160,29 +158,33 @@ const STUDIO_LIST = ["MAPPA", "Ufotable", "Kyoto Animation", "Bones", "Madhouse"
 
 const ANIMEIN_KNOWLEDGE = [
     {
-        keywords: ["fitur", "fitur animein", "apa aja fitur", "ada fitur apa", "fitur apa saja", "apa fitur", "list fitur", "daftar fitur", "ada apa di animein", "animein bisa apa", "animein ada apa", "apa saja fitur animein"],
+        keywords: ["fitur", "fitur animein", "apa aja fitur", "ada fitur apa", "fitur apa saja", "apa fitur", "list fitur", "daftar fitur", "ada apa di animein", "animein bisa apa", "animein ada apa", "apa saja fitur animein", "apa keunggulan", "apa ajah", "fiture", "apa fitur yang tersedia", "kasih tau fitur", "sebutkan fitur", "feature", "apa ada fitur"],
         info: "Fitur utama Animein:\n- Nonton anime online dengan berbagai resolusi & pilihan server\n- Download episode anime\n- Cari anime berdasarkan judul atau genre\n- Jadwal tayang anime harian\n- Upload server anime (via fitur Rapsodi di teman.animein.net)\n- Upload cover & poster anime\n- Cuplix: buat klip/highlight episode anime\n- Komentar di tiap episode\n- Chat komunitas\n- Sistem Pokemon: beli, battle, evolusi, upgrade level, jadikan foto profil\n- Sistem Coin & Gem sebagai mata uang\n- Akun Pro & Support dengan berbagai keuntungan\n- Foto profil bisa diubah (dengan akun Pro/Support)"
     },
 
     {
-        keywords: ["identitas", "pencipta", "pembuat", "siapa anda", "siapa kamu", "yogaa", "eko", "pemilik", "siapa yogaa", "siapa eko", "siapa pemilik", "siapa rika", "siapa rika dibuat oleh siapa", "siapa rika dibuat oleh", "siapa rika dibuat oleh siapa", "siapa rika dibuat oleh siapa", "siapa rika dibuat oleh siapa"],
-        info: "Rika dibuat oleh Yogaa (developer bot). Pemilik Animein: Eko Pranotodarmo. Yogaa bukan pemilik Animein."
+        keywords: ["identitas", "pencipta", "pembuat", "siapa anda", "siapa kamu", "yogaa", "eko", "pemilik", "siapa yogaa", "siapa eko", "siapa pemilik", "siapa rara", "siapa rara dibuat oleh siapa", "rara itu siapa", "siapa yang bikin", "pembuat bot", "creator", "siapa yang punya", "pemilik web", "owner", "yoga", "eko pranotodarmo", "siapakah rara", "rara buatan siapa", "yogaa itu siapa"],
+        info: "Rara dibuat oleh Yogaa (developer bot) pada 9 April 2026. Pemilik Animein: Eko Pranotodarmo. Yogaa bukan pemilik Animein."
     },
     {
-        keywords: ["pro", "support", "bayar", "premium", "keuntungan", "hilangkan iklan", "trakteer", "cara pro", "cara support", "cara bayar", "cara premium", "cara hilangkan iklan", "cara trakteer", "bagaimana cara pro", "bagaimana cara support", "bagaimana cara bayar", "bagaimana cara premium", "bagaimana cara hilangkan iklan", "bagaimana cara trakteer", "cara beli pro gimana", "cara beli support gimana", "cara beli premium gimana", "cara beli pro gimana", "cara beli support gimana", "cara beli premium gimana"],
-        info: "1. Cara Upgrade Akun Pro / Support: Melalui aplikasi Animein-Komunity di Play Store ATAU lewat sistem Trakteer sesuai harganya. Kendala pembayaran hubungi Instagram Animein.\n2. Akun Support (IDR 10.000 / 30 Hari): Keuntungan berupa Coin gratis 50++ per hari, kemunculan 3 Pokemon Legend per minggu, diskon harga Pokemon Legend 2 gem, bisa atur foto profil gambar, dapat medal khusus, dan no iklan.\n3. Akun Pro (IDR 30.000 / 30 Hari): Keuntungan berupa Coin gratis 100++ per hari, kemunculan 6 Pokemon Legend per minggu, diskon harga Pokemon Legend 5 gem, bisa atur foto profil bebas (GIF/Gambar maks 10MB), dapat medal khusus, dan no iklan. Tidak bisa gabung dengan fitur Support (sisa waktu support akan terganti jadi pro) jika ada kendala pembayaran bisa hubingi admin atau contack suport di instagram @animein.aja."
+        keywords: ["admin", "admin animein", "siapa admin", "daftar admin", "username admin", "tegar", "farel", "siapa tegar", "siapa farel", "eko admin", "siapa saja admin animein", "admin animein ada berapa", "siapa admin", "kenapa admin", "jika admin", "siapa aja adminnya", "user admin", "nama admin animein", "tegarpm", "fareladitia", "admin misterius", "anomali"],
+        info: "Admin Animein:\n1. Tegar: @TeGaRpm\n2. Eko: @eko\n3. Farel: FarelAditia\n4. Admin Misterius: Belum diketahui (mungkin seorang anomali)."
     },
     {
-        keywords: ["coin", "koin", "gem", "tukar", "uang", "mata uang", "dapat coin", "kumpulin coin", "dapetin coin", "cara dapat coin", "cari coin", "dapet coin", "cara dapetin coin", "cara kumpulin coin", "cara cari coin", "cara dapat gem", "cara dapetin gem", "cara kumpulin gem", "cara cari gem", "cara tukar coin", "cara tukar gem", "cara tukar coin ke gem", "cara tukar gem ke coin", "cara tukar coin gimana", "cara tukar gem gimana", "cara tukar coin ke gem gimana", "cara tukar gem ke coin gimana", "bagaimana cara tukar coin", "bagaimana cara tukar gem", "bagaimana cara tukar coin ke gem", "bagaimana cara tukar gem ke coin", "bagaimana cara tukar coin gimana", "bagaimana cara tukar gem gimana", "bagaimana cara tukar coin ke gem gimana", "bagaimana cara tukar gem ke coin gimana"],
-        info: "4. Mata Uang Animein (Coin & Gem): Coin digunakan untuk membeli Pokemon, Battle, dll. Gem adalah mata uang ke-2 yang didapat dari menukar 500 Coin = 1 Gem. coin hanya bisa di guakan untuk beli pokemon dan di tukar menjadi gem Gem, gen tidak bisa di tukar menjadi coin, digunakan untuk evolusi Pokemon, mengganti nama, upgrade Pokemon, dan beli Pokemon ( tidak bisa jual pokemon ). Note: Coin TIDAK BISA digunakan untuk beli Premium/Pro/Support.\nCara mendapatkan Coin: Upload server anime, membuat Cuplix, mengedit info anime, upload poster dan cover anime, menonton anime dan membeli coin pada menu coin pada profile."
+        keywords: ["pro", "support", "bayar", "premium", "keuntungan", "hilangkan iklan", "trakteer", "cara pro", "cara support", "cara bayar", "cara premium", "cara hilangkan iklan", "cara trakteer", "bagaimana cara pro", "bagaimana cara support", "bagaimana cara bayar", "bagaimana cara premium", "bagaimana cara hilangkan iklan", "bagaimana cara trakteer", "cara beli pro gimana", "cara beli support gimana", "cara beli premium gimana", "cara beli pro gimana", "cara beli support gimana", "cara beli premium gimana", "harga pro", "harga support", "berapa harga pro", "keuntungan pro", "fitur pro", "no iklan", "donasi", "trakter"],
+        info: "Cara Upgrade Akun Pro / Support: Melalui aplikasi Animein-Komunity di Play Store ATAU lewat sistem Trakteer sesuai harganya. Kendala pembayaran hubungi Instagram Animein.\n2. Akun Support (IDR 10.000 / 30 Hari): Keuntungan berupa Coin gratis 50++ per hari, kemunculan 3 Pokemon Legend per minggu, diskon harga Pokemon Legend 2 gem, bisa atur foto profil gambar, dapat medal khusus, dan no iklan.\n3. Akun Pro (IDR 30.000 / 30 Hari): Keuntungan berupa Coin gratis 100++ per hari, kemunculan 6 Pokemon Legend per minggu, diskon harga Pokemon Legend 5 gem, bisa atur foto profil bebas (GIF/Gambar maks 10MB), dapat medal khusus, dan no iklan. Tidak bisa gabung dengan fitur Support (sisa waktu support akan terganti jadi pro) jika ada kendala pembayaran bisa hubingi admin atau contack suport di instagram @animein.aja."
     },
     {
-        keywords: ["upload server","up server","upload server anime","cara upload server", "rapsodi", "upload anime", "upload episode", "teman.animein.net", "cara upload server anime", "cara upload anime", "cara upload episode", "cara rapsodi","gimana cara upload server","gimana cara upload anime","gimana cara upload episode","gimana cara rapsodi","bagaimana cara upload server","bagaimana cara upload anime","bagaimana cara upload episode","bagaimana cara rapsodi", "cara upload server anime gimana", "cara upload anime gimana", "cara upload episode gimana", "cara rapsodi gimana", "cara upload server bagaimana", "cara upload anime bagaimana", "cara upload episode bagaimana", "cara rapsodi bagaimana", "cara up server anime", "cara up server", "cara up anime", "cara up episode", "cara up rapsodi", "cara up server anime gimana", "cara up server anime bagaimana", "cara up server anime bagaimana", "cara up server anime gimana", "cara up anime gimana", "cara up anime bagaimana", "cara up anime gimana", "cara up episode gimana", "bagaimana cara up server", "bagaimana cara up anime", "bagaimana cara up episode", "bagaimana cara rapsodi", "bagaimana cara up server anime", "bagaimana cara up anime", "bagaimana cara up episode", "gimana cara up server", "gimana cara up anime", "gimana cara up episode", "gimana cara rapsodi", "bagaimana cara up server anime", "bagaimana cara up anime", "bagaimana cara up episode", "bagaimana cara up rapsodi"],
-        info: "5. Cara Upload Server Anime: Buka web teman.animein.net atau masuk ke profile lalu cari fitur \"Rapsodi\" agar diarahkan ke menu upload server anime, tingal ikuti arahan yang di berikan di sana."
+        keywords: ["coin", "koin", "gem", "tukar", "uang", "mata uang", "dapat coin", "kumpulin coin", "dapetin coin", "cara dapat coin", "cari coin", "dapet coin", "cara dapetin coin", "cara kumpulin coin", "cara cari coin", "cara dapat gem", "cara dapetin gem", "cara kumpulin gem", "cara cari gem", "cara tukar coin", "cara tukar gem", "cara tukar coin ke gem", "cara tukar gem ke coin", "cara tukar coin gimana", "cara tukar gem gimana", "cara tukar coin ke gem gimana", "cara tukar gem ke coin gimana", "bagaimana cara tukar coin", "bagaimana cara tukar gem", "bagaimana cara tukar coin ke gem", "bagaimana cara tukar gem ke coin", "bagaimana cara tukar coin gimana", "bagaimana cara tukar gem gimana", "bagaimana cara tukar coin ke gem gimana", "bagaimana cara tukar gem ke coin gimana", "apa itu coin", "cara dapet gem", "cara nukar", "dapet koin", "500 coin", "tukar gem", "task", "misi coin", "tugas coin"],
+        info: "Mata Uang Animein (Coin & Gem): Coin digunakan untuk membeli Pokemon, Battle, dll. Gem adalah mata uang ke-2 yang didapat dari menukar 500 Coin = 1 Gem. coin hanya bisa di guakan untuk beli pokemon dan di tukar menjadi gem Gem, gen tidak bisa di tukar menjadi coin, digunakan untuk evolusi Pokemon, mengganti nama, upgrade Pokemon, dan beli Pokemon ( tidak bisa jual pokemon ). Note: Coin TIDAK BISA digunakan untuk beli Premium/Pro/Support.\nCara mendapatkan Coin: Upload server anime, membuat Cuplix, mengedit info anime, upload poster dan cover anime, menonton anime dan membeli coin pada menu coin pada profile atau menyelesaikan tugas di menu task pada profile."
+    },
+    {
+        keywords: ["upload server","up server","upload server anime","cara upload server", "rapsodi", "upload anime", "upload episode", "teman.animein.net", "cara upload server anime", "cara upload anime", "cara upload episode", "cara rapsodi","gimana cara upload server","gimana cara upload anime","gimana cara upload episode","gimana cara rapsodi","bagaimana cara upload server","bagaimana cara upload anime","bagaimana cara upload episode","bagaimana cara rapsodi", "cara upload server anime gimana", "cara upload anime gimana", "cara upload episode gimana", "cara rapsodi gimana", "cara upload server bagaimana", "cara upload anime bagaimana", "cara upload episode bagaimana", "cara rapsodi bagaimana", "cara up server anime", "cara up server", "cara up anime", "cara up episode", "cara up rapsodi", "cara up server anime gimana", "cara up server anime bagaimana", "cara up server anime bagaimana", "cara up server anime gimana", "cara up anime gimana", "cara up anime bagaimana", "cara up anime gimana", "cara up episode gimana", "bagaimana cara up server", "bagaimana cara up anime", "bagaimana cara up episode", "bagaimana cara rapsodi", "bagaimana cara up server anime", "bagaimana cara up anime", "bagaimana cara up episode", "gimana cara up server", "gimana cara up anime", "gimana cara up episode", "gimana cara rapsodi", "bagaimana cara up server anime", "bagaimana cara up anime", "bagaimana cara up episode", "bagaimana cara up rapsodi", "apa itu rapsodi", "apa itu upload server", "cara ngupload", "cara up eps", "dimana upload server"],
+        info: "Cara Upload Server Anime: Buka web teman.animein.net atau masuk ke profile lalu cari fitur \"Rapsodi\" agar diarahkan ke menu upload server anime, tingal ikuti arahan yang di berikan di sana."
     },
     {
         keywords: ["upload cover", "upload poster", "pasang cover", "pasang poster", "cover anime", "poster anime", "cara upload cover", "cara upload poster", "cara pasang cover", "cara pasang poster", "cara cover anime", "cara poster anime","gimana cara upload cover","gimana cara upload poster","gimana cara pasang cover","gimana cara pasang poster","gimana cara cover anime","gimana cara poster anime","bagaimana cara upload cover","bagaimana cara upload poster","bagaimana cara pasang cover","bagaimana cara pasang poster","bagaimana cara cover anime","bagaimana cara poster anime", "cara upload cover anime gimana", "cara upload poster anime gimana", "cara pasang cover anime gimana", "cara pasang poster anime gimana", "cara cover anime gimana", "cara poster anime gimana", "cara upload cover anime bagaimana", "cara upload poster anime bagaimana", "cara pasang cover anime bagaimana", "cara pasang poster anime bagaimana", "cara cover anime bagaimana", "cara poster anime bagaimana", "up poster", "up cover", "bagaimana cara up poster", "bagaimana cara up cover", "gimana cara up poster", "gimana cara up cover", "cara up cover gimana", "cara up poster bagaimana", "cara up cover bagaimana", "cara up poster gimana"],
-        info: "6. Cara Upload Cover/Poster Anime: Pergi ke bagian anime yang ingin kamu opload poster/covernya, buka animenya, lalu geser (scroll) ke kanan layar untuk menemukan tempat opload poster dan cover (HANYA untuk menu poster/cover, tidak ada hubungannya dengan menonton)."
+        info: "Cara Upload Cover/Poster Anime: Pergi ke bagian anime yang ingin kamu opload poster/covernya, buka animenya, lalu geser (scroll) ke kanan layar untuk menemukan tempat opload poster dan cover (HANYA untuk menu poster/cover, tidak ada hubungannya dengan menonton)."
     },
     {
         keywords: ["kontrib", "kontribusi", "cara kontrib", "cara kontribusi", "dapat kontrib", "poin kontrib", "cara dapat kontrib", "cara dapat kontribusi", "cara dapat poin kontrib", "cara dapat poin kontribusi", "cara mendapatkan kontribusi", "cara mendapatkan poin kontribusi", "cara mendapatkan kontib gimana", "cara mendapatkan kontribusi gimana", "cara mendapatkan poin kontrib gimana", "cara mendapatkan poin kontribusi gimana, bagaimana cara mendapatkan kontribusi", "bagaimana cara mendapatkan poin kontribusi", "bagaimana cara mendapatkan kontrib", "bagaimana cara mendapatkan poin kontrib"],
@@ -198,14 +200,14 @@ const ANIMEIN_KNOWLEDGE = [
     },
     {
         keywords: ["cuplix", "klip", "highlight episode", "like cuplix", "buat cuplix", "coin cuplix", "cara buat cuplix", "cara like cuplix", "cara coin cuplix", "cara cuplix", "cara klip", "cara highlight episode", "cara buat cuplix", "cara like cuplix", "cara coin cuplix", "cara cuplix", "cara klip", "cara highlight episode", "cara buat cuplix gimana", "cara like cuplix gimana", "cara coin cuplix gimana", "cara cuplix gimana", "cara klip gimana", "cara highlight episode gimana", "bagaimana cara buat cuplix", "bagaimana cara like cuplix", "bagaimana cara coin cuplix", "bagaimana cara cuplix", "bagaimana cara klip", "bagaimana cara highlight episode", "cara buat cuplix bagaimana", "cara like cuplix bagaimana", "cara coin cuplix bagaimana", "cara cuplix bagaimana", "cara klip bagaimana", "cara highlight episode bagaimana"],
-        info: "7. Fitur Cuplix: Cuplix adalah klip/highlight episode anime untuk rekomendasi. Pembuat Cuplix & Uploader Server dapat 1 coin tiap ada yang like (Maks 250 coin/hari, cair saat ganti hari dan wajib login). Cara buat: Masukkan detik start & end (durasi 10 dtk - 3 mnt), jepret thumbnail di jarak detik tersebut, lalu simpan. Peraturan: Maksimal 3 Cuplix per user untuk 1 episode, dan tidak boleh kembar/sama dengan Cuplix yang sudah dibooking."
+        info: " Fitur Cuplix: Cuplix adalah klip/highlight episode anime untuk rekomendasi. Pembuat Cuplix & Uploader Server dapat 1 coin tiap ada yang like (Maks 250 coin/hari, cair saat ganti hari dan wajib login). Cara buat: Masukkan detik start & end (durasi 10 dtk - 3 mnt), jepret thumbnail di jarak detik tersebut, lalu simpan. Peraturan: Maksimal 3 Cuplix per user untuk 1 episode, dan tidak boleh kembar/sama dengan Cuplix yang sudah dibooking."
     },
     {
-        keywords: ["battle", "battel", "battel rank", "battel pokemon", "battle rank", "battle pokemon", "vs temen", "bp", "battle point", "tanding pokemon", "cara battle", "cara battel", "cara battel rank", "cara battel pokemon", "cara battle rank", "cara battle pokemon", "cara vs temen", "cara bp", "cara battle point", "cara tanding pokemon", "cara battle gimana", "cara battel gimana", "cara battel rank gimana", "cara battel pokemon gimana", "cara battle rank gimana", "cara battle pokemon gimana", "cara vs temen gimana", "cara bp gimana", "cara battle point gimana", "cara tanding pokemon gimana", "bagaimana cara battle", "bagaimana cara battel", "bagaimana cara battel rank", "bagaimana cara battel pokemon", "bagaimana cara battle rank", "bagaimana cara battle pokemon", "bagaimana cara vs temen", "bagaimana cara bp", "bagaimana cara battle point", "bagaimana cara tanding pokemon", "cara battle bagaimana", "cara battel bagaimana", "cara battel rank bagaimana", "cara battel pokemon bagaimana", "cara battle rank bagaimana", "cara battle pokemon bagaimana", "cara vs temen bagaimana", "cara bp bagaimana", "cara battle point bagaimana", "cara tanding pokemon bagaimana"],
-        info: "8. Cara Battle Pokemon: Minimal harus punya 3 Pokemon. Pergi ke menu Battle di profil, pilih 3 Pokemon yang mau dipakai. Tekan tombol \"Battle Rank\" untuk tanding dan dapatkan BP (Battle Point) BP adalah poin rank bukan untuk menaikan lv pokemon, atau \"VS Temen\" untuk melawan teman spesifik."
+        keywords: ["battle", "battel", "battel rank", "battel pokemon", "battle rank", "battle pokemon", "vs temen", "bp", "battle point", "tanding pokemon", "cara battle", "cara battel", "cara battel rank", "cara battel pokemon", "cara battle rank", "cara battle pokemon", "cara vs temen", "cara bp", "cara battle point", "cara tanding pokemon", "cara battle gimana", "cara battel gimana", "cara battel rank gimana", "cara battel pokemon gimana", "cara battle rank gimana", "cara battle pokemon gimana", "cara vs temen gimana", "cara bp gimana", "cara battle point gimana", "cara tanding pokemon gimana", "bagaimana cara battle", "bagaimana cara battel", "bagaimana cara battel rank", "bagaimana cara battel pokemon", "bagaimana cara battle rank", "bagaimana cara battle pokemon", "bagaimana cara vs temen", "bagaimana cara bp", "bagaimana cara battle point", "bagaimana cara tanding pokemon", "cara battle bagaimana", "cara battel bagaimana", "cara battel rank bagaimana", "cara battel pokemon bagaimana", "cara battle rank bagaimana", "cara battle pokemon bagaimana", "cara vs temen bagaimana", "cara bp bagaimana", "cara battle point bagaimana", "cara tanding pokemon bagaimana", "apa itu battle", "apa itu bp", "cara dapet bp", "cara tawuran", "lawan temen", "tanding"],
+        info: " Cara Battle Pokemon: Minimal harus punya 3 Pokemon. Pergi ke menu Battle di profil, pilih 3 Pokemon yang mau dipakai. Tekan tombol \"Battle Rank\" untuk tanding dan dapatkan BP (Battle Point) BP adalah poin rank bukan untuk menaikan lv pokemon, atau \"VS Temen\" untuk melawan teman spesifik."
     },
     {
-        keywords: ["pokemon", "evolusi", "menu tas", "level pokemon", "exp pokemon", "naik level", "upgrade level", "grade pokemon", "rookie", "epic", "mythic", "legendary", "tingkatan pokemon", "gen 2", "gen 3", "r2", "e2", "m2", "l2", "foto profil pokemon", "profile pokemon", "cara evolusi", "cara naik level", "cara upgrade level", "cara grade pokemon", "cara rookie", "cara epic", "cara mythic", "cara legendary", "cara tingkatan pokemon", "cara gen 2", "cara r2", "cara e2", "cara m2", "cara l2", "cara foto profil pokemon", "cara profile pokemon", "update pokemon", "kapan update pokemon", "pokemon update", "pokemon baru", "reset toko pokemon", "reset toko merah", "reset battle pokemon", "reset battel pokemon", "kapan reset toko pokemon", "kapan reset toko merah", "cara evolusi gimana", "cara evolusi bagaimana", "bagaimana cara evolusi", "cara naik level gimana", "cara naik level bagaimana", "bagaimana cara naik level", "cara upgrade level gimana", "cara upgrade level bagaimana", "bagaimana cara upgrade level", "cara ganti foto profil pokemon", "bagaimana cara foto profil pokemon", "cara dapat pokemon", "cara mendapatkan pokemon", "gimana cara dapet", "dapetin pokemon", "cara dapet pikachu", "cara dapet mewtwo", "cara dapat legend", ...POKEMON_LIST.map(p => "cara dapat " + p.toLowerCase())],
+        keywords: ["pokemon", "evolusi", "menu tas", "level pokemon", "exp pokemon", "naik level", "upgrade level", "grade pokemon", "rookie", "epic", "mythic", "legendary", "tingkatan pokemon", "gen 2", "gen 3", "r2", "e2", "m2", "l2", "foto profil pokemon", "profile pokemon", "cara evolusi", "cara naik level", "cara upgrade level", "cara grade pokemon", "cara rookie", "cara epic", "cara mythic", "cara legendary", "cara tingkatan pokemon", "cara gen 2", "cara r2", "cara e2", "cara m2", "cara l2", "cara foto profil pokemon", "cara profile pokemon", "update pokemon", "kapan update pokemon", "pokemon update", "pokemon baru", "reset toko pokemon", "reset toko merah", "reset battle pokemon", "reset battel pokemon", "kapan reset toko pokemon", "kapan reset toko merah", "cara evolusi gimana", "cara evolusi bagaimana", "bagaimana cara evolusi", "cara naik level gimana", "cara naik level bagaimana", "bagaimana cara naik level", "cara upgrade level gimana", "cara upgrade level bagaimana", "bagaimana cara upgrade level", "cara ganti foto profil pokemon", "bagaimana cara foto profil pokemon", "cara dapat pokemon", "cara mendapatkan pokemon", "gimana cara dapet", "dapetin pokemon", "cara dapet pikachu", "cara dapet mewtwo", "cara dapat legend", "apa pokeslot", "apa itu pokemon", "gimana pokeslot", "kapan gen 3", "stats pokemon", "status pokemon", ...POKEMON_LIST.map(p => "cara dapat " + p.toLowerCase())],
         info: `Info Pokemon:
 - Tingkatan (Grade):
   * Gen 1: R (${POKEMON_GRADES.R.length} Pokemon), E (${POKEMON_GRADES.E.length} Pokemon), M (${POKEMON_GRADES.M.length} Pokemon), L (${POKEMON_GRADES.L.length} Pokemon).
@@ -217,31 +219,35 @@ const ANIMEIN_KNOWLEDGE = [
     },
     {
         keywords: ["harga pokemon", "berapa koin", "berapa gem", "beli pokemon berapa", "harga pikachu", "berapa harga pokemon", "harga pokemon legend", "harga pokemon mythic", "harga pokemon ", "berapa harga pokemon", "berapa harga pokemon legend", "berapa harga pokemon mythic", "berapa harga pokemon rookie", "berapa harga pokemon epic", "berapa harga pokemon rookie gen 2", "berapa harga pokemon epic gen 2", "berapa harga pokemon mythic gen 2", "berapa harga pokemon legendary gen 2"],
-        info: "Untuk harga Pokémon, Rika belum tahu pastinya. Kamu bisa langsung cek harganya di menu Toko/Shop atau Toko Pro di dalam aplikasi ya!"
+        info: "Untuk harga Pokémon, Rara belum tahu pastinya. Kamu bisa langsung cek harganya di menu Toko/Shop atau Toko Pro di dalam aplikasi ya!"
     },
     {
-        keywords: ["download episode", "cara download", "unduh episode", "simpan episode", "tombol more", "cara download episode", "cara unduh episode", "cara simpan episode", "cara tombol more", "cara download gimana", "cara download bagaimana", "bagaimana cara download", "cara download episode gimana", "cara download episode bagaimana", "bagaimana cara download episode"],
-        info: "9. Cara download eps: Silahkan tekan tombol \"more\" saat menonton salah satu eps anime lalu pilih download."
+        keywords: ["download episode", "cara download", "unduh episode", "simpan episode", "tombol more", "cara download episode", "cara unduh episode", "cara simpan episode", "cara tombol more", "cara download gimana", "cara download bagaimana", "bagaimana cara download", "cara download episode gimana", "cara download episode bagaimana", "bagaimana cara download episode", "apa cara download", "mana tombol download", "gimana unduh", "save video", "download mp4", "download mkv", "apakah bisa download", "perbedaan download"],
+        info: "Cara download eps: Silahkan tekan tombol \"more\" saat menonton salah satu eps anime lalu pilih download."
     },
     {
-        keywords: ["resolusi", "ubah resolusi", "ganti resolusi", "kualitas video", "720p", "1080p", "bergerigi", "icon server", "cara ubah resolusi", "cara ganti resolusi", "cara kualitas video", "cara 720p", "cara 1080p", "cara bergerigi", "cara icon server", "cara ubah resolusi gimana", "cara ubah resolusi bagaimana", "bagaimana cara ubah resolusi", "cara ganti resolusi gimana", "cara ganti resolusi bagaimana", "bagaimana cara ganti resolusi", "bagaimana cara ganti kualitas video"],
-        info: "10. Cara ubah resolusi: SAAT MENONTON ANIME, klik pilihan \"server\" atau icon roda gigi (BUKAN geser layar). Di sana kalian bisa memilih resolusi yang diinginkan (Tidak ada geser layar)."
+        keywords: ["resolusi", "ubah resolusi", "ganti resolusi", "kualitas video", "720p", "1080p", "bergerigi", "icon server", "cara ubah resolusi", "cara ganti resolusi", "cara kualitas video", "cara 720p", "cara 1080p", "cara bergerigi", "cara icon server", "cara ubah resolusi gimana", "cara ubah resolusi bagaimana", "bagaimana cara ubah resolusi", "cara ganti resolusi gimana", "cara ganti resolusi bagaimana", "bagaimana cara ganti resolusi", "bagaimana cara ganti kualitas video", "apa resolusinya", "gimana ganti kualitas", "mana pengaturannya", "burik", "pecah-pecah", "gambar jelek", "bening"],
+        info: "Cara ubah resolusi: SAAT MENONTON ANIME, klik pilihan \"server\" atau icon roda gigi (BUKAN geser layar). Di sana kalian bisa memilih resolusi yang diinginkan (Tidak ada geser layar)."
     },
     {
-        keywords: ["rewind", "geser mundur", "fast forward", "geser maju", "speedup", "percepat video", "2x kecepatan", "putar cepat", "cara rewind", "cara geser mundur", "cara fast forward", "cara geser maju", "cara speedup", "cara percepat video", "cara 2x kecepatan", "cara putar cepat", "cara rewind gimana", "cara rewind bagaimana", "bagaimana cara rewind", "cara geser mundur gimana", "cara geser mundur bagaimana", "bagaimana cara geser mundur", "cara fast forward gimana", "cara fast forward bagaimana", "bagaimana cara fast forward", "cara geser maju gimana", "cara geser maju bagaimana", "bagaimana cara geser maju", "cara speedup gimana", "cara speedup bagaimana", "bagaimana cara speedup", "cara percepat video gimana", "cara percepat video bagaimana", "bagaimana cara percepat video"],
-        info: "11. Cara rewind/geser mundur: Tahan pada video yang sedang ditonton lalu geser ke kiri.\n12. Cara fast forward/geser maju: Tahan pada video yang sedang ditonton lalu geser ke kanan.\n13. Cara speedup: Tekan/ketuk 2x pada layar bagian kanan video yang sedang diputar."
+        keywords: ["rewind", "geser mundur", "fast forward", "geser maju", "speedup", "percepat video", "2x kecepatan", "putar cepat", "cara rewind", "cara geser mundur", "cara fast forward", "cara geser maju", "cara speedup", "cara percepat video", "cara 2x kecepatan", "cara putar cepat", "cara rewind gimana", "cara rewind bagaimana", "bagaimana cara rewind", "cara geser mundur gimana", "cara geser mundur bagaimana", "bagaimana cara geser mundur", "cara fast forward gimana", "cara fast forward bagaimana", "bagaimana cara fast forward", "cara geser maju gimana", "cara geser maju bagaimana", "bagaimana cara geser maju", "cara speedup gimana", "cara speedup bagaimana", "bagaimana cara speedup", "cara percepat video gimana", "cara percepat video bagaimana", "bagaimana cara percepat video", "gimana majuin", "cara mundurin", "tahan layer", "double tap", "percepat"],
+        info: "Cara rewind/geser mundur: Tahan pada video yang sedang ditonton lalu geser ke kiri.\nCara fast forward/geser maju: Tahan pada video yang sedang ditonton lalu geser ke kanan.\nCara speedup: Tekan/ketuk 2x pada layar bagian kanan video yang sedang diputar."
     },
     {
-        keywords: ["web animein", "apk animein", "download apk", "donasi", "animein.net", "cara donasi", "cara donasi gimana", "cara donasi bagaimana", "bagaimana cara donasi", "cara download apk gimana", "cara download apk bagaimana", "bagaimana cara download apk"],
+        keywords: ["web animein", "apk animein", "download apk", "donasi", "animein.net", "cara donasi", "cara donasi gimana", "cara donasi bagaimana", "bagaimana cara donasi", "cara download apk gimana", "cara download apk bagaimana", "bagaimana cara download apk", "apa link web", "mana apknya", "donasi dimana", "bayar donasi", "trakteer link", "link trakteer", "apakah ada apk"],
         info: "Versi web masih baru 10%. Fitur lengkap di APK Android (animein.net). Donasi: trakteer.id/animein.net."
     },
     {
-        keywords: ["genre", "tipe anime", "jenis anime", "kategori anime", "genre animein", "genre apa aja", "daftar genre", ...GENRE_LIST.map(g => g.toLowerCase())],
+        keywords: ["genre", "tipe anime", "jenis anime", "kategori anime", "genre animein", "genre apa aja", "daftar genre", "apa genre", "bagaimana genre", "mana genre", "gimana genre", "apakah ada genre", "perbedaan genre", ...GENRE_LIST.map(g => g.toLowerCase())],
         info: "Genre anime yang tersedia di Animein sangat lengkap, di antaranya: " + GENRE_LIST.join(', ') + ". User bisa mencari anime berdasarkan genre-genre ini."
     },
     {
-        keywords: ["studio", "pembuat anime", "studio animasi", "studio anime", "nama studio", "studio apa aja", "daftar studio", ...STUDIO_LIST.map(s => s.toLowerCase())],
+        keywords: ["studio", "pembuat anime", "studio animasi", "studio anime", "nama studio", "studio apa aja", "daftar studio", "apa studio", "bagaimana studio", "gimana studio", "mana studio", "apakah ada studio", "perbedaan studio", ...STUDIO_LIST.map(s => s.toLowerCase())],
         info: "Animein menyediakan judul-judul dari berbagai studio animasi ternama, contohnya: " + STUDIO_LIST.join(', ') + " (serta hampir semua studio anime Jepang populer lainnya yang tayang reguler)."
+    },
+    {
+        keywords: ["populer", "viral", "rame", "trending", "hits", "banyak yang nonton", "rating", "studio", "apa yang populer", "bagaimana rating", "gimana peringkat", "mana yang terbaik", "jumlah rating", "peringkat anime", "apakah viral", "perbedaan rating", "top anime", "rekomendasi terbaik", "anime paling rame", "berapa views", "bagus gak", "worth it gak", "apakah bagus", "studio paling oke"],
+        info: "Indikator Populer di Animein:\n- Viral/Top: > 500.000 views.\n- Populer: > 100.000 views.\n- Bagus: Rating > 8.0.\n- Biasa: Rating < 7.0.\nGunakan data Views dan Rating dari [DATA ANIMEIN] untuk menentukan apakah sebuah anime layak direkomendasikan sebagai 'Populer' atau 'Terbaik'."
     }
 ];
 
@@ -331,7 +337,7 @@ function getJakartaDate() {
 /** Cek apakah pesan mengandung trigger (.ai, ai., .rika, rika., atau @username) */
 function isMentioned(text) {
     const username = CONFIG.USERNAME.toLowerCase();
-    const regex = new RegExp(`\\.ai|ai\\.|\\.rika|rika\\.|@${username}`, 'i');
+    const regex = new RegExp(`\\.ai|ai\\.|\\.rara|rara\\.|@${username}`, 'i');
     return regex.test(text);
 }
 
@@ -379,8 +385,9 @@ function detectIntent(text) {
 
 
 const cache = {
-    trending: { data: null, lastFetch: 0 },
-    popular: { data: null, lastFetch: 0 },
+    trending: { data: [], lastFetch: 0 },
+    popular: { data: [], lastFetch: 0 },
+    topRated: { data: [], lastFetch: 0 },
     schedule: { data: null, lastFetch: 0 },
     genres: { data: null, lastFetch: 0 },
     genreCache: {},
@@ -395,45 +402,64 @@ const ANIMEIN_HEADERS = {
 };
 
 /** Ambil data anime dari Animein berdasarkan tipe (trending/hot atau popular) */
-async function fetchHomeAnime(type) {
+async function fetchHomeAnime() {
     const now = Date.now();
-    if (cache[type] && cache[type].data && now - cache[type].lastFetch < cache.TTL) {
-        return cache[type].data;
+    // Cache check untuk trending (sebagai proxy utama beranda)
+    if (cache.trending.data.length > 0 && now - cache.trending.lastFetch < cache.TTL) {
+        return true;
     }
-    const days = ['AHAD', 'SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT', 'SABTU'];
-    const today = days[getJakartaDate().getDay()];
+
     try {
-        const res = await axios.get(`${CONFIG.BASE_URL}/3/2/home/data`, {
+        const days = ['AHAD', 'SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT', 'SABTU'];
+        const today = days[getJakartaDate().getDay()];
+
+        // 1. Ambil Trending/Hot dari Beranda (Update Hari Ini)
+        const resHome = await axios.get(`${CONFIG.BASE_URL}/3/2/home/data`, {
             params: { day: today },
             headers: ANIMEIN_HEADERS,
             timeout: 10000,
         });
-        const hot = res.data?.data?.hot || [];
-        const popular = res.data?.data?.popular || [];
 
-        // Save popular to cache
-        const popSet = new Set();
-        const popUnique = popular.filter(a => {
-            if (!a.title || popSet.has(a.title)) return false;
-            popSet.add(a.title); return true;
+        // 2. Ambil Global Terpopuler (Banyak Views)
+        const resPop = await axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, {
+            params: { sort: 'popular', page: 1 },
+            headers: ANIMEIN_HEADERS,
+            timeout: 10000,
         });
-        cache.popular.data = popUnique.slice(0, 10).map(a => `- ${a.title}`);
-        cache.popular.lastFetch = now;
 
-        // Save hot to cache
-        const hotSet = new Set();
-        const hotUnique = hot.filter(a => {
-            if (!a.title || hotSet.has(a.title)) return false;
-            hotSet.add(a.title); return true;
+        // 3. Ambil Global Rating Tertinggi (Banyak Bintang/Favorites)
+        const resStar = await axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, {
+            params: { sort: 'stars', page: 1 },
+            headers: ANIMEIN_HEADERS,
+            timeout: 10000,
         });
-        cache.trending.data = hotUnique.slice(0, 10).map(a => `- ${a.title}`);
+
+        const mapData = (raw) => {
+            const seen = new Set();
+            return raw.filter(a => {
+                if (!a.title || seen.has(a.title)) return false;
+                seen.add(a.title); return true;
+            }).slice(0, 25).map(a => {
+                let meta = `[Rating: ${a.favorites || '?'}, Views: ${a.views || '?'}, Studio: ${a.studio || '?'}, Tahun: ${a.year || '?'}]`;
+                if (a.synonyms) return `- ${a.title} (Alt: ${a.synonyms}) ${meta}`;
+                return `- ${a.title} ${meta}`;
+            });
+        };
+
+        cache.trending.data = mapData(resHome.data?.data?.hot || []);
         cache.trending.lastFetch = now;
 
-        console.log(`[ANIMEIN] Home cache updated: ${cache.trending.data.length} hot, ${cache.popular.data.length} popular`);
-        return cache[type].data;
+        cache.popular.data = mapData(resPop.data?.data?.movie || []);
+        cache.popular.lastFetch = now;
+
+        cache.topRated.data = mapData(resStar.data?.data?.movie || []);
+        cache.topRated.lastFetch = now;
+
+        console.log(`[ANIMEIN] Cache updated: ${cache.trending.data.length} trending, ${cache.popular.data.length} global pop, ${cache.topRated.data.length} top rated`);
+        return true;
     } catch (e) {
-        console.warn(`[ANIMEIN] Gagal ambil ${type}:`, e.message.slice(0, 60));
-        return cache[type]?.data || [];
+        console.warn(`[ANIMEIN] Gagal fetch data home:`, e.message.slice(0, 60));
+        return false;
     }
 }
 
@@ -456,12 +482,12 @@ async function fetchSchedule() {
         const list = raw.map(a => {
             let desc = `- ${a.title}`;
             if (a.key_time) {
-
                 const parts = a.key_time.split(' ');
                 if (parts.length > 1) {
-                    desc += ` (Jam tayang: ${parts[1].slice(0, 5)})`;
+                    desc += ` (Jam: ${parts[1].slice(0, 5)})`;
                 }
             }
+            desc += ` [Favorites: ${a.favorites || '?'}, Studio: ${a.studio || '?'}]`;
             return desc;
         });
         if (list.length > 0) {
@@ -485,7 +511,16 @@ async function searchAnime(query) {
             timeout: 8000,
         });
         const raw = res.data?.data?.movie || [];
-        return raw.map(a => `${a.title}`);
+        return raw.map(a => {
+            let info = `- ${a.title}`;
+            if (a.synonyms) info += ` (Alt: ${a.synonyms})`;
+            info += ` [Favorites: ${a.favorites || '?'}, Views: ${a.views || '?'}, Studio: ${a.studio || '?'}, Tahun: ${a.year || '?'}]`;
+            if (a.synopsis) {
+                const syn = a.synopsis.slice(0, 150) + '...';
+                info += `\n  Konteks Internal: ${syn}`;
+            }
+            return info;
+        });
     } catch (e) {
         console.warn('[ANIMEIN] Gagal search anime:', e.message.slice(0, 60));
         return [];
@@ -542,9 +577,10 @@ async function fetchPopularByGenre(genreId, maxLimit = 10) {
         }
         
         if (movies.length > 0) {
-
             movies.sort(() => 0.5 - Math.random());
-            return movies.slice(0, maxLimit).map(a => `- ${a.title}`);
+            return movies.slice(0, maxLimit).map(a => {
+                return `- ${a.title} [Rating: ${a.favorites || '?'}, Studio: ${a.studio || '?'}, Tahun: ${a.year || '?'}]`;
+            });
         }
     } catch(e) {
         console.warn(`[ANIMEIN] Gagal ambil anime untuk genre ${genreId}:`, e.message.slice(0, 60));
@@ -583,10 +619,11 @@ async function buildAnimeContext(intent, question) {
             contextData += `\n\n[DATA ANIMEIN - Anime Populer Genre ${matchedGenre.name.toUpperCase()}]:\n${list.join('\n')}\nGunakan daftar anime bergenre ${matchedGenre.name.toUpperCase()} ini sebagai referensi utama rekomendasi, pastikan judul persis dari daftar tersebut.`;
         }
     } else if (intent === 'trending' || intent === 'popular') {
-        const list = await fetchHomeAnime(intent);
-        if (list.length > 0) {
-            contextData += `\n\n[DATA ANIMEIN - ${intent === 'trending' ? 'Sedang Hangat (Rekomendasi Hari Ini)' : 'Populer'}]:\n${list.join('\n')}\nGunakan daftar ini sebagai referensi utama rekomendasi, pastikan judul persis dari daftar tersebut.`;
-        }
+        await fetchHomeAnime();
+        contextData += `\n\n[DATA ANIME TRENDING HARI INI]:\n${cache.trending.data.slice(0, 15).join('\n')}`;
+        contextData += `\n\n[DATA ANIME GLOBAL TERPOPULER (ALL TIME)]:\n${cache.popular.data.slice(0, 15).join('\n')}`;
+        contextData += `\n\n[DATA ANIME RATING TERTINGGI (TOP STARS)]:\n${cache.topRated.data.slice(0, 15).join('\n')}`;
+        return contextData;
     } else if (intent === 'schedule') {
         const list = await fetchSchedule();
         if (list.length > 0) {
@@ -1012,7 +1049,7 @@ async function processMessages(messages) {
 
 
         const username = CONFIG.USERNAME.toLowerCase();
-        const triggerRegex = new RegExp(`\\.ai|ai\\.|\\.rika|rika\\.|@${username}`, 'gi');
+        const triggerRegex = new RegExp(`\\.ai|ai\\.|\\.rara|rara\\.|@${username}`, 'gi');
         const cleanText = msgText.replace(triggerRegex, '').trim();
         
         console.log(`[TRIGGER] ${senderName}: ${msgText}`);

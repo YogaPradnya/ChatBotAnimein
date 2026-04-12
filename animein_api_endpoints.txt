@@ -68,6 +68,31 @@ B. Komentar (Episode)
 - Register: /auth/register
 - Stream Log: /3/2/user/stream/do (Untuk mencatat progres tontonan)
 
-6. MEDIA DOMAIN
+7. MEDIA DOMAIN
 ---------------
 - Images: https://xyz-api.animein.net (Prefix untuk path gambar)
+
+8. METADATA JSON KEYS (Hasil Analisis Browser)
+-----------------------------------------------
+Berdasarkan inspeksi langsung pada endpoint /explore/movie dan /movie/detail:
+
+A. Keys Utama Anime:
+   - "title": Judul utama
+   - "synonyms": Judul alternatif (Alt Titles)
+   - "views": Jumlah penonton (tipe string angka)
+   - "favorites": Peringkat/Suka (digunakan sebagai indikator Rating di UI)
+   - "aired_start": Tanggal tayang pertama (YYYY-MM-DD)
+   - "year": Tahun tayang (angka saja)
+   - "synopsis": Deskripsi/Sinopsis cerita
+   - "studio": Nama studio (biasanya ada di endpoint Detail)
+   - "genre": Daftar genre (comma separated string)
+   - "image_poster": URL path poster
+   - "image_cover": URL path cover/banner
+
+B. Struktur Detail Endpoint (/movie/detail/:id):
+   - Data berada di dalam: res.data.data.movie
+   - Berisi informasi lebih mendalam termasuk studio dan daftar genre lengkap.
+
+C. Struktur Explore Endpoint (/explore/movie):
+   - Data berada di dalam: res.data.data.movie (Array)
+   - Berisi list anime dengan informasi dasar termasuk views, favorites, dan aired_start.
