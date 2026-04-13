@@ -40,8 +40,10 @@ const CONFIG = {
     POLL_INTERVAL: 5000,
     DASHBOARD_PORT: process.env.PORT || 3500,
     IMAGE_TRIGGERS: ['gambar', 'foto', 'ilustrasi', 'buatkan gambar', 'generate gambar'],
-    GROQ_COOLDOWN: 5 * 60 * 1000,
+    GROQ_COOLDOWN: 10 * 60 * 1000,
 };
+
+let isBotActive = true;
 
 
 const stats = {
@@ -62,13 +64,6 @@ const stats = {
         remainingReqs: '?',
         remainingTokensDay: '?',
     })),
-    pollinations: {
-        available: true,
-        requests: 0,
-        success: 0,
-        errors: 0,
-        lastError: null,
-    },
     image: {
         requests: 0,
         success: 0,
@@ -423,7 +418,7 @@ async function fetchHomeAnime() {
         // 2 & 3. Ambil Global Terpopuler & Rating Tertinggi secara Pararel (Multiple Pages for Accuracy)
         const popPromises = [];
         const starPromises = [];
-        for (let i = 1; i <= 40; i++) {
+        for (let i = 1; i <= 50; i++) {
             popPromises.push(axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, { params: { sort: 'popular', page: i }, headers: ANIMEIN_HEADERS, timeout: 10000 }).catch(() => null));
             starPromises.push(axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, { params: { sort: 'stars', page: i }, headers: ANIMEIN_HEADERS, timeout: 10000 }).catch(() => null));
         }
@@ -591,7 +586,7 @@ async function fetchByGenre(genreId, isSpecific = false, maxLimit = 10) {
             // Jika spesifik (misal "view terbanyak"), kita harus mengambil banyak halaman
             // karena API Animein tidak mensortir view secara absolut di halaman pertama.
             const promises = [];
-            for (let i = 1; i <= 40; i++) {
+            for (let i = 1; i <= 50; i++) {
                 promises.push(
                     axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, {
                         params: { sort: 'popular', page: i, genre_in: genreId },
@@ -795,25 +790,7 @@ async function askGroq(index, userMessage, senderName, contextData = '', chatHis
     return completion.choices[0]?.message?.content || '';
 }
 
-/** Pollinations.ai - fallback unlimited */
-async function askPollinations(userMessage, senderName, contextData = '', chatHistory = []) {
-    stats.pollinations.requests++;
-    const systemContent = SYSTEM_PROMPT + `\n\nInfo: Kamu sedang mengobrol dengan ${senderName}.` + contextData;
-    const response = await axios.post('https://text.pollinations.ai/', {
-        messages: [
-            { role: 'system', content: systemContent },
-            ...chatHistory,
-            { role: 'user', content: `${senderName} berkata: "${userMessage}".` }
-        ],
-        model: 'openai',
-        seed: Math.floor(Math.random() * 9999),
-        private: true
-    }, { headers: { 'Content-Type': 'application/json' }, timeout: 15000 });
-    stats.pollinations.success++;
-    return String(response.data || '').trim();
-}
-
-/** Main AI handler: Groq dulu, fallback ke Pollinations */
+/** Main AI handler: Groq only */
 async function getAIResponse(userMessage, senderName) {
     const intent = detectIntent(userMessage);
     const animeContext = await buildAnimeContext(intent, userMessage);
@@ -830,7 +807,8 @@ async function getAIResponse(userMessage, senderName) {
         const stat = stats.groq[i];
         const now = Date.now();
 
-        if (now < stat.cooldownUntil) continue;
+        // Cek apakah key aktif dan tidak sedang cooldown
+        if (!stat.active || now < stat.cooldownUntil) continue;
 
         try {
             const result = await askGroq(i, userMessage, senderName, finalContext, history);
@@ -851,20 +829,7 @@ async function getAIResponse(userMessage, senderName) {
         }
     }
 
-    try {
-        const result = await askPollinations(userMessage, senderName, finalContext, history);
-        if (result) {
-            chatMemory[senderName] = [...history, 
-                { role: 'user', content: userMessage },
-                { role: 'assistant', content: result }
-            ].slice(-4);
-        }
-        return { text: result || 'Hmm, gak tau nih.', provider: 'Pollinations' };
-    } catch (err) {
-        stats.pollinations.errors++;
-        stats.pollinations.lastError = err.message.slice(0, 100);
-        return { text: 'Maaf, AI-nya lagi gangguan.', provider: 'Error' };
-    }
+    return { text: 'Maaf kak, semua koneksi AI Rara lagi sibuk/limit. Coba lagi nanti ya! 🙏', provider: 'Error' };
 }
 
 /** Generate gambar menggunakan Gemini Image Generation via REST API */
@@ -930,56 +895,14 @@ async function generateGeminiImage(prompt) {
         }
     }
     
-    // Semua Gemini key gagal, fallback ke Pollinations
-    console.warn('[IMG] Semua Gemini key gagal/quota habis, fallback ke Pollinations');
+    // Semua Gemini key gagal, kembalikan null
+    console.warn('[IMG] Semua Gemini key gagal/quota habis.');
     stats.image.errors++;
-    stats.image.lastError = 'Semua k Gemini quota habis, pakai Pollinations';
-    return await generatePollinationsImage(prompt);
+    stats.image.lastError = 'Semua Gemini API Key limit';
+    return null;
 }
 
-/** Fallback: generate gambar dari Pollinations.ai */
-async function generatePollinationsImage(prompt) {
-    let refined = prompt;
-    try {
-        // Gunakan Groq untuk translate karena text.pollinations.ai sering error 500
-        if (groqClients && groqClients.length > 0) {
-            const groqRes = await groqClients[0].chat.completions.create({
-                model: 'llama-3.1-8b-instant',
-                messages: [{ role: 'user', content: `Translate this to English and make it a short image generation prompt (max 15 words). Only write the prompt: "${prompt}"` }],
-                max_tokens: 50,
-                temperature: 0.7
-            });
-            const translated = groqRes.choices[0]?.message?.content;
-            if (translated) {
-                refined = stripEmoji(translated).trim();
-            }
-        }
-    } catch (err) {
-        console.warn('[IMG/POLLINATIONS] Groq Translator error, menggunakan prompt original:', err.message.slice(0, 50));
-    }
-    
-    let imageUrl = '';
-    try {
-        const seed = Math.floor(Math.random() * 999999);
-        imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(refined)}?width=512&height=512&nologo=true&seed=${seed}`;
-        
-        console.log(`[IMG] Mengunduh gambar dari: ${imageUrl}`);
-        // Download gambar sebagai buffer, perbesar timeout jadi 60 detik karena gambar server kadang berat
-        const imgRes = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 60000 });
-        const buffer = Buffer.from(imgRes.data);
-        
-        return {
-            type: 'base64',
-            mimeType: 'image/jpeg',
-            data: buffer.toString('base64'),
-            isFromPollinations: true,
-        };
-    } catch (err) {
-        console.warn('[IMG/POLLINATIONS] Image API Error lambat/rate-limit:', err.message.slice(0, 80));
-        // Jika gagal download, cukup kirim null sesuai permintaan agar tidak jadi link
-        return null;
-    }
-}
+
 
 /** Upload gambar ke imgbb dan kembalikan URL publik */
 async function uploadToImgBB(base64Data, mimeType = 'image/jpeg') {
@@ -1139,6 +1062,9 @@ async function processMessages(messages) {
         if (!msgId || msgId <= lastMessageId) continue;
         lastMessageId = msgId;
 
+        // Jika bot dimatikan, abaikan semua trigger!
+        if (!isBotActive) continue;
+
         // Jika dalam masa delay 10 detik, abaikan semua trigger pesan!
         if (isGlobalCooldown) continue;
 
@@ -1228,11 +1154,43 @@ async function startBot() {
 function startDashboard() {
     const app = express();
 
+    app.use(express.json());
+    app.use(express.urlencoded({ extended: true }));
+
     app.get('/api/stats', (req, res) => {
         const uptime = Math.floor((Date.now() - new Date(stats.startTime)) / 1000);
-        res.json({ ...stats, uptime });
+        res.json({ ...stats, uptime, isBotActive });
     });
 
+    // Toggle Bot Power
+    app.post('/api/bot/toggle', (req, res) => {
+        isBotActive = !isBotActive;
+        console.log(`[DASHBOARD] Bot Power: ${isBotActive ? 'ON' : 'OFF'}`);
+        res.json({ success: true, isBotActive });
+    });
+
+    // Kirim Chat Manual
+    app.post('/api/chat/send', async (req, res) => {
+        const { text } = req.body;
+        if (!text) return res.status(400).json({ success: false, message: 'Text required' });
+        
+        console.log(`[DASHBOARD] Manual Social: ${text}`);
+        await sendChatMessage(text);
+        addActivity('manual', 'Admin', '-', text, 'Dashboard');
+        res.json({ success: true });
+    });
+
+    // Toggle Groq Key
+    app.post('/api/groq/toggle/:id', (req, res) => {
+        const id = parseInt(req.params.id) - 1;
+        if (stats.groq[id]) {
+            stats.groq[id].active = !stats.groq[id].active;
+            console.log(`[DASHBOARD] Groq Key #${id+1}: ${stats.groq[id].active ? 'ON' : 'OFF'}`);
+            res.json({ success: true, active: stats.groq[id].active });
+        } else {
+            res.status(404).json({ success: false });
+        }
+    });
 
     app.get('/api/debug/trending', async (req, res) => {
         try {
@@ -1397,23 +1355,56 @@ function getDashboardHTML() {
     </div>
   </div>
 
+  <!-- CONTROLS -->
+  <div class="grid grid-2" style="margin-bottom:25px">
+    <!-- MASTER CONTROL -->
+    <div class="provider-card">
+      <div class="provider-header">
+        <div class="provider-icon" style="background:linear-gradient(135deg,#ef4444,#991b1b)">⚡</div>
+        <div>
+          <div class="provider-name">Master Control</div>
+          <div class="provider-sub">Kendali Bot Power</div>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.03); padding:15px; border-radius:12px; border:1px solid var(--border)">
+        <div>
+          <div style="font-weight:600; font-size:14px;">Bot Auto-Response</div>
+          <div style="font-size:12px; color:var(--muted)">Matikan jika ingin mode manual saja</div>
+        </div>
+        <button id="botToggleBtn" onclick="toggleBot()" style="padding:10px 20px; border-radius:10px; border:none; cursor:pointer; font-weight:700; transition:all 0.3s ease;">-</button>
+      </div>
+    </div>
+    
+    <!-- MANUAL CHAT -->
+    <div class="provider-card">
+      <div class="provider-header">
+        <div class="provider-icon" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8)">💬</div>
+        <div>
+          <div class="provider-name">Manual Social Chat</div>
+          <div class="provider-sub">Kirim pesan langsung ke web</div>
+        </div>
+      </div>
+      <div style="display:flex; gap:10px;">
+        <input type="text" id="manualText" placeholder="Ketik pesan di sini..." style="flex:1; background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:10px; color:white; outline:none;">
+        <button onclick="sendManual()" style="background:var(--accent); color:white; border:none; padding:0 20px; border-radius:10px; cursor:pointer; font-weight:600;">Kirim</button>
+      </div>
+    </div>
+  </div>
+
   <div class="section-title">Groq Providers (Auto Rotation)</div>
   <div class="groq-accordion" id="groqAccordion">
     <!-- Groq items will be injected here -->
   </div>
   <div style="margin-bottom: 25px;"></div>
 
-
-
-  <!-- IMAGE & POLLINATIONS -->
-  <div class="grid grid-2" style="margin-bottom:20px">
-    <!-- IMAGE GEN -->
+  <!-- IMAGE GEN -->
+  <div class="grid grid-1" style="margin-bottom:20px">
     <div class="provider-card">
       <div class="provider-header">
         <div class="provider-icon" style="background:linear-gradient(135deg,#a855f7,#7c3aed)">🖼</div>
         <div>
           <div class="provider-name">Image Generation</div>
-          <div class="provider-sub">AI Generator → Pollinations</div>
+          <div class="provider-sub">Gemini 2.5 Flash Image</div>
         </div>
         <div id="imgBadge" class="badge badge-green" style="margin-left:auto">Aktif</div>
       </div>
@@ -1423,23 +1414,6 @@ function getDashboardHTML() {
         <div class="stat-row"><span class="stat-label">Errors</span><span class="stat-value" id="imgErrors">-</span></div>
       </div>
       <div style="font-size:12px;color:var(--red);margin-top:10px;word-break:break-all" id="imgLastErr">-</div>
-    </div>
-    <!-- POLLINATIONS -->
-    <div class="provider-card">
-      <div class="provider-header">
-        <div class="provider-icon" style="background:linear-gradient(135deg,#5eead4,#0891b2)">P</div>
-        <div>
-          <div class="provider-name">Pollinations.ai</div>
-          <div class="provider-sub">OpenAI compatible · Tanpa API Key</div>
-        </div>
-        <div class="badge badge-green" style="margin-left:auto">Unlimited (Fallback)</div>
-      </div>
-      <div class="grid grid-3" style="gap:10px">
-        <div class="stat-row"><span class="stat-label">Requests</span><span class="stat-value" id="pollSuccess">-</span></div>
-        <div class="stat-row"><span class="stat-label">Errors</span><span class="stat-value" id="pollErrors">-</span></div>
-        <div class="stat-row"><span class="stat-label">Status</span><span class="stat-value" style="color:var(--green)">Aktif</span></div>
-      </div>
-      <div style="font-size:12px;color:var(--red);margin-top:10px;word-break:break-all" id="pollLastErr">-</div>
     </div>
   </div>
 
@@ -1462,11 +1436,42 @@ function formatUptime(seconds) {
 function pct(a,b){return b>0?Math.round(a/b*100)+'%':'0%'}
 function rate(s,r){return r>0?Math.round(s/r*100)+'%':'N/A'}
 
+async function toggleBot() {
+  const res = await fetch('/api/bot/toggle', { method: 'POST' });
+  const d = await res.json();
+  refresh();
+}
+
+async function sendManual() {
+  const input = document.getElementById('manualText');
+  const text = input.value;
+  if (!text) return;
+  const res = await fetch('/api/chat/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text })
+  });
+  input.value = '';
+  refresh();
+}
+
+async function toggleKey(id) {
+  await fetch('/api/groq/toggle/' + id, { method: 'POST' });
+  refresh();
+}
+
 async function refresh() {
   try {
     const res = await fetch('/api/stats');
     const d = await res.json();
     if (!d) return;
+
+    const botBtn = document.getElementById('botToggleBtn');
+    if (botBtn) {
+      botBtn.textContent = d.isBotActive ? 'ON' : 'OFF';
+      botBtn.style.background = d.isBotActive ? 'var(--green)' : 'var(--red)';
+      botBtn.style.color = 'white';
+    }
 
     const online = d.botStatus === 'online';
     const dot = document.getElementById('statusDot');
@@ -1494,32 +1499,36 @@ async function refresh() {
       if (accordion) {
         accordion.innerHTML = d.groq.map((g, i) => {
           const isCooldown = now < g.cooldownUntil;
-          const isOnline = d.lastUsedGroq === i;
-          const isOpen = isOnline; // Yang terbuka hanya yang sedang aktif (Online) saja
+          const isSelected = d.lastUsedGroq === i;
+          const isKeyOn = g.active !== false;
           
-          let statusText = 'READY';
-          let badgeClass = 'badge-green';
-          if (isCooldown) {
+          let statusText = isKeyOn ? 'READY' : 'DISABLED';
+          let badgeClass = isKeyOn ? 'badge-green' : 'badge-red';
+          
+          if (isKeyOn && isCooldown) {
             statusText = 'COOLDOWN';
             badgeClass = 'badge-yellow';
-          } else if (isOnline) {
+          } else if (isKeyOn && isSelected) {
             statusText = 'ONLINE';
             badgeClass = 'badge-online';
           }
           
           const cooldownSecs = isCooldown ? Math.round((g.cooldownUntil - now) / 1000) : 0;
           
-          return '<div class="groq-item ' + (isOpen ? 'is-open' : '') + ' ' + (isOnline ? 'is-online' : '') + '">'
-              + '<div class="groq-trigger" onclick="this.parentElement.classList.toggle(&quot;is-open&quot;)">'
-              + '<div class="groq-number">' + (i + 1) + '</div>'
-              + '<div class="groq-info">'
+          return '<div class="groq-item ' + (isSelected ? 'is-open' : '') + ' ' + (isSelected ? 'is-online' : '') + '">'
+              + '<div class="groq-trigger">'
+              + '<div class="groq-number" onclick="this.parentElement.parentElement.classList.toggle(&quot;is-open&quot;)">' + (i + 1) + '</div>'
+              + '<div class="groq-info" onclick="this.parentElement.parentElement.classList.toggle(&quot;is-open&quot;)">'
               + '<div class="groq-name">Groq Key #' + (i + 1) + '</div>'
               + '<div class="groq-status-row">'
               + '<span class="badge ' + badgeClass + '" style="font-size:10px; padding: 2px 8px;">' + statusText + '</span> '
               + '<span style="font-size:11px; color:var(--muted)">' + (i === 0 ? 'Primary' : 'Backup') + '</span>'
               + '</div>'
               + '</div>'
-              + '<div style="font-size:12px; color:var(--muted)">' + (isOnline ? 'Active Now' : '') + '</div>'
+              + '<div style="display:flex; align-items:center; gap:10px;">'
+              + '<span style="font-size:12px; color:var(--muted)">' + (isSelected ? 'Active' : '') + '</span>'
+              + '<button onclick="toggleKey(' + (i+1) + ')" style="padding:4px 8px; border-radius:6px; border:none; background:' + (isKeyOn ? 'var(--green)' : 'var(--red)') + '; color:white; font-size:10px; cursor:pointer;">' + (isKeyOn ? 'ON' : 'OFF') + '</button>'
+              + '</div>'
               + '</div>'
               + '<div class="groq-content">'
               + '<div class="grid grid-4" style="gap:15px; border-top: 1px solid var(--border); padding-top:15px;">'
@@ -1555,17 +1564,11 @@ async function refresh() {
       setT('imgLastErr', d.image.lastError || 'Tidak ada error');
     }
 
-    if (d.pollinations) {
-      setT('pollSuccess', (d.pollinations.success || 0) + ' / ' + (d.pollinations.requests || 0));
-      setT('pollErrors', d.pollinations.errors || 0);
-      setT('pollLastErr', d.pollinations.lastError || 'Tidak ada error');
-    }
-
     const list = document.getElementById('activityList');
     if (list && d.recentActivity && d.recentActivity.length > 0) {
       list.innerHTML = d.recentActivity.map(a => {
-        const provClass = a.provider.startsWith('Groq') ? 'prov-groq' : a.provider === 'Pollinations' ? 'prov-pollinations' : a.provider === 'Filter' ? 'prov-filter' : 'prov-error';
-        const typeClass = (a.type === 'image') ? 'type-image' : (a.type === 'blocked' ? 'type-blocked' : 'type-text');
+        const provClass = a.provider.startsWith('Groq') ? 'prov-groq' : a.provider === 'Pollinations' ? 'prov-pollinations' : (a.provider === 'Filter' || a.provider === 'Dashboard') ? 'prov-filter' : 'prov-error';
+        const typeClass = (a.type === 'image') ? 'type-image' : (a.type === 'blocked' ? 'type-blocked' : (a.type === 'manual' ? 'type-image' : 'type-text'));
         return '<div class="activity-item">' 
           + '<div class="activity-meta">'
           + '<span class="activity-from">@' + a.from + '</span>'
@@ -1573,7 +1576,7 @@ async function refresh() {
           + '<span class="activity-time">' + a.time + '</span>'
           + '<span class="provider-tag ' + provClass + '">' + a.provider + '</span>'
           + '</div>'
-          + '<div class="activity-q">Pesan: ' + a.text + '</div>'
+          + '<div class="activity-q">Pesan: ' + (a.text || '-') + '</div>'
           + '<div class="activity-a">' + a.response + '</div>'
           + '</div>';
       }).join('');
