@@ -1310,13 +1310,13 @@ function getDashboardHTML() {
         <div class="control-title">Manual Send</div>
         <div class="control-sub">Kirim pesan ke chat</div>
         <div style="display:flex; gap:8px;">
-          <input type="text" id="manualText" placeholder="Pesan...">
+          <input type="text" id="manualText" placeholder="Pesan..." onkeydown="if(event.key === 'Enter') sendManual()">
           <button onclick="sendManual()" class="btn-primary">Kirim</button>
         </div>
       </div>
     </div>
 
-    <div class="section-title">AI Engine (Groq Llama)</div>
+    <div class="section-title">List Otak</div>
     <div class="model-list" id="groqAccordion">
       <!-- Injected -->
     </div>
@@ -1409,7 +1409,7 @@ async function refresh() {
           return '<div class="model-card ' + (isSelected ? 'is-active' : '') + '">'
             + '<div class="model-main">'
             + '<div class="model-info">'
-            + '<div class="model-name">Groq Provider #' + (i+1) + '</div>'
+            + '<div class="model-name">Otak #' + (i+1) + '</div>'
             + '<div class="model-status">' + st + ' • ' + (i === 0 ? 'Primary' : 'Worker') + '</div>'
             + '</div>'
             + '<button onclick="toggleKey(' + (i+1) + ')" class="btn-toggle" style="background:' + (isOff ? '#eee' : 'var(--accent)') + '; color:' + (isOff ? '#666' : 'white') + '">'
