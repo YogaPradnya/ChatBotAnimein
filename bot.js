@@ -50,7 +50,7 @@ const stats = {
     startTime: new Date().toISOString(),
     botStatus: 'starting',
     totalTriggers: 0,
-    lastUsedGroq: -1, // Indeks Groq key terakhir yang berhasil digunakan
+    lastUsedGroq: -1, 
     recentActivity: [],
 
     groq: CONFIG.GROQ_KEYS.map((key, index) => ({
@@ -136,12 +136,10 @@ const GEN_1 = POKEMON_LIST.slice(0, 151);
 const GEN_2 = POKEMON_LIST.slice(151);
 
 const POKEMON_GRADES = {
-    // Gen 1
     R: ["Bulbasaur", "Ivysaur", "Charmander", "Charmeleon", "Squirtle", "Wartortle", "Caterpie", "Metapod", "Weedle", "Kakuna", "Pidgey", "Pidgeotto", "Rattata", "Spearow", "Ekans", "Pikachu", "Sandshrew", "Nidoran-f", "Nidorina", "Nidoran-m", "Nidorino", "Clefairy", "Vulpix", "Jigglypuff", "Zubat", "Oddish", "Gloom", "Paras", "Venonat", "Diglett", "Meowth", "Psyduck", "Mankey", "Growlithe", "Poliwag", "Poliwhirl", "Abra", "Kadabra", "Machop", "Machoke", "Bellsprout", "Weepinbell", "Tentacool", "Geodude", "Graveler", "Ponyta", "Slowpoke", "Magnemite", "Doduo", "Seel", "Grimer", "Shellder", "Gastly", "Haunter", "Drowzee", "Krabby", "Voltorb", "Exeggcute", "Cubone", "Koffing", "Horsea", "Goldeen", "Staryu", "Magikarp", "Eevee", "Omanyte", "Kabuto", "Dratini", "Dragonair"],
     E: ["Butterfree", "Beedrill", "Pidgeot", "Raticate", "Fearow", "Arbok", "Raichu", "Sandslash", "Nidoqueen", "Nidoking", "Clefable", "Ninetales", "Wigglytuff", "Golbat", "Vileplume", "Parasect", "Venomoth", "Dugtrio", "Persian", "Golduck", "Primeape", "Poliwrath", "Victreebel", "Tentacruel", "Golem", "Rapidash", "Slowbro", "Magneton", "Farfetchd", "Dodrio", "Dewgong", "Muk", "Cloyster", "Onix", "Hypno", "Kingler", "Electrode", "Exeggutor", "Marowak", "Hitmonlee", "Hitmonchan", "Lickitung", "Weezing", "Rhydon", "Chansey", "Tangela", "Kangaskhan", "Seadra", "Starmie", "Mr-mime", "Jynx", "Electabuzz", "Magmar", "Pinsir", "Tauros", "Porygon", "Omastar", "Kabutops", "Ditto"],
     M: ["Venusaur", "Charizard", "Blastoise", "Arcanine", "Alakazam", "Machamp", "Scyther", "Gyarados", "Lapras", "Vaporeon", "Jolteon", "Flareon", "Aerodactyl", "Snorlax", "Dragonite"],
     L: ["Articuno", "Zapdos", "Moltres", "Mewtwo", "Mew"],
-    // Gen 2
     R2: ["Chikorita", "Bayleef", "Cyndaquil", "Quilava", "Totodile", "Croconaw", "Sentret", "Hoothoot", "Ledyba", "Spinarak", "Chinchou", "Pichu", "Cleffa", "Igglybuff", "Togepi", "Natu", "Mareep", "Flaaffy", "Marill", "Hoppip", "Skiploom", "Sunkern", "Wooper", "Unown", "Pineco", "Dunsparce", "Snubbull", "Teddiursa", "Slugma", "Swinub", "Remoraid", "Houndour", "Phanpy", "Tyrogue", "Smoochum", "Elekid", "Magby", "Larvitar", "Pupitar"],
     E2: ["Furret", "Noctowl", "Ledian", "Ariados", "Lanturn", "Togetic", "Xatu", "Bellossom", "Azumarill", "Sudowoodo", "Politoed", "Jumpluff", "Aipom", "Sunflora", "Yanma", "Quagsire", "Murkrow", "Slowking", "Misdreavus", "Wobbuffet", "Girafarig", "Forretress", "Gligar", "Granbull", "Qwilfish", "Shuckle", "Magcargo", "Piloswine", "Corsola", "Octillery", "Delibird", "Mantine", "Houndoom", "Stantler", "Smeargle", "Miltank", "Donphan"],
     M2: ["Ampharos", "Espeon", "Umbreon", "Steelix", "Scizor", "Heracross", "Sneasel", "Ursaring", "Skarmory", "Porygon2", "Hitmontop", "Blissey", "Crobat", "Tyranitar"],
@@ -250,11 +248,9 @@ const ANIMEIN_KNOWLEDGE = [
 function getKnowledgeContext(query) {
     const lowerQ = query.toLowerCase();
 
-    // Hitung skor setiap entry berdasarkan jumlah keyword yang cocok
     const scored = ANIMEIN_KNOWLEDGE
         .map(k => {
             const matches = k.keywords.filter(key => {
-                // Gunakan regex agar match kata penuh dan tidak asal nyantol (kecuali keyword pendek)
                 if (key.length <= 3) return lowerQ.split(/\s+/).includes(key);
                 return lowerQ.includes(key);
             });
@@ -262,11 +258,10 @@ function getKnowledgeContext(query) {
         })
         .filter(k => k.score > 0)
         .sort((a, b) => b.score - a.score)
-        .slice(0, 3); // Cukup 2 entry buat hemat token
+        .slice(0, 3); 
 
     let extraStats = "";
     
-    // Mapping singkatan ke nama asli agar data JSON tetap terpanggil
     const nicknames = { "mew2": "mewtwo", "mew1": "mew", "pika": "pikachu", "chari": "charizard" };
     let expandedQuery = lowerQ;
     for (const [nick, real] of Object.entries(nicknames)) {
@@ -279,7 +274,6 @@ function getKnowledgeContext(query) {
         }
     });
 
-    // Fitur pembanding Pokemon Terkuat/Terlemah - Hanya jika kontekstual Pokemon
     let comparisonData = "";
     const isPokemonContext = lowerQ.match(/pokemon|pika|poke|mon|satwa|peliharaan|evolusi|battle|rank|tim/i);
     if (isPokemonContext && lowerQ.match(/kuat|lemah|op|bagus|top|bot|pro|noob|dewa|terbaik|terburuk/)) {
@@ -361,16 +355,12 @@ function containsProfanity(text) {
 function detectIntent(text) {
     const lower = text.toLowerCase();
     
-    // Intent: Anime yang sedang viral/hangat
     if (/rekomendasi hari ini|sedang hangat|hangat|trending|tranding|viral|rame|lagi rame|lagi hits|hits|update hari ini|seru/.test(lower)) return 'trending';
     
-    // Intent: Jadwal rilis/update
     if (/jadwal|tayang|hari ini|schedule|kapan rilis|jam berapa|hari apa|update eps|episode baru|rilis kapan|kapan tayang/.test(lower)) return 'schedule';
     
-    // Intent: Rekomendasi umum/populer
     if (/populer|popular|terpopuler|rekomendasi|rekomen|recommend|paling bagus|rating tinggi|top anime|apa yang bagus|saran anime|saranin|kasih tau anime/.test(lower)) return 'popular';
     
-    // Intent: Pencarian judul spesifik
     if (/cari|search|ada ga|ada gak|ada tidak|punya anime|judul|cek|cariin|nyari/.test(lower)) return 'search';
     
     return null;
@@ -399,7 +389,6 @@ const ANIMEIN_HEADERS = {
 /** Ambil data anime dari Animein berdasarkan tipe (trending/hot atau popular) */
 async function fetchHomeAnime() {
     const now = Date.now();
-    // Cache check untuk trending (sebagai proxy utama beranda)
     if (cache.trending.data.length > 0 && now - cache.trending.lastFetch < cache.TTL) {
         return true;
     }
@@ -408,14 +397,12 @@ async function fetchHomeAnime() {
         const days = ['AHAD', 'SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT', 'SABTU'];
         const today = days[getJakartaDate().getDay()];
 
-        // 1. Ambil Trending/Hot dari Beranda (Update Hari Ini)
         const resHome = await axios.get(`${CONFIG.BASE_URL}/3/2/home/data`, {
             params: { day: today },
             headers: ANIMEIN_HEADERS,
             timeout: 10000,
         });
 
-        // 2 & 3. Ambil Global Terpopuler & Rating Tertinggi secara Pararel (Multiple Pages for Accuracy)
         const popPromises = [];
         const starPromises = [];
         for (let i = 1; i <= 50; i++) {
@@ -431,7 +418,6 @@ async function fetchHomeAnime() {
         let starMovies = [];
         starResponses.forEach(res => { if (res?.data?.data?.movie) starMovies = starMovies.concat(res.data.data.movie); });
 
-        // Sort strict secara numerik akurat
         const cleanSort = (v) => parseInt(String(v || 0).replace(/[^\d]/g, '')) || 0;
         popMovies.sort((a, b) => cleanSort(b.views) - cleanSort(a.views));
         starMovies.sort((a, b) => (parseFloat(b.favorites) || 0) - (parseFloat(a.favorites) || 0));
@@ -443,7 +429,6 @@ async function fetchHomeAnime() {
                 seen.add(a.title); return true;
             }).slice(0, limit);
 
-            // Fetch detail untuk Studio & Year (paralel)
             const detailed = await Promise.all(unique.map(async (m) => {
                 try {
                     const detailRes = await axios.get(`${CONFIG.BASE_URL}/3/2/movie/detail/${m.id}`, {
@@ -583,8 +568,6 @@ async function fetchByGenre(genreId, isSpecific = false, maxLimit = 10) {
         let movies = [];
         
         if (isSpecific) {
-            // Jika spesifik (misal "view terbanyak"), kita harus mengambil banyak halaman
-            // karena API Animein tidak mensortir view secara absolut di halaman pertama.
             const promises = [];
             for (let i = 1; i <= 50; i++) {
                 promises.push(
@@ -603,20 +586,17 @@ async function fetchByGenre(genreId, isSpecific = false, maxLimit = 10) {
                 }
             });
             
-            // Hapus duplikat
             const seen = new Set();
             movies = movies.filter(m => {
                 if (!m.title || seen.has(m.title)) return false;
                 seen.add(m.title); return true;
             });
             
-            // Urutkan berdasarkan views terbanyak secara numerik akurat
             movies.sort((a, b) => {
                 const getViews = (v) => parseInt(String(v || 0).replace(/[^\d]/g, '')) || 0;
                 return getViews(b.views) - getViews(a.views);
             });
         } else {
-            // Jika tidak spesifik, cukup ambil 1 halaman acak agar bervariasi
             const randomPage = Math.floor(Math.random() * 5) + 1;
             const res = await axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, {
                 params: { sort: 'popular', page: randomPage, genre_in: genreId },
@@ -633,14 +613,12 @@ async function fetchByGenre(genreId, isSpecific = false, maxLimit = 10) {
                 });
                 movies = fallback.data?.data?.movie || [];
             }
-            // Acak urutan
             movies.sort(() => 0.5 - Math.random());
         }
         
         if (movies.length > 0) {
             const topMovies = movies.slice(0, maxLimit);
             
-            // Fetch detail untuk mendapatkan Studio & Year yang akurat (paralel)
             const detailedMovies = await Promise.all(topMovies.map(async (m) => {
                 try {
                     const detailRes = await axios.get(`${CONFIG.BASE_URL}/3/2/movie/detail/${m.id}`, {
@@ -733,8 +711,6 @@ async function buildAnimeContext(intent, question) {
             }
         }
     } else if (intent === 'popular' || lowerQ.includes('rekomendasi') || lowerQ.includes('rekomen')) {
-        // Jika tidak ada genre yang match, coba cari manual pake keyword user
-        // Hapus kata-kata umum agar pencarian lebih akurat
         const cleanQuery = lowerQ.replace(/rekomendasi|rekomen|anime|dong|bang|pls|pake|pembantu|yang|bertema|tentang/gi, '').trim();
         
         if (cleanQuery.length > 2) {
@@ -807,7 +783,6 @@ async function getAIResponse(userMessage, senderName) {
         const stat = stats.groq[i];
         const now = Date.now();
 
-        // Cek apakah key aktif dan tidak sedang cooldown
         if (!stat.active || now < stat.cooldownUntil) continue;
 
         try {
@@ -836,7 +811,6 @@ async function getAIResponse(userMessage, senderName) {
 async function generateGeminiImage(prompt) {
     stats.image.requests++;
     
-    // Terjemahkan prompt ke Bahasa Inggris pakai salah satu Gemini client yang masih bisa
     let englishPrompt = prompt;
     const textClientIdx = stats.gemini.findIndex(g => !g.isQuotaExceeded);
     if (textClientIdx >= 0) {
@@ -850,7 +824,6 @@ async function generateGeminiImage(prompt) {
     }
     console.log(`[IMG] Prompt EN: ${englishPrompt}`);
     
-    // Coba semua Gemini keys untuk generate gambar
     for (let i = 0; i < CONFIG.GEMINI_KEYS.length; i++) {
         const stat = stats.gemini[i];
         if (stat.isQuotaExceeded) continue;
@@ -895,7 +868,6 @@ async function generateGeminiImage(prompt) {
         }
     }
     
-    // Semua Gemini key gagal, kembalikan null
     console.warn('[IMG] Semua Gemini key gagal/quota habis.');
     stats.image.errors++;
     stats.image.lastError = 'Semua Gemini API Key limit';
@@ -904,9 +876,7 @@ async function generateGeminiImage(prompt) {
 
 
 
-/** Upload gambar ke imgbb dan kembalikan URL publik */
 async function uploadToImgBB(base64Data, mimeType = 'image/jpeg') {
-    // Gunakan imgbb free API (tidak perlu API key untuk base64)
     try {
         const form = new FormData();
         form.append('image', base64Data);
@@ -919,13 +889,11 @@ async function uploadToImgBB(base64Data, mimeType = 'image/jpeg') {
     return null;
 }
 
-/** Kirim pesan chat dengan gambar sebagai multipart form */
 async function sendChatWithImage(imageData, caption, replyTo = '0') {
     try {
-        // Konversi base64 ke Buffer
         const buffer = Buffer.from(imageData.data, 'base64');
         let ext = imageData.mimeType.split('/')[1] || 'jpg';
-        if (ext === 'jpeg') ext = 'jpg'; // Animein API strict checks .jpg
+        if (ext === 'jpeg') ext = 'jpg'; 
         const contentType = ext === 'jpg' ? 'image/jpeg' : imageData.mimeType;
         const filename = `animein_${Date.now()}.${ext}`;
         
@@ -934,7 +902,6 @@ async function sendChatWithImage(imageData, caption, replyTo = '0') {
         form.append('id_chat_replay', replyTo);
         form.append('id_user', auth.userId);
         form.append('key_client', auth.userKey);
-        // Coba append gambar sebagai file dengan tipe yang diizinkan (JPG)
         form.append('image', buffer, { filename, contentType });
         
         const res = await axios.post(`${CONFIG.BASE_URL}/3/2/chat/do`, form, {
@@ -948,7 +915,6 @@ async function sendChatWithImage(imageData, caption, replyTo = '0') {
             timeout: 20000,
         });
         
-        // Cek apakah berhasil atau tidak (API mungkin tidak support image upload)
         if (res.data && (res.data.status === true || res.data.message)) {
             console.log('[CHAT/IMG] Berhasil kirim gambar via multipart!');
             return true;
@@ -1062,10 +1028,8 @@ async function processMessages(messages) {
         if (!msgId || msgId <= lastMessageId) continue;
         lastMessageId = msgId;
 
-        // Jika bot dimatikan, abaikan semua trigger!
         if (!isBotActive) continue;
 
-        // Jika dalam masa delay 10 detik, abaikan semua trigger pesan!
         if (isGlobalCooldown) continue;
 
         if (String(msg.user_id) === String(auth.userId)) continue;
@@ -1097,7 +1061,6 @@ async function processMessages(messages) {
             await sendChatMessage(`@${senderName} Maaf kak, fitur pembuatan gambar saat ini sedang dinonaktifkan. 🙏`, msg.id);
             addActivity('image', senderName, cleanText, '[Fitur Dinonaktifkan]', 'Disabled');
         } else {
-            // Gabungkan pesan yang di-replay jika ada
             let combinedText = cleanText;
             if (msg.replay_text) {
                 combinedText = `[Pesan yang dibalas dari ${msg.replay_user_name || 'User'}: "${msg.replay_text}"]\n${cleanText}`;
@@ -1110,7 +1073,6 @@ async function processMessages(messages) {
             await sendChatMessage(reply, msg.id);
             addActivity('text', senderName, question, aiText, provider);
             
-            // Aktifkan global delay 10 detik setelah menjawab
             isGlobalCooldown = true;
             setTimeout(() => {
                 isGlobalCooldown = false;
@@ -1118,8 +1080,6 @@ async function processMessages(messages) {
         }
     }
 }
-
-
 
 
 
@@ -1162,14 +1122,12 @@ function startDashboard() {
         res.json({ ...stats, uptime, isBotActive });
     });
 
-    // Toggle Bot Power
     app.post('/api/bot/toggle', (req, res) => {
         isBotActive = !isBotActive;
         console.log(`[DASHBOARD] Bot Power: ${isBotActive ? 'ON' : 'OFF'}`);
         res.json({ success: true, isBotActive });
     });
 
-    // Kirim Chat Manual
     app.post('/api/chat/send', async (req, res) => {
         const { text } = req.body;
         if (!text) return res.status(400).json({ success: false, message: 'Text required' });
@@ -1180,7 +1138,6 @@ function startDashboard() {
         res.json({ success: true });
     });
 
-    // Toggle Groq Key
     app.post('/api/groq/toggle/:id', (req, res) => {
         const id = parseInt(req.params.id) - 1;
         if (stats.groq[id]) {
