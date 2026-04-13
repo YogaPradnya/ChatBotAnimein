@@ -97,7 +97,7 @@ const groqClients = CONFIG.GROQ_KEYS.map(key => new Groq({ apiKey: key }));
 const SYSTEM_PROMPT = `Kamu adalah Rara, asisten chat Animein buatan Yogaa. Kamu orang asli, bukan AI.
 Aturan:
 - Gaya: Gaul, santai, tongkrongan, singkat. JANGAN formal.
-- Panggil user/username langsung. DILARANG gunakan "Lu", "Aku", "Saya", "Kamu", "Anda".
+- Panggil user/username langsung. DILARANG gunakan "Lu","Lo","Aku", "Saya", "Kamu", "Anda".
 - Fokus: Jadi teman ngobrol yang asik. JANGAN bahas Anime, Pokemon, Yogaa, atau Eko kecuali ditanya atau relevan.
 - untuk yang menanyakan Rekomendasi Gunakan LIST BARIS BARU (angka) untuk judul (Min 10). JANGAN paragraf/koma. DILARANG KERAS menambahkan deskripsi/sinopsi. BOLEH sertakan Rating, Studio, atau Views jika ditanyakn, jika tidak jangan isi. ( ini hanya untuk rekomndasi anime, film, pokemon, dll, tidak untuk semua pesan)
 - Animein: Situs streaming anime. Pokemon: Fitur tambahan (Gen 1 & 2 saja, Gen 3 ongoing).
@@ -298,14 +298,14 @@ ${top5.map((p, i) => `${i+1}. ${p.name} (CP: ${p.cp}, HP: ${p.hp}, Atk: ${p.atk}
 
 * 5 POKEMON TERLEMAH (Berdasarkan CP Terendah):
 ${bottom5.map((p, i) => `${i+1}. ${p.name} (CP: ${p.cp}, HP: ${p.hp}, Atk: ${p.atk}, Def: ${p.def})`).join('\n')}
-(Gunakan data ini untuk menjawab pertanyaan tentang siapa yang terkuat/terlemah/paling OP secara objektif berdasarkan CP.)`;
+Instruksi AI: Jika user nanya "siapa pokemon terkuat, dewa, paling OP, terhebat" atau "siapa yang terlemah, ampas, noob", berikan ranking dari data ini dengan bahasa ngegas tapi asik.`;
     }
 
     if (scored.length === 0 && extraStats === "" && comparisonData === "") return "";
     
     let resultContext = `\n\n[INFO ANIMEIN - Akurat]:`;
     if (scored.length > 0) {
-        resultContext += `\n${scored.map(m => m.info).join("\n")}`;
+        resultContext += `\n[INFORMASI SISTEM]:\n${scored.map(m => m.info).join("\n")}\nInstruksi AI: Jika user bertanya tentang web Animein, jadwal tayang, masalah web, admin, pokemon, atau fitur shop, WAJIB gunakan pedoman di atas dan jawab dengan bahasa santai tongkrongan.`;
     }
     if (extraStats !== "") {
         resultContext += `\n[Info Statistik Pokemon dari database asli]:\n${extraStats}\n(PENTING: Gunakan angka-angka dari stats database di atas untuk menjawab, dilarang mengarang!)`;
@@ -420,39 +420,68 @@ async function fetchHomeAnime() {
             timeout: 10000,
         });
 
-        // 2. Ambil Global Terpopuler (Banyak Views)
-        const resPop = await axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, {
-            params: { sort: 'popular', page: 1 },
-            headers: ANIMEIN_HEADERS,
-            timeout: 10000,
-        });
+        // 2 & 3. Ambil Global Terpopuler & Rating Tertinggi secara Pararel (Multiple Pages for Accuracy)
+        const popPromises = [];
+        const starPromises = [];
+        for (let i = 1; i <= 40; i++) {
+            popPromises.push(axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, { params: { sort: 'popular', page: i }, headers: ANIMEIN_HEADERS, timeout: 10000 }).catch(() => null));
+            starPromises.push(axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, { params: { sort: 'stars', page: i }, headers: ANIMEIN_HEADERS, timeout: 10000 }).catch(() => null));
+        }
 
-        // 3. Ambil Global Rating Tertinggi (Banyak Bintang/Favorites)
-        const resStar = await axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, {
-            params: { sort: 'stars', page: 1 },
-            headers: ANIMEIN_HEADERS,
-            timeout: 10000,
-        });
+        const [popResponses, starResponses] = await Promise.all([Promise.all(popPromises), Promise.all(starPromises)]);
+        
+        let popMovies = [];
+        popResponses.forEach(res => { if (res?.data?.data?.movie) popMovies = popMovies.concat(res.data.data.movie); });
+        
+        let starMovies = [];
+        starResponses.forEach(res => { if (res?.data?.data?.movie) starMovies = starMovies.concat(res.data.data.movie); });
 
-        const mapData = (raw) => {
+        // Sort strict secara numerik akurat
+        const cleanSort = (v) => parseInt(String(v || 0).replace(/[^\d]/g, '')) || 0;
+        popMovies.sort((a, b) => cleanSort(b.views) - cleanSort(a.views));
+        starMovies.sort((a, b) => (parseFloat(b.favorites) || 0) - (parseFloat(a.favorites) || 0));
+
+        const mapData = async (raw, limit = 25) => {
             const seen = new Set();
-            return raw.filter(a => {
+            const unique = raw.filter(a => {
                 if (!a.title || seen.has(a.title)) return false;
                 seen.add(a.title); return true;
-            }).slice(0, 25).map(a => {
+            }).slice(0, limit);
+
+            // Fetch detail untuk Studio & Year (paralel)
+            const detailed = await Promise.all(unique.map(async (m) => {
+                try {
+                    const detailRes = await axios.get(`${CONFIG.BASE_URL}/3/2/movie/detail/${m.id}`, {
+                        headers: ANIMEIN_HEADERS,
+                        timeout: 3000
+                    }).catch(() => null);
+                    if (detailRes?.data?.data?.movie) {
+                        const d = detailRes.data.data.movie;
+                        return {
+                            ...m,
+                            studio: d.studio || m.studio || '?',
+                            year: (d.year && d.year !== 'UNKNOWN') ? d.year : (d.aired_start ? d.aired_start.split('-')[0] : (m.year || '?'))
+                        };
+                    }
+                } catch {}
+                return m;
+            }));
+
+            return detailed.map((a, i) => {
                 let meta = `[Rating: ${a.favorites || '?'}, Views: ${a.views || '?'}, Studio: ${a.studio || '?'}, Tahun: ${a.year || '?'}]`;
-                if (a.synonyms) return `- ${a.title} (Alt: ${a.synonyms}) ${meta}`;
-                return `- ${a.title} ${meta}`;
+                let entry = `${i + 1}. ${a.title}`;
+                if (a.synonyms) entry += ` (Alt: ${a.synonyms})`;
+                return entry + ` ${meta}`;
             });
         };
 
-        cache.trending.data = mapData(resHome.data?.data?.hot || []);
+        cache.trending.data = await mapData(resHome.data?.data?.hot || [], 15);
         cache.trending.lastFetch = now;
 
-        cache.popular.data = mapData(resPop.data?.data?.movie || []);
+        cache.popular.data = await mapData(popMovies, 15);
         cache.popular.lastFetch = now;
 
-        cache.topRated.data = mapData(resStar.data?.data?.movie || []);
+        cache.topRated.data = await mapData(starMovies, 15);
         cache.topRated.lastFetch = now;
 
         console.log(`[ANIMEIN] Cache updated: ${cache.trending.data.length} trending, ${cache.popular.data.length} global pop, ${cache.topRated.data.length} top rated`);
@@ -487,7 +516,7 @@ async function fetchSchedule() {
                     desc += ` (Jam: ${parts[1].slice(0, 5)})`;
                 }
             }
-            desc += ` [Favorites: ${a.favorites || '?'}, Studio: ${a.studio || '?'}]`;
+            desc += ` [Update: ${a.day || today}, Studio: ${a.studio || '?'}]`;
             return desc;
         });
         if (list.length > 0) {
@@ -514,7 +543,7 @@ async function searchAnime(query) {
         return raw.map(a => {
             let info = `- ${a.title}`;
             if (a.synonyms) info += ` (Alt: ${a.synonyms})`;
-            info += ` [Favorites: ${a.favorites || '?'}, Views: ${a.views || '?'}, Studio: ${a.studio || '?'}, Tahun: ${a.year || '?'}]`;
+            info += ` [Update: ${a.day || '?'}, Views: ${a.views || '?'}, Studio: ${a.studio || '?'}, Tahun: ${a.year || '?'}]`;
             if (a.synopsis) {
                 const syn = a.synopsis.slice(0, 150) + '...';
                 info += `\n  Konteks Internal: ${syn}`;
@@ -553,33 +582,91 @@ async function fetchGenresList() {
     return cache.genres.data || [];
 }
 
-/** Ambil anime populer berdasarkan genre tertentu secara acak */
-async function fetchPopularByGenre(genreId, maxLimit = 10) {
+/** Ambil anime berdasarkan genre dengan opsi acak (rekomendasi) atau spesifik (terpopuler/terbanyak) */
+async function fetchByGenre(genreId, isSpecific = false, maxLimit = 10) {
     try {
-
-        const randomPage = Math.floor(Math.random() * 5) + 1;
+        let movies = [];
         
-        const res = await axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, {
-            params: { sort: 'popular', page: randomPage, genre_in: genreId },
-            headers: ANIMEIN_HEADERS, 
-            timeout: 10000
-        });
-        
-        let movies = res.data?.data?.movie || [];
-        if (movies.length === 0 && randomPage > 1) {
-
-            const fallback = await axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, {
-                params: { sort: 'popular', page: 1, genre_in: genreId },
+        if (isSpecific) {
+            // Jika spesifik (misal "view terbanyak"), kita harus mengambil banyak halaman
+            // karena API Animein tidak mensortir view secara absolut di halaman pertama.
+            const promises = [];
+            for (let i = 1; i <= 40; i++) {
+                promises.push(
+                    axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, {
+                        params: { sort: 'popular', page: i, genre_in: genreId },
+                        headers: ANIMEIN_HEADERS, 
+                        timeout: 10000
+                    }).catch(() => null)
+                );
+            }
+            
+            const responses = await Promise.all(promises);
+            responses.forEach(res => {
+                if (res && res.data && res.data.data && res.data.data.movie) {
+                    movies = movies.concat(res.data.data.movie);
+                }
+            });
+            
+            // Hapus duplikat
+            const seen = new Set();
+            movies = movies.filter(m => {
+                if (!m.title || seen.has(m.title)) return false;
+                seen.add(m.title); return true;
+            });
+            
+            // Urutkan berdasarkan views terbanyak secara numerik akurat
+            movies.sort((a, b) => {
+                const getViews = (v) => parseInt(String(v || 0).replace(/[^\d]/g, '')) || 0;
+                return getViews(b.views) - getViews(a.views);
+            });
+        } else {
+            // Jika tidak spesifik, cukup ambil 1 halaman acak agar bervariasi
+            const randomPage = Math.floor(Math.random() * 5) + 1;
+            const res = await axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, {
+                params: { sort: 'popular', page: randomPage, genre_in: genreId },
                 headers: ANIMEIN_HEADERS, 
                 timeout: 10000
             });
-            movies = fallback.data?.data?.movie || [];
+            
+            movies = res.data?.data?.movie || [];
+            if (movies.length === 0 && randomPage > 1) {
+                const fallback = await axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, {
+                    params: { sort: 'popular', page: 1, genre_in: genreId },
+                    headers: ANIMEIN_HEADERS, 
+                    timeout: 10000
+                });
+                movies = fallback.data?.data?.movie || [];
+            }
+            // Acak urutan
+            movies.sort(() => 0.5 - Math.random());
         }
         
         if (movies.length > 0) {
-            movies.sort(() => 0.5 - Math.random());
-            return movies.slice(0, maxLimit).map(a => {
-                return `- ${a.title} [Rating: ${a.favorites || '?'}, Studio: ${a.studio || '?'}, Tahun: ${a.year || '?'}]`;
+            const topMovies = movies.slice(0, maxLimit);
+            
+            // Fetch detail untuk mendapatkan Studio & Year yang akurat (paralel)
+            const detailedMovies = await Promise.all(topMovies.map(async (m) => {
+                try {
+                    const detailRes = await axios.get(`${CONFIG.BASE_URL}/3/2/movie/detail/${m.id}`, {
+                        headers: ANIMEIN_HEADERS,
+                        timeout: 5000
+                    }).catch(() => null);
+                    
+                    if (detailRes?.data?.data?.movie) {
+                        const d = detailRes.data.data.movie;
+                        return {
+                            ...m,
+                            studio: d.studio || m.studio || '?',
+                            year: (d.year && d.year !== 'UNKNOWN') ? d.year : (d.aired_start ? d.aired_start.split('-')[0] : (m.year || '?'))
+                        };
+                    }
+                } catch (err) {}
+                return m;
+            }));
+
+            return detailedMovies.map((a, i) => {
+                return `${i + 1}. ${a.title} [Rating: ${a.favorites || '?'}, Views: ${a.views || '?'}, Studio: ${a.studio || '?'}, Tahun: ${a.year || '?'}]`;
             });
         }
     } catch(e) {
@@ -613,28 +700,41 @@ async function buildAnimeContext(intent, question) {
         }
     }
 
+    const isSpecificRequest = /terbanyak|paling|terpopuler|top|view|viev|vieu|rating|bintang|terbaik/.test(lowerQ);
+
     if (matchedGenre && (intent === 'popular' || intent === 'trending' || lowerQ.includes('genre') || lowerQ.includes('anime'))) {
-        const list = await fetchPopularByGenre(matchedGenre.id);
+        const list = await fetchByGenre(matchedGenre.id, isSpecificRequest);
         if (list.length > 0) {
-            contextData += `\n\n[DATA ANIMEIN - Anime Populer Genre ${matchedGenre.name.toUpperCase()}]:\n${list.join('\n')}\nGunakan daftar anime bergenre ${matchedGenre.name.toUpperCase()} ini sebagai referensi utama rekomendasi, pastikan judul persis dari daftar tersebut.`;
+            const contextType = isSpecificRequest ? `DATA AKURAT (Sorted by Views/Rating)` : `REKOMENDASI ACAK`;
+            contextData += `\n\n[DATA ANIMEIN - ${contextType} Genre ${matchedGenre.name.toUpperCase()}]:\n${list.join('\n')}\nInstruksi AI: Jika user bilang "saranin", "rekomendasiin", "sebutkan", "apa aja anime", dll untuk genre ${matchedGenre.name.toUpperCase()}, bacakan data di atas! ${isSpecificRequest ? 'User minta urutan AKURAT (seperti "views terbanyak"), jadi JANGAN ubah urutan aslinya. Sebutkan angkanya dengan bangga ala teman nobar!' : 'Bahasakan rekomendasi ini dengan santai ala tongkrongan wibu.'}`;
         }
     } else if (intent === 'trending' || intent === 'popular') {
         await fetchHomeAnime();
-        contextData += `\n\n[DATA ANIME TRENDING HARI INI]:\n${cache.trending.data.slice(0, 15).join('\n')}`;
-        contextData += `\n\n[DATA ANIME GLOBAL TERPOPULER (ALL TIME)]:\n${cache.popular.data.slice(0, 15).join('\n')}`;
-        contextData += `\n\n[DATA ANIME RATING TERTINGGI (TOP STARS)]:\n${cache.topRated.data.slice(0, 15).join('\n')}`;
+        contextData += `\n\n[DATA ANIME TRENDING HARI INI]:\n${cache.trending.data.slice(0, 10).join('\n')}`;
+        contextData += `\n\n[DATA ANIME GLOBAL TERPOPULER (ALL TIME)]:\n${cache.popular.data.slice(0, 10).join('\n')}`;
+        contextData += `\n\n[DATA ANIME RATING TERTINGGI (TOP STARS)]:\n${cache.topRated.data.slice(0, 10).join('\n')}`;
+        contextData += `\n\nInstruksi AI: Di atas adalah 3 kategori data global. Gunakan data tersebut secara pintar untuk menjawab pertanyaan user. Jika user mencari yang sedang tren/hangat, gunakan [TRENDING HARI INI]. Jika mencari yang paling populer secara umum/terbanyak view, gunakan [GLOBAL TERPOPULER]. Jika mencari rating tertinggi/bintang, gunakan [RATING TERTINGGI]. Berikan rekomendasi yang sesuai.`;
         return contextData;
     } else if (intent === 'schedule') {
         const list = await fetchSchedule();
+        const keywords = lowerQ.replace(/jadwal|tayang|hari ini|schedule|kapan rilis|jam berapa|hari apa|update eps|episode baru|rilis kapan|kapan tayang/gi, '').trim();
+        
+        if (keywords.length > 2) {
+             const searchResults = await searchAnime(keywords);
+             if (searchResults.length > 0) {
+                 contextData += `\n\n[INFO UPDATE DARI SEARCH]:\n${searchResults.slice(0, 3).join('\n')}\nInstruksi AI: User nanya jadwal spesifik buat "${keywords}". Info di atas ada kolom [Update: ...] yang nunjukin hari rilisnya. Jawab sesuai hari itu ya!`;
+             }
+        }
+        
         if (list.length > 0) {
-            contextData += `\n\n[DATA ANIMEIN - Jadwal Hari Ini]:\n${list.join('\n')}\nGunakan data ini untuk menjawab jadwal tayang anime hari ini.`;
+            contextData += `\n\n[DATA ANIMEIN - Jadwal Tayang Hari Ini]:\n${list.join('\n')}\nInstruksi AI: Jika user bertanya jadwal rilis secara umum hari ini, gunakan list ini. Jawab dengan ramah.`;
         }
     } else if (intent === 'search') {
         const keywords = question.replace(/cari|search|ada ga|ada gak|ada tidak/gi, '').trim();
         if (keywords) {
             const list = await searchAnime(keywords);
             if (list.length > 0) {
-                contextData += `\n\n[DATA ANIMEIN - Hasil Pencarian "${keywords}"]:\n${list.join('\n')}\nGunakan data ini untuk menjawab apakah anime tersebut ada di Animein.`;
+                contextData += `\n\n[DATA ANIMEIN - Hasil Pencarian "${keywords}"]:\n${list.join('\n')}\nInstruksi AI: User sepertinya sedang nyari atau nanya "ada anime ${keywords} gak?". Beri tahu mereka ada atau tidak sesuai list ini, sekalian kasih bocoran view/ratingnya biar mereka tertarik nonton.`;
             }
         }
     } else if (intent === 'popular' || lowerQ.includes('rekomendasi') || lowerQ.includes('rekomen')) {
@@ -647,7 +747,7 @@ async function buildAnimeContext(intent, question) {
             const list = await searchAnime(cleanQuery);
             if (list.length > 0) {
                 const results = list.slice(0, 10).map(t => `- ${t}`);
-                contextData += `\n\n[DATA ANIMEIN - Rekomendasi Khusus "${cleanQuery}"]: \n${results.join('\n')}\nGunakan daftar hasil pencarian ini untuk memberikan rekomendasi yang sesuai dengan permintaan user.`;
+                contextData += `\n\n[DATA ANIMEIN - Rekomendasi Khusus Tema "${cleanQuery}"]: \n${results.join('\n')}\nInstruksi AI: User minta saran anime dengan tema spesifik "${cleanQuery}" (bukan sekadar genre biasa). Bacakan 3-5 judul teratas ini dan rekomendasikan dengan gaya bahasa tongkrongan seru!`;
             }
         }
     }
