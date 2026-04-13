@@ -1138,6 +1138,20 @@ function startDashboard() {
         res.json({ success: true });
     });
 
+    app.post('/api/chat/send-image', async (req, res) => {
+        const { text, image, mimeType } = req.body;
+        if (!image) return res.status(400).json({ success: false, message: 'Image required' });
+        
+        console.log(`[DASHBOARD] Manual Image: ${text || '(no caption)'}`);
+        const success = await sendChatWithImage({ data: image, mimeType: mimeType || 'image/jpeg' }, text || '');
+        if (success) {
+            addActivity('image', 'Admin', text || '(image)', 'Image sent', 'Dashboard');
+            res.json({ success: true });
+        } else {
+            res.status(500).json({ success: false });
+        }
+    });
+
     app.post('/api/groq/toggle/:id', (req, res) => {
         const id = parseInt(req.params.id) - 1;
         if (stats.groq[id]) {
@@ -1309,9 +1323,14 @@ function getDashboardHTML() {
       <div class="control-box">
         <div class="control-title">Manual Send</div>
         <div class="control-sub">Kirim pesan ke chat</div>
-        <div style="display:flex; gap:8px;">
-          <input type="text" id="manualText" placeholder="Pesan..." onkeydown="if(event.key === 'Enter') sendManual()">
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input type="text" id="manualText" placeholder="Pesan..." onkeydown="if(event.key === 'Enter') sendManual()" style="flex:1">
+          <input type="file" id="manualFile" accept="image/*" style="display:none" onchange="previewFile()">
+          <button onclick="document.getElementById('manualFile').click()" class="btn-toggle" id="fileBtn" title="Pilih Gambar" style="padding: 10px; min-width: 44px;">🖼️</button>
           <button onclick="sendManual()" class="btn-primary">Kirim</button>
+        </div>
+        <div id="filePreview" style="display:none; margin-top:10px; font-size:12px; color:var(--accent); font-weight:600;">
+           Selected: <span id="fileName"></span> <button onclick="clearFile()" style="background:none; border:none; color:var(--red); cursor:pointer; font-weight:bold; margin-left:5px;">[X]</button>
         </div>
       </div>
     </div>
@@ -1347,15 +1366,53 @@ async function toggleBot() {
   refresh();
 }
 
+let selectedImageData = null;
+let selectedMimeType = null;
+
+function previewFile() {
+  const file = document.getElementById('manualFile').files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    selectedImageData = e.target.result.split(',')[1];
+    selectedMimeType = file.type;
+    document.getElementById('filePreview').style.display = 'block';
+    document.getElementById('fileName').textContent = file.name;
+    document.getElementById('fileBtn').style.border = '1px solid var(--accent)';
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearFile() {
+  document.getElementById('manualFile').value = '';
+  selectedImageData = null;
+  selectedMimeType = null;
+  document.getElementById('filePreview').style.display = 'none';
+  document.getElementById('fileBtn').style.border = '1px solid var(--border)';
+}
+
 async function sendManual() {
   const input = document.getElementById('manualText');
   const text = input.value;
-  if (!text) return;
-  await fetch('/api/chat/send', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text })
-  });
+  
+  if (selectedImageData) {
+    // Send with image
+    await fetch('/api/chat/send-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, image: selectedImageData, mimeType: selectedMimeType })
+    });
+    clearFile();
+  } else {
+    // Send text only
+    if (!text) return;
+    await fetch('/api/chat/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+  }
+  
   input.value = '';
   refresh();
 }
