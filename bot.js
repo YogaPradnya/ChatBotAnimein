@@ -1187,198 +1187,148 @@ function getDashboardHTML() {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AnimeinBot Dashboard</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
-    --bg: #0a0a12;
-    --surface: #12121e;
-    --card: #181828;
-    --border: #2a2a40;
-    --accent: #7c6ff7;
-    --accent2: #5eead4;
-    --accent3: #f97316;
-    --text: #e2e8f0;
-    --muted: #7c86a0;
-    --green: #22c55e;
+    --bg: #fdfdfd;
+    --surface: #ffffff;
+    --border: #ececec;
+    --accent: #f97316;
+    --accent-light: #fff7ed;
+    --text: #1a1a1a;
+    --muted: #888888;
+    --green: #10b981;
     --red: #ef4444;
-    --yellow: #eab308;
   }
-  body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; min-height: 100vh; }
-  .header { background: linear-gradient(135deg, #1a1a2e, #16213e); border-bottom: 1px solid var(--border); padding: 20px 32px; display: flex; align-items: center; gap: 14px; }
-  .logo { width: 40px; height: 40px; background: linear-gradient(135deg, var(--accent), var(--accent2)); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; color: white; }
-  .header h1 { font-size: 20px; font-weight: 700; color: var(--text); }
-  .header p { font-size: 13px; color: var(--muted); }
-  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 2s infinite; margin-left: auto; }
-  .status-label { font-size: 13px; color: var(--green); }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
-  .container { max-width: 1200px; margin: 0 auto; padding: 28px 24px; }
-  .grid { display: grid; gap: 20px; }
-  .grid-5 { grid-template-columns: repeat(5, 1fr); }
-  .grid-4 { grid-template-columns: repeat(4, 1fr); }
-  .grid-3 { grid-template-columns: repeat(3, 1fr); }
-  .grid-2 { grid-template-columns: repeat(2, 1fr); }
-  @media(max-width:1100px){.grid-5{grid-template-columns: repeat(3, 1fr);}}
-  @media(max-width:900px){.grid-4,.grid-3{grid-template-columns:1fr 1fr;}}
-  @media(max-width:600px){.grid-5,.grid-4,.grid-3{grid-template-columns:1fr;}}
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 20px; }
-  .card-title { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 10px; }
-  .metric { font-size: 32px; font-weight: 700; line-height: 1; }
-  .metric-sub { font-size: 13px; color: var(--muted); margin-top: 6px; }
-  .provider-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 22px; }
-  .provider-header { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
-  .provider-icon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px; color: white; flex-shrink: 0; }
-  .provider-name { font-size: 16px; font-weight: 600; }
-  .provider-sub { font-size: 12px; color: var(--muted); }
-  .badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; }
-  .badge-green { background: rgba(34,197,94,.15); color: var(--green); }
-  .badge-red { background: rgba(239,68,68,.15); color: var(--red); }
-  .badge-yellow { background: rgba(234,179,8,.15); color: var(--yellow); }
-  .stat-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
-  .stat-row:last-child { border-bottom: none; }
-  .stat-label { font-size: 13px; color: var(--muted); }
-  .stat-value { font-size: 14px; font-weight: 600; }
-  .progress-bar { background: var(--border); border-radius: 8px; height: 6px; margin-top: 14px; overflow: hidden; }
-  .progress-fill { height: 100%; border-radius: 8px; transition: width .5s ease; }
-  .activity-list { display: flex; flex-direction: column; gap: 10px; max-height: 420px; overflow-y: auto; }
-  .activity-item { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
-  .activity-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-  .activity-time { font-size: 11px; color: var(--muted); }
-  .activity-from { font-size: 13px; font-weight: 600; }
-  .activity-type { font-size: 11px; padding: 2px 8px; border-radius: 8px; }
-  .type-text { background: rgba(124,111,247,.15); color: var(--accent); }
-  .type-image { background: rgba(94,234,212,.15); color: var(--accent2); }
-  .activity-q { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
-  .activity-a { font-size: 13px; color: var(--text); line-height: 1.5; }
-  .provider-tag { font-size: 10px; padding: 2px 6px; border-radius: 6px; margin-left: auto; }
-  .prov-groq { background: rgba(249,115,22,.15); color: var(--accent3); }
-  .prov-pollinations { background: rgba(94,234,212,.15); color: var(--accent2); }
-  .prov-error { background: rgba(239,68,68,.15); color: var(--red); }
-  .prov-filter { background: rgba(234,179,8,.15); color: var(--yellow); }
-  .type-blocked { background: rgba(239,68,68,.15); color: var(--red); }
-  .section-title { font-size: 16px; font-weight: 600; margin-bottom: 14px; }
-  .uptime { font-size: 13px; color: var(--muted); }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; font-size: 14px; }
   
-  /* Accordion Styles */
-  .groq-accordion { display: flex; flex-direction: column; gap: 10px; }
-  .groq-item { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; transition: all 0.3s ease; }
-  .groq-item.is-online { border-color: var(--accent); box-shadow: 0 0 15px rgba(124,111,247,0.1); }
-  .groq-trigger { padding: 16px 20px; cursor: pointer; display: flex; align-items: center; gap: 15px; user-select: none; }
-  .groq-content { padding: 0 20px 20px 20px; display: none; }
-  .groq-item.is-open .groq-content { display: block; }
-  .groq-number { width: 28px; height: 28px; border-radius: 8px; background: var(--border); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
-  .is-online .groq-number { background: var(--accent); color: white; }
-  .groq-info { flex: 1; }
-  .groq-name { font-size: 14px; font-weight: 600; }
-  .groq-status-row { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
-  .badge-online { background: rgba(34,197,94,.2); color: var(--green); border: 1px solid rgba(34,197,94,.3); }
+  .navbar { border-bottom: 1px solid var(--border); padding: 15px 40px; display: flex; align-items: center; justify-content: space-between; background: var(--surface); }
+  .navbar h1 { font-size: 18px; font-weight: 700; color: var(--accent); }
+  .status-tag { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border); }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+
+  .layout { display: flex; max-width: 1400px; margin: 0 auto; gap: 30px; padding: 30px 40px; }
+  .col-left { flex: 1.2; }
+  .col-right { flex: 0.8; }
+
+  .section-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+  .section-title::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+
+  /* Cards */
+  .card { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); padding: 20px; margin-bottom: 20px; transition: border-color 0.2s; }
+  .card:hover { border-color: var(--accent); }
+  .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+  .card-label { font-size: 12px; color: var(--muted); font-weight: 500; }
+  .card-value { font-size: 24px; font-weight: 700; }
+
+  /* Controls */
+  .controls-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
+  .control-box { border: 1px solid var(--border); padding: 15px; border-radius: 12px; }
+  .control-title { font-weight: 600; margin-bottom: 5px; }
+  .control-sub { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
   
-  ::-webkit-scrollbar { width: 4px } ::-webkit-scrollbar-track { background: transparent } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px }
+  input[type="text"] { width: 100%; border: 1px solid var(--border); padding: 10px 14px; border-radius: 8px; font-family: inherit; outline: none; transition: border-color 0.2s; }
+  input[type="text"]:focus { border-color: var(--accent); }
+  
+  button { padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; font-family: inherit; transition: all 0.2s; }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:hover { opacity: 0.9; }
+  .btn-toggle { min-width: 60px; }
+
+  /* Models */
+  .model-list { display: flex; flex-direction: column; gap: 12px; }
+  .model-card { border: 1px solid var(--border); border-radius: 10px; padding: 16px; transition: border-color 0.3s; }
+  .model-card.is-active { border-color: var(--accent); background: var(--accent-light); }
+  .model-main { display: flex; align-items: center; justify-content: space-between; }
+  .model-info { display: flex; flex-direction: column; gap: 2px; }
+  .model-name { font-weight: 600; font-size: 14px; }
+  .model-status { font-size: 11px; color: var(--muted); }
+  .model-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 15px; padding-top: 15px; border-top: 1px dashed var(--border); }
+  .m-stat { display: flex; flex-direction: column; gap: 2px; }
+  .m-label { font-size: 10px; font-weight: 600; color: var(--muted); text-transform: uppercase; }
+  .m-val { font-size: 13px; font-weight: 600; }
+
+  /* Activity */
+  .activity-list { display: flex; flex-direction: column; gap: 15px; }
+  .activity-item { padding-bottom: 15px; border-bottom: 1px solid var(--border); }
+  .activity-item:last-child { border-bottom: none; }
+  .activity-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .user-name { font-weight: 700; color: var(--accent); }
+  .time-text { font-size: 11px; color: var(--muted); }
+  .activity-body { font-size: 13px; margin-bottom: 4px; line-height: 1.4; color: #444; }
+  .activity-response { font-size: 13px; font-weight: 500; color: var(--text); padding-left: 10px; border-left: 2px solid var(--border); }
+  .prov-tag { font-size: 10px; background: var(--border); padding: 2px 6px; border-radius: 4px; color: var(--muted); }
+
+  @media (max-width: 1000px) {
+    .layout { flex-direction: column; }
+    .col-right { flex: none; }
+  }
 </style>
 </head>
 <body>
-<div class="header">
-  <span class="status-dot" id="statusDot"></span>
-  <span class="status-label" id="statusLabel">Online</span>
+
+<div class="navbar">
+  <h1>ANIMEINBOT</h1>
+  <div class="status-tag">
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusLabel">OFFLINE</span>
+  </div>
 </div>
 
-<div class="container">
-  <!-- STAT CARDS -->
-  <div class="grid grid-5" style="margin-bottom:20px">
-    <div class="card">
-      <div class="card-title">Total Trigger</div>
-      <div class="metric" id="totalTriggers">-</div>
-      <div class="metric-sub">Sejak bot aktif</div>
+<div class="layout">
+  <!-- LEFT: MODELS AND STATS -->
+  <div class="col-left">
+    <div class="section-title">Overview</div>
+    <div class="grid grid-4" style="display:grid; grid-template-columns: repeat(4, 1fr); gap:15px; margin-bottom:30px;">
+      <div class="card" style="margin-bottom:0">
+        <div class="card-label">TRG</div>
+        <div class="card-value" id="totalTriggers">0</div>
+      </div>
+      <div class="card" style="margin-bottom:0">
+        <div class="card-label">UPTIME</div>
+        <div class="card-value" id="uptime">00:00</div>
+      </div>
+      <div class="card" style="margin-bottom:0">
+        <div class="card-label">TOKENS</div>
+        <div class="card-value" id="totalTokens">0</div>
+      </div>
+      <div class="card" style="margin-bottom:0; border-color: var(--red);">
+        <div class="card-label">BLOCKED</div>
+        <div class="card-value" id="filterBlocked">0</div>
+      </div>
     </div>
-    <div class="card">
-      <div class="card-title">Uptime Bot</div>
-      <div class="metric" id="uptime">-</div>
-      <div class="metric-sub">hh:mm:ss</div>
+
+    <div class="section-title">Controls</div>
+    <div class="controls-grid">
+      <div class="control-box">
+        <div class="control-title">Auto Response</div>
+        <div class="control-sub">Otomasi chatbot aktif</div>
+        <button id="botToggleBtn" onclick="toggleBot()" class="btn-toggle">...</button>
+      </div>
+      <div class="control-box">
+        <div class="control-title">Manual Send</div>
+        <div class="control-sub">Kirim pesan ke chat</div>
+        <div style="display:flex; gap:8px;">
+          <input type="text" id="manualText" placeholder="Pesan...">
+          <button onclick="sendManual()" class="btn-primary">Kirim</button>
+        </div>
+      </div>
     </div>
-    <div class="card">
-      <div class="card-title">Total Groq Req</div>
-      <div class="metric" id="groqTotal">-</div>
-      <div class="metric-sub" id="groqSuccessRate">Success rate</div>
-    </div>
-    <div class="card">
-      <div class="card-title">Token Digunakan</div>
-      <div class="metric" id="totalTokens">-</div>
-      <div class="metric-sub">Total hari ini</div>
-    </div>
-    <div class="card">
-      <div class="card-title">Filter Blokir</div>
-      <div class="metric" style="color:var(--red)" id="filterBlocked">-</div>
-      <div class="metric-sub" id="filterLastBlock">kata kasar detected</div>
+
+    <div class="section-title">AI Engine (Groq Llama)</div>
+    <div class="model-list" id="groqAccordion">
+      <!-- Injected -->
     </div>
   </div>
 
-  <!-- CONTROLS -->
-  <div class="grid grid-2" style="margin-bottom:25px">
-    <!-- MASTER CONTROL -->
-    <div class="provider-card">
-      <div class="provider-header">
-        <div class="provider-icon" style="background:linear-gradient(135deg,#ef4444,#991b1b)">⚡</div>
-        <div>
-          <div class="provider-name">Master Control</div>
-          <div class="provider-sub">Kendali Bot Power</div>
+  <!-- RIGHT: CHAT ACTIVITY -->
+  <div class="col-right">
+    <div class="section-title">Recent Activity</div>
+    <div class="card">
+        <div class="activity-list" id="activityList">
+          <div style="color:var(--muted); text-align:center; padding: 20px;">Idle...</div>
         </div>
-      </div>
-      <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.03); padding:15px; border-radius:12px; border:1px solid var(--border)">
-        <div>
-          <div style="font-weight:600; font-size:14px;">Bot Auto-Response</div>
-          <div style="font-size:12px; color:var(--muted)">Matikan jika ingin mode manual saja</div>
-        </div>
-        <button id="botToggleBtn" onclick="toggleBot()" style="padding:10px 20px; border-radius:10px; border:none; cursor:pointer; font-weight:700; transition:all 0.3s ease;">-</button>
-      </div>
-    </div>
-    
-    <!-- MANUAL CHAT -->
-    <div class="provider-card">
-      <div class="provider-header">
-        <div class="provider-icon" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8)">💬</div>
-        <div>
-          <div class="provider-name">Manual Social Chat</div>
-          <div class="provider-sub">Kirim pesan langsung ke web</div>
-        </div>
-      </div>
-      <div style="display:flex; gap:10px;">
-        <input type="text" id="manualText" placeholder="Ketik pesan di sini..." style="flex:1; background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:10px; color:white; outline:none;">
-        <button onclick="sendManual()" style="background:var(--accent); color:white; border:none; padding:0 20px; border-radius:10px; cursor:pointer; font-weight:600;">Kirim</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="section-title">Groq Providers (Auto Rotation)</div>
-  <div class="groq-accordion" id="groqAccordion">
-    <!-- Groq items will be injected here -->
-  </div>
-  <div style="margin-bottom: 25px;"></div>
-
-  <!-- IMAGE GEN -->
-  <div class="grid grid-1" style="margin-bottom:20px">
-    <div class="provider-card">
-      <div class="provider-header">
-        <div class="provider-icon" style="background:linear-gradient(135deg,#a855f7,#7c3aed)">🖼</div>
-        <div>
-          <div class="provider-name">Image Generation</div>
-          <div class="provider-sub">Gemini 2.5 Flash Image</div>
-        </div>
-        <div id="imgBadge" class="badge badge-green" style="margin-left:auto">Aktif</div>
-      </div>
-      <div class="grid grid-3" style="gap:10px">
-        <div class="stat-row"><span class="stat-label">Requests</span><span class="stat-value" id="imgReqs">-</span></div>
-        <div class="stat-row"><span class="stat-label">Berhasil</span><span class="stat-value" id="imgSuccess">-</span></div>
-        <div class="stat-row"><span class="stat-label">Errors</span><span class="stat-value" id="imgErrors">-</span></div>
-      </div>
-      <div style="font-size:12px;color:var(--red);margin-top:10px;word-break:break-all" id="imgLastErr">-</div>
-    </div>
-  </div>
-
-  <!-- ACTIVITY -->
-  <div>
-    <div class="section-title">Aktivitas Terbaru</div>
-    <div class="activity-list" id="activityList">
-      <div style="text-align:center;padding:40px;color:var(--muted)">Belum ada aktivitas. Kirim .ai di chat animeinweb.com</div>
     </div>
   </div>
 </div>
@@ -1390,12 +1340,10 @@ function formatUptime(seconds) {
   const s = (seconds%60).toString().padStart(2,'0');
   return h+':'+m+':'+s;
 }
-function pct(a,b){return b>0?Math.round(a/b*100)+'%':'0%'}
 function rate(s,r){return r>0?Math.round(s/r*100)+'%':'N/A'}
 
 async function toggleBot() {
-  const res = await fetch('/api/bot/toggle', { method: 'POST' });
-  const d = await res.json();
+  await fetch('/api/bot/toggle', { method: 'POST' });
   refresh();
 }
 
@@ -1403,7 +1351,7 @@ async function sendManual() {
   const input = document.getElementById('manualText');
   const text = input.value;
   if (!text) return;
-  const res = await fetch('/api/chat/send', {
+  await fetch('/api/chat/send', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text })
@@ -1426,8 +1374,8 @@ async function refresh() {
     const botBtn = document.getElementById('botToggleBtn');
     if (botBtn) {
       botBtn.textContent = d.isBotActive ? 'ON' : 'OFF';
-      botBtn.style.background = d.isBotActive ? 'var(--green)' : 'var(--red)';
-      botBtn.style.color = 'white';
+      botBtn.style.background = d.isBotActive ? 'var(--accent)' : '#eee';
+      botBtn.style.color = d.isBotActive ? 'white' : '#666';
     }
 
     const online = d.botStatus === 'online';
@@ -1435,122 +1383,71 @@ async function refresh() {
     const label = document.getElementById('statusLabel');
     if (dot) dot.style.background = online ? 'var(--green)' : 'var(--red)';
     if (label) {
-      label.textContent = online ? 'Online' : 'Offline';
+      label.textContent = online ? 'ONLINE' : 'OFFLINE';
       label.style.color = online ? 'var(--green)' : 'var(--red)';
     }
 
     const setT = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-    
     setT('totalTriggers', d.totalTriggers || 0);
     setT('uptime', formatUptime(d.uptime || 0));
     setT('totalTokens', (d.totalTokensUsed || 0).toLocaleString('id-ID'));
+    setT('filterBlocked', d.filter.blocked || 0);
     
-    if (d.groq && Array.isArray(d.groq)) {
-      const totalReq = d.groq.reduce((acc, g) => acc + (g.requests || 0), 0);
-      const totalSuc = d.groq.reduce((acc, g) => acc + (g.success || 0), 0);
-      setT('groqTotal', totalReq);
-      setT('groqSuccessRate', rate(totalSuc, totalReq) + ' success');
-
-      const now = Date.now();
-      const accordion = document.getElementById('groqAccordion');
-      if (accordion) {
-        accordion.innerHTML = d.groq.map((g, i) => {
-          const isCooldown = now < g.cooldownUntil;
+    if (d.groq) {
+      const parent = document.getElementById('groqAccordion');
+      if (parent) {
+        parent.innerHTML = d.groq.map((g, i) => {
           const isSelected = d.lastUsedGroq === i;
-          const isKeyOn = g.active !== false;
+          const isOff = g.active === false;
+          const isCooldown = Date.now() < g.cooldownUntil;
           
-          let statusText = isKeyOn ? 'READY' : 'DISABLED';
-          let badgeClass = isKeyOn ? 'badge-green' : 'badge-red';
-          
-          if (isKeyOn && isCooldown) {
-            statusText = 'COOLDOWN';
-            badgeClass = 'badge-yellow';
-          } else if (isKeyOn && isSelected) {
-            statusText = 'ONLINE';
-            badgeClass = 'badge-online';
-          }
-          
-          const cooldownSecs = isCooldown ? Math.round((g.cooldownUntil - now) / 1000) : 0;
-          
-          return '<div class="groq-item ' + (isSelected ? 'is-open' : '') + ' ' + (isSelected ? 'is-online' : '') + '">'
-              + '<div class="groq-trigger">'
-              + '<div class="groq-number" onclick="this.parentElement.parentElement.classList.toggle(&quot;is-open&quot;)">' + (i + 1) + '</div>'
-              + '<div class="groq-info" onclick="this.parentElement.parentElement.classList.toggle(&quot;is-open&quot;)">'
-              + '<div class="groq-name">Groq Key #' + (i + 1) + '</div>'
-              + '<div class="groq-status-row">'
-              + '<span class="badge ' + badgeClass + '" style="font-size:10px; padding: 2px 8px;">' + statusText + '</span> '
-              + '<span style="font-size:11px; color:var(--muted)">' + (i === 0 ? 'Primary' : 'Backup') + '</span>'
-              + '</div>'
-              + '</div>'
-              + '<div style="display:flex; align-items:center; gap:10px;">'
-              + '<span style="font-size:12px; color:var(--muted)">' + (isSelected ? 'Active' : '') + '</span>'
-              + '<button onclick="toggleKey(' + (i+1) + ')" style="padding:4px 8px; border-radius:6px; border:none; background:' + (isKeyOn ? 'var(--green)' : 'var(--red)') + '; color:white; font-size:10px; cursor:pointer;">' + (isKeyOn ? 'ON' : 'OFF') + '</button>'
-              + '</div>'
-              + '</div>'
-              + '<div class="groq-content">'
-              + '<div class="grid grid-4" style="gap:15px; border-top: 1px solid var(--border); padding-top:15px;">'
-              + '<div class="stat-row" style="flex-direction:column; align-items:flex-start;">'
-              + '<span class="stat-label">Usage Suc/Req</span>'
-              + '<span class="stat-value">' + (g.success || 0) + ' / ' + (g.requests || 0) + '</span>'
-              + '</div>'
-              + '<div class="stat-row" style="flex-direction:column; align-items:flex-start;">'
-              + '<span class="stat-label">RPM Left</span>'
-              + '<span class="stat-value">' + (g.remainingReqs || '?') + '</span>'
-              + '</div>'
-              + '<div class="stat-row" style="flex-direction:column; align-items:flex-start;">'
-              + '<span class="stat-label">Token Daily</span>'
-              + '<span class="stat-value">' + (g.remainingTokensDay || '?') + '</span>'
-              + '</div>'
-              + '<div class="stat-row" style="flex-direction:column; align-items:flex-start;">'
-              + '<span class="stat-label">Errors</span>'
-              + '<span class="stat-value" style="color:' + (g.errors > 0 ? 'var(--red)' : 'inherit') + '">' + (g.errors || 0) + '</span>'
-              + '</div>'
-              + '</div>'
-              + (isCooldown ? '<div style="margin-top:10px; font-size:12px; color:var(--yellow)">Cooldown: Reset in ' + cooldownSecs + 's</div>' : '')
-              + (g.lastError ? '<div style="margin-top:10px; font-size:11px; color:var(--red); background:rgba(239, 68, 68, 0.05); padding:8px; border-radius:8px;">Err: ' + g.lastError + '</div>' : '')
-              + '</div>'
-              + '</div>';
+          let st = "IDLE";
+          if (isOff) st = "DISABLED";
+          else if (isCooldown) st = "COOLDOWN";
+          else if (isSelected) st = "ACTIVE";
+
+          return '<div class="model-card ' + (isSelected ? 'is-active' : '') + '">'
+            + '<div class="model-main">'
+            + '<div class="model-info">'
+            + '<div class="model-name">Groq Provider #' + (i+1) + '</div>'
+            + '<div class="model-status">' + st + ' • ' + (i === 0 ? 'Primary' : 'Worker') + '</div>'
+            + '</div>'
+            + '<button onclick="toggleKey(' + (i+1) + ')" class="btn-toggle" style="background:' + (isOff ? '#eee' : 'var(--accent)') + '; color:' + (isOff ? '#666' : 'white') + '">'
+            + (isOff ? 'OFF' : 'ON') + '</button>'
+            + '</div>'
+            + '<div class="model-stats">'
+            + '<div class="m-stat"><span class="m-label">REQ</span><span class="m-val">' + (g.requests || 0) + '</span></div>'
+            + '<div class="m-stat"><span class="m-label">SUC</span><span class="m-val">' + (g.success || 0) + '</span></div>'
+            + '<div class="m-stat"><span class="m-label">RPM</span><span class="m-val">' + (g.remainingReqs || '-') + '</span></div>'
+            + '<div class="m-stat"><span class="m-label">ERR</span><span class="m-val" style="color:var(--red)">' + (g.errors || 0) + '</span></div>'
+            + '</div>'
+            + '</div>';
         }).join('');
       }
     }
 
-    if (d.image) {
-      setT('imgReqs', d.image.requests || 0);
-      setT('imgSuccess', d.image.success || 0);
-      setT('imgErrors', d.image.errors || 0);
-      setT('imgLastErr', d.image.lastError || 'Tidak ada error');
-    }
-
     const list = document.getElementById('activityList');
-    if (list && d.recentActivity && d.recentActivity.length > 0) {
-      list.innerHTML = d.recentActivity.map(a => {
-        const provClass = a.provider.startsWith('Groq') ? 'prov-groq' : a.provider === 'Pollinations' ? 'prov-pollinations' : (a.provider === 'Filter' || a.provider === 'Dashboard') ? 'prov-filter' : 'prov-error';
-        const typeClass = (a.type === 'image') ? 'type-image' : (a.type === 'blocked' ? 'type-blocked' : (a.type === 'manual' ? 'type-image' : 'type-text'));
-        return '<div class="activity-item">' 
-          + '<div class="activity-meta">'
-          + '<span class="activity-from">@' + a.from + '</span>'
-          + '<span class="activity-type ' + typeClass + '">' + (a.type || 'Teks') + '</span>'
-          + '<span class="activity-time">' + a.time + '</span>'
-          + '<span class="provider-tag ' + provClass + '">' + a.provider + '</span>'
-          + '</div>'
-          + '<div class="activity-q">Pesan: ' + (a.text || '-') + '</div>'
-          + '<div class="activity-a">' + a.response + '</div>'
-          + '</div>';
-      }).join('');
+    if (list && d.recentActivity) {
+      list.innerHTML = d.recentActivity.map(a => \`
+        <div class="activity-item">
+          <div class="activity-header">
+            <span class="user-name">@\${a.from}</span>
+            <span class="time-text">\${a.time}</span>
+          </div>
+          <div class="activity-body">\${a.text || '-'}</div>
+          <div class="activity-response">\${a.response}</div>
+          <div style="margin-top:6px"><span class="prov-tag">\${a.provider}</span></div>
+        </div>
+      \`).join('');
     }
-
-    if (d.filter) {
-      setT('filterBlocked', d.filter.blocked || 0);
-      setT('filterLastBlock', d.filter.lastBlocked ? 'Terakhir: @' + d.filter.lastBlocked : 'Belum ada');
-    }
-  } catch (e) { console.error('Refresh Error:', e); }
+  } catch (e) {}
 }
 
 refresh();
 setInterval(refresh, 5000);
 </script>
 </body>
-</html>`;
+</html>\`;
 }
 
 
