@@ -126,7 +126,7 @@ async function checkCache(question) {
 
     try {
         const result = await db.execute({
-            sql: "SELECT id, answer, domain FROM response_cache WHERE question_key = ?",
+            sql: "SELECT id, answer, domain, created_at FROM response_cache WHERE question_key = ?",
             args: [key]
         });
         
@@ -135,28 +135,50 @@ async function checkCache(question) {
             let variations = [];
             
             try {
-                // Cek apakah data disimpan dalam format JSON (banyak variasi)
                 variations = JSON.parse(answerData);
                 if (!Array.isArray(variations)) variations = [answerData];
             } catch (e) {
-                // Format lama (string biasa)
                 variations = [answerData];
             }
 
-            // Update hit count secara async
-            db.execute({ sql: "UPDATE response_cache SET hit_count = hit_count + 1 WHERE id = ?", args: [result.rows[0].id] });
-            stats.cacheHits++;
-            
-            // Pilih satu variasi secara acak
-            const finalAnswer = variations[Math.floor(Math.random() * variations.length)];
-            console.log(`[CACHE] HIT (${variations.length} vrs) for: "${key.slice(0, 50)}..."`);
-            return finalAnswer;
+            return { 
+                id: result.rows[0].id, 
+                variations, 
+                domain: result.rows[0].domain,
+                createdAt: result.rows[0].created_at 
+            };
         }
         return null;
     } catch (e) {
         console.error("[CACHE] Error checking cache:", e.message);
         return null;
     }
+}
+
+/** Fungsi penilai: Apakah jawaban di cache ini 'lemah' atau perlu diupdate? */
+function isWeakAnswer(userMessage, cachedAnswer, knowledgeContext) {
+    if (!cachedAnswer) return true;
+    
+    const lowerMsg = userMessage.toLowerCase();
+    const lowerAns = cachedAnswer.toLowerCase();
+
+    // 1. Trigger User: Jika user bilang "salah", "nggak lengkap", "update", dll
+    if (/\bsalah\b|\bnggak bener\b|\bkurang lengkap\b|\bganti\b|\bupdate\b/i.test(lowerMsg)) {
+        return true;
+    }
+
+    // 2. Indikator Kegagalan: Jika jawaban berisi kata-kata kebingungan
+    if (/\bmaaf\b|\bkurang tahu\b|\btidak tahu\b|\bbelum ada\b|\bbelum paham\b|\bkurang paham\b/i.test(lowerAns)) {
+        return true;
+    }
+
+    // 3. Heuristic Panjang: Jika Knowledge Context sangat kaya tapi jawaban sangat singkat
+    // Biasanya ini terjadi setelah user mengupdate ANIMEIN_KNOWLEDGE di bot.js
+    if (knowledgeContext && knowledgeContext.length > 500 && cachedAnswer.length < 150) {
+        return true;
+    }
+
+    return false;
 }
 
 /** Simpan jawaban baru ke response cache (mendukung multi-variasi) */
@@ -182,14 +204,32 @@ async function addToCache(question, answer, domain) {
                 variations = [existing.rows[0].answer];
             }
 
-            // Jika jawaban baru belum ada di daftar variasi, tambahkan (MAX 3 variasi)
-            if (!variations.includes(answer) && variations.length < 3) {
-                variations.push(answer);
+            // Jika jawaban baru belum ada di daftar variasi
+            if (!variations.includes(answer)) {
+                if (variations.length < 3) {
+                    // Masih ada slot, langsung tambah
+                    variations.push(answer);
+                    console.log(`[CACHE] Variation Added (${variations.length}/3) for: "${key.slice(0, 30)}..."`);
+                } else {
+                    // Slot penuh, coba timpa jawaban 'lemah' (terpendek) jika jawaban baru jauh lebih bagus
+                    let shortestIdx = 0;
+                    for (let i = 1; i < variations.length; i++) {
+                        if (variations[i].length < variations[shortestIdx].length) shortestIdx = i;
+                    }
+
+                    // Hanya timpa jika jawaban baru minimal 50 karakter lebih panjang (lebih detail)
+                    if (answer.length > variations[shortestIdx].length + 50) {
+                        console.log(`[CACHE] Upgrading weak variation for: "${key.slice(0, 30)}..."`);
+                        variations[shortestIdx] = answer;
+                    } else {
+                        return; // Tidak ada yang perlu diupdate
+                    }
+                }
+
                 await db.execute({
                     sql: "UPDATE response_cache SET answer = ? WHERE question_key = ?",
                     args: [JSON.stringify(variations), key]
                 });
-                console.log(`[CACHE] Variation Added (${variations.length}/3) for: "${key.slice(0, 30)}..."`);
             }
         } else {
             // Insert baru (simpan sebagai JSON array)
@@ -1053,9 +1093,20 @@ async function getAIResponse(userMessage, senderName, isReply = false) {
     // SEMANTIC CACHE CHECK: Cek apakah jawaban sudah ada di cache (0 Token!)
     // Jangan gunakan cache jika ada intent dinamis (rekomendasi/search dll)
     if (knowledgeContext && !intent) {
-        const cachedAnswer = await checkCache(userMessage);
-        if (cachedAnswer) {
-            return { text: cachedAnswer, provider: 'Cache', tokens: 0 };
+        const cacheResult = await checkCache(userMessage);
+        if (cacheResult) {
+            const { id, variations } = cacheResult;
+            const chosenAnswer = variations[Math.floor(Math.random() * variations.length)];
+
+            // VALIDASI: Apakah jawaban ini dirasa kurang mantap?
+            if (!isWeakAnswer(userMessage, chosenAnswer, knowledgeContext)) {
+                // Update hit count secara async
+                db.execute({ sql: "UPDATE response_cache SET hit_count = hit_count + 1 WHERE id = ?", args: [id] });
+                stats.cacheHits++;
+                return { text: chosenAnswer, provider: 'Cache', tokens: 0 };
+            } else {
+                console.log(`[CACHE] Bypassing (Incomplete/Weak data detected) for: "${userMessage.slice(0, 30)}..."`);
+            }
         }
     }
 
