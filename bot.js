@@ -53,7 +53,7 @@ const stats = {
     lastUsedGroq: -1, 
     recentActivity: [],
 
-    groq: CONFIG.GROQ_KEYS.map((key, index) => ({
+    otak: CONFIG.GROQ_KEYS.map((key, index) => ({
         id: index + 1,
         active: true,
         cooldownUntil: 0,
@@ -77,10 +77,10 @@ const stats = {
     totalTokensUsed: 0
 };
 
-function addActivity(type, from, text, response, provider) {
+function addActivity(type, from, text, response, provider, tokens = 0) {
     stats.recentActivity.unshift({
         time: new Date().toLocaleTimeString('id-ID'),
-        type, from, text, response, provider
+        type, from, text, response, provider, tokens
     });
     if (stats.recentActivity.length > 20) stats.recentActivity.pop();
 }
@@ -733,7 +733,7 @@ async function buildAnimeContext(intent, question) {
 /** Groq (Llama 3.1) - kualitas lebih baik */
 async function askGroq(index, userMessage, senderName, contextData = '', chatHistory = []) {
     const client = groqClients[index];
-    const stat = stats.groq[index];
+    const stat = stats.otak[index];
     
     stat.requests++;
     const systemContent = SYSTEM_PROMPT + `\n\nInfo: Kamu sedang mengobrol dengan ${senderName}.` + contextData;
@@ -758,12 +758,13 @@ async function askGroq(index, userMessage, senderName, contextData = '', chatHis
         }
     }
 
-    if (completion.usage && completion.usage.total_tokens) {
-        stats.totalTokensUsed += completion.usage.total_tokens;
+    const tokens = completion.usage?.total_tokens || 0;
+    if (tokens) {
+        stats.totalTokensUsed += tokens;
     }
 
     stat.success++;
-    return completion.choices[0]?.message?.content || '';
+    return { text: completion.choices[0]?.message?.content || '', tokens };
 }
 
 /** Main AI handler: Groq only */
@@ -780,20 +781,20 @@ async function getAIResponse(userMessage, senderName) {
     const history = chatMemory[senderName] || [];
 
     for (let i = 0; i < groqClients.length; i++) {
-        const stat = stats.groq[i];
+        const stat = stats.otak[i];
         const now = Date.now();
 
         if (!stat.active || now < stat.cooldownUntil) continue;
 
         try {
-            const result = await askGroq(i, userMessage, senderName, finalContext, history);
-            if (result) {
+            const { text, tokens } = await askGroq(i, userMessage, senderName, finalContext, history);
+            if (text) {
                 stats.lastUsedGroq = i;
                 chatMemory[senderName] = [...history, 
                     { role: 'user', content: userMessage },
-                    { role: 'assistant', content: result }
+                    { role: 'assistant', content: text }
                 ].slice(-4);
-                return { text: result, provider: `Groq #${i+1}` };
+                return { text, provider: `Otak #${i+1}`, tokens };
             }
         } catch (err) {
             stat.errors++;
@@ -804,7 +805,7 @@ async function getAIResponse(userMessage, senderName) {
         }
     }
 
-    return { text: 'Maaf kak, semua koneksi AI Rara lagi sibuk/limit. Coba lagi nanti ya! 🙏', provider: 'Error' };
+    return { text: 'Maaf kak, semua koneksi AI Rara lagi sibuk/limit. Coba lagi nanti ya! 🙏', provider: 'Error', tokens: 0 };
 }
 
 /** Generate gambar menggunakan Gemini Image Generation via REST API */
@@ -1067,11 +1068,11 @@ async function processMessages(messages) {
             }
 
             const question = combinedText || 'kamu manggil?';
-            const { text: aiText, provider } = await getAIResponse(question, senderName);
+            const { text: aiText, provider, tokens } = await getAIResponse(question, senderName);
             const reply = `@${senderName} ${aiText}`;
             console.log(`[BOT/${provider}] ${reply}`);
             await sendChatMessage(reply, msg.id);
-            addActivity('text', senderName, question, aiText, provider);
+            addActivity('text', senderName, question, aiText, provider, tokens);
             
             isGlobalCooldown = true;
             setTimeout(() => {
@@ -1154,10 +1155,10 @@ function startDashboard() {
 
     app.post('/api/groq/toggle/:id', (req, res) => {
         const id = parseInt(req.params.id) - 1;
-        if (stats.groq[id]) {
-            stats.groq[id].active = !stats.groq[id].active;
-            console.log(`[DASHBOARD] Groq Key #${id+1}: ${stats.groq[id].active ? 'ON' : 'OFF'}`);
-            res.json({ success: true, active: stats.groq[id].active });
+        if (stats.otak[id]) {
+            stats.otak[id].active = !stats.otak[id].active;
+            console.log(`[DASHBOARD] Otak #${id+1}: ${stats.otak[id].active ? 'ON' : 'OFF'}`);
+            res.json({ success: true, active: stats.otak[id].active });
         } else {
             res.status(404).json({ success: false });
         }
@@ -1450,10 +1451,10 @@ async function refresh() {
     setT('totalTokens', (d.totalTokensUsed || 0).toLocaleString('id-ID'));
     setT('filterBlocked', d.filter.blocked || 0);
     
-    if (d.groq) {
+    if (d.otak) {
       const parent = document.getElementById('groqAccordion');
       if (parent) {
-        parent.innerHTML = d.groq.map((g, i) => {
+        parent.innerHTML = d.otak.map((g, i) => {
           const isSelected = d.lastUsedGroq === i;
           const isOff = g.active === false;
           const isCooldown = Date.now() < g.cooldownUntil;
@@ -1491,11 +1492,14 @@ async function refresh() {
             <span class="user-name">@\${a.from}</span>
             <span class="time-text">\${a.time}</span>
           </div>
-          <div class="activity-body">\${a.text || '-'}</div>
+          <div class="activity-body">\${a.text || "-"}</div>
           <div class="activity-response">\${a.response}</div>
-          <div style="margin-top:6px"><span class="prov-tag">\${a.provider}</span></div>
+          <div style="margin-top:6px; display:flex; gap:6px; align-items:center;">
+            <span class="prov-tag">\${a.provider}</span>
+            \${a.tokens ? '<span class="prov-tag" style="background: var(--accent-light); color: var(--accent); border: 1px solid #fed7aa;">🪙 ' + a.tokens + ' tokens</span>' : ''}
+          </div>
         </div>
-      \`).join('');
+      \`.trim()).join('');
     }
   } catch (e) {}
 }
