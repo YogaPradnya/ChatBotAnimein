@@ -1227,7 +1227,7 @@ async function processMessages(messages) {
         {
             let combinedText = cleanText;
             if (msg.replay_text) {
-                combinedText = `[ KONTEKS REPLAY ]\nKamu sedang membalas pesan dari ${msg.replay_user_name || 'User'} yang isinya: "${msg.replay_text}".\n\n[ PESAN USER SEKARANG ]\n${cleanText}`;
+                combinedText = `PERTANYAAN/PESAN UTAMA YANG HARUS KAMU JAWAB:\n"${cleanText}"\n\n[INFO TAMBAHAN KONTEKS: Pesan di atas adalah balasan untuk pesan sebelumnya dari ${msg.replay_user_name || 'User'} yang isinya: "${msg.replay_text}". Gunakan info tambahan ini HANYA JIKA berkaitan dengan pesan utama.]`;
             }
 
             const question = combinedText || 'kamu manggil?';
