@@ -334,21 +334,13 @@ function addActivity(type, from, text, response, provider, tokens = 0) {
 
 const groqClients = CONFIG.GROQ_KEYS.map(key => new Groq({ apiKey: key }));
 
-const SYSTEM_PROMPT = `Kamu adalah Rara, asisten chat Animein buatan Yogaa. Kamu orang asli, bukan AI.
-Aturan:
-- Sapa user dengan namanya langsung secara akrab. DILARANG gunakan "Lu","Lo","Aku", "Saya", "Gua", "Anda", "gue".
-- Fokus: Jadi teman ngobrol yang asik. JANGAN bahas Anime, Pokemon, Yogaa, atau Eko kecuali ditanya atau relevan.
-- Rekomendasi: WAJIB List baris baru (angka). DILARANG KERAS kasih penjelasan/sinopsis/bacot tambahan. Hanya judul saja (Min 10). KECUALI jika user minta detail/rating/view/perbandingan secara spesifik baru jelaskan SANGAT SINGKAT. (Aturan ini berlaku untuk rekomendasi anime, pokemon, dll).
-- Jika tidak paham, jawab: "saya kurang paham dengan pertanyaan kamu".
-- Yogaa adalah developer rara, bukan pemilik Animein. rara di buat 9 april 2026.
-- Eko adalah pemilik Animein.
-- MAX 500 KARAKTER (ATURAN KRITIKAL). Jawab singkat, akurat, konsisten. Max 1 emoji atau tidak sama sekali. Jika tanya suka/tidak, jawab "suka/tidak".
-- PENTING: Animein adalah website/aplikasi nonton anime (streaming). Sistem Pokemon hanyalah fitur tambahan/mini-game untuk seru-seruan saja agar user tidak bosan.
-- PENTING: Pokemon di Animein HANYA ada Gen 1 dan Gen 2. Gen 3 masih ongoing dan belum tersedia. Tidak ada gen lain selain itu.
-- Jangan sebut Yogaa atau Eko kecuali sedang mengobrol dengan mereka atau ditanya.
-- Jangan bahas hal teknis/sistem. Berlakulah seperti teman ngobrol.
-- WAJIB: Hanya menawab pertanyaan user. DILARANG bertanya balik, DILARANG memberikan pertanyaan pancingan.
-- Informasi teknis tambahan akan diberikan secara dinamis jika terdeteksi dalam pertanyaan user.`;
+let SYSTEM_PROMPT = "";
+if (fs.existsSync('./prompt.txt')) {
+    SYSTEM_PROMPT = fs.readFileSync('./prompt.txt', 'utf-8');
+} else {
+    SYSTEM_PROMPT = "Kamu adalah Rara, asisten chat Animein buatan Yogaa. Kamu orang asli, bukan AI.";
+    fs.writeFileSync('./prompt.txt', SYSTEM_PROMPT);
+}
 
 const POKEMON_LIST = [
   "Bulbasaur", "Ivysaur", "Venusaur", "Charmander", "Charmeleon", "Charizard", "Squirtle", "Wartortle", "Blastoise", "Caterpie", 
@@ -395,113 +387,14 @@ const POKEMON_GRADES = {
 const GENRE_LIST = ["Action", "Adventure", "Comedy", "Demons", "Drama", "Ecchi", "Fantasy", "Game", "Harem", "Historical", "Horror", "Magic", "Martial Arts", "Mecha", "Military", "Music", "Mystery", "Parody", "Psychological", "Romance", "School", "Sci-Fi", "Seinen", "Shoujo", "Shoujo Ai", "Shounen", "Shounen Ai", "Slice of Life", "Sports", "Super Power", "Supernatural", "Thriller", "Tokusatsu"];
 const STUDIO_LIST = ["MAPPA", "Ufotable", "Kyoto Animation", "Bones", "Madhouse", "A-1 Pictures", "CloverWorks", "Toei Animation", "Sunrise", "Wit Studio", "Pierrot", "Production I.G", "J.C.Staff", "Trigger", "Shaft", "OLM", "Doga Kobo", "White Fox", "Kinema Citrus", "David Production", "P.A. Works", "Feel.", "LIDENFILMS"];
 
-const ANIMEIN_KNOWLEDGE = [
-    {
-        domain: 'platform',
-        keywords: ["apa itu animein", "animein itu apa", "apa sih animein", "tentang animein", "penjelasan animein", "tujuan animein", "fungsi animein", "web apa ini", "ini apk apa", "animein adalah", "sejarah animein", "siapa pembuat animein", "siapa yang buat animein", "rara siapa", "siapa rara", "rara itu siapa", "apa ini", "ini apa", "platform apa", "aplikasi apa ini", "web animein", "animein apaan", "animein tuh apa", "tau animein", "apa animein", "jelasin animein"],
-        info: "Animein adalah platform komunitas streaming anime terlengkap di Indonesia. Bukan sekadar tempat nonton, Animein menggabungkan pengalaman streaming dengan fitur sosial (komunitas), sistem mini-game (Pokemon), dan kontribusi user (upload server/poster). Rara adalah asisten chat (bot) resmi Animein yang dibuat oleh Yogaa pada 9 April 2026 untuk membantu user menanyakan informasi seputar anime, fitur web, dan jadi teman ngobrol."
-    },
-    {
-        domain: 'platform',
-        keywords: ["fitur", "fitur animein", "apa aja fitur", "ada fitur apa", "fitur apa saja", "apa fitur", "list fitur", "daftar fitur", "ada apa di animein", "animein bisa apa", "animein ada apa", "apa saja fitur animein", "apa keunggulan", "apa ajah", "fiture", "apa fitur yang tersedia", "kasih tau fitur", "sebutkan fitur", "feature", "apa ada fitur", "keunggulan animein", "fasilitas animein", "menu animein", "tombol animein", "apa yang seru", "fitur terbaru", "fitur lama", "fitur menarik", "bisa ngapain aja", "ngapain aja", "ada apa aja", "fitur2", "fitur nya apa", "fiturnya", "fitur yg ada", "ada fitur apa aja sih", "jelasin fitur"],
-        info: "Fitur utama Animein:\n- Nonton anime online dengan berbagai resolusi & pilihan server\n- Download episode anime\n- Cari anime berdasarkan judul atau genre\n- Jadwal tayang anime harian\n- Upload server anime (via fitur Rapsodi di teman.animein.net)\n- Upload cover & poster anime\n- Cuplix: buat klip/highlight episode anime\n- Komentar di tiap episode\n- Chat komunitas\n- Sistem Pokemon: beli, battle, evolusi, upgrade level, jadikan foto profil\n- Sistem Coin & Gem sebagai mata uang\n- Akun Pro & Support dengan berbagai keuntungan\n- Foto profil bisa diubah (dengan akun Pro/Support)"
-    },
-    {
-        domain: 'platform',
-        keywords: ["web animein", "apk animein", "download apk", "animein.net", "cara download apk gimana", "cara download apk bagaimana", "bagaimana cara download apk", "apa link web", "mana apknya", "apakah ada apk", "link animein", "link web", "buka animein dimana", "alamat web", "url animein", "install apk", "cara install", "unduh apk", "apk terbaru", "versi web", "versi apk", "beda web apk"],
-        info: "Versi web masih baru 10%. Fitur lengkap di APK Android (animein.net). Donasi: trakteer.id/animein.net."
-    },
-    {
-        domain: 'admin',
-        keywords: ["admin", "admin animein", "siapa admin", "daftar admin", "username admin", "tegar", "farel", "siapa tegar", "siapa farel", "eko admin", "siapa saja admin animein", "admin animein ada berapa", "siapa admin", "kenapa admin", "jika admin", "siapa aja adminnya", "user admin", "nama admin animein", "tegarpm", "fareladitia", "admin misterius", "anomali", "petinggi animein", "staff animein", "siapa yang punya", "pemilik animein", "siapa owner", "owner animein", "admin gans", "admin sepuh", "pengelola", "yang ngurusin", "siapa bos", "bos animein", "siapa yg punya", "admin siapa aja", "admin nya siapa", "adminnya", "siapa yg urus"],
-        info: "Admin Animein:\n1. Tegar: @TeGaRpm\n2. Eko: @eko\n3. Farel: FarelAditia\n4. Admin Misterius: Belum diketahui (mungkin seorang anomali)."
-    },
-    {
-        domain: 'monetisasi',
-        keywords: ["pro", "support", "bayar", "premium", "keuntungan", "hilangkan iklan", "trakteer", "cara pro", "cara support", "cara bayar", "cara premium", "cara hilangkan iklan", "cara trakteer", "bagaimana cara pro", "bagaimana cara support", "bagaimana cara bayar", "bagaimana cara premium", "bagaimana cara hilangkan iklan", "bagaimana cara trakteer", "cara beli pro gimana", "cara beli support gimana", "cara beli premium gimana", "harga pro", "harga support", "berapa harga pro", "keuntungan pro", "fitur pro", "no iklan", "donasi", "trakter", "jadi pro", "jadi support", "berlangganan", "medal pro", "medal support", "keuntungan premium", "cara donasi", "traktir", "upgrade akun", "beli pro", "beli support", "pengen pro", "mau pro", "mau support", "gmn jadi pro", "gmn cara pro", "crnya pro", "cara jadi pro", "cara jd pro", "donasi dimana", "bayar donasi", "trakteer link", "link trakteer", "trakteer.id"],
-        info: "Cara Upgrade Akun Pro / Support: Melalui aplikasi Animein-Komunity di Play Store ATAU lewat sistem Trakteer sesuai harganya. Kendala pembayaran hubungi Instagram Animein.\n2. Akun Support (IDR 10.000 / 30 Hari): Keuntungan berupa Coin gratis 50++ per hari, kemunculan 3 Pokemon Legend per minggu, diskon harga Pokemon Legend 2 gem, bisa atur foto profil gambar, dapat medal khusus, dan no iklan.\n3. Akun Pro (IDR 30.000 / 30 Hari): Keuntungan berupa Coin gratis 100++ per hari, kemunculan 6 Pokemon Legend per minggu, diskon harga Pokemon Legend 5 gem, bisa atur foto profil bebas (GIF/Gambar maks 10MB), dapat medal khusus, dan no iklan. Tidak bisa gabung dengan fitur Support (sisa waktu support akan terganti jadi pro) jika ada kendala pembayaran bisa hubingi admin atau contack suport di instagram @animein.aja."
-    },
-    {
-        domain: 'monetisasi',
-        keywords: ["coin", "koin", "gem", "tukar", "uang", "mata uang", "dapat coin", "kumpulin coin", "dapetin coin", "cara dapat coin", "cari coin", "dapet coin", "cara dapetin coin", "cara kumpulin coin", "cara cari coin", "cara dapat gem", "cara dapetin gem", "cara kumpulin gem", "cara cari gem", "cara tukar coin", "cara tukar gem", "cara tukar coin ke gem", "cara tukar gem ke coin", "apa itu coin", "cara dapet gem", "cara nukar", "dapet koin", "500 coin", "tukar gem", "task", "misi coin", "tugas coin", "duit animein", "beli gem", "tukar koin", "nukar gem", "gem buat apa", "koin buat apa", "gem gratis", "koin gratis", "cara nambah coin", "koin abis", "koin habis", "gem habis", "gmn dapet coin", "gmn dapet gem", "cara cepet dapet coin", "coin banyak", "farming coin"],
-        info: "Mata Uang Animein (Coin & Gem): Coin digunakan untuk membeli Pokemon, Battle, dll. Gem adalah mata uang ke-2 yang didapat dari menukar 500 Coin = 1 Gem. coin hanya bisa di guakan untuk beli pokemon dan di tukar menjadi gem Gem, gen tidak bisa di tukar menjadi coin, digunakan untuk evolusi Pokemon, mengganti nama, upgrade Pokemon, dan beli Pokemon ( tidak bisa jual pokemon ). Note: Coin TIDAK BISA digunakan untuk beli Premium/Pro/Support.\nCara mendapatkan Coin: Upload server anime, membuat Cuplix, mengedit info anime, upload poster dan cover anime, menonton anime 5 menit dan membeli coin pada menu coin pada profile atau menyelesaikan tugas di menu task pada profile."
-    },
-    {
-        domain: 'kontribusi',
-        keywords: ["upload server","up server","upload server anime","cara upload server", "rapsodi", "upload anime", "upload episode", "teman.animein.net", "cara upload server anime", "cara upload anime", "cara upload episode", "cara rapsodi","gimana cara upload server","gimana cara upload anime","gimana cara upload episode","gimana cara rapsodi","bagaimana cara upload server","bagaimana cara upload anime","bagaimana cara upload episode","bagaimana cara rapsodi", "cara up server", "cara up anime", "cara up episode", "apa itu rapsodi", "apa itu upload server", "cara ngupload", "cara up eps", "dimana upload server", "rapsodi animein", "cara jadi uploader", "masukin anime", "nambahin episode", "tambah server", "gmn upload", "gmn up server", "crnya upload", "upload dmn", "up dmn", "rapsodi dmn", "mau upload", "pengen upload"],
-        info: "Cara Upload Server Anime: Buka web teman.animein.net atau masuk ke profile lalu cari fitur \"Rapsodi\" agar diarahkan ke menu upload server anime, tingal ikuti arahan yang di berikan di sana."
-    },
-    {
-        domain: 'kontribusi',
-        keywords: ["upload cover", "upload poster", "pasang cover", "pasang poster", "cover anime", "poster anime", "cara upload cover", "cara upload poster", "cara pasang cover", "cara pasang poster", "cara cover anime", "cara poster anime","gimana cara upload cover","gimana cara upload poster","gimana cara pasang cover","gimana cara pasang poster","bagaimana cara upload cover","bagaimana cara upload poster","bagaimana cara pasang cover","bagaimana cara pasang poster", "up poster", "up cover", "ganti poster", "ganti cover", "poster burik", "cover jelek", "update poster", "update cover", "gmn upload cover", "gmn upload poster", "crnya pasang poster", "cara ganti poster", "cara ganti cover"],
-        info: "Cara Upload Cover/Poster Anime: Pergi ke bagian anime yang ingin kamu opload poster/covernya, buka animenya, lalu geser (scroll) ke kanan layar untuk menemukan tempat opload poster dan cover (HANYA untuk menu poster/cover, tidak ada hubungannya dengan menonton)."
-    },
-    {
-        domain: 'kontribusi',
-        keywords: ["kontrib", "kontribusi", "cara kontrib", "cara kontribusi", "dapat kontrib", "poin kontrib", "cara dapat kontrib", "cara dapat kontribusi", "cara mendapatkan kontribusi", "cara mendapatkan poin kontribusi", "poin kontributor", "ranking kontrib", "naikin kontrib", "kontribusi buat apa", "cara dapet poin kontribusi", "gmn dapet kontrib", "gmn naikin kontrib", "kontrib buat apa"],
-        info: "Cara mendapatkan Kontrib di Animein: Upload server anime/episode, upload poster, upload cover, upload thumbnail/cover episode, dan edit data/info anime yang ada."
-    },
-    {
-        domain: 'kontribusi',
-        keywords: ["edit data anime", "edit info anime", "ubah info anime", "ubah data anime", "cara edit anime", "icon pensil", "edit informasi anime", "cara edit data anime", "cara edit info anime", "cara ubah info anime", "bagaimana cara edit data anime", "bagaimana cara edit info anime", "gmn edit anime", "crnya edit info", "pensil", "edit informasi"],
-        info: "Cara edit data/info anime: Pilih anime yang datanya mau diedit → slide ke kiri ke bagian info → tekan icon pensil di kiri bawah untuk mulai edit info anime."
-    },
-    {
-        domain: 'kontribusi',
-        keywords: ["thumbnail episode", "cover episode", "cara thumbnail", "cara cover episode", "upload thumbnail", "upload cover episode", "buat thumbnail", "edit thumbnail", "cara buat thumbnail", "cara upload thumbnail", "cara upload cover episode", "gmn buat thumbnail", "gmn thumbnail", "crnya thumbnail"],
-        info: "Cara buat thumbnail/cover episode: Pilih anime yang akan ditambahkan/diedit thumbnailnya → tekan lama pada episode yang akan diedit → akan muncul pop-up untuk upload gambar (pastikan gambar yang diupload sesuai dengan episode yang dipilih)."
-    },
-    {
-        domain: 'kontribusi',
-        keywords: ["cuplix", "klip", "highlight episode", "like cuplix", "buat cuplix", "coin cuplix", "cara buat cuplix", "cara like cuplix", "cara coin cuplix", "cara cuplix", "cara klip", "cara highlight episode", "bagaimana cara buat cuplix", "bagaimana cara cuplix", "apa itu cuplix", "cuplix itu apa", "cuplix buat apa", "gmn buat cuplix", "crnya cuplix", "cuplix apaan", "klip anime", "bikin klip"],
-        info: "Fitur Cuplix: Cuplix adalah klip/highlight episode anime untuk rekomendasi. Pembuat Cuplix & Uploader Server dapat 1 coin tiap ada yang like (Maks 250 coin/hari, cair saat ganti hari dan wajib login). Cara buat: Masukkan detik start & end (durasi 10 dtk - 3 mnt), pilih thumbnail di jarak detik tersebut, lalu simpan. Peraturan: Maksimal 3 Cuplix per user untuk 1 episode, dan tidak boleh kembar/sama dengan Cuplix yang sudah dibooking."
-    },
-    {
-        domain: 'pokemon',
-        keywords: ["battle", "battel", "battel rank", "battle rank", "battle pokemon", "vs temen", "bp", "battle point", "tanding pokemon", "cara battle", "cara battel", "cara battle rank", "cara battle pokemon", "cara vs temen", "cara bp", "cara battle point", "cara tanding pokemon", "apa itu battle", "apa itu bp", "cara dapet bp", "cara tawuran", "lawan temen", "tanding", "rank pokemon", "papan peringkat pokemon", "adu pokemon", "adu nasib pokemon", "gmn battle", "crnya battle", "battle gmn", "pvp pokemon", "versus"],
-        info: "Cara Battle Pokemon: Minimal harus punya 3 Pokemon. Pergi ke menu Battle di profil, pilih 3 Pokemon yang mau dipakai. Tekan tombol \"Battle Rank\" untuk tanding dan dapatkan BP (Battle Point) BP adalah poin rank bukan untuk menaikan lv pokemon, atau \"VS Temen\" untuk melawan teman spesifik."
-    },
-    {
-        domain: 'pokemon',
-        keywords: ["pokemon", "evolusi", "menu tas", "level pokemon", "exp pokemon", "naik level", "upgrade level", "grade pokemon", "rookie", "epic", "mythic", "legendary", "tingkatan pokemon", "gen 2", "gen 3", "r2", "e2", "m2", "l2", "foto profil pokemon", "cara evolusi", "cara naik level", "cara upgrade level", "cara grade pokemon", "update pokemon", "kapan update pokemon", "pokemon baru", "reset toko pokemon", "reset toko merah", "cara dapat pokemon", "cara mendapatkan pokemon", "gimana cara dapet", "dapetin pokemon", "cara dapet pikachu", "cara dapet mewtwo", "cara dapat legend", "apa pokeslot", "apa itu pokemon", "gimana pokeslot", "kapan gen 3", "stats pokemon", "status pokemon", "poekmon", "pokmon", "poke mon", "evolsi", "evolusin", "gmn evolusi", "crnya evolusi", "gmn dapet pokemon", "pokemon terkuat", "pokemon terlemah", "pokemon op", "pokemon dewa", ...POKEMON_LIST.map(p => "cara dapat " + p.toLowerCase())],
-        info: `Info Pokemon:\n- Tingkatan (Grade):\n  * Gen 1: R (${POKEMON_GRADES.R.length} Pokemon), E (${POKEMON_GRADES.E.length} Pokemon), M (${POKEMON_GRADES.M.length} Pokemon), L (${POKEMON_GRADES.L.length} Pokemon).\n  * Gen 2: R2 (${POKEMON_GRADES.R2.length} Pokemon), E2 (${POKEMON_GRADES.E2.length} Pokemon), M2 (${POKEMON_GRADES.M2.length} Pokemon), L2 (${POKEMON_GRADES.L2.length} Pokemon).\n- Cara Mendapatkan: Membeli menggunakan Coin/Gem di menu Shop/Toko (Toko Pro reset tiap minggu) atau melalui Event khusus dari Admin.\n- Evolusi: Melalui menu Tas (butuh Gem).\n- Leveling: Maks level 20 di menu Battle (dapat EXP tiap menang).\n- PENTING: Hanya tersedia Gen 1 & 2. Gen 3 dan seterusnya belum tersedia.`
-    },
-    {
-        domain: 'pokemon',
-        keywords: ["harga pokemon", "berapa koin", "berapa gem", "beli pokemon berapa", "harga pikachu", "berapa harga pokemon", "harga pokemon legend", "harga pokemon mythic", "berapa harga pokemon legend", "berapa harga pokemon mythic", "berapa harga pokemon rookie", "berapa harga pokemon epic", "mahal", "murah pokemon", "pokemon mahal"],
-        info: "Untuk harga Pokémon, Rara belum tahu pastinya. Kamu bisa langsung cek harganya di menu Toko/Shop atau Toko Pro di dalam aplikasi ya!"
-    },
-    {
-        domain: 'streaming',
-        keywords: ["download episode", "cara download", "unduh episode", "simpan episode", "tombol more", "cara download episode", "cara unduh episode", "cara simpan episode", "cara download gimana", "cara download bagaimana", "bagaimana cara download", "apa cara download", "mana tombol download", "gimana unduh", "save video", "download mp4", "download mkv", "apakah bisa download", "link download", "cara save anime", "save episode", "donlot", "dowload", "donload", "gmn download", "crnya download", "download dmn", "tombol download mana", "bisa didownload", "offline nonton"],
-        info: "Cara download eps: Silahkan tekan tombol \"more\" saat menonton salah satu eps anime lalu pilih download."
-    },
-    {
-        domain: 'streaming',
-        keywords: ["resolusi", "ubah resolusi", "ganti resolusi", "kualitas video", "720p", "1080p", "bergerigi", "icon server", "cara ubah resolusi", "cara ganti resolusi", "cara kualitas video", "cara ubah resolusi gimana", "bagaimana cara ubah resolusi", "bagaimana cara ganti resolusi", "apa resolusinya", "gimana ganti kualitas", "mana pengaturannya", "burik", "pecah-pecah", "gambar jelek", "bening", "kualitas full hd", "480p", "360p", "video burem", "setting video", "reolusi", "resolsi", "gmn ganti resolusi", "crnya resolusi", "video pecah", "jelek banget", "ga jernih", "jernih", "hd", "full hd", "kualitas rendah", "kualitas tinggi", "cara ganti server", "ganti server", "server", "servernya apa", "servernya mana", "bagaimana cara ganti server", "cara ganti server", "cara ganti server gimana", "cara ganti server bagaimana", "apa cara ganti server", "mana tombol server", "gimana ganti server", "save server", "apakah bisa ganti server", "link server", "cara save server", "save server", "donlot", "dowload", "donload", "gmn ganti server", "crnya ganti server", "ganti server dmn", "tombol ganti server mana", "bisa diganti server", "offline nonton"],
-        info: "Cara ubah resolusi: SAAT MENONTON ANIME, klik pilihan \"server\" atau icon roda gigi (BUKAN geser layar). Di sana kalian bisa memilih resolusi yang diinginkan (Tidak ada geser layar)."
-    },
-    {
-        domain: 'streaming',
-        keywords: ["rewind", "geser mundur", "fast forward", "geser maju", "speedup", "percepat video", "2x kecepatan", "putar cepat", "cara rewind", "cara fast forward", "cara speedup", "cara percepat video", "gimana majuin", "cara mundurin", "tahan layer", "double tap", "percepat", "gmn rewind", "gmn fast forward", "crnya speedup", "skip", "loncat", "maju", "mundur", "geser video", "kecepatan video"],
-        info: "Cara rewind/geser mundur: Tahan pada video yang sedang ditonton lalu geser ke kiri.\nCara fast forward/geser maju: Tahan pada video yang sedang ditonton lalu geser ke kanan.\nCara speedup: Tekan/ketuk 2x pada layar bagian kanan video yang sedang diputar."
-    },
-    {
-        domain: 'katalog',
-        keywords: ["genre", "tipe anime", "jenis anime", "kategori anime", "genre animein", "genre apa aja", "daftar genre", "apa genre", "bagaimana genre", "gimana genre", "apakah ada genre", "pencarian genre", "list genre lengkap", "anime bergenre", "cari genre", "genre nya apa aja", "ada genre apa", "gmn cari genre", ...GENRE_LIST.map(g => g.toLowerCase())],
-        info: "Genre anime yang tersedia di Animein sangat lengkap, di antaranya: " + GENRE_LIST.join(', ') + ". User bisa mencari anime berdasarkan genre-genre ini."
-    },
-    {
-        domain: 'katalog',
-        keywords: ["studio", "pembuat anime", "studio animasi", "studio anime", "nama studio", "studio apa aja", "daftar studio", "apa studio", "gimana studio", "apakah ada studio", "produksi anime", "animasi oleh", "studio terkenal", "studio favorit", ...STUDIO_LIST.map(s => s.toLowerCase())],
-        info: "Animein menyediakan judul-judul dari berbagai studio animasi ternama, contohnya: " + STUDIO_LIST.join(', ') + " (serta hampir semua studio anime Jepang populer lainnya yang tayang reguler)."
-    },
-    {
-        domain: 'katalog',
-        keywords: ["populer", "viral", "rame", "trending", "hits", "banyak yang nonton", "rating", "apa yang populer", "bagaimana rating", "gimana peringkat", "mana yang terbaik", "jumlah rating", "peringkat anime", "apakah viral", "top anime", "rekomendasi terbaik", "anime paling rame", "berapa views", "bagus gak", "worth it gak", "apakah bagus", "studio paling oke", "anime hots", "anime hits", "lagi viral", "anime rating tinggi", "anime viral hari ini", "paling bagus", "paling rame", "top 10", "top 5", "ranking anime"],
-        info: "Indikator Populer di Animein:\n- Viral/Top: > 500.000 views.\n- Populer: > 100.000 views.\n- Bagus: Rating > 8.0.\n- Biasa: Rating < 7.0.\nGunakan data Views dan Rating dari [DATA ANIMEIN] untuk menentukan apakah sebuah anime layak direkomendasikan sebagai 'Populer' atau 'Terbaik'."
-    }
-];
+let ANIMEIN_KNOWLEDGE = [];
+if (fs.existsSync('./knowledge.json')) {
+    try {
+        ANIMEIN_KNOWLEDGE = JSON.parse(fs.readFileSync('./knowledge.json', 'utf-8'));
+    } catch(e) { console.error("[ERROR] Gagal memuat knowledge.json:", e); }
+} else {
+    fs.writeFileSync('./knowledge.json', '[]');
+}
 
 /** Expert Knowledge Routing: Deteksi domain lalu filter knowledge */
 function getKnowledgeContext(query) {
@@ -1428,7 +1321,7 @@ function startDashboard() {
     });
 
     app.post('/api/groq/toggle/:id', (req, res) => {
-        const id = parseInt(req.params.id) - 1;
+        const id = parseInt(req.params.id);
         if (stats.otak[id]) {
             stats.otak[id].active = !stats.otak[id].active;
             console.log(`[DASHBOARD] Otak #${id+1}: ${stats.otak[id].active ? 'ON' : 'OFF'}`);
@@ -1450,6 +1343,42 @@ function startDashboard() {
             res.status(500).json({ success: false, error: e.message });
         }
     });
+
+    app.get('/api/cache/list', async (req, res) => {
+        try {
+            const result = await db.execute("SELECT * FROM response_cache ORDER BY created_at DESC");
+            res.json({ success: true, data: result.rows });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
+    app.post('/api/cache/save', async (req, res) => {
+        try {
+            const { id, question_key, answer, domain } = req.body;
+            await db.execute({
+                sql: "UPDATE response_cache SET question_key = ?, answer = ?, domain = ? WHERE id = ?",
+                args: [question_key, answer, domain, id]
+            });
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
+    app.post('/api/cache/delete', async (req, res) => {
+        try {
+            const { id } = req.body;
+            await db.execute({
+                sql: "DELETE FROM response_cache WHERE id = ?",
+                args: [id]
+            });
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
 
     app.get('/api/debug/trending', async (req, res) => {
         try {
@@ -1473,7 +1402,38 @@ function startDashboard() {
         } catch (e) { res.json({ error: e.message }); }
     });
 
+    app.get('/api/prompt', (req, res) => {
+        res.json({ success: true, prompt: SYSTEM_PROMPT });
+    });
+
+    app.post('/api/prompt/save', (req, res) => {
+        const { prompt } = req.body;
+        if (!prompt || prompt.trim().length < 10) return res.status(400).json({ success: false, error: 'Prompt terlalu pendek.' });
+        SYSTEM_PROMPT = prompt;
+        fs.writeFileSync('./prompt.txt', SYSTEM_PROMPT);
+        console.log('[PROMPT] System prompt updated via dashboard (saved permanently).');
+        res.json({ success: true });
+    });
+
+    app.get('/api/knowledge', (req, res) => {
+        res.json({ success: true, knowledge: ANIMEIN_KNOWLEDGE });
+    });
+
+    app.post('/api/knowledge/save', (req, res) => {
+        const { index, keywords, info } = req.body;
+        if (index === undefined || !info || !Array.isArray(keywords)) return res.status(400).json({ success: false, error: 'Data tidak valid.' });
+        if (index < 0 || index >= ANIMEIN_KNOWLEDGE.length) return res.status(400).json({ success: false, error: 'Index tidak valid.' });
+        ANIMEIN_KNOWLEDGE[index].keywords = keywords;
+        ANIMEIN_KNOWLEDGE[index].info = info;
+        fs.writeFileSync('./knowledge.json', JSON.stringify(ANIMEIN_KNOWLEDGE, null, 2));
+        console.log(`[KNOWLEDGE] Entry #${index} (${keywords[0]}) diperbarui via dashboard (saved permanently).`);
+        res.json({ success: true });
+    });
+
     app.get('/', (req, res) => {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
         res.send(getDashboardHTML());
     });
 
@@ -1492,8 +1452,11 @@ function getDashboardHTML() {
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #fdfdfd;
+    --bg: #f5f5f5;
     --surface: #ffffff;
+    --sidebar: #1a1a1a;
+    --sidebar-text: #a0a0a0;
+    --sidebar-active: #ffffff;
     --border: #ececec;
     --accent: #f97316;
     --accent-light: #fff7ed;
@@ -1501,248 +1464,639 @@ function getDashboardHTML() {
     --muted: #888888;
     --green: #10b981;
     --red: #ef4444;
+    --blue: #3b82f6;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; font-size: 14px; }
-  
-  .navbar { border-bottom: 1px solid var(--border); padding: 15px 40px; display: flex; align-items: center; justify-content: space-between; background: var(--surface); }
-  .navbar h1 { font-size: 18px; font-weight: 700; color: var(--accent); }
-  .status-tag { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border); }
-  .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+  body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; font-size: 14px; display: flex; height: 100vh; overflow: hidden; }
 
-  .layout { display: flex; max-width: 1400px; margin: 0 auto; gap: 30px; padding: 30px 40px; }
-  .col-left { flex: 1.2; }
-  .col-right { flex: 0.8; }
+  /* SIDEBAR */
+  .sidebar { width: 220px; background: var(--sidebar); height: 100vh; display: flex; flex-direction: column; flex-shrink: 0; overflow-y: auto; }
+  .sidebar-brand { padding: 24px 20px 20px; border-bottom: 1px solid #333; }
+  .sidebar-brand h1 { font-size: 15px; font-weight: 700; color: #fff; letter-spacing: 0.05em; }
+  .sidebar-brand p { font-size: 11px; color: var(--sidebar-text); margin-top: 3px; }
+  .sidebar-nav { padding: 16px 10px; flex: 1; }
+  .nav-item { display: block; width: 100%; padding: 10px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--sidebar-text); background: none; border: none; text-align: left; margin-bottom: 2px; transition: all 0.15s; }
+  .nav-item:hover { background: #2a2a2a; color: #fff; }
+  .nav-item.active { background: var(--accent); color: #fff; }
+  .sidebar-status { padding: 16px 20px; border-top: 1px solid #333; }
+  .sidebar-status .s-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+  .sidebar-status span { font-size: 12px; color: var(--sidebar-text); font-weight: 600; }
 
-  .section-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
-  .section-title::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+  /* MAIN */
+  .main { flex: 1; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  .topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 14px 30px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+  .topbar h2 { font-size: 16px; font-weight: 700; }
+  .topbar-actions { display: flex; gap: 10px; align-items: center; }
+  .content { padding: 25px 30px; flex: 1; overflow-y: auto; }
 
-  /* Cards */
-  .card { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); padding: 20px; margin-bottom: 20px; transition: border-color 0.2s; }
-  .card:hover { border-color: var(--accent); }
-  .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-  .card-label { font-size: 12px; color: var(--muted); font-weight: 500; }
-  .card-value { font-size: 24px; font-weight: 700; }
+  /* PAGE SECTIONS */
+  .page { display: none; }
+  .page.active { display: block; }
 
-  /* Controls */
-  .controls-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
-  .control-box { border: 1px solid var(--border); padding: 15px; border-radius: 12px; }
-  .control-title { font-weight: 600; margin-bottom: 5px; }
-  .control-sub { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
-  
-  input[type="text"] { width: 100%; border: 1px solid var(--border); padding: 10px 14px; border-radius: 8px; font-family: inherit; outline: none; transition: border-color 0.2s; }
-  input[type="text"]:focus { border-color: var(--accent); }
-  
-  button { padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; font-family: inherit; transition: all 0.2s; }
+  /* CARDS */
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 25px; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
+  .stat-card .label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
+  .stat-card .value { font-size: 26px; font-weight: 700; color: var(--text); }
+  .stat-card.accent { border-color: var(--accent); }
+  .stat-card.green { border-color: var(--green); }
+  .stat-card.blue { border-color: var(--blue); }
+  .stat-card.red { border-color: var(--red); }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+  .card-title { font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 15px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+
+  /* ACTIVITY */
+  .activity-list { display: flex; flex-direction: column; gap: 14px; }
+  .activity-item { padding-bottom: 14px; border-bottom: 1px dashed var(--border); }
+  .activity-item:last-child { border-bottom: none; padding-bottom: 0; }
+  .activity-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+  .activity-user { font-weight: 700; color: var(--accent); font-size: 13px; }
+  .activity-time { font-size: 11px; color: var(--muted); }
+  .activity-q { font-size: 13px; color: #555; margin-bottom: 3px; }
+  .activity-a { font-size: 13px; color: var(--text); padding-left: 10px; border-left: 2px solid var(--accent); }
+  .prov-tag { font-size: 10px; background: var(--border); padding: 2px 7px; border-radius: 4px; color: var(--muted); }
+
+  /* MODEL CARDS */
+  .model-list { display: flex; flex-direction: column; gap: 10px; }
+  .model-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; display: flex; align-items: center; gap: 16px; }
+  .model-card.active { border-color: var(--green); background: #f0fdf4; }
+  .model-card.cooldown { border-color: #f59e0b; background: #fffbeb; }
+  .model-card.inactive { opacity: 0.5; }
+  .model-num { font-size: 13px; font-weight: 700; min-width: 60px; }
+  .model-metrics { display: flex; gap: 16px; flex: 1; }
+  .m-stat .m-lbl { font-size: 9px; font-weight: 700; color: var(--muted); text-transform: uppercase; }
+  .m-stat .m-val { font-size: 13px; font-weight: 700; }
+  /* Toggle pill for model */
+  .toggle-pill { display: flex; align-items: center; gap: 0; border-radius: 20px; overflow: hidden; border: 1.5px solid var(--border); cursor: pointer; font-size: 11px; font-weight: 700; }
+  .toggle-pill .pill-on { padding: 4px 10px; background: var(--green); color: #fff; }
+  .toggle-pill .pill-off { padding: 4px 10px; background: #eee; color: #aaa; }
+  .toggle-pill.is-off .pill-on { background: #eee; color: #bbb; }
+  .toggle-pill.is-off .pill-off { background: var(--red); color: #fff; }
+  /* Bot toggle in topbar */
+  .bot-toggle-wrap { display: flex; align-items: center; gap: 8px; }
+  .bot-toggle-lbl { font-size: 11px; font-weight: 600; color: var(--muted); }
+  .bot-toggle-pill { display: flex; align-items: center; border-radius: 20px; overflow: hidden; border: 1.5px solid var(--border); cursor: pointer; font-size: 11px; font-weight: 700; user-select: none; }
+  /* Default = OFF state */
+  .bot-toggle-pill .btp-on { padding: 5px 14px; background: #e5e7eb; color: #9ca3af; transition: all 0.2s; }
+  .bot-toggle-pill .btp-off { padding: 5px 14px; background: var(--red); color: #fff; transition: all 0.2s; }
+  /* is-on = ON state */
+  .bot-toggle-pill.is-on .btp-on { background: var(--green); color: #fff; }
+  .bot-toggle-pill.is-on .btp-off { background: #e5e7eb; color: #9ca3af; }
+
+  /* CONTROLS */
+  .control-row { display: flex; gap: 10px; align-items: stretch; margin-bottom: 15px; }
+  .control-row input[type="text"], .control-row textarea { flex: 1; }
+  input[type="text"], textarea, select { width: 100%; border: 1px solid var(--border); padding: 10px 14px; border-radius: 8px; font-family: inherit; font-size: 13px; outline: none; transition: border-color 0.2s; background: var(--surface); color: var(--text); }
+  input[type="text"]:focus, textarea:focus { border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 120px; }
+  .form-group { margin-bottom: 15px; }
+  .form-label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.03em; }
+
+  /* BUTTONS */
+  button { padding: 9px 18px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; font-family: inherit; font-size: 13px; transition: all 0.2s; }
   .btn-primary { background: var(--accent); color: white; }
-  .btn-primary:hover { opacity: 0.9; }
-  .btn-toggle { min-width: 60px; }
+  .btn-primary:hover { opacity: 0.88; }
+  .btn-danger { background: #fef2f2; color: var(--red); border: 1px solid #fee2e2; }
+  .btn-danger:hover { background: var(--red); color: #fff; }
+  .btn-secondary { background: var(--border); color: var(--text); }
+  .btn-secondary:hover { background: #ddd; }
+  .btn-sm { padding: 5px 12px; font-size: 11px; border-radius: 5px; border: 1px solid var(--border); font-weight: 600; cursor: pointer; }
+  .btn-sm-edit { color: var(--blue); background: #eff6ff; border-color: #bfdbfe; }
+  .btn-sm-del { color: var(--red); background: #fef2f2; border-color: #fee2e2; }
+  .btn-sm-toggle { color: var(--accent); background: var(--accent-light); border-color: #fed7aa; }
 
-  /* Models */
-  .model-list { display: flex; flex-direction: column; gap: 12px; }
-  .model-card { border: 1px solid var(--border); border-radius: 10px; padding: 16px; transition: border-color 0.3s; }
-  .model-card.is-active { border-color: var(--accent); background: var(--accent-light); }
-  .model-main { display: flex; align-items: center; justify-content: space-between; }
-  .model-info { display: flex; flex-direction: column; gap: 2px; }
-  .model-name { font-weight: 600; font-size: 14px; }
-  .model-status { font-size: 11px; color: var(--muted); }
-  .model-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 15px; padding-top: 15px; border-top: 1px dashed var(--border); }
-  .m-stat { display: flex; flex-direction: column; gap: 2px; }
-  .m-label { font-size: 10px; font-weight: 600; color: var(--muted); text-transform: uppercase; }
-  .m-val { font-size: 13px; font-weight: 600; }
+  /* CACHE TABLE */
+  .table-wrap { overflow-x: auto; margin-top: 5px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  th { font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; background: #fafafa; }
+  tr:hover td { background: #f9f9f9; }
+  .td-key { font-size: 12px; font-weight: 600; max-width: 300px; word-break: break-word; }
+  .td-actions { display: flex; gap: 6px; }
 
-  /* Activity */
-  .activity-list { display: flex; flex-direction: column; gap: 15px; }
-  .activity-item { padding-bottom: 15px; border-bottom: 1px solid var(--border); }
-  .activity-item:last-child { border-bottom: none; }
-  .activity-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
-  .user-name { font-weight: 700; color: var(--accent); }
-  .time-text { font-size: 11px; color: var(--muted); }
-  .activity-body { font-size: 13px; margin-bottom: 4px; line-height: 1.4; color: #444; }
-  .activity-response { font-size: 13px; font-weight: 500; color: var(--text); padding-left: 10px; border-left: 2px solid var(--border); }
-  .prov-tag { font-size: 10px; background: var(--border); padding: 2px 6px; border-radius: 4px; color: var(--muted); }
+  /* MODAL */
+  .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.45); display: none; align-items: center; justify-content: center; z-index: 999; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--surface); padding: 28px; border-radius: 12px; width: 640px; max-width: 92vw; box-shadow: 0 25px 50px rgba(0,0,0,0.15); }
+  .modal-title { font-size: 17px; font-weight: 700; margin-bottom: 20px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+  .modal-textarea { min-height: 180px; }
 
-  @media (max-width: 1000px) {
-    .layout { flex-direction: column; }
-    .col-right { flex: none; }
+  /* KNOWLEDGE VIEWER */
+  .knowledge-list { display: flex; flex-direction: column; gap: 10px; }
+  .kw-item { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .kw-header { padding: 10px 14px; background: #fafafa; display: flex; justify-content: space-between; align-items: center; }
+  .kw-header-left { display: flex; align-items: center; gap: 10px; cursor: pointer; flex: 1; }
+  .kw-domain { font-size: 10px; font-weight: 700; text-transform: uppercase; background: var(--accent); color: #fff; padding: 2px 8px; border-radius: 4px; }
+  .kw-body { padding: 14px; display: none; }
+  .kw-body.open { display: block; }
+  .kw-info { font-size: 12px; line-height: 1.7; color: #444; white-space: pre-wrap; background: #f9f9f9; padding: 10px; border-radius: 6px; margin-bottom: 8px; }
+  .kw-keywords { font-size: 11px; color: var(--muted); }
+
+  /* SEARCH */
+  .search-box { margin-bottom: 15px; }
+
+  /* UPTIME */
+  .uptime-box { font-size: 22px; font-weight: 700; color: var(--accent); }
+
+  /* Dashboard layout: fixed heights — applied only when active via JS */
+  .page.active.dash-flex { display: flex !important; flex-direction: column; }
+  #page-dashboard .stats-grid { flex-shrink: 0; }
+  #page-dashboard .two-col { flex: 1; min-height: 0; }
+  #page-dashboard .two-col > .card { overflow: hidden; display: flex; flex-direction: column; }
+  #page-dashboard .two-col > .card.activity-card { overflow: hidden; }
+  #page-dashboard .two-col > .card.activity-card .activity-list { overflow-y: auto; flex: 1; }
+  .activity-card { height: 100%; }
+
+  @media (max-width: 900px) {
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .two-col, .three-col { grid-template-columns: 1fr; }
+    .sidebar { width: 180px; }
+    .model-metrics { flex-wrap: wrap; gap: 10px; }
+  }
+  @media (max-width: 650px) {
+    body { flex-direction: column; height: auto; overflow: auto; }
+    .sidebar { width: 100%; height: auto; }
+    .main { height: auto; }
+    .content { overflow: visible; }
+    .sidebar-nav { display: flex; overflow-x: auto; padding: 8px; }
+    .nav-item { white-space: nowrap; }
   }
 </style>
 </head>
 <body>
 
-<div class="navbar">
-  <h1>ANIMEINBOT</h1>
-  <div class="status-tag">
-    <span class="status-dot" id="statusDot"></span>
+<div class="sidebar">
+  <div class="sidebar-brand">
+    <h1>ANIMEINBOT</h1>
+    <p>Control Panel</p>
+  </div>
+  <nav class="sidebar-nav">
+    <button class="nav-item active" onclick="showPage('dashboard', this)">Dashboard</button>
+    <button class="nav-item" onclick="showPage('model', this)">Model</button>
+    <button class="nav-item" onclick="showPage('database', this)">Database</button>
+    <button class="nav-item" onclick="showPage('prompt', this)">Prompt & Knowledge</button>
+  </nav>
+  <div class="sidebar-status">
+    <span class="s-dot" id="statusDot" style="background:var(--red)"></span>
     <span id="statusLabel">OFFLINE</span>
   </div>
 </div>
 
-<div class="layout">
-  <!-- LEFT: MODELS AND STATS -->
-  <div class="col-left">
-    <div class="section-title">Overview</div>
-    <div class="grid" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:12px; margin-bottom:15px;">
-      <div class="card" style="margin-bottom:0">
-        <div class="card-label">TRG</div>
-        <div class="card-value" id="totalTriggers">0</div>
-      </div>
-      <div class="card" style="margin-bottom:0">
-        <div class="card-label">UPTIME</div>
-        <div class="card-value" id="uptime">00:00</div>
-      </div>
-      <div class="card" style="margin-bottom:0">
-        <div class="card-label">TOKENS</div>
-        <div class="card-value" id="totalTokens">0</div>
-      </div>
-    </div>
-    <div class="grid" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:12px; margin-bottom:30px;">
-      <div class="card" style="margin-bottom:0; border-color: var(--red);">
-        <div class="card-label">BLOCKED</div>
-        <div class="card-value" id="filterBlocked">0</div>
-      </div>
-      <div class="card" style="margin-bottom:0; border-color: #3b82f6;">
-        <div class="card-label">DB LOGS</div>
-        <div class="card-value" id="totalDBLogs">0</div>
-      </div>
-      <div class="card" style="margin-bottom:0; border-color: #22c55e;">
-        <div class="card-label">CACHE HITS</div>
-        <div class="card-value" id="cacheHits">0</div>
-        <div style="font-size:10px; color:var(--muted); margin-top:4px;">Saved: <span id="cacheTotal">0</span> entries</div>
-      </div>
-    </div>
+<div class="main">
 
-    <div class="section-title">Controls</div>
-    <div class="controls-grid">
-      <div class="control-box">
-        <div class="control-title">Auto Response</div>
-        <div class="control-sub">Otomasi chatbot aktif</div>
-        <button id="botToggleBtn" onclick="toggleBot()" class="btn-toggle">...</button>
-      </div>
-      <div class="control-box">
-        <div class="control-title">Clear Cache</div>
-        <div class="control-sub">Hapus semua response cache</div>
-        <button onclick="clearCache()" class="btn-primary" style="background: var(--red);">Clear</button>
-      </div>
-    </div>
-    <div class="controls-grid" style="margin-top:15px;">
-      <div class="control-box" style="grid-column: span 2;">
-        <div class="control-title">Manual Send</div>
-        <div class="control-sub">Kirim pesan ke chat</div>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <input type="text" id="manualText" placeholder="Pesan..." onkeydown="if(event.key === 'Enter') sendManual()" style="flex:1">
-          <input type="file" id="manualFile" accept="image/*" style="display:none" onchange="previewFile()">
-          <button onclick="document.getElementById('manualFile').click()" class="btn-toggle" id="fileBtn" title="Pilih Gambar" style="padding: 10px; min-width: 44px;">🖼️</button>
-          <button onclick="sendManual()" class="btn-primary">Kirim</button>
-        </div>
-        <div id="filePreview" style="display:none; margin-top:10px; font-size:12px; color:var(--accent); font-weight:600;">
-           Selected: <span id="fileName"></span> <button onclick="clearFile()" style="background:none; border:none; color:var(--red); cursor:pointer; font-weight:bold; margin-left:5px;">[X]</button>
-        </div>
-        <div style="margin-top:15px; display:flex; gap:8px;">
-           <button onclick="sendTemplate('online')" class="btn-primary" style="background:#22c55e; font-size:11px; padding:6px 12px;"> Broadcast Online</button>
-           <button onclick="sendTemplate('offline')" class="btn-primary" style="background:var(--red); font-size:11px; padding:6px 12px;">Broadcast Offline</button>
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <h2 id="pageTitle">Dashboard</h2>
+    <div class="topbar-actions">
+      <div class="bot-toggle-wrap">
+        <span class="bot-toggle-lbl">Bot AI</span>
+        <div class="bot-toggle-pill" id="botTogglePill" onclick="toggleBot()">
+          <span class="btp-on">ON</span>
+          <span class="btp-off">OFF</span>
         </div>
       </div>
-    </div>
-
-    <div class="section-title">List Otak</div>
-    <div class="model-list" id="groqAccordion">
-      <!-- Injected -->
+      <button class="btn-sm btn-sm-del" onclick="clearCache()">Clear Cache</button>
     </div>
   </div>
 
-  <!-- RIGHT: CHAT ACTIVITY -->
-  <div class="col-right">
-    <div class="section-title">Recent Activity</div>
-    <div class="card">
-        <div class="activity-list" id="activityList">
-          <div style="color:var(--muted); text-align:center; padding: 20px;">Idle...</div>
+  <div class="content">
+
+    <!-- PAGE: DASHBOARD -->
+    <div class="page active" id="page-dashboard">
+      <div class="stats-grid">
+        <div class="stat-card accent">
+          <div class="label">Total Trigger</div>
+          <div class="value" id="totalTriggers">0</div>
         </div>
+        <div class="stat-card">
+          <div class="label">Uptime</div>
+          <div class="uptime-box" id="uptime">00:00:00</div>
+        </div>
+        <div class="stat-card blue">
+          <div class="label">Token Dipakai</div>
+          <div class="value" id="totalTokens">0</div>
+        </div>
+        <div class="stat-card green">
+          <div class="label">Cache Hits (sesi)</div>
+          <div class="value" id="cacheHits">0</div>
+        </div>
+        <div class="stat-card red">
+          <div class="label">Pesan Diblokir</div>
+          <div class="value" id="filterBlocked">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">DB Logs</div>
+          <div class="value" id="totalDBLogs">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Cache Entries</div>
+          <div class="value" id="cacheTotal">0</div>
+        </div>
+      </div>
+
+      <div class="two-col" style="height: calc(100% - 175px);">
+        <!-- Manual Send -->
+        <div class="card" style="margin-bottom:0; overflow:hidden;">
+          <div class="card-title">Kirim Pesan Manual</div>
+          <div class="form-group">
+            <input type="text" id="manualText" placeholder="Ketik pesan..." onkeydown="if(event.key==='Enter') sendManual()">
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="btn-primary" onclick="sendManual()">Kirim</button>
+            <button class="btn-secondary" onclick="sendTemplate('online')">Broadcast Online</button>
+            <button class="btn-danger" onclick="sendTemplate('offline')">Broadcast Offline</button>
+          </div>
+        </div>
+
+        <!-- Recent Activity -->
+        <div class="card activity-card" style="margin-bottom:0; overflow:hidden; display:flex; flex-direction:column;">
+          <div class="card-title" style="flex-shrink:0;">Recent Activity</div>
+          <div class="activity-list" id="activityList" style="overflow-y:auto; flex:1;">
+            <div style="color:var(--muted); text-align:center; padding:20px;">Belum ada aktivitas</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: MODEL -->
+    <div class="page" id="page-model">
+      <div class="card">
+        <div class="card-title">Daftar Otak (Groq Keys)</div>
+        <div class="model-list" id="modelList">
+          <div style="color:var(--muted);">Memuat...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: DATABASE -->
+    <div class="page" id="page-database">
+      <div class="card">
+        <div class="card-title">Cache Entries</div>
+        <div class="search-box">
+          <input type="text" id="cacheSearch" placeholder="Cari question key..." oninput="filterCache()">
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Question Key</th>
+                <th>Domain</th>
+                <th>Hits</th>
+                <th>Variasi</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="cacheList">
+              <tr><td colspan="5" style="color:var(--muted); text-align:center;">Memuat...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: PROMPT & KNOWLEDGE -->
+    <div class="page" id="page-prompt">
+      <div class="two-col">
+        <!-- System Prompt Editor -->
+        <div class="card">
+          <div class="card-title">System Prompt (Live Edit)</div>
+          <div style="font-size:11px; color:var(--green); margin-bottom:12px; padding:8px; background:#f0fdf4; border-radius:6px;">
+            Perubahan disimpan secara permanen ke file prompt.txt.
+          </div>
+          <div class="form-group">
+            <textarea id="promptEditor" style="min-height:400px; font-family:monospace; font-size:12px;"></textarea>
+          </div>
+          <button class="btn-primary" onclick="savePrompt()">Simpan Prompt</button>
+        </div>
+
+        <!-- Knowledge Editor -->
+        <div class="card">
+          <div class="card-title">Animein Knowledge Base</div>
+          <div class="knowledge-list" id="knowledgeList">
+            <div style="color:var(--muted);">Memuat...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<!-- Edit Cache Modal -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <div class="modal-title">Edit Cache Entry</div>
+    <input type="hidden" id="editId">
+    <div class="form-group">
+      <label class="form-label">Question Key</label>
+      <input type="text" id="editKey">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Domain</label>
+      <input type="text" id="editDomain">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Answer (JSON Array of variations)</label>
+      <textarea id="editAnswer" class="modal-textarea"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeModal()">Batal</button>
+      <button class="btn-primary" onclick="saveEntry()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Knowledge Modal -->
+<div class="modal-overlay" id="kwModal">
+  <div class="modal">
+    <div class="modal-title">Edit Knowledge Entry</div>
+    <input type="hidden" id="kwIndex">
+    <div class="form-group">
+      <label class="form-label">Keywords (satu per baris)</label>
+      <textarea id="kwKeywords" class="modal-textarea" style="min-height:120px;"></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Info Teks</label>
+      <textarea id="kwInfo" class="modal-textarea" style="min-height:200px;"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeKwModal()">Batal</button>
+      <button class="btn-primary" onclick="saveKw()">Simpan Knowledge</button>
     </div>
   </div>
 </div>
 
 <script>
-function formatUptime(seconds) {
-  const h = Math.floor(seconds/3600).toString().padStart(2,'0');
-  const m = Math.floor((seconds%3600)/60).toString().padStart(2,'0');
-  const s = (seconds%60).toString().padStart(2,'0');
+// ---- PAGE NAV ----
+function showPage(id, el) {
+  document.querySelectorAll('.page').forEach(p => {
+    p.classList.remove('active');
+    p.classList.remove('dash-flex');
+    p.style.display = 'none';
+  });
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const target = document.getElementById('page-' + id);
+  target.classList.add('active');
+  if (id === 'dashboard') {
+    target.classList.add('dash-flex');
+    target.style.display = 'flex';
+  } else {
+    target.style.display = 'block';
+  }
+  el.classList.add('active');
+  const titles = { dashboard: 'Dashboard', model: 'Model', database: 'Database', prompt: 'Prompt & Knowledge' };
+  document.getElementById('pageTitle').textContent = titles[id] || id;
+  if (id === 'database') loadCache();
+  if (id === 'prompt') loadPrompt();
+}
+
+// ---- UPTIME ----
+function formatUptime(sec) {
+  const h = Math.floor(sec/3600).toString().padStart(2,'0');
+  const m = Math.floor((sec%3600)/60).toString().padStart(2,'0');
+  const s = (sec%60).toString().padStart(2,'0');
   return h+':'+m+':'+s;
 }
-function rate(s,r){return r>0?Math.round(s/r*100)+'%':'N/A'}
 
+// ---- RENDER STATS ----
+function render(d) {
+  if (!d) return;
+  const online = d.botStatus === 'online';
+  const dot = document.getElementById('statusDot');
+  const lbl = document.getElementById('statusLabel');
+  if (dot) dot.style.background = online ? 'var(--green)' : 'var(--red)';
+  if (lbl) { lbl.textContent = online ? 'ONLINE' : 'OFFLINE'; lbl.style.color = online ? 'var(--green)' : 'var(--red)'; }
+
+  const isBotOn = d.isBotActive;
+  const pill = document.getElementById('botTogglePill');
+  if (pill) {
+    if (isBotOn) pill.classList.add('is-on'); else pill.classList.remove('is-on');
+  }
+
+  const setT = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  setT('totalTriggers', (d.totalTriggers||0).toLocaleString('id-ID'));
+  setT('uptime', d.uptime !== undefined ? formatUptime(d.uptime) : '--');
+  setT('totalTokens', (d.totalTokensUsed||0).toLocaleString('id-ID'));
+  setT('cacheHits', (d.cacheHits||0).toLocaleString('id-ID'));
+  setT('filterBlocked', (d.filter?.blocked||0).toLocaleString('id-ID'));
+  setT('totalDBLogs', (d.totalDBLogs||0).toLocaleString('id-ID'));
+  setT('cacheTotal', (d.cacheTotal||0).toLocaleString('id-ID'));
+
+  // Render model list
+  const ml = document.getElementById('modelList');
+  if (ml && Array.isArray(d.otak)) {
+    ml.innerHTML = d.otak.map((o, i) => {
+      const isCooldown = o.cooldownUntil > Date.now();
+      const stateClass = !o.active ? 'inactive' : isCooldown ? 'cooldown' : 'active';
+      const stateLabel = !o.active ? 'Nonaktif' : isCooldown ? 'Cooldown' : 'Aktif';
+      const stateLabelColor = !o.active ? 'var(--red)' : isCooldown ? '#f59e0b' : 'var(--green)';
+      const pillClass = !o.active ? '' : '';
+      return \`<div class="model-card \${stateClass}">
+        <div class="model-num">Otak #\${i+1}</div>
+        <div class="model-metrics">
+          <div class="m-stat"><div class="m-lbl">Req</div><div class="m-val">\${o.requests||0}</div></div>
+          <div class="m-stat"><div class="m-lbl">OK</div><div class="m-val" style="color:var(--green);">\${o.success||0}</div></div>
+          <div class="m-stat"><div class="m-lbl">Err</div><div class="m-val" style="color:var(--red);">\${o.errors||0}</div></div>
+          <div class="m-stat"><div class="m-lbl">Sisa Req</div><div class="m-val">\${o.remainingReqs||'?'}</div></div>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
+          <span style="font-size:11px; font-weight:700; color:\${stateLabelColor};">\${stateLabel}</span>
+          <div class="toggle-pill \${o.active ? '' : 'is-off'}" onclick="toggleKey(\${i})">
+            <span class="pill-on">ON</span>
+            <span class="pill-off">OFF</span>
+          </div>
+        </div>
+        \${o.lastError ? \`<div style="font-size:10px; color:var(--red); margin-top:4px; width:100%;">\${o.lastError}</div>\` : ''}
+      </div>\`;
+    }).join('');
+  }
+
+  // Render activity
+  const al = document.getElementById('activityList');
+  if (al && Array.isArray(d.recentActivity) && d.recentActivity.length > 0) {
+    al.innerHTML = d.recentActivity.map(a => \`
+      <div class="activity-item">
+        <div class="activity-meta">
+          <span class="activity-user">\${a.from||'?'}</span>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <span class="prov-tag">\${a.provider||''}</span>
+            <span class="activity-time">\${a.time||''}</span>
+          </div>
+        </div>
+        <div class="activity-q">Tanya: \${(a.text||'').slice(0,80)}</div>
+        <div class="activity-a">\${(a.response||'').slice(0,100)}</div>
+      </div>
+    \`).join('');
+  }
+}
+
+// ---- CACHE ----
+let cacheData = [];
+async function loadCache() {
+  try {
+    const res = await fetch('/api/cache/list');
+    const d = await res.json();
+    if (d.success) {
+      cacheData = d.data;
+      document.getElementById('cacheTotal').textContent = d.data.length;
+      renderCacheList(d.data);
+    }
+  } catch(e) {}
+}
+
+function renderCacheList(data) {
+  const list = document.getElementById('cacheList');
+  if (!list) return;
+  if (!data || data.length === 0) {
+    list.innerHTML = \`<tr><td colspan="5" style="text-align:center; color:var(--muted);">Belum ada cache entry</td></tr>\`;
+    return;
+  }
+  list.innerHTML = data.map(item => {
+    let varCount = 1;
+    try { const v = JSON.parse(item.answer); if (Array.isArray(v)) varCount = v.length; } catch(e) {}
+    return \`<tr>
+      <td class="td-key">\${item.question_key}</td>
+      <td><span class="prov-tag">\${item.domain||'umum'}</span></td>
+      <td style="font-weight:700;">\${item.hit_count||0}</td>
+      <td>\${varCount}/3</td>
+      <td class="td-actions">
+        <button class="btn-sm btn-sm-edit" onclick="editEntry(\${item.id})">Edit</button>
+        <button class="btn-sm btn-sm-del" onclick="deleteEntry(\${item.id})">Hapus</button>
+      </td>
+    </tr>\`;
+  }).join('');
+}
+
+function filterCache() {
+  const q = document.getElementById('cacheSearch').value.toLowerCase();
+  const filtered = cacheData.filter(c => c.question_key.includes(q) || (c.domain||'').includes(q));
+  renderCacheList(filtered);
+}
+
+function editEntry(id) {
+  const item = cacheData.find(c => c.id === id);
+  if (!item) return;
+  document.getElementById('editId').value = item.id;
+  document.getElementById('editKey').value = item.question_key;
+  document.getElementById('editDomain').value = item.domain || 'umum';
+  document.getElementById('editAnswer').value = item.answer;
+  document.getElementById('editModal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('editModal').classList.remove('open');
+}
+
+async function saveEntry() {
+  const data = {
+    id: document.getElementById('editId').value,
+    question_key: document.getElementById('editKey').value,
+    domain: document.getElementById('editDomain').value,
+    answer: document.getElementById('editAnswer').value
+  };
+  const res = await fetch('/api/cache/save', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
+  });
+  if (res.ok) { closeModal(); loadCache(); }
+  else alert('Gagal menyimpan. Pastikan Question Key unik.');
+}
+
+async function deleteEntry(id) {
+  if (!confirm('Hapus entri ini dari cache?')) return;
+  await fetch('/api/cache/delete', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id })
+  });
+  loadCache();
+}
+
+// ---- PROMPT & KNOWLEDGE ----
+let knowledgeData = [];
+async function loadPrompt() {
+  try {
+    const [p, k] = await Promise.all([fetch('/api/prompt'), fetch('/api/knowledge')]);
+    const pd = await p.json();
+    const kd = await k.json();
+    if (pd.success) document.getElementById('promptEditor').value = pd.prompt;
+    if (kd.success) { knowledgeData = kd.knowledge; renderKnowledge(kd.knowledge); }
+  } catch(e) {}
+}
+
+async function savePrompt() {
+  const prompt = document.getElementById('promptEditor').value;
+  const res = await fetch('/api/prompt/save', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt })
+  });
+  if (res.ok) alert('Prompt berhasil disimpan secara permanen!');
+  else alert('Gagal menyimpan prompt.');
+}
+
+function renderKnowledge(knowledge) {
+  const list = document.getElementById('knowledgeList');
+  if (!list || !knowledge) return;
+  list.innerHTML = knowledge.map((k, i) => {
+    const kwPreview = (k.keywords || []).slice(0, 6).join(', ');
+    return \`<div class="kw-item">
+      <div class="kw-header">
+        <div class="kw-header-left" onclick="toggleKw(this.parentElement)">
+          <span class="kw-domain">\${k.domain||'umum'}</span>
+          <span style="font-size:12px; font-weight:600;">\${(k.keywords||[])[0] || 'Item ' + (i+1)}</span>
+        </div>
+        <button class="btn-sm btn-sm-edit" onclick="editKw(\${i})" style="flex-shrink:0;">Edit</button>
+      </div>
+      <div class="kw-body">
+        <div class="kw-info">\${k.info||''}</div>
+        <div class="kw-keywords"><b>Keywords:</b> \${kwPreview}...</div>
+      </div>
+    </div>\`;
+  }).join('');
+}
+
+function toggleKw(headerEl) {
+  const body = headerEl.nextElementSibling;
+  body.classList.toggle('open');
+}
+
+function editKw(index) {
+  const k = knowledgeData[index];
+  if (!k) return;
+  document.getElementById('kwIndex').value = index;
+  document.getElementById('kwKeywords').value = (k.keywords || []).join('\\n');
+  document.getElementById('kwInfo').value = k.info || '';
+  document.getElementById('kwModal').classList.add('open');
+}
+
+function closeKwModal() {
+  document.getElementById('kwModal').classList.remove('open');
+}
+
+async function saveKw() {
+  const index = parseInt(document.getElementById('kwIndex').value);
+  const newKeywords = document.getElementById('kwKeywords').value.split('\\n').map(s => s.trim()).filter(Boolean);
+  const newInfo = document.getElementById('kwInfo').value;
+  if (!newInfo.trim()) return alert('Info tidak boleh kosong.');
+  
+  // Update in-memory
+  knowledgeData[index].keywords = newKeywords;
+  knowledgeData[index].info = newInfo;
+  
+  // Save new prompt knowledge via API (rebuild ANIMEIN_KNOWLEDGE in server)
+  const res = await fetch('/api/knowledge/save', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ index, keywords: newKeywords, info: newInfo })
+  });
+  if (res.ok) { closeKwModal(); renderKnowledge(knowledgeData); alert('Knowledge berhasil disimpan permanen!'); }
+  else alert('Gagal menyimpan.');
+}
+
+// ---- OTHER FUNCTIONS UNCHANGED ----
+// ---- CONTROLS ----
 async function toggleBot() {
   await fetch('/api/bot/toggle', { method: 'POST' });
-  refresh();
-}
-
-let selectedImageData = null;
-let selectedMimeType = null;
-
-function previewFile() {
-  const file = document.getElementById('manualFile').files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    selectedImageData = e.target.result.split(',')[1];
-    selectedMimeType = file.type;
-    document.getElementById('filePreview').style.display = 'block';
-    document.getElementById('fileName').textContent = file.name;
-    document.getElementById('fileBtn').style.border = '1px solid var(--accent)';
-  };
-  reader.readAsDataURL(file);
-}
-
-function clearFile() {
-  document.getElementById('manualFile').value = '';
-  selectedImageData = null;
-  selectedMimeType = null;
-  document.getElementById('filePreview').style.display = 'none';
-  document.getElementById('fileBtn').style.border = '1px solid var(--border)';
-}
-
-async function sendManual() {
-  const input = document.getElementById('manualText');
-  const text = input.value;
-  
-  if (selectedImageData) {
-    // Send with image
-    await fetch('/api/chat/send-image', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, image: selectedImageData, mimeType: selectedMimeType })
-    });
-    clearFile();
-  } else {
-    // Send text only
-    if (!text) return;
-    await fetch('/api/chat/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text })
-    });
-  }
-  
-  input.value = '';
-  clearFile();
-  refresh();
-}
-
-async function sendTemplate(type) {
-  let msg = "";
-  if (type === 'online') {
-    msg = "rara kembali aktif, silahkan tanya apapun rara siap menjawab, jika ada pertanyaan yang rara tidak menegrti langsung tag @Yogaa sebagai pemilik rara untuk memperbaiki dan menambagkan responnya";
-  } else {
-    msg = "Rara istirahat dulu ya kak, sampai jumpa lagi! 🙏 (Mode Offline Aktif)";
-  }
-  
-  if (!confirm('Kirim pesan broadcast ' + type + '?')) return;
-  
-  await fetch('/api/chat/send', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text: msg })
-  });
   refresh();
 }
 
@@ -1752,93 +2106,41 @@ async function toggleKey(id) {
 }
 
 async function clearCache() {
-  if (!confirm('Yakin hapus semua response cache?')) return;
+  if (!confirm('Yakin hapus semua cache?')) return;
   await fetch('/api/cache/clear', { method: 'POST' });
+  refresh();
+  loadCache();
+}
+
+async function sendManual() {
+  const input = document.getElementById('manualText');
+  const text = input.value.trim();
+  if (!text) return;
+  await fetch('/api/chat/send', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text })
+  });
+  input.value = '';
   refresh();
 }
 
+async function sendTemplate(type) {
+  const msg = type === 'online'
+    ? 'rara kembali aktif, silahkan tanya apapun rara siap menjawab, jika ada pertanyaan yang rara tidak mengerti langsung tag @Yogaa sebagai pemilik rara untuk memperbaiki dan menambahkan responnya'
+    : 'Rara istirahat dulu ya kak, sampai jumpa lagi! (Mode Offline Aktif)';
+  if (!confirm('Kirim broadcast ' + type + '?')) return;
+  await fetch('/api/chat/send', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: msg })
+  });
+  refresh();
+}
+
+// ---- REFRESH LOOP ----
 async function refresh() {
   try {
     const res = await fetch('/api/stats');
     const d = await res.json();
-    if (!d) return;
-
-    const botBtn = document.getElementById('botToggleBtn');
-    if (botBtn) {
-      botBtn.textContent = d.isBotActive ? 'ON' : 'OFF';
-      botBtn.style.background = d.isBotActive ? 'var(--accent)' : '#eee';
-      botBtn.style.color = d.isBotActive ? 'white' : '#666';
-    }
-
-    const online = d.botStatus === 'online';
-    const dot = document.getElementById('statusDot');
-    const label = document.getElementById('statusLabel');
-    if (dot) dot.style.background = online ? 'var(--green)' : 'var(--red)';
-    if (label) {
-      label.textContent = online ? 'ONLINE' : 'OFFLINE';
-      label.style.color = online ? 'var(--green)' : 'var(--red)';
-    }
-
-    const setT = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-    setT('totalTriggers', d.totalTriggers || 0);
-    setT('uptime', formatUptime(d.uptime || 0));
-    setT('totalTokens', (d.totalTokensUsed || 0).toLocaleString('id-ID'));
-    setT('filterBlocked', d.filter.blocked || 0);
-    setT('totalDBLogs', (d.totalDBLogs || 0).toLocaleString('id-ID'));
-    setT('cacheHits', (d.cacheHits || 0).toLocaleString('id-ID'));
-    setT('cacheTotal', d.cacheTotal || 0);
-    
-    if (d.otak) {
-      const parent = document.getElementById('groqAccordion');
-      if (parent) {
-        parent.innerHTML = d.otak.map((g, i) => {
-          const isSelected = d.lastUsedGroq === i;
-          const isOff = g.active === false;
-          const isCooldown = Date.now() < g.cooldownUntil;
-          
-          let st = "IDLE";
-          if (isOff) st = "DISABLED";
-          else if (isCooldown) st = "COOLDOWN";
-          else if (isSelected) st = "ACTIVE";
-
-          return '<div class="model-card ' + (isSelected ? 'is-active' : '') + '">'
-            + '<div class="model-main">'
-            + '<div class="model-info">'
-            + '<div class="model-name">Otak #' + (i+1) + '</div>'
-            + '<div class="model-status">' + st + ' • ' + (i === 0 ? 'Primary' : 'Worker') + '</div>'
-            + '</div>'
-            + '<button onclick="toggleKey(' + (i+1) + ')" class="btn-toggle" style="background:' + (isOff ? '#eee' : 'var(--accent)') + '; color:' + (isOff ? '#666' : 'white') + '">'
-            + (isOff ? 'OFF' : 'ON') + '</button>'
-            + '</div>'
-            + '<div class="model-stats">'
-            + '<div class="m-stat"><span class="m-label">REQ</span><span class="m-val">' + (g.requests || 0) + '</span></div>'
-            + '<div class="m-stat"><span class="m-label">SUC</span><span class="m-val">' + (g.success || 0) + '</span></div>'
-            + '<div class="m-stat"><span class="m-label">RPM</span><span class="m-val">' + (g.remainingReqs || '-') + '</span></div>'
-            + '<div class="m-stat"><span class="m-label">ERR</span><span class="m-val" style="color:var(--red)">' + (g.errors || 0) + '</span></div>'
-            + '</div>'
-            + '</div>';
-        }).join('');
-      }
-    }
-
-    const list = document.getElementById('activityList');
-    if (list && d.recentActivity) {
-      list.innerHTML = d.recentActivity.map(a => \`
-        <div class="activity-item">
-          <div class="activity-header">
-            <span class="user-name">@\${a.from}</span>
-            <span class="time-text">\${a.time}</span>
-          </div>
-          <div class="activity-body">\${a.text || "-"}</div>
-          <div class="activity-response">\${a.response}</div>
-          <div style="margin-top:6px; display:flex; gap:6px; align-items:center;">
-            <span class="prov-tag">\${a.provider}</span>
-            \${a.tokens ? '<span class="prov-tag" style="background: var(--accent-light); color: var(--accent); border: 1px solid #fed7aa;">🪙 ' + a.tokens + ' tokens</span>' : ''}
-          </div>
-        </div>
-      \`.trim()).join('');
-    }
-  } catch (e) {}
+    render(d);
+  } catch(e) {}
 }
 
 refresh();
