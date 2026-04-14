@@ -1587,6 +1587,10 @@ function getDashboardHTML() {
         <div id="filePreview" style="display:none; margin-top:10px; font-size:12px; color:var(--accent); font-weight:600;">
            Selected: <span id="fileName"></span> <button onclick="clearFile()" style="background:none; border:none; color:var(--red); cursor:pointer; font-weight:bold; margin-left:5px;">[X]</button>
         </div>
+        <div style="margin-top:15px; display:flex; gap:8px;">
+           <button onclick="sendTemplate('online')" class="btn-primary" style="background:#22c55e; font-size:11px; padding:6px 12px;"> Broadcast Online</button>
+           <button onclick="sendTemplate('offline')" class="btn-primary" style="background:var(--red); font-size:11px; padding:6px 12px;">Broadcast Offline</button>
+        </div>
       </div>
     </div>
 
@@ -1669,6 +1673,25 @@ async function sendManual() {
   }
   
   input.value = '';
+  clearFile();
+  refresh();
+}
+
+async function sendTemplate(type) {
+  let msg = "";
+  if (type === 'online') {
+    msg = "rara kembali aktif, silahkan tanya apapun rara siap menjawab, jika ada pertanyaan yang rara tidak menegrti langsung tag @Yogaa sebagai pemilik rara untuk memperbaiki dan menambagkan responnya";
+  } else {
+    msg = "Rara istirahat dulu ya kak, sampai jumpa lagi! 🙏 (Mode Offline Aktif)";
+  }
+  
+  if (!confirm('Kirim pesan broadcast ' + type + '?')) return;
+  
+  await fetch('/api/chat/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: msg })
+  });
   refresh();
 }
 
