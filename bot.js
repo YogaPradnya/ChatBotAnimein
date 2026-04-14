@@ -4,6 +4,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const FormData = require('form-data');
+const { createClient } = require('@libsql/client');
 require('dotenv').config();
 
 let pokemonData = [];
@@ -47,9 +48,206 @@ const CONFIG = {
     ].filter(Boolean),
     POLL_INTERVAL: 5000,
     DASHBOARD_PORT: process.env.PORT || 3500,
-    IMAGE_TRIGGERS: ['gambar', 'foto', 'ilustrasi', 'buatkan gambar', 'generate gambar'],
     GROQ_COOLDOWN: 15 * 60 * 1000,
+    TURSO_URL: process.env.TURSO_URL,
+    TURSO_AUTH_TOKEN: process.env.TURSO_AUTH_TOKEN,
 };
+
+// Inisialisasi Turso Client
+const db = createClient({
+    url: CONFIG.TURSO_URL || '',
+    authToken: CONFIG.TURSO_AUTH_TOKEN || '',
+});
+
+async function initDB() {
+    if (!CONFIG.TURSO_URL) {
+        console.warn('[DB] TURSO_URL tidak ditemukan di .env. Database dinonaktifkan.');
+        return;
+    }
+    try {
+        await db.execute(`
+            CREATE TABLE IF NOT EXISTS chat_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT,
+                pertanyaan TEXT,
+                jawaban TEXT,
+                provider TEXT,
+                tokens INTEGER,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+        await db.execute(`
+            CREATE TABLE IF NOT EXISTS response_cache (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                question_key TEXT UNIQUE,
+                answer TEXT,
+                domain TEXT,
+                hit_count INTEGER DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+        console.log("[DB] Turso Database connected & Tables ready (chat_logs + response_cache).");
+    } catch (e) {
+        console.error("[DB] Gagal inisialisasi Turso:", e.message);
+    }
+}
+initDB();
+
+async function saveChatLog(username, question, answer, provider, tokens) {
+    if (!CONFIG.TURSO_URL) return;
+    try {
+        await db.execute({
+            sql: "INSERT INTO chat_logs (username, pertanyaan, jawaban, provider, tokens) VALUES (?, ?, ?, ?, ?)",
+            args: [username, question, answer, provider, tokens]
+        });
+    } catch (e) {
+        console.error("[DB] Gagal simpan log chat ke Turso:", e.message);
+    }
+}
+
+/** Normalisasi pertanyaan untuk cache key: lowercase, hapus trigger, hapus spasi ganda, hapus tanda baca berlebih */
+function normalizeQuestion(text) {
+    return text
+        .toLowerCase()
+        .replace(/\.ai|ai\.|@\w+|\.rara|rara\./gi, '') // hapus trigger
+        .replace(/[^a-z0-9\s]/g, '')                     // hapus tanda baca
+        .replace(/\s+/g, ' ')                             // spasi ganda
+        .trim();
+}
+
+/** Cek apakah jawaban sudah ada di response cache */
+async function checkCache(question) {
+    if (!CONFIG.TURSO_URL) return null;
+    const key = normalizeQuestion(question);
+    if (key.length < 5) return null;
+
+    // 10% peluang Force Refresh: Lewati cache agar AI buat variasi baru untuk dipelajari
+    if (Math.random() < 0.1) return null;
+
+    try {
+        const result = await db.execute({
+            sql: "SELECT id, answer, domain FROM response_cache WHERE question_key = ?",
+            args: [key]
+        });
+        
+        if (result.rows.length > 0) {
+            let answerData = result.rows[0].answer;
+            let variations = [];
+            
+            try {
+                // Cek apakah data disimpan dalam format JSON (banyak variasi)
+                variations = JSON.parse(answerData);
+                if (!Array.isArray(variations)) variations = [answerData];
+            } catch (e) {
+                // Format lama (string biasa)
+                variations = [answerData];
+            }
+
+            // Update hit count secara async
+            db.execute({ sql: "UPDATE response_cache SET hit_count = hit_count + 1 WHERE id = ?", args: [result.rows[0].id] });
+            stats.cacheHits++;
+            
+            // Pilih satu variasi secara acak
+            const finalAnswer = variations[Math.floor(Math.random() * variations.length)];
+            console.log(`[CACHE] HIT (${variations.length} vrs) for: "${key.slice(0, 50)}..."`);
+            return finalAnswer;
+        }
+        return null;
+    } catch (e) {
+        console.error("[CACHE] Error checking cache:", e.message);
+        return null;
+    }
+}
+
+/** Simpan jawaban baru ke response cache (mendukung multi-variasi) */
+async function addToCache(question, answer, domain) {
+    if (!CONFIG.TURSO_URL) return;
+    const key = normalizeQuestion(question);
+    if (key.length < 5 || answer.length < 10) return;
+
+    try {
+        // Cek dulu apakah key sudah ada
+        const existing = await db.execute({
+            sql: "SELECT answer FROM response_cache WHERE question_key = ?",
+            args: [key]
+        });
+
+        if (existing.rows.length > 0) {
+            // Update: Tambah variasi jika belum ada
+            let variations = [];
+            try {
+                variations = JSON.parse(existing.rows[0].answer);
+                if (!Array.isArray(variations)) variations = [existing.rows[0].answer];
+            } catch (e) {
+                variations = [existing.rows[0].answer];
+            }
+
+            // Jika jawaban baru belum ada di daftar variasi, tambahkan (MAX 3 variasi)
+            if (!variations.includes(answer) && variations.length < 3) {
+                variations.push(answer);
+                await db.execute({
+                    sql: "UPDATE response_cache SET answer = ? WHERE question_key = ?",
+                    args: [JSON.stringify(variations), key]
+                });
+                console.log(`[CACHE] Variation Added (${variations.length}/3) for: "${key.slice(0, 30)}..."`);
+            }
+        } else {
+            // Insert baru (simpan sebagai JSON array)
+            await db.execute({
+                sql: "INSERT INTO response_cache (question_key, answer, domain) VALUES (?, ?, ?)",
+                args: [key, JSON.stringify([answer]), domain || 'umum']
+            });
+            stats.cacheTotal++;
+            console.log(`[CACHE] NEW SAVED: "${key.slice(0, 30)}..."`);
+        }
+    } catch (e) {
+        console.error("[CACHE] Error saving to cache:", e.message);
+    }
+}
+
+async function getHistoryFromDB(username, limit = 5) { 
+    if (!CONFIG.TURSO_URL) return { messages: [], lastTime: null };
+    try {
+        const result = await db.execute({
+            sql: "SELECT pertanyaan, jawaban, timestamp FROM chat_logs WHERE username = ? ORDER BY id DESC LIMIT ?",
+            args: [username, limit]
+        });
+        
+        if (result.rows.length === 0) return { messages: [], lastTime: null };
+
+        const lastTime = new Date(result.rows[0].timestamp + "Z").getTime(); // Ditambah Z agar dianggap UTC
+        
+        // Balikkan urutan agar dari yang lama ke baru
+        const history = [];
+        [...result.rows].reverse().forEach(row => {
+            history.push({ role: 'user', content: row.pertanyaan });
+            history.push({ role: 'assistant', content: row.jawaban });
+        });
+        
+        return { messages: history, lastTime };
+    } catch (e) {
+        console.error("[DB] Gagal ambil history dari Turso:", e.message);
+        return { messages: [], lastTime: null };
+    }
+}
+
+async function updateDBStats() {
+    if (!CONFIG.TURSO_URL) return;
+    try {
+        const result = await db.execute("SELECT COUNT(*) as count FROM chat_logs");
+        stats.totalDBLogs = result.rows[0].count;
+        const cacheResult = await db.execute("SELECT COUNT(*) as count FROM response_cache");
+        stats.cacheTotal = cacheResult.rows[0].count;
+    } catch (e) {
+        // Silent error to prevent log spam
+    }
+}
+
+// Update DB stats setiap 1 menit
+setInterval(updateDBStats, 60000);
+// Jalankan sekali di awal
+setTimeout(updateDBStats, 5000);
+
 
 let isBotActive = true;
 
@@ -58,9 +256,12 @@ const stats = {
     startTime: new Date().toISOString(),
     botStatus: 'starting',
     totalTriggers: 0,
-    lastUsedGroq: -1, 
-    recentActivity: [],
-
+    totalTokensUsed: 0,
+    totalDBLogs: 0,
+    cacheHits: 0,
+    cacheTotal: 0,
+    filter: { blocked: 0 },
+    lastUsedGroq: null,
     otak: CONFIG.GROQ_KEYS.map((key, index) => ({
         id: index + 1,
         active: true,
@@ -72,17 +273,13 @@ const stats = {
         remainingReqs: '?',
         remainingTokensDay: '?',
     })),
-    image: {
-        requests: 0,
-        success: 0,
-        errors: 0,
-        lastError: null,
-    },
+
     filter: {
         blocked: 0,
         lastBlocked: null,
     },
-    totalTokensUsed: 0
+    totalTokensUsed: 0,
+    recentActivity: []
 };
 
 function addActivity(type, from, text, response, provider, tokens = 0) {
@@ -110,7 +307,7 @@ Aturan:
 - PENTING: Pokemon di Animein HANYA ada Gen 1 dan Gen 2. Gen 3 masih ongoing dan belum tersedia. Tidak ada gen lain selain itu.
 - Jangan sebut Yogaa atau Eko kecuali sedang mengobrol dengan mereka atau ditanya.
 - Jangan bahas hal teknis/sistem. Berlakulah seperti teman ngobrol.
-- WAJIB: Hanya menawab pertanyaan user. DILARANG bertanya balik, DILARANG memberikan pertanyaan pancingan, dan DILARANG mengakhiri jawaban dengan pertanyaan.
+- WAJIB: Hanya menawab pertanyaan user. DILARANG bertanya balik, DILARANG memberikan pertanyaan pancingan.
 - Informasi teknis tambahan akan diberikan secara dinamis jika terdeteksi dalam pertanyaan user.`;
 
 const POKEMON_LIST = [
@@ -160,113 +357,152 @@ const STUDIO_LIST = ["MAPPA", "Ufotable", "Kyoto Animation", "Bones", "Madhouse"
 
 const ANIMEIN_KNOWLEDGE = [
     {
-        keywords: ["apa itu animein", "animein itu apa", "apa sih animein", "tentang animein", "penjelasan animein", "tujuan animein", "fungsi animein", "web apa ini", "ini apk apa", "animein adalah", "sejarah animein", "siapa pembuat animein", "siapa yang buat animein", "rara siapa", "siapa rara", "rara itu siapa"],
+        domain: 'platform',
+        keywords: ["apa itu animein", "animein itu apa", "apa sih animein", "tentang animein", "penjelasan animein", "tujuan animein", "fungsi animein", "web apa ini", "ini apk apa", "animein adalah", "sejarah animein", "siapa pembuat animein", "siapa yang buat animein", "rara siapa", "siapa rara", "rara itu siapa", "apa ini", "ini apa", "platform apa", "aplikasi apa ini", "web animein", "animein apaan", "animein tuh apa", "tau animein", "apa animein", "jelasin animein"],
         info: "Animein adalah platform komunitas streaming anime terlengkap di Indonesia. Bukan sekadar tempat nonton, Animein menggabungkan pengalaman streaming dengan fitur sosial (komunitas), sistem mini-game (Pokemon), dan kontribusi user (upload server/poster). Rara adalah asisten chat (bot) resmi Animein yang dibuat oleh Yogaa pada 9 April 2026 untuk membantu user menanyakan informasi seputar anime, fitur web, dan jadi teman ngobrol."
     },
     {
-        keywords: ["fitur", "fitur animein", "apa aja fitur", "ada fitur apa", "fitur apa saja", "apa fitur", "list fitur", "daftar fitur", "ada apa di animein", "animein bisa apa", "animein ada apa", "apa saja fitur animein", "apa keunggulan", "apa ajah", "fiture", "apa fitur yang tersedia", "kasih tau fitur", "sebutkan fitur", "feature", "apa ada fitur", "keunggulan animein", "fasilitas animein", "menu animein", "tombol animein", "apa yang seru", "fitur terbaru", "fitur lama", "fitur menarik"],
+        domain: 'platform',
+        keywords: ["fitur", "fitur animein", "apa aja fitur", "ada fitur apa", "fitur apa saja", "apa fitur", "list fitur", "daftar fitur", "ada apa di animein", "animein bisa apa", "animein ada apa", "apa saja fitur animein", "apa keunggulan", "apa ajah", "fiture", "apa fitur yang tersedia", "kasih tau fitur", "sebutkan fitur", "feature", "apa ada fitur", "keunggulan animein", "fasilitas animein", "menu animein", "tombol animein", "apa yang seru", "fitur terbaru", "fitur lama", "fitur menarik", "bisa ngapain aja", "ngapain aja", "ada apa aja", "fitur2", "fitur nya apa", "fiturnya", "fitur yg ada", "ada fitur apa aja sih", "jelasin fitur"],
         info: "Fitur utama Animein:\n- Nonton anime online dengan berbagai resolusi & pilihan server\n- Download episode anime\n- Cari anime berdasarkan judul atau genre\n- Jadwal tayang anime harian\n- Upload server anime (via fitur Rapsodi di teman.animein.net)\n- Upload cover & poster anime\n- Cuplix: buat klip/highlight episode anime\n- Komentar di tiap episode\n- Chat komunitas\n- Sistem Pokemon: beli, battle, evolusi, upgrade level, jadikan foto profil\n- Sistem Coin & Gem sebagai mata uang\n- Akun Pro & Support dengan berbagai keuntungan\n- Foto profil bisa diubah (dengan akun Pro/Support)"
     },
     {
-        keywords: ["admin", "admin animein", "siapa admin", "daftar admin", "username admin", "tegar", "farel", "siapa tegar", "siapa farel", "eko admin", "siapa saja admin animein", "admin animein ada berapa", "siapa admin", "kenapa admin", "jika admin", "siapa aja adminnya", "user admin", "nama admin animein", "tegarpm", "fareladitia", "admin misterius", "anomali", "petinggi animein", "staff animein", "siapa yang punya", "pemilik animein", "siapa owner", "owner animein", "admin gans", "admin sepuh"],
-        info: "Admin Animein:\n1. Tegar: @TeGaRpm\n2. Eko: @eko\n3. Farel: FarelAditia\n4. Admin Misterius: Belum diketahui (mungkin seorang anomali)."
-    },
-    {
-        keywords: ["pro", "support", "bayar", "premium", "keuntungan", "hilangkan iklan", "trakteer", "cara pro", "cara support", "cara bayar", "cara premium", "cara hilangkan iklan", "cara trakteer", "bagaimana cara pro", "bagaimana cara support", "bagaimana cara bayar", "bagaimana cara premium", "bagaimana cara hilangkan iklan", "bagaimana cara trakteer", "cara beli pro gimana", "cara beli support gimana", "cara beli premium gimana", "cara beli pro gimana", "cara beli support gimana", "cara beli premium gimana", "harga pro", "harga support", "berapa harga pro", "keuntungan pro", "fitur pro", "no iklan", "donasi", "trakter", "jadi pro", "jadi support", "berlangganan", "trakter koin", "trakter gem", "medal pro", "medal support", "gipeh pro", "gipeh support", "keuntungan premium", "cara donasi Traktir"],
-        info: "Cara Upgrade Akun Pro / Support: Melalui aplikasi Animein-Komunity di Play Store ATAU lewat sistem Trakteer sesuai harganya. Kendala pembayaran hubungi Instagram Animein.\n2. Akun Support (IDR 10.000 / 30 Hari): Keuntungan berupa Coin gratis 50++ per hari, kemunculan 3 Pokemon Legend per minggu, diskon harga Pokemon Legend 2 gem, bisa atur foto profil gambar, dapat medal khusus, dan no iklan.\n3. Akun Pro (IDR 30.000 / 30 Hari): Keuntungan berupa Coin gratis 100++ per hari, kemunculan 6 Pokemon Legend per minggu, diskon harga Pokemon Legend 5 gem, bisa atur foto profil bebas (GIF/Gambar maks 10MB), dapat medal khusus, dan no iklan. Tidak bisa gabung dengan fitur Support (sisa waktu support akan terganti jadi pro) jika ada kendala pembayaran bisa hubingi admin atau contack suport di instagram @animein.aja."
-    },
-    {
-        keywords: ["coin", "koin", "gem", "tukar", "uang", "mata uang", "dapat coin", "kumpulin coin", "dapetin coin", "cara dapat coin", "cari coin", "dapet coin", "cara dapetin coin", "cara kumpulin coin", "cara cari coin", "cara dapat gem", "cara dapetin gem", "cara kumpulin gem", "cara cari gem", "cara tukar coin", "cara tukar gem", "cara tukar coin ke gem", "cara tukar gem ke coin", "cara tukar coin gimana", "cara tukar gem gimana", "cara tukar coin ke gem gimana", "cara tukar gem ke coin gimana", "bagaimana cara tukar coin", "bagaimana cara tukar gem", "bagaimana cara tukar coin ke gem", "bagaimana cara tukar gem ke coin", "bagaimana cara tukar coin gimana", "bagaimana cara tukar gem gimana", "bagaimana cara tukar coin ke gem gimana", "bagaimana cara tukar gem ke coin gimana", "apa itu coin", "cara dapet gem", "cara nukar", "dapet koin", "500 coin", "tukar gem", "task", "misi coin", "tugas coin", "duit animein", "beli gem", "tukar koin", "nukar gem", "gem buat apa", "koin buat apa", "gem gratis", "koin gratis"],
-        info: "Mata Uang Animein (Coin & Gem): Coin digunakan untuk membeli Pokemon, Battle, dll. Gem adalah mata uang ke-2 yang didapat dari menukar 500 Coin = 1 Gem. coin hanya bisa di guakan untuk beli pokemon dan di tukar menjadi gem Gem, gen tidak bisa di tukar menjadi coin, digunakan untuk evolusi Pokemon, mengganti nama, upgrade Pokemon, dan beli Pokemon ( tidak bisa jual pokemon ). Note: Coin TIDAK BISA digunakan untuk beli Premium/Pro/Support.\nCara mendapatkan Coin: Upload server anime, membuat Cuplix, mengedit info anime, upload poster dan cover anime, menonton anime dan membeli coin pada menu coin pada profile atau menyelesaikan tugas di menu task pada profile."
-    },
-    {
-        keywords: ["upload server","up server","upload server anime","cara upload server", "rapsodi", "upload anime", "upload episode", "teman.animein.net", "cara upload server anime", "cara upload anime", "cara upload episode", "cara rapsodi","gimana cara upload server","gimana cara upload anime","gimana cara upload episode","gimana cara rapsodi","bagaimana cara upload server","bagaimana cara upload anime","bagaimana cara upload episode","bagaimana cara rapsodi", "cara upload server anime gimana", "cara upload anime gimana", "cara upload episode gimana", "cara rapsodi gimana", "cara upload server bagaimana", "cara upload anime bagaimana", "cara upload episode bagaimana", "cara rapsodi bagaimana", "cara up server anime", "cara up server", "cara up anime", "cara up episode", "cara up rapsodi", "cara up server anime gimana", "cara up server anime bagaimana", "cara up server anime bagaimana", "cara up server anime gimana", "cara up anime gimana", "cara up anime bagaimana", "cara up anime gimana", "cara up episode gimana", "bagaimana cara up server", "bagaimana cara up anime", "bagaimana cara up episode", "bagaimana cara rapsodi", "bagaimana cara up server anime", "bagaimana cara up anime", "bagaimana cara up episode", "gimana cara up server", "gimana cara up anime", "gimana cara up episode", "gimana cara rapsodi", "bagaimana cara up server anime", "bagaimana cara up anime", "bagaimana cara up episode", "bagaimana cara up rapsodi", "apa itu rapsodi", "apa itu upload server", "cara ngupload", "cara up eps", "dimana upload server", "rapsodi animein", "cara jadi uploader", "bagi link anime", "masukin anime", "nambahin episode", "tambah server"],
-        info: "Cara Upload Server Anime: Buka web teman.animein.net atau masuk ke profile lalu cari fitur \"Rapsodi\" agar diarahkan ke menu upload server anime, tingal ikuti arahan yang di berikan di sana."
-    },
-    {
-        keywords: ["upload cover", "upload poster", "pasang cover", "pasang poster", "cover anime", "poster anime", "cara upload cover", "cara upload poster", "cara pasang cover", "cara pasang poster", "cara cover anime", "cara poster anime","gimana cara upload cover","gimana cara upload poster","gimana cara pasang cover","gimana cara pasang poster","gimana cara cover anime","gimana cara poster anime","bagaimana cara upload cover","bagaimana cara upload poster","bagaimana cara pasang cover","bagaimana cara pasang poster","bagaimana cara cover anime","bagaimana cara poster anime", "cara upload cover anime gimana", "cara upload poster anime gimana", "cara pasang cover anime gimana", "cara pasang poster anime gimana", "cara cover anime gimana", "cara poster anime gimana", "cara upload cover anime bagaimana", "cara upload poster anime bagaimana", "cara pasang cover anime bagaimana", "cara pasang poster anime bagaimana", "cara cover anime bagaimana", "cara poster anime bagaimana", "up poster", "up cover", "bagaimana cara up poster", "bagaimana cara up cover", "gimana cara up poster", "gimana cara up cover", "cara up cover gimana", "cara up poster bagaimana", "cara up cover bagaimana", "cara up poster gimana", "ganti poster", "ganti cover", "poster burik", "cover jelek", "update poster", "update cover"],
-        info: "Cara Upload Cover/Poster Anime: Pergi ke bagian anime yang ingin kamu opload poster/covernya, buka animenya, lalu geser (scroll) ke kanan layar untuk menemukan tempat opload poster dan cover (HANYA untuk menu poster/cover, tidak ada hubungannya dengan menonton)."
-    },
-    {
-        keywords: ["kontrib", "kontribusi", "cara kontrib", "cara kontribusi", "dapat kontrib", "poin kontrib", "cara dapat kontrib", "cara dapat kontribusi", "cara dapat poin kontrib", "cara dapat poin kontribusi", "cara mendapatkan kontribusi", "cara mendapatkan poin kontribusi", "cara mendapatkan kontib gimana", "cara mendapatkan kontribusi gimana", "cara mendapatkan poin kontrib gimana", "cara mendapatkan poin kontribusi gimana, bagaimana cara mendapatkan kontribusi", "bagaimana cara mendapatkan poin kontribusi", "bagaimana cara mendapatkan kontrib", "bagaimana cara mendapatkan poin kontrib", "poin kontributor", "ranking kontrib", "naikin kontrib", "kontribusi buat apa", "cara dapet poin kontribusi"],
-        info: "Cara mendapatkan Kontrib di Animein: Upload server anime/episode, upload poster, upload cover, upload thumbnail/cover episode, dan edit data/info anime yang ada."
-    },
-    {
-        keywords: ["edit data anime", "edit info anime", "ubah info anime", "ubah data anime", "cara edit anime", "icon pensil", "edit informasi anime", "cara edit data anime", "cara edit info anime", "cara ubah info anime", "cara ubah data anime", "cara edit informasi anime", "cara edit data anime gimana", "cara edit info anime gimana", "cara ubah info anime gimana", "cara ubah data anime gimana", "cara edit informasi anime gimana", "bagaimana cara edit data anime", "bagaimana cara edit info anime", "bagaimana cara ubah info anime", "bagaimana cara ubah data anime", "bagaimana cara edit informasi anime"],
-        info: "Cara edit data/info anime: Pilih anime yang datanya mau diedit → slide ke kiri ke bagian info → tekan icon pensil di kiri bawah untuk mulai edit info anime."
-    },
-    {
-        keywords: ["thumbnail episode", "cover episode", "cara thumbnail", "cara cover episode", "upload thumbnail", "upload cover episode", "buat thumbnail", "edit thumbnail", "cara buat thumbnail", "cara edit thumbnail", "cara upload thumbnail", "cara upload cover episode", "cara buat thumbnail episode", "cara edit thumbnail episode", "cara upload thumbnail episode", "cara buat cover episode", "cara edit cover episode", "cara upload cover episode", "cara buat thumbnail episode gimana", "cara edit thumbnail episode gimana", "cara upload thumbnail episode gimana", "cara buat cover episode gimana", "cara edit cover episode gimana", "cara upload cover episode gimana", "bagaimana cara buat thumbnail episode", "bagaimana cara edit thumbnail episode", "bagaimana cara upload thumbnail episode", "bagaimana cara buat cover episode", "bagaimana cara edit cover episode", "bagaimana cara upload cover episode"],
-        info: "Cara buat thumbnail/cover episode: Pilih anime yang akan ditambahkan/diedit thumbnailnya → tekan lama pada episode yang akan diedit → akan muncul pop-up untuk upload gambar (pastikan gambar yang diupload sesuai dengan episode yang dipilih)."
-    },
-    {
-        keywords: ["cuplix", "klip", "highlight episode", "like cuplix", "buat cuplix", "coin cuplix", "cara buat cuplix", "cara like cuplix", "cara coin cuplix", "cara cuplix", "cara klip", "cara highlight episode", "cara buat cuplix", "cara like cuplix", "cara coin cuplix", "cara cuplix", "cara klip", "cara highlight episode", "cara buat cuplix gimana", "cara like cuplix gimana", "cara coin cuplix gimana", "cara cuplix gimana", "cara klip gimana", "cara highlight episode gimana", "bagaimana cara buat cuplix", "bagaimana cara like cuplix", "bagaimana cara coin cuplix", "bagaimana cara cuplix", "bagaimana cara klip", "bagaimana cara highlight episode", "cara buat cuplix bagaimana", "cara like cuplix bagaimana", "cara coin cuplix bagaimana", "cara cuplix bagaimana", "cara klip bagaimana", "cara highlight episode bagaimana"],
-        info: " Fitur Cuplix: Cuplix adalah klip/highlight episode anime untuk rekomendasi. Pembuat Cuplix & Uploader Server dapat 1 coin tiap ada yang like (Maks 250 coin/hari, cair saat ganti hari dan wajib login). Cara buat: Masukkan detik start & end (durasi 10 dtk - 3 mnt), jepret thumbnail di jarak detik tersebut, lalu simpan. Peraturan: Maksimal 3 Cuplix per user untuk 1 episode, dan tidak boleh kembar/sama dengan Cuplix yang sudah dibooking."
-    },
-    {
-        keywords: ["battle", "battel", "battel rank", "battel pokemon", "battle rank", "battle pokemon", "vs temen", "bp", "battle point", "tanding pokemon", "cara battle", "cara battel", "cara battel rank", "cara battel pokemon", "cara battle rank", "cara battle pokemon", "cara vs temen", "cara bp", "cara battle point", "cara tanding pokemon", "cara battle gimana", "cara battel gimana", "cara battel rank gimana", "cara battel pokemon gimana", "cara battle rank gimana", "cara battle pokemon gimana", "cara vs temen gimana", "cara bp gimana", "cara battle point gimana", "cara tanding pokemon gimana", "bagaimana cara battle", "bagaimana cara battel", "bagaimana cara battel rank", "bagaimana cara battel pokemon", "bagaimana cara battle rank", "bagaimana cara battle pokemon", "bagaimana cara vs temen", "bagaimana cara bp", "bagaimana cara battle point", "bagaimana cara tanding pokemon", "cara battle bagaimana", "cara battel bagaimana", "cara battel rank bagaimana", "cara battel pokemon bagaimana", "cara battle rank bagaimana", "cara battle pokemon bagaimana", "cara vs temen bagaimana", "cara bp bagaimana", "cara battle point bagaimana", "cara tanding pokemon bagaimana", "apa itu battle", "apa itu bp", "cara dapet bp", "cara tawuran", "lawan temen", "tanding", "rank pokemon", "papan peringkat pokemon", "battle rank gimana", "adu pokemon", "adu nasib pokemon"],
-        info: " Cara Battle Pokemon: Minimal harus punya 3 Pokemon. Pergi ke menu Battle di profil, pilih 3 Pokemon yang mau dipakai. Tekan tombol \"Battle Rank\" untuk tanding dan dapatkan BP (Battle Point) BP adalah poin rank bukan untuk menaikan lv pokemon, atau \"VS Temen\" untuk melawan teman spesifik."
-    },
-    {
-        keywords: ["pokemon", "evolusi", "menu tas", "level pokemon", "exp pokemon", "naik level", "upgrade level", "grade pokemon", "rookie", "epic", "mythic", "legendary", "tingkatan pokemon", "gen 2", "gen 3", "r2", "e2", "m2", "l2", "foto profil pokemon", "profile pokemon", "cara evolusi", "cara naik level", "cara upgrade level", "cara grade pokemon", "cara rookie", "cara epic", "cara mythic", "cara legendary", "cara tingkatan pokemon", "cara gen 2", "cara r2", "cara e2", "cara m2", "cara l2", "cara foto profil pokemon", "cara profile pokemon", "update pokemon", "kapan update pokemon", "pokemon update", "pokemon baru", "reset toko pokemon", "reset toko merah", "reset battle pokemon", "reset battel pokemon", "kapan reset toko pokemon", "kapan reset toko merah", "cara evolusi gimana", "cara evolusi bagaimana", "bagaimana cara evolusi", "cara naik level gimana", "cara naik level bagaimana", "bagaimana cara naik level", "cara upgrade level gimana", "cara upgrade level bagaimana", "bagaimana cara upgrade level", "cara ganti foto profil pokemon", "bagaimana cara foto profil pokemon", "cara dapat pokemon", "cara mendapatkan pokemon", "gimana cara dapet", "dapetin pokemon", "cara dapet pikachu", "cara dapet mewtwo", "cara dapat legend", "apa pokeslot", "apa itu pokemon", "gimana pokeslot", "kapan gen 3", "stats pokemon", "status pokemon", ...POKEMON_LIST.map(p => "cara dapat " + p.toLowerCase())],
-        info: `Info Pokemon:
-- Tingkatan (Grade):
-  * Gen 1: R (${POKEMON_GRADES.R.length} Pokemon), E (${POKEMON_GRADES.E.length} Pokemon), M (${POKEMON_GRADES.M.length} Pokemon), L (${POKEMON_GRADES.L.length} Pokemon).
-  * Gen 2: R2 (${POKEMON_GRADES.R2.length} Pokemon), E2 (${POKEMON_GRADES.E2.length} Pokemon), M2 (${POKEMON_GRADES.M2.length} Pokemon), L2 (${POKEMON_GRADES.L2.length} Pokemon).
-- Cara Mendapatkan: Membeli menggunakan Coin/Gem di menu Shop/Toko (Toko Pro reset tiap minggu) atau melalui Event khusus dari Admin.
-- Evolusi: Melalui menu Tas (butuh Gem).
-- Leveling: Maks level 20 di menu Battle (dapat EXP tiap menang).
-- PENTING: Hanya tersedia Gen 1 & 2. Gen 3 dan seterusnya belum tersedia.`
-    },
-    {
-        keywords: ["harga pokemon", "berapa koin", "berapa gem", "beli pokemon berapa", "harga pikachu", "berapa harga pokemon", "harga pokemon legend", "harga pokemon mythic", "harga pokemon ", "berapa harga pokemon", "berapa harga pokemon legend", "berapa harga pokemon mythic", "berapa harga pokemon rookie", "berapa harga pokemon epic", "berapa harga pokemon rookie gen 2", "berapa harga pokemon epic gen 2", "berapa harga pokemon mythic gen 2", "berapa harga pokemon legendary gen 2"],
-        info: "Untuk harga Pokémon, Rara belum tahu pastinya. Kamu bisa langsung cek harganya di menu Toko/Shop atau Toko Pro di dalam aplikasi ya!"
-    },
-    {
-        keywords: ["download episode", "cara download", "unduh episode", "simpan episode", "tombol more", "cara download episode", "cara unduh episode", "cara simpan episode", "cara tombol more", "cara download gimana", "cara download bagaimana", "bagaimana cara download", "cara download episode gimana", "cara download episode bagaimana", "bagaimana cara download episode", "apa cara download", "mana tombol download", "gimana unduh", "save video", "download mp4", "download mkv", "apakah bisa download", "perbedaan download", "link download", "unduh kualiatas", "cara save anime", "save episode"],
-        info: "Cara download eps: Silahkan tekan tombol \"more\" saat menonton salah satu eps anime lalu pilih download."
-    },
-    {
-        keywords: ["resolusi", "ubah resolusi", "ganti resolusi", "kualitas video", "720p", "1080p", "bergerigi", "icon server", "cara ubah resolusi", "cara ganti resolusi", "cara kualitas video", "cara 720p", "cara 1080p", "cara bergerigi", "cara icon server", "cara ubah resolusi gimana", "cara ubah resolusi bagaimana", "bagaimana cara ubah resolusi", "cara ganti resolusi gimana", "cara ganti resolusi bagaimana", "bagaimana cara ganti resolusi", "bagaimana cara ganti kualitas video", "apa resolusinya", "gimana ganti kualitas", "mana pengaturannya", "burik", "pecah-pecah", "gambar jelek", "bening", "kualitas full hd", "480p", "360p", "video burem", "carah jernih", "setting video"],
-        info: "Cara ubah resolusi: SAAT MENONTON ANIME, klik pilihan \"server\" atau icon roda gigi (BUKAN geser layar). Di sana kalian bisa memilih resolusi yang diinginkan (Tidak ada geser layar)."
-    },
-    {
-        keywords: ["rewind", "geser mundur", "fast forward", "geser maju", "speedup", "percepat video", "2x kecepatan", "putar cepat", "cara rewind", "cara geser mundur", "cara fast forward", "cara geser maju", "cara speedup", "cara percepat video", "cara 2x kecepatan", "cara putar cepat", "cara rewind gimana", "cara rewind bagaimana", "bagaimana cara rewind", "cara geser mundur gimana", "cara geser mundur bagaimana", "bagaimana cara geser mundur", "cara fast forward gimana", "cara fast forward bagaimana", "bagaimana cara fast forward", "cara geser maju gimana", "cara geser maju bagaimana", "bagaimana cara geser maju", "cara speedup gimana", "cara speedup bagaimana", "bagaimana cara speedup", "cara percepat video gimana", "cara percepat video bagaimana", "bagaimana cara percepat video", "gimana majuin", "cara mundurin", "tahan layer", "double tap", "percepat"],
-        info: "Cara rewind/geser mundur: Tahan pada video yang sedang ditonton lalu geser ke kiri.\nCara fast forward/geser maju: Tahan pada video yang sedang ditonton lalu geser ke kanan.\nCara speedup: Tekan/ketuk 2x pada layar bagian kanan video yang sedang diputar."
-    },
-    {
-        keywords: ["web animein", "apk animein", "download apk", "donasi", "animein.net", "cara donasi", "cara donasi gimana", "cara donasi bagaimana", "bagaimana cara donasi", "cara download apk gimana", "cara download apk bagaimana", "bagaimana cara download apk", "apa link web", "mana apknya", "donasi dimana", "bayar donasi", "trakteer link", "link trakteer", "apakah ada apk"],
+        domain: 'platform',
+        keywords: ["web animein", "apk animein", "download apk", "animein.net", "cara download apk gimana", "cara download apk bagaimana", "bagaimana cara download apk", "apa link web", "mana apknya", "apakah ada apk", "link animein", "link web", "buka animein dimana", "alamat web", "url animein", "install apk", "cara install", "unduh apk", "apk terbaru", "versi web", "versi apk", "beda web apk"],
         info: "Versi web masih baru 10%. Fitur lengkap di APK Android (animein.net). Donasi: trakteer.id/animein.net."
     },
     {
-        keywords: ["genre", "tipe anime", "jenis anime", "kategori anime", "genre animein", "genre apa aja", "daftar genre", "apa genre", "bagaimana genre", "mana genre", "gimana genre", "apakah ada genre", "perbedaan genre", "pencarian genre", "list genre lengkap", "anime bergenre", "cari genre", ...GENRE_LIST.map(g => g.toLowerCase())],
+        domain: 'admin',
+        keywords: ["admin", "admin animein", "siapa admin", "daftar admin", "username admin", "tegar", "farel", "siapa tegar", "siapa farel", "eko admin", "siapa saja admin animein", "admin animein ada berapa", "siapa admin", "kenapa admin", "jika admin", "siapa aja adminnya", "user admin", "nama admin animein", "tegarpm", "fareladitia", "admin misterius", "anomali", "petinggi animein", "staff animein", "siapa yang punya", "pemilik animein", "siapa owner", "owner animein", "admin gans", "admin sepuh", "pengelola", "yang ngurusin", "siapa bos", "bos animein", "siapa yg punya", "admin siapa aja", "admin nya siapa", "adminnya", "siapa yg urus"],
+        info: "Admin Animein:\n1. Tegar: @TeGaRpm\n2. Eko: @eko\n3. Farel: FarelAditia\n4. Admin Misterius: Belum diketahui (mungkin seorang anomali)."
+    },
+    {
+        domain: 'monetisasi',
+        keywords: ["pro", "support", "bayar", "premium", "keuntungan", "hilangkan iklan", "trakteer", "cara pro", "cara support", "cara bayar", "cara premium", "cara hilangkan iklan", "cara trakteer", "bagaimana cara pro", "bagaimana cara support", "bagaimana cara bayar", "bagaimana cara premium", "bagaimana cara hilangkan iklan", "bagaimana cara trakteer", "cara beli pro gimana", "cara beli support gimana", "cara beli premium gimana", "harga pro", "harga support", "berapa harga pro", "keuntungan pro", "fitur pro", "no iklan", "donasi", "trakter", "jadi pro", "jadi support", "berlangganan", "medal pro", "medal support", "keuntungan premium", "cara donasi", "traktir", "upgrade akun", "beli pro", "beli support", "pengen pro", "mau pro", "mau support", "gmn jadi pro", "gmn cara pro", "crnya pro", "cara jadi pro", "cara jd pro", "donasi dimana", "bayar donasi", "trakteer link", "link trakteer", "trakteer.id"],
+        info: "Cara Upgrade Akun Pro / Support: Melalui aplikasi Animein-Komunity di Play Store ATAU lewat sistem Trakteer sesuai harganya. Kendala pembayaran hubungi Instagram Animein.\n2. Akun Support (IDR 10.000 / 30 Hari): Keuntungan berupa Coin gratis 50++ per hari, kemunculan 3 Pokemon Legend per minggu, diskon harga Pokemon Legend 2 gem, bisa atur foto profil gambar, dapat medal khusus, dan no iklan.\n3. Akun Pro (IDR 30.000 / 30 Hari): Keuntungan berupa Coin gratis 100++ per hari, kemunculan 6 Pokemon Legend per minggu, diskon harga Pokemon Legend 5 gem, bisa atur foto profil bebas (GIF/Gambar maks 10MB), dapat medal khusus, dan no iklan. Tidak bisa gabung dengan fitur Support (sisa waktu support akan terganti jadi pro) jika ada kendala pembayaran bisa hubingi admin atau contack suport di instagram @animein.aja."
+    },
+    {
+        domain: 'monetisasi',
+        keywords: ["coin", "koin", "gem", "tukar", "uang", "mata uang", "dapat coin", "kumpulin coin", "dapetin coin", "cara dapat coin", "cari coin", "dapet coin", "cara dapetin coin", "cara kumpulin coin", "cara cari coin", "cara dapat gem", "cara dapetin gem", "cara kumpulin gem", "cara cari gem", "cara tukar coin", "cara tukar gem", "cara tukar coin ke gem", "cara tukar gem ke coin", "apa itu coin", "cara dapet gem", "cara nukar", "dapet koin", "500 coin", "tukar gem", "task", "misi coin", "tugas coin", "duit animein", "beli gem", "tukar koin", "nukar gem", "gem buat apa", "koin buat apa", "gem gratis", "koin gratis", "cara nambah coin", "koin abis", "koin habis", "gem habis", "gmn dapet coin", "gmn dapet gem", "cara cepet dapet coin", "coin banyak", "farming coin"],
+        info: "Mata Uang Animein (Coin & Gem): Coin digunakan untuk membeli Pokemon, Battle, dll. Gem adalah mata uang ke-2 yang didapat dari menukar 500 Coin = 1 Gem. coin hanya bisa di guakan untuk beli pokemon dan di tukar menjadi gem Gem, gen tidak bisa di tukar menjadi coin, digunakan untuk evolusi Pokemon, mengganti nama, upgrade Pokemon, dan beli Pokemon ( tidak bisa jual pokemon ). Note: Coin TIDAK BISA digunakan untuk beli Premium/Pro/Support.\nCara mendapatkan Coin: Upload server anime, membuat Cuplix, mengedit info anime, upload poster dan cover anime, menonton anime 5 menit dan membeli coin pada menu coin pada profile atau menyelesaikan tugas di menu task pada profile."
+    },
+    {
+        domain: 'kontribusi',
+        keywords: ["upload server","up server","upload server anime","cara upload server", "rapsodi", "upload anime", "upload episode", "teman.animein.net", "cara upload server anime", "cara upload anime", "cara upload episode", "cara rapsodi","gimana cara upload server","gimana cara upload anime","gimana cara upload episode","gimana cara rapsodi","bagaimana cara upload server","bagaimana cara upload anime","bagaimana cara upload episode","bagaimana cara rapsodi", "cara up server", "cara up anime", "cara up episode", "apa itu rapsodi", "apa itu upload server", "cara ngupload", "cara up eps", "dimana upload server", "rapsodi animein", "cara jadi uploader", "masukin anime", "nambahin episode", "tambah server", "gmn upload", "gmn up server", "crnya upload", "upload dmn", "up dmn", "rapsodi dmn", "mau upload", "pengen upload"],
+        info: "Cara Upload Server Anime: Buka web teman.animein.net atau masuk ke profile lalu cari fitur \"Rapsodi\" agar diarahkan ke menu upload server anime, tingal ikuti arahan yang di berikan di sana."
+    },
+    {
+        domain: 'kontribusi',
+        keywords: ["upload cover", "upload poster", "pasang cover", "pasang poster", "cover anime", "poster anime", "cara upload cover", "cara upload poster", "cara pasang cover", "cara pasang poster", "cara cover anime", "cara poster anime","gimana cara upload cover","gimana cara upload poster","gimana cara pasang cover","gimana cara pasang poster","bagaimana cara upload cover","bagaimana cara upload poster","bagaimana cara pasang cover","bagaimana cara pasang poster", "up poster", "up cover", "ganti poster", "ganti cover", "poster burik", "cover jelek", "update poster", "update cover", "gmn upload cover", "gmn upload poster", "crnya pasang poster", "cara ganti poster", "cara ganti cover"],
+        info: "Cara Upload Cover/Poster Anime: Pergi ke bagian anime yang ingin kamu opload poster/covernya, buka animenya, lalu geser (scroll) ke kanan layar untuk menemukan tempat opload poster dan cover (HANYA untuk menu poster/cover, tidak ada hubungannya dengan menonton)."
+    },
+    {
+        domain: 'kontribusi',
+        keywords: ["kontrib", "kontribusi", "cara kontrib", "cara kontribusi", "dapat kontrib", "poin kontrib", "cara dapat kontrib", "cara dapat kontribusi", "cara mendapatkan kontribusi", "cara mendapatkan poin kontribusi", "poin kontributor", "ranking kontrib", "naikin kontrib", "kontribusi buat apa", "cara dapet poin kontribusi", "gmn dapet kontrib", "gmn naikin kontrib", "kontrib buat apa"],
+        info: "Cara mendapatkan Kontrib di Animein: Upload server anime/episode, upload poster, upload cover, upload thumbnail/cover episode, dan edit data/info anime yang ada."
+    },
+    {
+        domain: 'kontribusi',
+        keywords: ["edit data anime", "edit info anime", "ubah info anime", "ubah data anime", "cara edit anime", "icon pensil", "edit informasi anime", "cara edit data anime", "cara edit info anime", "cara ubah info anime", "bagaimana cara edit data anime", "bagaimana cara edit info anime", "gmn edit anime", "crnya edit info", "pensil", "edit informasi"],
+        info: "Cara edit data/info anime: Pilih anime yang datanya mau diedit → slide ke kiri ke bagian info → tekan icon pensil di kiri bawah untuk mulai edit info anime."
+    },
+    {
+        domain: 'kontribusi',
+        keywords: ["thumbnail episode", "cover episode", "cara thumbnail", "cara cover episode", "upload thumbnail", "upload cover episode", "buat thumbnail", "edit thumbnail", "cara buat thumbnail", "cara upload thumbnail", "cara upload cover episode", "gmn buat thumbnail", "gmn thumbnail", "crnya thumbnail"],
+        info: "Cara buat thumbnail/cover episode: Pilih anime yang akan ditambahkan/diedit thumbnailnya → tekan lama pada episode yang akan diedit → akan muncul pop-up untuk upload gambar (pastikan gambar yang diupload sesuai dengan episode yang dipilih)."
+    },
+    {
+        domain: 'kontribusi',
+        keywords: ["cuplix", "klip", "highlight episode", "like cuplix", "buat cuplix", "coin cuplix", "cara buat cuplix", "cara like cuplix", "cara coin cuplix", "cara cuplix", "cara klip", "cara highlight episode", "bagaimana cara buat cuplix", "bagaimana cara cuplix", "apa itu cuplix", "cuplix itu apa", "cuplix buat apa", "gmn buat cuplix", "crnya cuplix", "cuplix apaan", "klip anime", "bikin klip"],
+        info: "Fitur Cuplix: Cuplix adalah klip/highlight episode anime untuk rekomendasi. Pembuat Cuplix & Uploader Server dapat 1 coin tiap ada yang like (Maks 250 coin/hari, cair saat ganti hari dan wajib login). Cara buat: Masukkan detik start & end (durasi 10 dtk - 3 mnt), pilih thumbnail di jarak detik tersebut, lalu simpan. Peraturan: Maksimal 3 Cuplix per user untuk 1 episode, dan tidak boleh kembar/sama dengan Cuplix yang sudah dibooking."
+    },
+    {
+        domain: 'pokemon',
+        keywords: ["battle", "battel", "battel rank", "battle rank", "battle pokemon", "vs temen", "bp", "battle point", "tanding pokemon", "cara battle", "cara battel", "cara battle rank", "cara battle pokemon", "cara vs temen", "cara bp", "cara battle point", "cara tanding pokemon", "apa itu battle", "apa itu bp", "cara dapet bp", "cara tawuran", "lawan temen", "tanding", "rank pokemon", "papan peringkat pokemon", "adu pokemon", "adu nasib pokemon", "gmn battle", "crnya battle", "battle gmn", "pvp pokemon", "versus"],
+        info: "Cara Battle Pokemon: Minimal harus punya 3 Pokemon. Pergi ke menu Battle di profil, pilih 3 Pokemon yang mau dipakai. Tekan tombol \"Battle Rank\" untuk tanding dan dapatkan BP (Battle Point) BP adalah poin rank bukan untuk menaikan lv pokemon, atau \"VS Temen\" untuk melawan teman spesifik."
+    },
+    {
+        domain: 'pokemon',
+        keywords: ["pokemon", "evolusi", "menu tas", "level pokemon", "exp pokemon", "naik level", "upgrade level", "grade pokemon", "rookie", "epic", "mythic", "legendary", "tingkatan pokemon", "gen 2", "gen 3", "r2", "e2", "m2", "l2", "foto profil pokemon", "cara evolusi", "cara naik level", "cara upgrade level", "cara grade pokemon", "update pokemon", "kapan update pokemon", "pokemon baru", "reset toko pokemon", "reset toko merah", "cara dapat pokemon", "cara mendapatkan pokemon", "gimana cara dapet", "dapetin pokemon", "cara dapet pikachu", "cara dapet mewtwo", "cara dapat legend", "apa pokeslot", "apa itu pokemon", "gimana pokeslot", "kapan gen 3", "stats pokemon", "status pokemon", "poekmon", "pokmon", "poke mon", "evolsi", "evolusin", "gmn evolusi", "crnya evolusi", "gmn dapet pokemon", "pokemon terkuat", "pokemon terlemah", "pokemon op", "pokemon dewa", ...POKEMON_LIST.map(p => "cara dapat " + p.toLowerCase())],
+        info: `Info Pokemon:\n- Tingkatan (Grade):\n  * Gen 1: R (${POKEMON_GRADES.R.length} Pokemon), E (${POKEMON_GRADES.E.length} Pokemon), M (${POKEMON_GRADES.M.length} Pokemon), L (${POKEMON_GRADES.L.length} Pokemon).\n  * Gen 2: R2 (${POKEMON_GRADES.R2.length} Pokemon), E2 (${POKEMON_GRADES.E2.length} Pokemon), M2 (${POKEMON_GRADES.M2.length} Pokemon), L2 (${POKEMON_GRADES.L2.length} Pokemon).\n- Cara Mendapatkan: Membeli menggunakan Coin/Gem di menu Shop/Toko (Toko Pro reset tiap minggu) atau melalui Event khusus dari Admin.\n- Evolusi: Melalui menu Tas (butuh Gem).\n- Leveling: Maks level 20 di menu Battle (dapat EXP tiap menang).\n- PENTING: Hanya tersedia Gen 1 & 2. Gen 3 dan seterusnya belum tersedia.`
+    },
+    {
+        domain: 'pokemon',
+        keywords: ["harga pokemon", "berapa koin", "berapa gem", "beli pokemon berapa", "harga pikachu", "berapa harga pokemon", "harga pokemon legend", "harga pokemon mythic", "berapa harga pokemon legend", "berapa harga pokemon mythic", "berapa harga pokemon rookie", "berapa harga pokemon epic", "mahal", "murah pokemon", "pokemon mahal"],
+        info: "Untuk harga Pokémon, Rara belum tahu pastinya. Kamu bisa langsung cek harganya di menu Toko/Shop atau Toko Pro di dalam aplikasi ya!"
+    },
+    {
+        domain: 'streaming',
+        keywords: ["download episode", "cara download", "unduh episode", "simpan episode", "tombol more", "cara download episode", "cara unduh episode", "cara simpan episode", "cara download gimana", "cara download bagaimana", "bagaimana cara download", "apa cara download", "mana tombol download", "gimana unduh", "save video", "download mp4", "download mkv", "apakah bisa download", "link download", "cara save anime", "save episode", "donlot", "dowload", "donload", "gmn download", "crnya download", "download dmn", "tombol download mana", "bisa didownload", "offline nonton"],
+        info: "Cara download eps: Silahkan tekan tombol \"more\" saat menonton salah satu eps anime lalu pilih download."
+    },
+    {
+        domain: 'streaming',
+        keywords: ["resolusi", "ubah resolusi", "ganti resolusi", "kualitas video", "720p", "1080p", "bergerigi", "icon server", "cara ubah resolusi", "cara ganti resolusi", "cara kualitas video", "cara ubah resolusi gimana", "bagaimana cara ubah resolusi", "bagaimana cara ganti resolusi", "apa resolusinya", "gimana ganti kualitas", "mana pengaturannya", "burik", "pecah-pecah", "gambar jelek", "bening", "kualitas full hd", "480p", "360p", "video burem", "setting video", "reolusi", "resolsi", "gmn ganti resolusi", "crnya resolusi", "video pecah", "jelek banget", "ga jernih", "jernih", "hd", "full hd", "kualitas rendah", "kualitas tinggi"],
+        info: "Cara ubah resolusi: SAAT MENONTON ANIME, klik pilihan \"server\" atau icon roda gigi (BUKAN geser layar). Di sana kalian bisa memilih resolusi yang diinginkan (Tidak ada geser layar)."
+    },
+    {
+        domain: 'streaming',
+        keywords: ["rewind", "geser mundur", "fast forward", "geser maju", "speedup", "percepat video", "2x kecepatan", "putar cepat", "cara rewind", "cara fast forward", "cara speedup", "cara percepat video", "gimana majuin", "cara mundurin", "tahan layer", "double tap", "percepat", "gmn rewind", "gmn fast forward", "crnya speedup", "skip", "loncat", "maju", "mundur", "geser video", "kecepatan video"],
+        info: "Cara rewind/geser mundur: Tahan pada video yang sedang ditonton lalu geser ke kiri.\nCara fast forward/geser maju: Tahan pada video yang sedang ditonton lalu geser ke kanan.\nCara speedup: Tekan/ketuk 2x pada layar bagian kanan video yang sedang diputar."
+    },
+    {
+        domain: 'katalog',
+        keywords: ["genre", "tipe anime", "jenis anime", "kategori anime", "genre animein", "genre apa aja", "daftar genre", "apa genre", "bagaimana genre", "gimana genre", "apakah ada genre", "pencarian genre", "list genre lengkap", "anime bergenre", "cari genre", "genre nya apa aja", "ada genre apa", "gmn cari genre", ...GENRE_LIST.map(g => g.toLowerCase())],
         info: "Genre anime yang tersedia di Animein sangat lengkap, di antaranya: " + GENRE_LIST.join(', ') + ". User bisa mencari anime berdasarkan genre-genre ini."
     },
     {
-        keywords: ["studio", "pembuat anime", "studio animasi", "studio anime", "nama studio", "studio apa aja", "daftar studio", "apa studio", "bagaimana studio", "gimana studio", "mana studio", "apakah ada studio", "perbedaan studio", "produksi anime", "animasi oleh", ...STUDIO_LIST.map(s => s.toLowerCase())],
+        domain: 'katalog',
+        keywords: ["studio", "pembuat anime", "studio animasi", "studio anime", "nama studio", "studio apa aja", "daftar studio", "apa studio", "gimana studio", "apakah ada studio", "produksi anime", "animasi oleh", "studio terkenal", "studio favorit", ...STUDIO_LIST.map(s => s.toLowerCase())],
         info: "Animein menyediakan judul-judul dari berbagai studio animasi ternama, contohnya: " + STUDIO_LIST.join(', ') + " (serta hampir semua studio anime Jepang populer lainnya yang tayang reguler)."
     },
     {
-        keywords: ["populer", "viral", "rame", "trending", "hits", "banyak yang nonton", "rating", "studio", "apa yang populer", "bagaimana rating", "gimana peringkat", "mana yang terbaik", "jumlah rating", "peringkat anime", "apakah viral", "perbedaan rating", "top anime", "rekomendasi terbaik", "anime paling rame", "berapa views", "bagus gak", "worth it gak", "apakah bagus", "studio paling oke", "anime hots", "anime hits", "lagi viral", "rekomendasi buat kamu", "anime rating tinggi", "anime viral hari ini"],
+        domain: 'katalog',
+        keywords: ["populer", "viral", "rame", "trending", "hits", "banyak yang nonton", "rating", "apa yang populer", "bagaimana rating", "gimana peringkat", "mana yang terbaik", "jumlah rating", "peringkat anime", "apakah viral", "top anime", "rekomendasi terbaik", "anime paling rame", "berapa views", "bagus gak", "worth it gak", "apakah bagus", "studio paling oke", "anime hots", "anime hits", "lagi viral", "anime rating tinggi", "anime viral hari ini", "paling bagus", "paling rame", "top 10", "top 5", "ranking anime"],
         info: "Indikator Populer di Animein:\n- Viral/Top: > 500.000 views.\n- Populer: > 100.000 views.\n- Bagus: Rating > 8.0.\n- Biasa: Rating < 7.0.\nGunakan data Views dan Rating dari [DATA ANIMEIN] untuk menentukan apakah sebuah anime layak direkomendasikan sebagai 'Populer' atau 'Terbaik'."
     }
 ];
 
-
+/** Expert Knowledge Routing: Deteksi domain lalu filter knowledge */
 function getKnowledgeContext(query) {
     const lowerQ = query.toLowerCase();
 
-    const scored = ANIMEIN_KNOWLEDGE
+    // Step 1: Deteksi Domain utama dari pertanyaan
+    const domainDetectors = {
+        pokemon: /pokemon|poekmon|pokmon|pika|evolusi|evolsi|battle|battel|rank|grade|rookie|epic|mythic|legend|gen\s?\d|pokeslot|toko pokemon|tas pokemon|bp |vs temen|tanding/i,
+        streaming: /nonton|resolusi|reolusi|download|donlot|dowload|rewind|fast forward|speedup|720p|1080p|480p|360p|kualitas|burik|pecah|jernih|server video|geser|skip/i,
+        kontribusi: /upload|rapsodi|poster|cover|cuplix|klip|thumbnail|kontrib|edit data|edit info|icon pensil/i,
+        monetisasi: /coin|koin|gem|pro |support |premium|trakteer|traktir|donasi|bayar|berlangganan|medal|harga pro|harga support|iklan/i,
+        admin: /admin|owner|pemilik|tegar|farel|eko |staff|pengelola|siapa yang punya|siapa bos/i,
+        katalog: /genre|studio|populer|viral|trending|rating|views|top anime|rekomendasi|ranking|hits|rame/i,
+        platform: /fitur|animein itu|apa itu animein|tentang animein|apk|web animein|animein\.net|rara siapa|siapa rara/i,
+    };
+
+    let detectedDomain = null;
+    for (const [domain, regex] of Object.entries(domainDetectors)) {
+        if (regex.test(lowerQ)) {
+            detectedDomain = domain;
+            break;
+        }
+    }
+
+    // Step 2: Filter knowledge berdasarkan domain (jika terdeteksi)
+    const pool = detectedDomain
+        ? ANIMEIN_KNOWLEDGE.filter(k => k.domain === detectedDomain)
+        : ANIMEIN_KNOWLEDGE;
+
+    // Step 3: Keyword matching dalam domain yang sudah difilter
+    const scored = pool
         .map(k => {
             const matches = k.keywords.filter(key => {
                 if (key.length <= 3) return lowerQ.split(/\s+/).includes(key);
                 return lowerQ.includes(key);
             });
-            return { info: k.info, score: matches.length };
+            return { info: k.info, domain: k.domain, score: matches.length };
         })
         .filter(k => k.score > 0)
         .sort((a, b) => b.score - a.score)
-        .slice(0, 3); 
+        .slice(0, 2); // Max 2 entries per domain untuk hemat token
 
     let extraStats = "";
     
@@ -298,11 +534,11 @@ ${bottom5.map((p, i) => `${i+1}. ${p.name} (CP: ${p.cp}, HP: ${p.hp}, Atk: ${p.a
 Instruksi AI: Jika user nanya "siapa pokemon terkuat, dewa, paling OP, terhebat" atau "siapa yang terlemah, ampas, noob", berikan ranking dari data ini dengan bahasa ngegas tapi asik.`;
     }
 
-    if (scored.length === 0 && extraStats === "" && comparisonData === "") return "";
+    if (scored.length === 0 && extraStats === "" && comparisonData === "") return { context: "", domain: detectedDomain };
     
     let resultContext = `\n\n[INFO ANIMEIN - Akurat]:`;
     if (scored.length > 0) {
-        resultContext += `\n[INFORMASI SISTEM]:\n${scored.map(m => m.info).join("\n")}\nInstruksi AI: Jika user bertanya tentang web Animein, jadwal tayang, masalah web, admin, pokemon, atau fitur shop, WAJIB gunakan pedoman di atas dan jawab dengan bahasa santai tongkrongan.`;
+        resultContext += `\n[INFORMASI SISTEM${detectedDomain ? ' (' + detectedDomain.toUpperCase() + ')' : ''}]:\n${scored.map(m => m.info).join("\n")}\nInstruksi AI: Jawab dengan bahasa santai tongkrongan menggunakan pedoman di atas.`;
     }
     if (extraStats !== "") {
         resultContext += `\n[Info Statistik Pokemon dari database asli]:\n${extraStats}\n(PENTING: Gunakan angka-angka dari stats database di atas untuk menjawab, dilarang mengarang!)`;
@@ -310,15 +546,15 @@ Instruksi AI: Jika user nanya "siapa pokemon terkuat, dewa, paling OP, terhebat"
     if (comparisonData !== "") {
         resultContext += `\n${comparisonData}`;
     }
-    return resultContext;
+    return { context: resultContext, domain: detectedDomain || (scored.length > 0 ? scored[0].domain : null) };
 }
+
 
 
 let auth = { userId: null, userKey: null };
 let lastMessageId = 0;
 let isFirstRun = true;
 let isGlobalCooldown = false; 
-const chatMemory = {};
 
 /** Fungsi untuk mendeteksi apakah topik pembicaraan sudah berubah secara signifikan */
 function isNewTopic(oldText, newText) {
@@ -365,9 +601,7 @@ function isMentioned(text) {
     return regex.test(text);
 }
 
-function isImageRequest(text) {
-    return CONFIG.IMAGE_TRIGGERS.some(t => text.toLowerCase().includes(t));
-}
+
 
 /** Cek apakah pesan mengandung kata kasar */
 function containsProfanity(text) {
@@ -802,41 +1036,52 @@ async function askGroq(index, userMessage, senderName, contextData = '', chatHis
     return { text: completion.choices[0]?.message?.content || '', tokens };
 }
 
+
 /** Main AI handler: Groq only */
 async function getAIResponse(userMessage, senderName, isReply = false) {
     const intent = detectIntent(userMessage);
     const animeContext = await buildAnimeContext(intent, userMessage);
-    const knowledgeContext = getKnowledgeContext(userMessage);
+    const knowledgeResult = getKnowledgeContext(userMessage);
+    const knowledgeContext = knowledgeResult.context;
+    const knowledgeDomain = knowledgeResult.domain;
     const finalContext = animeContext + knowledgeContext;
 
     if (intent || knowledgeContext) {
-        console.log(`[CONTEXT] Intent: ${intent || 'none'}, Knowledge: ${knowledgeContext ? 'Inject' : 'Empty'}`);
+        console.log(`[CONTEXT] Intent: ${intent || 'none'}, Domain: ${knowledgeDomain || 'none'}, Knowledge: ${knowledgeContext ? 'Inject' : 'Empty'}`);
     }
 
-    // MEMORY MANAGEMENT
-    const now = Date.now();
-    if (!chatMemory[senderName]) {
-        chatMemory[senderName] = { messages: [], lastTime: now };
-    }
-    
-    const mem = chatMemory[senderName];
-    
-    // 1. Reset memory if > 5 minutes
-    if (now - mem.lastTime > 5 * 60 * 1000) {
-        console.log(`[MEMORY] Reset memory for ${senderName} (Idle > 5 mins)`);
-        mem.messages = [];
-    }
-    
-    // 2. Reset memory if topic changed (and not a direct reply to previous bot message)
-    if (mem.messages.length > 0 && !isReply) {
-        const lastUserMsg = [...mem.messages].reverse().find(m => m.role === 'user');
-        if (lastUserMsg && isNewTopic(lastUserMsg.content, userMessage)) {
-            console.log(`[MEMORY] Topic switch detected for ${senderName}. Resetting context.`);
-            mem.messages = [];
+    // SEMANTIC CACHE CHECK: Cek apakah jawaban sudah ada di cache (0 Token!)
+    // Jangan gunakan cache jika ada intent dinamis (rekomendasi/search dll)
+    if (knowledgeContext && !intent) {
+        const cachedAnswer = await checkCache(userMessage);
+        if (cachedAnswer) {
+            return { text: cachedAnswer, provider: 'Cache', tokens: 0 };
         }
     }
 
-    const history = mem.messages;
+    // FULL DATABASE MEMORY MANAGEMENT
+    const now = Date.now();
+    let history = [];
+    
+    // Ambil history dari Database secara real-time
+    const dbHistory = await getHistoryFromDB(senderName, 5); 
+    history = dbHistory.messages;
+    const lastTime = dbHistory.lastTime;
+    
+    // 1. Reset context jika idle > 10 menit
+    if (lastTime && (now - lastTime > 10 * 60 * 1000)) {
+        console.log(`[MEMORY] Session reset for ${senderName} (Idle > 10 mins)`);
+        history = [];
+    }
+    
+    // 2. Reset context jika ganti topik (kecuali jika membalas pesan bot)
+    if (history.length > 0 && !isReply) {
+        const lastUserMsg = [...history].reverse().find(m => m.role === 'user');
+        if (lastUserMsg && isNewTopic(lastUserMsg.content, userMessage)) {
+            console.log(`[MEMORY] Topic switch detected for ${senderName}. Context cleared.`);
+            history = [];
+        }
+    }
 
     for (let i = 0; i < groqClients.length; i++) {
         const stat = stats.otak[i];
@@ -849,12 +1094,10 @@ async function getAIResponse(userMessage, senderName, isReply = false) {
             if (text) {
                 stats.lastUsedGroq = i;
                 
-                // Update memory
-                mem.messages = [...history, 
-                    { role: 'user', content: userMessage },
-                    { role: 'assistant', content: text }
-                ].slice(-8); // Increased to 8 for better reasoning
-                mem.lastTime = Date.now();
+                // SEMANTIC CACHE SAVE: Simpan jawaban ke cache jika ada knowledge context (kecuali rekomendasi)
+                if (knowledgeContext && !intent) {
+                    addToCache(userMessage, text, knowledgeDomain);
+                }
                 
                 return { text, provider: `Otak #${i+1}`, tokens };
             }
@@ -863,94 +1106,10 @@ async function getAIResponse(userMessage, senderName, isReply = false) {
             stat.lastError = err.message.slice(0, 100);
             if (err.message.includes('429') || err.status === 429) {
                 stat.cooldownUntil = nowLoop + CONFIG.GROQ_COOLDOWN;
-
             }
         }
     }
-
     return { text: 'Maaf kak, semua koneksi AI Rara lagi sibuk/limit. Coba lagi nanti ya! 🙏', provider: 'Error', tokens: 0 };
-}
-
-/** Generate gambar menggunakan Gemini Image Generation via REST API */
-async function generateGeminiImage(prompt) {
-    stats.image.requests++;
-    
-    let englishPrompt = prompt;
-    const textClientIdx = stats.gemini.findIndex(g => !g.isQuotaExceeded);
-    if (textClientIdx >= 0) {
-        try {
-            const textModel = geminiClients[textClientIdx].getGenerativeModel({ model: 'gemini-1.5-flash' });
-            const tr = await textModel.generateContent(
-                `Translate this to English and make it a vivid image generation prompt (max 20 words, anime/illustration style): "${prompt}". Only write the prompt, nothing else.`
-            );
-            englishPrompt = stripEmoji(tr.response.text().trim()) || prompt;
-        } catch {}
-    }
-    console.log(`[IMG] Prompt EN: ${englishPrompt}`);
-    
-    for (let i = 0; i < CONFIG.GEMINI_KEYS.length; i++) {
-        const stat = stats.gemini[i];
-        if (stat.isQuotaExceeded) continue;
-        
-        const apiKey = CONFIG.GEMINI_KEYS[i];
-        stat.requests++;
-        try {
-            const res = await axios.post(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${apiKey}`,
-                {
-                    contents: [{ parts: [{ text: englishPrompt }] }],
-                    generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
-                },
-                { headers: { 'Content-Type': 'application/json' }, timeout: 30000 }
-            );
-            
-            const parts = res.data?.candidates?.[0]?.content?.parts || [];
-            for (const part of parts) {
-                if (part.inlineData && part.inlineData.mimeType.startsWith('image/')) {
-                    stat.success++;
-                    stats.image.success++;
-                    console.log(`[IMG] Gemini Key #${i+1} berhasil generate gambar (${part.inlineData.mimeType})`);
-                    return {
-                        type: 'base64',
-                        mimeType: part.inlineData.mimeType,
-                        data: part.inlineData.data,
-                        provider: `Gemini #${i+1}`,
-                    };
-                }
-            }
-            throw new Error('Tidak ada data gambar di response');
-        } catch (err) {
-            const errMsg = err?.response?.data?.error?.message || err.message;
-            stat.errors++;
-            stat.lastError = errMsg.slice(0, 100);
-            if (err?.response?.status === 429 || errMsg.includes('quota') || errMsg.includes('RESOURCE_EXHAUSTED')) {
-                stat.isQuotaExceeded = true;
-                console.warn(`[IMG/GEMINI-${i+1}] Quota habis, coba key berikutnya...`);
-            } else {
-                console.warn(`[IMG/GEMINI-${i+1}] Error:`, errMsg.slice(0, 80));
-            }
-        }
-    }
-    
-    console.warn('[IMG] Semua Gemini key gagal/quota habis.');
-    stats.image.errors++;
-    stats.image.lastError = 'Semua Gemini API Key limit';
-    return null;
-}
-
-
-
-async function uploadToImgBB(base64Data, mimeType = 'image/jpeg') {
-    try {
-        const form = new FormData();
-        form.append('image', base64Data);
-        const res = await axios.post('https://api.imgbb.com/1/upload?key=a63b3e0c58b7b12f1ad0d1e3ab123456', form, {
-            headers: form.getHeaders(),
-            timeout: 15000,
-        });
-        if (res.data?.data?.url) return res.data.data.url;
-    } catch {}
-    return null;
 }
 
 async function sendChatWithImage(imageData, caption, replyTo = '0') {
@@ -1001,33 +1160,34 @@ async function login() {
         const params = new URLSearchParams();
         params.append('username_or_email', CONFIG.USERNAME);
         params.append('password', CONFIG.PASSWORD);
-        const response = await axios.post(`${CONFIG.BASE_URL}/auth/login`, params, {
+        
+        const loginUrl = `${CONFIG.BASE_URL.replace(/"/g, '')}/auth/login`;
+        
+        const response = await axios.post(loginUrl, params, {
             headers: { 
                 'Accept': 'application/json, text/plain, */*',
-                'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
                 'Content-Type': 'application/x-www-form-urlencoded',
-                'Origin': 'https://animeinweb.com',
-                'Referer': 'https://animeinweb.com/',
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-                'sec-ch-ua': '"Google Chrome";v="123", "Not:A-Brand";v="8", "Chromium";v="123"',
-                'sec-ch-ua-mobile': '?0',
-                'sec-ch-ua-platform': '"Windows"',
-                'Sec-Fetch-Dest': 'empty',
-                'Sec-Fetch-Mode': 'cors',
-                'Sec-Fetch-Site': 'same-origin'
-            }
+            },
+            timeout: 15000
         });
+
         const resData = response.data;
-        if (resData.data && resData.data.user) {
+        if (resData && resData.data && resData.data.user) {
             auth.userId = resData.data.user.id;
             auth.userKey = resData.data.user.key_client;
-            console.log(`Login successful! User ID: ${auth.userId}`);
+            console.log(`[AUTH] Login Successful! User ID: ${auth.userId}`);
             return true;
         }
-        console.error('Login failed!', JSON.stringify(resData));
+        
+        console.error('[AUTH] Login Failed! Response:', JSON.stringify(resData));
         return false;
     } catch (error) {
-        console.error('Login error:', error.message);
+        if (error.response) {
+            console.error(`[AUTH] Login Error (${error.response.status}):`, JSON.stringify(error.response.data));
+        } else {
+            console.error('[AUTH] Login Error (No Response):', error.message);
+        }
         return false;
     }
 }
@@ -1120,11 +1280,7 @@ async function processMessages(messages) {
             continue;
         }
 
-        if (isImageRequest(cleanText)) {
-            console.log(`[BOT/IMG] Fitur gambar dinonaktifkan: ${cleanText}`);
-            await sendChatMessage(`@${senderName} Maaf kak, fitur pembuatan gambar saat ini sedang dinonaktifkan. 🙏`, msg.id);
-            addActivity('image', senderName, cleanText, '[Fitur Dinonaktifkan]', 'Disabled');
-        } else {
+        {
             let combinedText = cleanText;
             if (msg.replay_text) {
                 combinedText = `[ KONTEKS REPLAY ]\nKamu sedang membalas pesan dari ${msg.replay_user_name || 'User'} yang isinya: "${msg.replay_text}".\n\n[ PESAN USER SEKARANG ]\n${cleanText}`;
@@ -1137,7 +1293,11 @@ async function processMessages(messages) {
             await sendChatMessage(reply, msg.id);
             addActivity('text', senderName, question, aiText, provider, tokens);
             
+            // Simpan ke database Turso secara asinkron (tidak membebani performa)
+            saveChatLog(senderName, question, aiText, provider, tokens);
+            
             isGlobalCooldown = true;
+
             setTimeout(() => {
                 isGlobalCooldown = false;
             }, 10000);
@@ -1224,6 +1384,19 @@ function startDashboard() {
             res.json({ success: true, active: stats.otak[id].active });
         } else {
             res.status(404).json({ success: false });
+        }
+    });
+
+    app.post('/api/cache/clear', async (req, res) => {
+        try {
+            const result = await db.execute("DELETE FROM response_cache");
+            const deleted = result.rowsAffected || 0;
+            stats.cacheHits = 0;
+            stats.cacheTotal = 0;
+            console.log(`[CACHE] Cleared ${deleted} cached responses.`);
+            res.json({ success: true, deleted });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message });
         }
     });
 
@@ -1358,7 +1531,7 @@ function getDashboardHTML() {
   <!-- LEFT: MODELS AND STATS -->
   <div class="col-left">
     <div class="section-title">Overview</div>
-    <div class="grid grid-4" style="display:grid; grid-template-columns: repeat(4, 1fr); gap:15px; margin-bottom:30px;">
+    <div class="grid" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:12px; margin-bottom:15px;">
       <div class="card" style="margin-bottom:0">
         <div class="card-label">TRG</div>
         <div class="card-value" id="totalTriggers">0</div>
@@ -1371,9 +1544,20 @@ function getDashboardHTML() {
         <div class="card-label">TOKENS</div>
         <div class="card-value" id="totalTokens">0</div>
       </div>
+    </div>
+    <div class="grid" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:12px; margin-bottom:30px;">
       <div class="card" style="margin-bottom:0; border-color: var(--red);">
         <div class="card-label">BLOCKED</div>
         <div class="card-value" id="filterBlocked">0</div>
+      </div>
+      <div class="card" style="margin-bottom:0; border-color: #3b82f6;">
+        <div class="card-label">DB LOGS</div>
+        <div class="card-value" id="totalDBLogs">0</div>
+      </div>
+      <div class="card" style="margin-bottom:0; border-color: #22c55e;">
+        <div class="card-label">CACHE HITS</div>
+        <div class="card-value" id="cacheHits">0</div>
+        <div style="font-size:10px; color:var(--muted); margin-top:4px;">Saved: <span id="cacheTotal">0</span> entries</div>
       </div>
     </div>
 
@@ -1385,6 +1569,13 @@ function getDashboardHTML() {
         <button id="botToggleBtn" onclick="toggleBot()" class="btn-toggle">...</button>
       </div>
       <div class="control-box">
+        <div class="control-title">Clear Cache</div>
+        <div class="control-sub">Hapus semua response cache</div>
+        <button onclick="clearCache()" class="btn-primary" style="background: var(--red);">Clear</button>
+      </div>
+    </div>
+    <div class="controls-grid" style="margin-top:15px;">
+      <div class="control-box" style="grid-column: span 2;">
         <div class="control-title">Manual Send</div>
         <div class="control-sub">Kirim pesan ke chat</div>
         <div style="display:flex; gap:8px; align-items:center;">
@@ -1486,6 +1677,12 @@ async function toggleKey(id) {
   refresh();
 }
 
+async function clearCache() {
+  if (!confirm('Yakin hapus semua response cache?')) return;
+  await fetch('/api/cache/clear', { method: 'POST' });
+  refresh();
+}
+
 async function refresh() {
   try {
     const res = await fetch('/api/stats');
@@ -1513,6 +1710,9 @@ async function refresh() {
     setT('uptime', formatUptime(d.uptime || 0));
     setT('totalTokens', (d.totalTokensUsed || 0).toLocaleString('id-ID'));
     setT('filterBlocked', d.filter.blocked || 0);
+    setT('totalDBLogs', (d.totalDBLogs || 0).toLocaleString('id-ID'));
+    setT('cacheHits', (d.cacheHits || 0).toLocaleString('id-ID'));
+    setT('cacheTotal', d.cacheTotal || 0);
     
     if (d.otak) {
       const parent = document.getElementById('groqAccordion');
