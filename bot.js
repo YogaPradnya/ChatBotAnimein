@@ -1709,7 +1709,7 @@ function getDashboardHTML() {
     <button class="nav-item" onclick="showPage('model', this)">Model</button>
     <button class="nav-item" onclick="showPage('database', this)">Database</button>
     <button class="nav-item" onclick="showPage('prompt', this)">Prompt & Knowledge</button>
-    <button class="nav-item" onclick="showPage('laporan', this)">📋 Laporan</button>
+    <button class="nav-item" onclick="showPage('laporan', this)">Laporan</button>
   </nav>
   <div class="sidebar-status">
     <span class="s-dot" id="statusDot" style="background:var(--red)"></span>
@@ -1975,7 +1975,7 @@ function showPage(id, el) {
     target.style.display = 'block';
   }
   el.classList.add('active');
-  const titles = { dashboard: 'Dashboard', model: 'Model', database: 'Database', prompt: 'Prompt & Knowledge', laporan: '📋 Laporan' };
+  const titles = { dashboard: 'Dashboard', model: 'Model', database: 'Database', prompt: 'Prompt & Knowledge', laporan: 'Laporan' };
   document.getElementById('pageTitle').textContent = titles[id] || id;
   if (id === 'database') loadCache();
   if (id === 'prompt') loadPrompt();
