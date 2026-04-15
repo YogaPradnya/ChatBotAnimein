@@ -892,6 +892,9 @@ async function fetchHomeAnime() {
             Promise.all(latestPromises)
         ]);
         
+        let popMovies = [];
+        popResponses.forEach(res => { if (res?.data?.data?.movie) popMovies = popMovies.concat(res.data.data.movie); });
+
         let starMovies = [];
         starResponses.forEach(res => { if (res?.data?.data?.movie) starMovies = starMovies.concat(res.data.data.movie); });
         
