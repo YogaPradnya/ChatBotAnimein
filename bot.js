@@ -343,12 +343,13 @@ function addActivity(type, from, text, response, provider, tokens = 0) {
 
 const groqClients = CONFIG.GROQ_KEYS.map(key => new Groq({ apiKey: key }));
 
+const promptPath = path.join(__dirname, 'prompt.txt');
 let SYSTEM_PROMPT = "";
-if (fs.existsSync('./prompt.txt')) {
-    SYSTEM_PROMPT = fs.readFileSync('./prompt.txt', 'utf-8');
+if (fs.existsSync(promptPath)) {
+    SYSTEM_PROMPT = fs.readFileSync(promptPath, 'utf-8');
 } else {
     SYSTEM_PROMPT = "Kamu adalah Rara, asisten chat Animein buatan Yogaa. Kamu orang asli, bukan AI.";
-    fs.writeFileSync('./prompt.txt', SYSTEM_PROMPT);
+    fs.writeFileSync(promptPath, SYSTEM_PROMPT);
 }
 
 const POKEMON_LIST = [
@@ -396,13 +397,24 @@ const POKEMON_GRADES = {
 const GENRE_LIST = ["Action", "Adventure", "Comedy", "Demons", "Drama", "Ecchi", "Fantasy", "Game", "Harem", "Historical", "Horror", "Magic", "Martial Arts", "Mecha", "Military", "Music", "Mystery", "Parody", "Psychological", "Romance", "School", "Sci-Fi", "Seinen", "Shoujo", "Shoujo Ai", "Shounen", "Shounen Ai", "Slice of Life", "Sports", "Super Power", "Supernatural", "Thriller", "Tokusatsu"];
 const STUDIO_LIST = ["MAPPA", "Ufotable", "Kyoto Animation", "Bones", "Madhouse", "A-1 Pictures", "CloverWorks", "Toei Animation", "Sunrise", "Wit Studio", "Pierrot", "Production I.G", "J.C.Staff", "Trigger", "Shaft", "OLM", "Doga Kobo", "White Fox", "Kinema Citrus", "David Production", "P.A. Works", "Feel.", "LIDENFILMS"];
 
+const knowledgePath = path.join(__dirname, 'knowledge.json');
 let ANIMEIN_KNOWLEDGE = [];
-if (fs.existsSync('./knowledge.json')) {
+if (fs.existsSync(knowledgePath)) {
     try {
-        ANIMEIN_KNOWLEDGE = JSON.parse(fs.readFileSync('./knowledge.json', 'utf-8'));
+        ANIMEIN_KNOWLEDGE = JSON.parse(fs.readFileSync(knowledgePath, 'utf-8'));
     } catch(e) { console.error("[ERROR] Gagal memuat knowledge.json:", e); }
 } else {
-    fs.writeFileSync('./knowledge.json', '[]');
+    fs.writeFileSync(knowledgePath, '[]');
+}
+
+const domainsPath = path.join(__dirname, 'domains.json');
+let CUSTOM_DOMAINS = [];
+if (fs.existsSync(domainsPath)) {
+    try {
+        CUSTOM_DOMAINS = JSON.parse(fs.readFileSync(domainsPath, 'utf-8'));
+    } catch(e) { console.error("[ERROR] Gagal memuat domains.json:", e); }
+} else {
+    fs.writeFileSync(domainsPath, '[]');
 }
 
 /** Expert Knowledge Routing: Deteksi domain lalu filter knowledge */
@@ -1441,13 +1453,36 @@ function startDashboard() {
         const { prompt } = req.body;
         if (!prompt || prompt.trim().length < 10) return res.status(400).json({ success: false, error: 'Prompt terlalu pendek.' });
         SYSTEM_PROMPT = prompt;
-        fs.writeFileSync('./prompt.txt', SYSTEM_PROMPT);
+        fs.writeFileSync(path.join(__dirname, 'prompt.txt'), SYSTEM_PROMPT);
         console.log('[PROMPT] System prompt updated via dashboard (saved permanently).');
         res.json({ success: true });
     });
 
     app.get('/api/knowledge', (req, res) => {
         res.json({ success: true, knowledge: ANIMEIN_KNOWLEDGE });
+    });
+
+    // --- DOMAIN MANAGEMENT ---
+    app.get('/api/domains', (req, res) => {
+        res.json({ success: true, domains: CUSTOM_DOMAINS });
+    });
+
+    app.post('/api/domains/add', (req, res) => {
+        const { domain } = req.body;
+        if (!domain) return res.status(400).json({ success: false, error: 'Domain kosong.' });
+        const d = domain.trim().toLowerCase();
+        if (!CUSTOM_DOMAINS.includes(d)) {
+            CUSTOM_DOMAINS.push(d);
+            fs.writeFileSync(domainsPath, JSON.stringify(CUSTOM_DOMAINS, null, 2));
+        }
+        res.json({ success: true });
+    });
+
+    app.post('/api/domains/delete', (req, res) => {
+        const { domain } = req.body;
+        CUSTOM_DOMAINS = CUSTOM_DOMAINS.filter(d => d !== domain);
+        fs.writeFileSync(domainsPath, JSON.stringify(CUSTOM_DOMAINS, null, 2));
+        res.json({ success: true });
     });
 
     app.post('/api/knowledge/save', (req, res) => {
@@ -1467,7 +1502,7 @@ function startDashboard() {
             console.log(`[KNOWLEDGE] Entry #${index} (${keywords[0]}) diperbarui via dashboard.`);
         }
         
-        fs.writeFileSync('./knowledge.json', JSON.stringify(ANIMEIN_KNOWLEDGE, null, 2));
+        fs.writeFileSync(path.join(__dirname, 'knowledge.json'), JSON.stringify(ANIMEIN_KNOWLEDGE, null, 2));
         res.json({ success: true });
     });
 
@@ -1475,7 +1510,7 @@ function startDashboard() {
         const { index } = req.body;
         if (index < 0 || index >= ANIMEIN_KNOWLEDGE.length) return res.status(400).json({ success: false, error: 'Index tidak valid.' });
         const removed = ANIMEIN_KNOWLEDGE.splice(index, 1);
-        fs.writeFileSync('./knowledge.json', JSON.stringify(ANIMEIN_KNOWLEDGE, null, 2));
+        fs.writeFileSync(path.join(__dirname, 'knowledge.json'), JSON.stringify(ANIMEIN_KNOWLEDGE, null, 2));
         console.log(`[KNOWLEDGE] Entry #${index} (${removed[0]?.keywords?.[0]}) dihapus via dashboard.`);
         res.json({ success: true });
     });
@@ -2217,11 +2252,14 @@ async function deleteEntry(id) {
 let knowledgeData = [];
 async function loadPrompt() {
   try {
-    const [p, k] = await Promise.all([fetch('/api/prompt'), fetch('/api/knowledge')]);
+    const [p, k, d] = await Promise.all([fetch('/api/prompt'), fetch('/api/knowledge'), fetch('/api/domains')]);
     const pd = await p.json();
     const kd = await k.json();
+    const dd = await d.json();
     if (pd.success) document.getElementById('promptEditor').value = pd.prompt;
-    if (kd.success) { knowledgeData = kd.knowledge; renderKnowledge(kd.knowledge); renderDomainTags(); }
+    if (kd.success) { knowledgeData = kd.knowledge; renderKnowledge(kd.knowledge); }
+    if (dd.success) { customDomains = dd.domains; }
+    renderDomainTags();
   } catch(e) {}
 }
 
@@ -2281,21 +2319,31 @@ function renderDomainTags() {
   \`).join('');
 }
 
-function addNewDomain() {
+async function addNewDomain() {
   const inp = document.getElementById('newDomainInput');
   const val = inp.value.trim().toLowerCase();
   if (!val) return alert('Nama domain tidak boleh kosong.');
   if (getUniqueDomains().includes(val)) return alert('Domain sudah ada.');
+  await fetch('/api/domains/add', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ domain: val })
+  });
   customDomains.push(val);
   inp.value = '';
   renderDomainTags();
+  setupDomainSelect('');
 }
 
-function deleteDomainTag(domain) {
+async function deleteDomainTag(domain) {
   const usedInKnowledge = knowledgeData.some(k => k.domain === domain);
   if (usedInKnowledge) return alert('Domain ini masih digunakan oleh ' + knowledgeData.filter(k => k.domain === domain).length + ' entry. Hapus atau pindahkan entry tersebut terlebih dahulu.');
+  await fetch('/api/domains/delete', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ domain })
+  });
   customDomains = customDomains.filter(d => d !== domain);
   renderDomainTags();
+  setupDomainSelect('');
 }
 
 function setupDomainSelect(selectedValue) {
