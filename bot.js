@@ -182,6 +182,18 @@ function buildHintMessage(level) {
         }).join(' ');
     }
 
+    // Fungsi pembantu untuk menyamarkan judul di dalam teks agar tidak spoiler
+    const censorSpoiler = (text) => {
+        if (!text) return '';
+        const words = title.split(/\s+/).filter(w => w.length > 2);
+        let result = text;
+        words.forEach(w => {
+            const regex = new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+            result = result.replace(regex, '___');
+        });
+        return result;
+    };
+
     const remaining = Math.floor((QUIZ_DURATION_MS - (Date.now() - activeQuiz.startedAt)) / 1000);
     const timeStr = `${Math.floor(remaining/60)}m ${remaining%60}s`;
 
@@ -196,25 +208,25 @@ function buildHintMessage(level) {
     // Hint berdasarkan level (deskripsi sbg fokus utama)
     if (level === 0) {
         const words = (sentences[0] || '').split(' ').slice(0, 8).join(' ');
-        lines.push(`📖 Clue Awal: "${words}..."`);
+        lines.push(`📖 Clue Awal: "${censorSpoiler(words)}..."`);
     }
     if (level >= 1) {
-        lines.push(`📖 Deskripsi P1: "${sentences[0] || '?'}"`);
-        lines.push(`🏢 Studio: ${c.studio}`);
+        lines.push(`📖 Deskripsi P1: "${censorSpoiler(sentences[0]) || '?'}"`);
+        lines.push(`🏢 Studio: ${censorSpoiler(c.studio)}`);
     }
     if (level >= 2) {
-        lines.push(`📖 Deskripsi P2: "${sentences[1] || '?'}"`);
+        lines.push(`📖 Deskripsi P2: "${censorSpoiler(sentences[1]) || '?'}"`);
         lines.push(`📅 Tahun: ${c.year} | 🎭 Genre: ${c.genre}`);
     }
     if (level >= 3) {
-        lines.push(`📖 Deskripsi P3: "${sentences[2] || (sentences[1] ? 'Cari anime dengan tema tersebut!' : '?')}"`);
+        lines.push(`📖 Deskripsi P3: "${censorSpoiler(sentences[2]) || (sentences[1] ? 'Cari anime dengan tema tersebut!' : '?')}"`);
         lines.push(`⭐ Skor: ${c.score} | 📺 Tipe: ${c.type}`);
     }
     if (level >= 4) {
         lines.push(`✨ [BONUS HINT] Huruf depan judul sudah terbuka!`);
     }
     if (level >= 5) {
-        lines.push(`📖 Full Sinopsis: "${(c.synopsis || '').slice(0, 200)}..."`);
+        lines.push(`📖 Full Sinopsis: "${censorSpoiler((c.synopsis || '').slice(0, 200))}..."`);
     }
 
     lines.push(``);
@@ -289,7 +301,7 @@ async function startQuiz(senderName, msgId) {
         expireTimer: null,
     };
 
-    const introMsg = `🎮 [KUIS TEBAK ANIME - DATA ANIMEIN]\n${buildHintMessage(0)}\n\nHint otomatis muncul tiap 60 detik. Ketik .hint untuk hint lebih awal (-1 XP).`;
+    const introMsg = `🎮 [KUIS TEBAK ANIME - DATA ANIMEIN]\n${buildHintMessage(0)}\n\nHint otomatis muncul tiap 60 detik. Ketik .hint untuk hint lebih awal (-1 s/d 5 XP).`;
     await sendChatMessage(introMsg, msgId);
     scheduleNextHint(msgId);
 }
@@ -1507,17 +1519,21 @@ async function processMessages(messages) {
             } else if (Date.now() - activeQuiz.startedAt > QUIZ_DURATION_MS) {
                 await expireQuiz(msg.id);
             } else {
-                const titleWords = activeQuiz.titleLower.split(/\s+/).filter(w => w.length > 2);
-                const userWords = answer.split(/\s+/).filter(w => w.length > 2);
+                const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+                const normTitle = norm(activeQuiz.original);
+                const normAnswer = norm(answer);
+
+                const titleWords = normTitle.split(/\s+/).filter(w => w.length > 2);
+                const userWords = normAnswer.split(/\s+/).filter(w => w.length > 2);
                 const matches = userWords.filter(w => titleWords.includes(w)).length;
                 
-                const isFuzzy = activeQuiz.titleLower.includes(answer) && answer.length >= Math.floor(activeQuiz.original.length * 0.7);
+                const isFuzzy = normTitle.includes(normAnswer) && normAnswer.length >= Math.floor(normTitle.length * 0.7);
                 const isWordMatch = (titleWords.length >= 2 && matches >= 2) || (titleWords.length >= 3 && matches >= 2);
                 
-                if (activeQuiz.titleLower === answer || isFuzzy || isWordMatch) {
+                if (normTitle === normAnswer || isFuzzy || isWordMatch) {
                     activeQuiz.isRunning = false;
                     clearQuizTimers();
-                    const xpEarned = Math.max(30, 200 - (activeQuiz.hintsRevealed * 35));
+                    const xpEarned = Math.max(20, 100 - (activeQuiz.hintsRevealed * 10));
                     const xpRes = await addXP(senderName, xpEarned);
                     let result = `🎉 BENAR! @${senderName} menebak: ${activeQuiz.original}\n💰 XP: +${xpEarned} (Hint: ${activeQuiz.hintsRevealed}/5)`;
                     if (xpRes.leveledUp) result += `\n🌟 SELAMAT! Kamu naik ke Level ${xpRes.level}!`;
@@ -1539,8 +1555,9 @@ async function processMessages(messages) {
                 await sendChatMessage(`📌 @${senderName} Semua hint sudah terbuka. Cek pesan lama ya.`, msg.id);
             } else {
                 activeQuiz.hintsRevealed++;
-                await addXP(senderName, -1);
-                await sendChatMessage(`💡 [HINT ${activeQuiz.hintsRevealed}/5 - Minta @${senderName}, -1 XP]\n` + buildHintMessage(activeQuiz.hintsRevealed), msg.id);
+                const penalty = Math.floor(Math.random() * 5) + 1;
+                await addXP(senderName, -penalty);
+                await sendChatMessage(`💡 [HINT ${activeQuiz.hintsRevealed}/5 - Minta @${senderName}, -${penalty} XP]\n` + buildHintMessage(activeQuiz.hintsRevealed), msg.id);
             }
             continue;
         }
