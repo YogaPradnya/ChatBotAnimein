@@ -130,13 +130,13 @@ async function addXP(username, amount) {
         const res = await db.execute({ sql: "SELECT xp, level FROM user_stats WHERE username = ?", args: [username] });
         let xp = 0, level = 1;
         if (res.rows.length === 0) {
-            xp = amount;
+            xp = Math.max(0, amount);
             await db.execute({ sql: "INSERT INTO user_stats (username, xp, level) VALUES (?, ?, ?)", args: [username, xp, level] });
+            console.log(`[XP] New User: ${username} (XP: ${xp})`);
         } else {
-            xp = res.rows[0].xp + amount;
+            xp = Math.max(0, res.rows[0].xp + amount);
             level = res.rows[0].level;
             
-            // Susah dapet level: Dibutuhkan XP = Level^3 * 50
             let reqXP = Math.floor(50 * Math.pow(level, 3));
             let leveledUp = false;
             while(xp >= reqXP) {
@@ -145,6 +145,7 @@ async function addXP(username, amount) {
                 reqXP = Math.floor(50 * Math.pow(level, 3));
             }
             await db.execute({ sql: "UPDATE user_stats SET xp = ?, level = ? WHERE username = ?", args: [xp, level, username] });
+            console.log(`[XP] Update: ${username} (XP: ${xp}, Level: ${level})`);
             
             return { leveledUp, level, xp };
         }
@@ -279,7 +280,9 @@ async function expireQuiz(lastMsgId) {
 async function startQuiz(senderName, msgId) {
     if (activeQuiz.isRunning) {
         const remaining = Math.floor((QUIZ_DURATION_MS - (Date.now() - activeQuiz.startedAt)) / 1000);
-        await sendChatMessage(`@${senderName} Kuis masih berlangsung! Sisa waktu ${Math.floor(remaining/60)}m ${remaining%60}s. Ketik .tebak [jawaban]`, msgId);
+        const timeStr = `${Math.floor(remaining/60)}m ${remaining%60}s`;
+        const msg = `📌 @${senderName} Kuis masih berlangsung (Sisa ${timeStr})!\n\n` + buildHintMessage(activeQuiz.hintsRevealed) + `\n\nKetik .tebak [jawaban] untuk menjawab!`;
+        await sendChatMessage(msg, msgId);
         return;
     }
 
