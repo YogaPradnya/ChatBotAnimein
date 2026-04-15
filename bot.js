@@ -879,18 +879,24 @@ async function fetchHomeAnime() {
 
         const popPromises = [];
         const starPromises = [];
-        for (let i = 1; i <= 50; i++) {
+        const latestPromises = [];
+        for (let i = 1; i <= 40; i++) {
             popPromises.push(axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, { params: { sort: 'popular', page: i }, headers: ANIMEIN_HEADERS, timeout: 10000 }).catch(() => null));
             starPromises.push(axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, { params: { sort: 'stars', page: i }, headers: ANIMEIN_HEADERS, timeout: 10000 }).catch(() => null));
+            latestPromises.push(axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, { params: { sort: 'latest', page: i }, headers: ANIMEIN_HEADERS, timeout: 10000 }).catch(() => null));
         }
 
-        const [popResponses, starResponses] = await Promise.all([Promise.all(popPromises), Promise.all(starPromises)]);
-        
-        let popMovies = [];
-        popResponses.forEach(res => { if (res?.data?.data?.movie) popMovies = popMovies.concat(res.data.data.movie); });
+        const [popResponses, starResponses, latestResponses] = await Promise.all([
+            Promise.all(popPromises), 
+            Promise.all(starPromises),
+            Promise.all(latestPromises)
+        ]);
         
         let starMovies = [];
         starResponses.forEach(res => { if (res?.data?.data?.movie) starMovies = starMovies.concat(res.data.data.movie); });
+        
+        let latestMovies = [];
+        latestResponses.forEach(res => { if (res?.data?.data?.movie) latestMovies = latestMovies.concat(res.data.data.movie); });
 
         const cleanSort = (v) => parseInt(String(v || 0).replace(/[^\d]/g, '')) || 0;
         popMovies.sort((a, b) => cleanSort(b.views) - cleanSort(a.views));
@@ -941,16 +947,18 @@ async function fetchHomeAnime() {
             });
         };
 
-        cache.trending.data = await mapData(resHome.data?.data?.hot || [], 15);
+        cache.trending.data = await mapData(resHome.data?.data?.hot || [], 90);
         cache.trending.lastFetch = now;
 
-        cache.popular.data = await mapData(popMovies, 15);
+        cache.popular.data = await mapData(popMovies, 100);
         cache.popular.lastFetch = now;
 
-        cache.topRated.data = await mapData(starMovies, 15);
+        cache.topRated.data = await mapData(starMovies, 100);
         cache.topRated.lastFetch = now;
 
-        console.log(`[ANIMEIN] Cache updated: ${cache.trending.data.length} trending, ${cache.popular.data.length} global pop, ${cache.topRated.data.length} top rated`);
+        await mapData(latestMovies, 100); // Hanya masukkan ke quizPool
+
+        console.log(`[ANIMEIN] Cache updated: ${cache.trending.data.length} trending, ${cache.popular.data.length} global pop, ${cache.topRated.data.length} top rated. Total Pool Kuis: ${cache.quizPool.length}`);
         return true;
     } catch (e) {
         console.warn(`[ANIMEIN] Gagal fetch data home:`, e.message.slice(0, 60));
