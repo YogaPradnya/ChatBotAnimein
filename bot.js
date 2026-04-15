@@ -514,6 +514,37 @@ let isGlobalCooldown = false;
 function isNewTopic(oldText, newText) {
     if (!oldText || !newText) return false;
     
+    const newLower = newText.toLowerCase().trim();
+    
+    // Jika pertanyaan sangat pendek (< 5 kata), kemungkinan besar adalah follow-up — jangan reset
+    const wordCount = newLower.split(/\s+/).filter(Boolean).length;
+    if (wordCount <= 4) return false;
+    
+    // Deteksi pola follow-up question yang jelas — jangan reset konteks
+    const followUpPatterns = [
+        /selain itu/,
+        /ada lagi/,
+        /apalagi/,
+        /apa lagi/,
+        /terus (apa|gimana|bagaimana)/,
+        /lainnya/,
+        /yang lain/,
+        /ada ga(k)?/,
+        /masih ada/,
+        /trus/,
+        /sama (aja|saja)/,
+        /itu aja/,
+        /cuma itu/,
+        /lebih lanjut/,
+        /jelasin lebih/,
+        /bisa jelasin/,
+        /maksudnya/,
+        /contoh(nya)?/,
+        /kenapa/,
+        /gimana caranya/,
+    ];
+    if (followUpPatterns.some(p => p.test(newLower))) return false;
+    
     const oldIntent = detectIntent(oldText);
     const newIntent = detectIntent(newText);
     
@@ -529,7 +560,7 @@ function isNewTopic(oldText, newText) {
     
     for (const [topic, keys] of Object.entries(topicKeywords)) {
         const oldHas = keys.some(k => oldText.toLowerCase().includes(k));
-        const newHas = keys.some(k => newText.toLowerCase().includes(k));
+        const newHas = keys.some(k => newLower.includes(k));
         if (newHas && !oldHas && oldIntent !== 'popular') return true; // Berpindah ke topik spesifik
     }
 
@@ -1462,6 +1493,43 @@ function startDashboard() {
         res.json({ success: true, prompt: SYSTEM_PROMPT });
     });
 
+    // --- FILTER MANAGEMENT ---
+    app.get('/api/filter', (req, res) => {
+        res.json({ success: true, profanities: FILTER_DATA.profanities, response: FILTER_DATA.response });
+    });
+
+    app.post('/api/filter/add', (req, res) => {
+        const { word } = req.body;
+        if (!word || !word.trim()) return res.status(400).json({ success: false, error: 'Kata tidak boleh kosong.' });
+        const w = word.trim().toLowerCase();
+        if (FILTER_DATA.profanities.includes(w)) return res.status(400).json({ success: false, error: 'Kata sudah ada dalam daftar.' });
+        FILTER_DATA.profanities.push(w);
+        fs.writeFileSync(filterPath, JSON.stringify(FILTER_DATA, null, 2));
+        console.log(`[FILTER] Kata "${w}" ditambahkan via dashboard.`);
+        res.json({ success: true });
+    });
+
+    app.post('/api/filter/delete', (req, res) => {
+        const { word } = req.body;
+        if (!word) return res.status(400).json({ success: false, error: 'Kata tidak boleh kosong.' });
+        const before = FILTER_DATA.profanities.length;
+        FILTER_DATA.profanities = FILTER_DATA.profanities.filter(w => w !== word);
+        if (FILTER_DATA.profanities.length === before) return res.status(404).json({ success: false, error: 'Kata tidak ditemukan.' });
+        fs.writeFileSync(filterPath, JSON.stringify(FILTER_DATA, null, 2));
+        console.log(`[FILTER] Kata "${word}" dihapus via dashboard.`);
+        res.json({ success: true });
+    });
+
+    app.post('/api/filter/response', (req, res) => {
+        const { response } = req.body;
+        if (!response || !response.trim()) return res.status(400).json({ success: false, error: 'Pesan balasan tidak boleh kosong.' });
+        FILTER_DATA.response = response.trim();
+        fs.writeFileSync(filterPath, JSON.stringify(FILTER_DATA, null, 2));
+        console.log('[FILTER] Pesan balasan diperbarui via dashboard.');
+        res.json({ success: true });
+    });
+
+
     app.post('/api/prompt/save', (req, res) => {
         const { prompt } = req.body;
         if (!prompt || prompt.trim().length < 10) return res.status(400).json({ success: false, error: 'Prompt terlalu pendek.' });
@@ -1791,6 +1859,7 @@ function getDashboardHTML() {
     <button class="nav-item" onclick="showPage('model', this)">Model</button>
     <button class="nav-item" onclick="showPage('database', this)">Database</button>
     <button class="nav-item" onclick="showPage('prompt', this)">Prompt & Knowledge</button>
+    <button class="nav-item" onclick="showPage('filter', this)">Filter Kata</button>
     <button class="nav-item" onclick="showPage('laporan', this)">Laporan</button>
   </nav>
   <div class="sidebar-status">
@@ -1993,6 +2062,64 @@ function getDashboardHTML() {
       </div>
     </div>
 
+    <!-- PAGE: FILTER KATA -->
+    <div class="page" id="page-filter">
+      <div class="two-col">
+        <!-- Left: Add word + Edit response -->
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <!-- Add new word -->
+          <div class="card">
+            <div class="card-title">Tambah Kata Filter</div>
+            <div style="font-size:11px; color:var(--muted); margin-bottom:12px;">Tambahkan kata atau frasa yang ingin diblokir. Bot akan mengabaikan pesan yang mengandung kata tersebut.</div>
+            <div class="form-group">
+              <label class="form-label">Kata / Frasa Baru</label>
+              <input type="text" id="filterWordInput" placeholder="contoh: kata_kasar" onkeydown="if(event.key==='Enter') addFilterWord()">
+            </div>
+            <button class="btn-primary" onclick="addFilterWord()">+ Tambahkan</button>
+          </div>
+
+          <!-- Edit bot response -->
+          <div class="card">
+            <div class="card-title">Pesan Balasan Filter</div>
+            <div style="font-size:11px; color:var(--muted); margin-bottom:12px;">Pesan ini yang akan dikirim bot ketika mendeteksi kata terlarang.</div>
+            <div class="form-group">
+              <textarea id="filterResponseEditor" style="min-height:80px;"></textarea>
+            </div>
+            <button class="btn-primary" onclick="saveFilterResponse()">Simpan Pesan</button>
+          </div>
+
+          <!-- Stats -->
+          <div class="card">
+            <div class="card-title">Statistik Filter</div>
+            <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:8px;">
+              <div style="flex:1; text-align:center; padding:12px; background:var(--bg); border-radius:8px;">
+                <div style="font-size:22px; font-weight:700; color:var(--accent);" id="filterWordCount">0</div>
+                <div style="font-size:11px; color:var(--muted);">Total Kata Filter</div>
+              </div>
+              <div style="flex:1; text-align:center; padding:12px; background:var(--bg); border-radius:8px;">
+                <div style="font-size:22px; font-weight:700; color:var(--red);" id="filterBlockedCount">0</div>
+                <div style="font-size:11px; color:var(--muted);">Diblokir (sesi)</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Word list -->
+        <div class="card" style="margin-bottom:0;">
+          <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Daftar Kata Terlarang</span>
+            <div style="display:flex; gap:8px;">
+              <input type="text" id="filterSearch" placeholder="Cari kata..." oninput="filterSearchUI()" style="padding:5px 10px; width:140px; font-size:12px; border-radius:6px; border:1px solid var(--border); background:var(--surface);">
+              <button class="btn-sm btn-sm-toggle" onclick="loadFilter()">↻ Refresh</button>
+            </div>
+          </div>
+          <div id="filterTagContainer" style="display:flex; flex-wrap:wrap; gap:6px; max-height:520px; overflow-y:auto; padding:4px 0; margin-top:8px;">
+            <div style="color:var(--muted); font-size:13px;">Memuat...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div><!-- /content -->
 </div><!-- /main -->
 
@@ -2097,11 +2224,12 @@ function showPage(id, el) {
     target.style.display = 'block';
   }
   el.classList.add('active');
-  const titles = { dashboard: 'Dashboard', model: 'Model', database: 'Database', prompt: 'Prompt & Knowledge', laporan: 'Laporan' };
+  const titles = { dashboard: 'Dashboard', model: 'Model', database: 'Database', prompt: 'Prompt & Knowledge', laporan: 'Laporan', filter: 'Filter Kata' };
   document.getElementById('pageTitle').textContent = titles[id] || id;
   if (id === 'database') loadCache();
   if (id === 'prompt') loadPrompt();
   if (id === 'laporan') loadLaporan();
+  if (id === 'filter') loadFilter();
 }
 
 // ---- UPTIME ----
@@ -2136,6 +2264,7 @@ function render(d) {
   setT('totalDBLogs', (d.totalDBLogs||0).toLocaleString('id-ID'));
   setT('cacheTotal', (d.cacheTotal||0).toLocaleString('id-ID'));
   setT('totalReports', (d.totalReports||0).toLocaleString('id-ID'));
+  setT('filterBlockedCount', (d.filter?.blocked||0).toLocaleString('id-ID'));
 
   // Render model list
   const ml = document.getElementById('modelList');
@@ -2509,6 +2638,79 @@ async function deleteAllLaporan() {
   if (!ok) return;
   await fetch('/api/laporan/delete-all', { method: 'POST' });
   loadLaporan();
+}
+
+// ---- FILTER FUNCTIONS ----
+let filterData = [];
+
+async function loadFilter() {
+  try {
+    const res = await fetch('/api/filter');
+    const d = await res.json();
+    if (d.success) {
+      filterData = d.profanities || [];
+      document.getElementById('filterResponseEditor').value = d.response || '';
+      document.getElementById('filterWordCount').textContent = filterData.length.toLocaleString('id-ID');
+      renderFilterTags(filterData);
+    }
+  } catch(e) {}
+}
+
+function renderFilterTags(words) {
+  const container = document.getElementById('filterTagContainer');
+  if (!container) return;
+  if (!words || words.length === 0) {
+    container.innerHTML = '<div style="color:var(--muted); font-size:13px;">Belum ada kata filter.</div>';
+    return;
+  }
+  container.innerHTML = words.map(w => \`
+    <span style="display:inline-flex;align-items:center;gap:4px;background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:500;">
+      \${w}
+      <span onclick="deleteFilterWord('\${w.replace(/'/g, "\\\\'")}')" style="cursor:pointer;font-size:15px;line-height:1;margin-left:2px;opacity:0.7;font-weight:700;" title="Hapus kata ini">&times;</span>
+    </span>
+  \`).join('');
+}
+
+function filterSearchUI() {
+  const q = (document.getElementById('filterSearch')?.value || '').toLowerCase();
+  const filtered = q ? filterData.filter(w => w.includes(q)) : filterData;
+  renderFilterTags(filtered);
+}
+
+async function addFilterWord() {
+  const inp = document.getElementById('filterWordInput');
+  const word = inp.value.trim().toLowerCase();
+  if (!word) return;
+  const res = await fetch('/api/filter/add', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ word })
+  });
+  const d = await res.json();
+  if (!d.success) { alert(d.error || 'Gagal menambahkan kata.'); return; }
+  inp.value = '';
+  loadFilter();
+}
+
+async function deleteFilterWord(word) {
+  const ok = await customConfirm(\`Hapus kata "\${word}" dari daftar filter?\`, 'Hapus Kata Filter', 'Hapus');
+  if (!ok) return;
+  await fetch('/api/filter/delete', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ word })
+  });
+  loadFilter();
+}
+
+async function saveFilterResponse() {
+  const response = document.getElementById('filterResponseEditor').value.trim();
+  if (!response) { alert('Pesan balasan tidak boleh kosong.'); return; }
+  const res = await fetch('/api/filter/response', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ response })
+  });
+  const d = await res.json();
+  if (d.success) alert('Pesan balasan berhasil disimpan!');
+  else alert('Gagal menyimpan pesan.');
 }
 
 // ---- OTHER FUNCTIONS UNCHANGED ----
