@@ -539,7 +539,7 @@ function getJakartaDate() {
 /** Cek apakah pesan mengandung trigger (.ai, ai., .rika, rika., atau @username) */
 function isMentioned(text) {
     const username = CONFIG.USERNAME.toLowerCase();
-    const regex = new RegExp(`\\.ai|ai\\.|\\.rara|rara\\.|@${username}`, 'i');
+    const regex = new RegExp(`\\.lapor|\\.ai|ai\\.|\\.rara|rara\\.|@${username}`, 'i');
     return regex.test(text);
 }
 
