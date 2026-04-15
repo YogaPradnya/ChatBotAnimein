@@ -96,13 +96,27 @@ async function initDB() {
             )
         `);
         await db.execute(`
+            CREATE TABLE IF NOT EXISTS quiz_pool (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                anime_id TEXT UNIQUE,
+                title TEXT,
+                synopsis TEXT,
+                studio TEXT,
+                genre TEXT,
+                year TEXT,
+                score TEXT,
+                type TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+        await db.execute(`
             CREATE TABLE IF NOT EXISTS user_stats (
                 username TEXT PRIMARY KEY,
                 xp INTEGER DEFAULT 0,
                 level INTEGER DEFAULT 1
             )
         `);
-        console.log("[DB] Turso Database connected & Tables ready (chat_logs + response_cache + laporan + user_stats).");
+        console.log("[DB] Turso Database connected & Tables ready (chat_logs + response_cache + laporan + user_stats + quiz_pool).");
     } catch (e) {
         console.error("[DB] Gagal inisialisasi Turso:", e.message);
     }
@@ -269,17 +283,30 @@ async function startQuiz(senderName, msgId) {
         return;
     }
 
-    if (cache.quizPool.length < 10) await fetchHomeAnime();
+    // Ambil data satu anime acak dari database quiz_pool
+    let anime = null;
+    try {
+        const res = await db.execute("SELECT * FROM quiz_pool ORDER BY RANDOM() LIMIT 1");
+        if (res.rows.length > 0) {
+            anime = res.rows[0];
+        }
+    } catch (e) {
+        console.error("[QUIZ] Gagal ambil data dari DB:", e.message);
+    }
     
-    // Filter data yang benar-benar lengkap sinopsis Indonesianya
-    const pool = cache.quizPool.filter(a => a.synopsis && a.synopsis.length > 50 && a.synopsis !== '?');
+    // Jika DB kosong, coba fetch dulu
+    if (!anime) {
+        await fetchHomeAnime();
+        const resRetry = await db.execute("SELECT * FROM quiz_pool ORDER BY RANDOM() LIMIT 1");
+        if (resRetry.rows.length > 0) {
+            anime = resRetry.rows[0];
+        }
+    }
     
-    if (pool.length === 0) {
-        await sendChatMessage(`@${senderName} Rara gagal mengambil data anime dari server Animein. Coba lagi kuisnya bentar lagi ya!`, msgId);
+    if (!anime) {
+        await sendChatMessage(`@${senderName} Rara gagal mengambil data kuis dari database. Coba lagi kuisnya bentar lagi ya!`, msgId);
         return;
     }
-
-    const anime = pool[Math.floor(Math.random() * pool.length)];
     
     // Siapkan data clues
     activeQuiz = {
@@ -846,7 +873,6 @@ const cache = {
     trending: { data: [], lastFetch: 0 },
     popular: { data: [], lastFetch: 0 },
     topRated: { data: [], lastFetch: 0 },
-    quizPool: [], 
     schedule: { data: null, lastFetch: 0 },
     genres: { data: null, lastFetch: 0 },
     genreCache: {},
@@ -933,14 +959,17 @@ async function fetchHomeAnime() {
                 return m;
             }));
 
-            // Masukkan data mentah ke quizPool untuk digunakan fitur KUIS
-            detailed.forEach(item => {
-                if (item.title && item.synopsis && item.synopsis !== '?') {
-                    if (!cache.quizPool.find(q => q.title === item.title)) {
-                        cache.quizPool.push(item);
-                    }
+            // Masukkan data mentah ke database quiz_pool
+            for (const item of detailed) {
+                if (item.title && item.synopsis && item.synopsis !== '?' && item.synopsis.length > 30) {
+                    try {
+                        await db.execute({
+                            sql: "INSERT OR IGNORE INTO quiz_pool (anime_id, title, synopsis, studio, genre, year, score, type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                            args: [String(item.id), item.title, item.synopsis, item.studio, item.genre, item.year, item.score, item.type]
+                        });
+                    } catch (e) {}
                 }
-            });
+            }
 
             return detailed.map((a, i) => {
                 let meta = `[Rating: ${a.favorites || '?'}, Views: ${a.views || '?'}, Studio: ${a.studio || '?'}, Tahun: ${a.year || '?'}]`;
@@ -961,7 +990,8 @@ async function fetchHomeAnime() {
 
         await mapData(latestMovies, 50); // Hanya masukkan ke quizPool
 
-        console.log(`[ANIMEIN] Cache updated: ${cache.trending.data.length} trending, ${cache.popular.data.length} global pop, ${cache.topRated.data.length} top rated. Total Pool Kuis: ${cache.quizPool.length}`);
+        const totalDB = await db.execute("SELECT COUNT(*) as count FROM quiz_pool");
+        console.log(`[ANIMEIN] Cache updated: ${cache.trending.data.length} trending, ${cache.popular.data.length} global pop, ${cache.topRated.data.length} top rated. Total DB Kuis: ${totalDB.rows[0].count}`);
         return true;
     } catch (e) {
         console.warn(`[ANIMEIN] Gagal fetch data home:`, e.message.slice(0, 60));
@@ -1704,6 +1734,14 @@ async function startBot() {
 
         await processMessages(messages);
     }, CONFIG.POLL_INTERVAL);
+
+    // Jalankan fetch pertama kali saat startup untuk mengisi DB kuis & cache
+    fetchHomeAnime().catch(e => console.error("[STARTUP] Fetch anime failed:", e.message));
+    
+    // Set interval 1 jam untuk terus memantau dan menambah koleksi kuis baru ke DB
+    setInterval(() => {
+        fetchHomeAnime().catch(e => console.error("[INTERVAL] Fetch anime failed:", e.message));
+    }, 60 * 60 * 1000);
 }
 
 
