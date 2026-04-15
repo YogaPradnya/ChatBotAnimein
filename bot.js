@@ -1328,9 +1328,22 @@ function startDashboard() {
     app.use(express.json());
     app.use(express.urlencoded({ extended: true }));
 
-    app.get('/api/stats', (req, res) => {
-        const uptime = Math.floor((Date.now() - new Date(stats.startTime)) / 1000);
-        res.json({ ...stats, uptime, isBotActive });
+    app.get('/api/stats', async (req, res) => {
+        try {
+            const uptime = Math.floor((Date.now() - new Date(stats.startTime)) / 1000);
+            const logsCount = await db.execute("SELECT COUNT(*) as count FROM chat_logs");
+            const laporanCount = await db.execute("SELECT COUNT(*) as count FROM laporan");
+            
+            res.json({ 
+                ...stats, 
+                uptime, 
+                isBotActive,
+                totalDBLogs: logsCount.rows[0].count,
+                totalReports: laporanCount.rows[0].count
+            });
+        } catch (e) {
+            res.json({ ...stats, isBotActive, error: e.message });
+        }
     });
 
     app.post('/api/bot/toggle', (req, res) => {
@@ -1836,6 +1849,10 @@ function getDashboardHTML() {
           <div class="label">Cache Entries</div>
           <div class="value" id="cacheTotal">0</div>
         </div>
+        <div class="stat-card orange">
+          <div class="label">Total Laporan</div>
+          <div class="value" id="totalReports">0</div>
+        </div>
       </div>
 
       <div class="two-col">
@@ -2118,6 +2135,7 @@ function render(d) {
   setT('filterBlocked', (d.filter?.blocked||0).toLocaleString('id-ID'));
   setT('totalDBLogs', (d.totalDBLogs||0).toLocaleString('id-ID'));
   setT('cacheTotal', (d.cacheTotal||0).toLocaleString('id-ID'));
+  setT('totalReports', (d.totalReports||0).toLocaleString('id-ID'));
 
   // Render model list
   const ml = document.getElementById('modelList');
