@@ -86,7 +86,16 @@ async function initDB() {
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         `);
-        console.log("[DB] Turso Database connected & Tables ready (chat_logs + response_cache).");
+        await db.execute(`
+            CREATE TABLE IF NOT EXISTS laporan (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT,
+                pesan TEXT,
+                status TEXT DEFAULT 'baru',
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+        console.log("[DB] Turso Database connected & Tables ready (chat_logs + response_cache + laporan).");
     } catch (e) {
         console.error("[DB] Gagal inisialisasi Turso:", e.message);
     }
@@ -1215,6 +1224,28 @@ async function processMessages(messages) {
         stats.totalTriggers++;
 
 
+        // Cek apakah ini pesan .lapor
+        const laporTrigger = /^\.lapor\s*/i;
+        if (laporTrigger.test(msgText)) {
+            const isiLaporan = msgText.replace(laporTrigger, '').trim();
+            if (!isiLaporan) {
+                await sendChatMessage(`@${senderName} Tulis laporan kamu setelah .lapor, contoh: .lapor video episode 3 rusak`, msg.id);
+            } else {
+                try {
+                    await db.execute({
+                        sql: 'INSERT INTO laporan (username, pesan) VALUES (?, ?)',
+                        args: [senderName, isiLaporan]
+                    });
+                    console.log(`[LAPORAN] Laporan dari ${senderName}: ${isiLaporan}`);
+                    await sendChatMessage(`@${senderName} Laporan kamu sudah diterima! Tim admin akan segera menindaklanjuti.`, msg.id);
+                } catch (e) {
+                    console.error('[LAPORAN] Gagal simpan laporan:', e.message);
+                    await sendChatMessage(`@${senderName} Gagal menyimpan laporan. Coba lagi nanti ya.`, msg.id);
+                }
+            }
+            continue;
+        }
+
         if (containsProfanity(cleanText)) {
             stats.filter.blocked++;
             stats.filter.lastBlocked = senderName;
@@ -1420,14 +1451,53 @@ function startDashboard() {
     });
 
     app.post('/api/knowledge/save', (req, res) => {
-        const { index, keywords, info } = req.body;
-        if (index === undefined || !info || !Array.isArray(keywords)) return res.status(400).json({ success: false, error: 'Data tidak valid.' });
-        if (index < 0 || index >= ANIMEIN_KNOWLEDGE.length) return res.status(400).json({ success: false, error: 'Index tidak valid.' });
-        ANIMEIN_KNOWLEDGE[index].keywords = keywords;
-        ANIMEIN_KNOWLEDGE[index].info = info;
+        const { index, domain, keywords, info } = req.body;
+        if (!info || !Array.isArray(keywords) || !domain) return res.status(400).json({ success: false, error: 'Data tidak valid.' });
+        
+        if (index === -1) {
+            // Add new
+            ANIMEIN_KNOWLEDGE.push({ domain, keywords, info });
+            console.log(`[KNOWLEDGE] New entry added via dashboard: ${keywords[0]}`);
+        } else {
+            // Update existing
+            if (index < 0 || index >= ANIMEIN_KNOWLEDGE.length) return res.status(400).json({ success: false, error: 'Index tidak valid.' });
+            ANIMEIN_KNOWLEDGE[index].domain = domain;
+            ANIMEIN_KNOWLEDGE[index].keywords = keywords;
+            ANIMEIN_KNOWLEDGE[index].info = info;
+            console.log(`[KNOWLEDGE] Entry #${index} (${keywords[0]}) diperbarui via dashboard.`);
+        }
+        
         fs.writeFileSync('./knowledge.json', JSON.stringify(ANIMEIN_KNOWLEDGE, null, 2));
-        console.log(`[KNOWLEDGE] Entry #${index} (${keywords[0]}) diperbarui via dashboard (saved permanently).`);
         res.json({ success: true });
+    });
+
+    app.get('/api/laporan', async (req, res) => {
+        try {
+            const result = await db.execute('SELECT * FROM laporan ORDER BY id DESC LIMIT 100');
+            res.json({ success: true, data: result.rows });
+        } catch (e) {
+            res.json({ success: false, error: e.message });
+        }
+    });
+
+    app.post('/api/laporan/status', async (req, res) => {
+        const { id, status } = req.body;
+        try {
+            await db.execute({ sql: 'UPDATE laporan SET status = ? WHERE id = ?', args: [status, id] });
+            res.json({ success: true });
+        } catch (e) {
+            res.json({ success: false, error: e.message });
+        }
+    });
+
+    app.post('/api/laporan/delete', async (req, res) => {
+        const { id } = req.body;
+        try {
+            await db.execute({ sql: 'DELETE FROM laporan WHERE id = ?', args: [id] });
+            res.json({ success: true });
+        } catch (e) {
+            res.json({ success: false, error: e.message });
+        }
     });
 
     app.get('/', (req, res) => {
@@ -1639,6 +1709,7 @@ function getDashboardHTML() {
     <button class="nav-item" onclick="showPage('model', this)">Model</button>
     <button class="nav-item" onclick="showPage('database', this)">Database</button>
     <button class="nav-item" onclick="showPage('prompt', this)">Prompt & Knowledge</button>
+    <button class="nav-item" onclick="showPage('laporan', this)">📋 Laporan</button>
   </nav>
   <div class="sidebar-status">
     <span class="s-dot" id="statusDot" style="background:var(--red)"></span>
@@ -1761,24 +1832,76 @@ function getDashboardHTML() {
     <!-- PAGE: PROMPT & KNOWLEDGE -->
     <div class="page" id="page-prompt">
       <div class="two-col">
-        <!-- System Prompt Editor -->
-        <div class="card">
-          <div class="card-title">System Prompt (Live Edit)</div>
-          <div style="font-size:11px; color:var(--green); margin-bottom:12px; padding:8px; background:#f0fdf4; border-radius:6px;">
-            Perubahan disimpan secara permanen ke file prompt.txt.
+        <!-- Left Column: System Prompt + Domain Manager -->
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <!-- System Prompt Editor -->
+          <div class="card">
+            <div class="card-title">System Prompt (Live Edit)</div>
+            <div style="font-size:11px; color:var(--green); margin-bottom:12px; padding:8px; background:#f0fdf4; border-radius:6px;">
+              Perubahan disimpan secara permanen ke file prompt.txt.
+            </div>
+            <div class="form-group">
+              <textarea id="promptEditor" style="min-height:400px; font-family:monospace; font-size:12px;"></textarea>
+            </div>
+            <button class="btn-primary" onclick="savePrompt()">Simpan Prompt</button>
           </div>
-          <div class="form-group">
-            <textarea id="promptEditor" style="min-height:400px; font-family:monospace; font-size:12px;"></textarea>
+
+          <!-- Domain Manager -->
+          <div class="card">
+            <div class="card-title">Kelola Domain</div>
+            <div style="font-size:11px; color:var(--muted); margin-bottom:12px;">Daftar kategori domain yang tersedia untuk digunakan saat menambah/mengedit Knowledge.</div>
+            <div id="domainTagList" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;"></div>
+            <div style="display:flex; gap:8px;">
+              <input type="text" id="newDomainInput" placeholder="Nama domain baru..." style="flex:1;">
+              <button class="btn-primary" onclick="addNewDomain()" style="white-space:nowrap;">+ Tambah</button>
+            </div>
           </div>
-          <button class="btn-primary" onclick="savePrompt()">Simpan Prompt</button>
         </div>
 
         <!-- Knowledge Editor -->
         <div class="card">
-          <div class="card-title">Animein Knowledge Base</div>
+          <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
+             <span>Animein Knowledge Base</span>
+             <button class="btn-sm btn-sm-toggle" onclick="addKw()">+ Add New</button>
+          </div>
           <div class="knowledge-list" id="knowledgeList">
             <div style="color:var(--muted);">Memuat...</div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: LAPORAN -->
+    <div class="page" id="page-laporan">
+      <div class="card">
+        <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
+          <span>Laporan Masuk</span>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <select id="laporanFilter" onchange="filterLaporanUI()" style="padding:6px 10px; border-radius:6px; border:1px solid var(--border); background:var(--surface); font-size:12px;">
+              <option value="">Semua Status</option>
+              <option value="baru">Baru</option>
+              <option value="diproses">Diproses</option>
+              <option value="selesai">Selesai</option>
+            </select>
+            <button class="btn-sm btn-sm-toggle" onclick="loadLaporan()">↻ Refresh</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Username</th>
+                <th>Pesan Laporan</th>
+                <th>Status</th>
+                <th>Waktu</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="laporanList">
+              <tr><td colspan="6" style="color:var(--muted); text-align:center;">Memuat...</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -1813,8 +1936,12 @@ function getDashboardHTML() {
 <!-- Edit Knowledge Modal -->
 <div class="modal-overlay" id="kwModal">
   <div class="modal">
-    <div class="modal-title">Edit Knowledge Entry</div>
+    <div class="modal-title" id="kwModalTitle">Edit Knowledge Entry</div>
     <input type="hidden" id="kwIndex">
+    <div class="form-group">
+      <label class="form-label">Domain</label>
+      <select id="kwDomain" style="width:100%; padding:8px; border-radius:6px; border:1px solid var(--border); background:var(--surface); font-size:13px;"></select>
+    </div>
     <div class="form-group">
       <label class="form-label">Keywords (satu per baris)</label>
       <textarea id="kwKeywords" class="modal-textarea" style="min-height:120px;"></textarea>
@@ -1848,10 +1975,11 @@ function showPage(id, el) {
     target.style.display = 'block';
   }
   el.classList.add('active');
-  const titles = { dashboard: 'Dashboard', model: 'Model', database: 'Database', prompt: 'Prompt & Knowledge' };
+  const titles = { dashboard: 'Dashboard', model: 'Model', database: 'Database', prompt: 'Prompt & Knowledge', laporan: '📋 Laporan' };
   document.getElementById('pageTitle').textContent = titles[id] || id;
   if (id === 'database') loadCache();
   if (id === 'prompt') loadPrompt();
+  if (id === 'laporan') loadLaporan();
 }
 
 // ---- UPTIME ----
@@ -2022,7 +2150,7 @@ async function loadPrompt() {
     const pd = await p.json();
     const kd = await k.json();
     if (pd.success) document.getElementById('promptEditor').value = pd.prompt;
-    if (kd.success) { knowledgeData = kd.knowledge; renderKnowledge(kd.knowledge); }
+    if (kd.success) { knowledgeData = kd.knowledge; renderKnowledge(kd.knowledge); renderDomainTags(); }
   } catch(e) {}
 }
 
@@ -2061,10 +2189,65 @@ function toggleKw(headerEl) {
   body.classList.toggle('open');
 }
 
+// Daftar domain custom (akan di-sync dari knowledgeData)
+let customDomains = [];
+
+function getUniqueDomains() {
+  const fromKnowledge = knowledgeData.map(k => k.domain).filter(Boolean);
+  return [...new Set([...fromKnowledge, ...customDomains])].sort();
+}
+
+function renderDomainTags() {
+  const container = document.getElementById('domainTagList');
+  if (!container) return;
+  const domains = getUniqueDomains();
+  container.innerHTML = domains.map(d => \`
+    <span style="display:inline-flex;align-items:center;gap:4px;background:var(--accent);color:#fff;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600;">
+      \${d}
+      <span onclick="deleteDomainTag('\${d}')" style="cursor:pointer;font-size:14px;line-height:1;margin-left:2px;opacity:0.8;" title="Hapus domain">&times;</span>
+    </span>
+  \`).join('');
+}
+
+function addNewDomain() {
+  const inp = document.getElementById('newDomainInput');
+  const val = inp.value.trim().toLowerCase();
+  if (!val) return alert('Nama domain tidak boleh kosong.');
+  if (getUniqueDomains().includes(val)) return alert('Domain sudah ada.');
+  customDomains.push(val);
+  inp.value = '';
+  renderDomainTags();
+}
+
+function deleteDomainTag(domain) {
+  const usedInKnowledge = knowledgeData.some(k => k.domain === domain);
+  if (usedInKnowledge) return alert('Domain ini masih digunakan oleh ' + knowledgeData.filter(k => k.domain === domain).length + ' entry. Hapus atau pindahkan entry tersebut terlebih dahulu.');
+  customDomains = customDomains.filter(d => d !== domain);
+  renderDomainTags();
+}
+
+function setupDomainSelect(selectedValue) {
+  const sel = document.getElementById('kwDomain');
+  if (!sel) return;
+  const domains = getUniqueDomains();
+  sel.innerHTML = '<option value="">-- Pilih Domain --</option>' + domains.map(d => \`<option value="\${d}" \${d === selectedValue ? 'selected' : ''}>\${d}</option>\`).join('');
+}
+
+function addKw() {
+  document.getElementById('kwModalTitle').textContent = 'Add New Knowledge';
+  document.getElementById('kwIndex').value = -1;
+  setupDomainSelect('');
+  document.getElementById('kwKeywords').value = '';
+  document.getElementById('kwInfo').value = '';
+  document.getElementById('kwModal').classList.add('open');
+}
+
 function editKw(index) {
   const k = knowledgeData[index];
   if (!k) return;
+  document.getElementById('kwModalTitle').textContent = 'Edit Knowledge Entry';
   document.getElementById('kwIndex').value = index;
+  setupDomainSelect(k.domain || '');
   document.getElementById('kwKeywords').value = (k.keywords || []).join('\\n');
   document.getElementById('kwInfo').value = k.info || '';
   document.getElementById('kwModal').classList.add('open');
@@ -2076,21 +2259,94 @@ function closeKwModal() {
 
 async function saveKw() {
   const index = parseInt(document.getElementById('kwIndex').value);
+  const domain = document.getElementById('kwDomain').value.trim();
   const newKeywords = document.getElementById('kwKeywords').value.split('\\n').map(s => s.trim()).filter(Boolean);
-  const newInfo = document.getElementById('kwInfo').value;
-  if (!newInfo.trim()) return alert('Info tidak boleh kosong.');
+  const newInfo = document.getElementById('kwInfo').value.trim();
   
-  // Update in-memory
-  knowledgeData[index].keywords = newKeywords;
-  knowledgeData[index].info = newInfo;
+  if (!domain) return alert('Domain tidak boleh kosong.');
+  if (newKeywords.length === 0) return alert('Keywords tidak boleh kosong.');
+  if (!newInfo) return alert('Info tidak boleh kosong.');
   
-  // Save new prompt knowledge via API (rebuild ANIMEIN_KNOWLEDGE in server)
+  // Save via API
   const res = await fetch('/api/knowledge/save', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ index, keywords: newKeywords, info: newInfo })
+    body: JSON.stringify({ index, domain, keywords: newKeywords, info: newInfo })
   });
-  if (res.ok) { closeKwModal(); renderKnowledge(knowledgeData); alert('Knowledge berhasil disimpan permanen!'); }
-  else alert('Gagal menyimpan.');
+  
+  if (res.ok) { 
+    closeKwModal(); 
+    // Re-fetch all knowledge to stay in sync
+    const kRes = await fetch('/api/knowledge');
+    const kd = await kRes.json();
+    if (kd.success) {
+      knowledgeData = kd.knowledge;
+      renderKnowledge(knowledgeData);
+    }
+    alert(index === -1 ? 'Knowledge baru ditambahkan!' : 'Knowledge berhasil disimpan!'); 
+  } else {
+    alert('Gagal menyimpan.');
+  }
+}
+
+// ---- LAPORAN ----
+let laporanData = [];
+
+async function loadLaporan() {
+  try {
+    const res = await fetch('/api/laporan');
+    const d = await res.json();
+    if (d.success) {
+      laporanData = d.data;
+      filterLaporanUI();
+    }
+  } catch(e) {}
+}
+
+function filterLaporanUI() {
+  const filter = document.getElementById('laporanFilter')?.value || '';
+  const filtered = filter ? laporanData.filter(l => l.status === filter) : laporanData;
+  renderLaporan(filtered);
+}
+
+function renderLaporan(data) {
+  const tbody = document.getElementById('laporanList');
+  if (!tbody) return;
+  if (!data || data.length === 0) {
+    tbody.innerHTML = \`<tr><td colspan="6" style="text-align:center; color:var(--muted); padding:20px;">Belum ada laporan</td></tr>\`;
+    return;
+  }
+  const statusColor = { baru: 'var(--accent)', diproses: '#f59e0b', selesai: 'var(--green)' };
+  tbody.innerHTML = data.map((l, i) => \`
+    <tr>
+      <td style="font-weight:700; color:var(--muted);">\${i+1}</td>
+      <td style="font-weight:700; color:var(--accent);">@\${l.username || '-'}</td>
+      <td style="max-width:300px;">\${l.pesan || '-'}</td>
+      <td><span style="background:\${statusColor[l.status]||'#ccc'};color:#fff;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;">\${l.status||'baru'}</span></td>
+      <td style="font-size:11px; color:var(--muted);">\${l.timestamp ? new Date(l.timestamp).toLocaleString('id-ID') : '-'}</td>
+      <td class="td-actions">
+        \${l.status !== 'selesai' ? \`<button class="btn-sm btn-sm-edit" onclick="updateLaporanStatus(\${l.id}, 'selesai')">✓ Selesai</button>\` : ''}
+        \${l.status === 'baru' ? \`<button class="btn-sm btn-sm-toggle" onclick="updateLaporanStatus(\${l.id}, 'diproses')">Proses</button>\` : ''}
+        <button class="btn-sm btn-sm-del" onclick="deleteLaporan(\${l.id})">Hapus</button>
+      </td>
+    </tr>
+  \`).join('');
+}
+
+async function updateLaporanStatus(id, status) {
+  await fetch('/api/laporan/status', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, status })
+  });
+  loadLaporan();
+}
+
+async function deleteLaporan(id) {
+  if (!confirm('Hapus laporan ini?')) return;
+  await fetch('/api/laporan/delete', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id })
+  });
+  loadLaporan();
 }
 
 // ---- OTHER FUNCTIONS UNCHANGED ----
