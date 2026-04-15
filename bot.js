@@ -1487,11 +1487,11 @@ function getDashboardHTML() {
   .topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 14px 30px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
   .topbar h2 { font-size: 16px; font-weight: 700; }
   .topbar-actions { display: flex; gap: 10px; align-items: center; }
-  .content { padding: 25px 30px; flex: 1; overflow-y: auto; }
+  .content { padding: 25px 30px; flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
 
   /* PAGE SECTIONS */
-  .page { display: none; }
-  .page.active { display: block; }
+  .page { display: none; width: 100%; flex: 1; min-height: 0; }
+  .page.active { display: block; overflow-y: auto; }
 
   /* CARDS */
   .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 25px; }
@@ -1604,12 +1604,11 @@ function getDashboardHTML() {
   .uptime-box { font-size: 22px; font-weight: 700; color: var(--accent); }
 
   /* Dashboard layout: fixed heights — applied only when active via JS */
-  .page.active.dash-flex { display: flex !important; flex-direction: column; }
+  .page.active.dash-flex { display: flex !important; flex-direction: column; height: 100%; overflow: hidden; }
   #page-dashboard .stats-grid { flex-shrink: 0; }
-  #page-dashboard .two-col { flex: 1; min-height: 0; }
-  #page-dashboard .two-col > .card { overflow: hidden; display: flex; flex-direction: column; }
-  #page-dashboard .two-col > .card.activity-card { overflow: hidden; }
-  #page-dashboard .two-col > .card.activity-card .activity-list { overflow-y: auto; flex: 1; }
+  #page-dashboard .two-col { flex: 1; min-height: 0; gap: 20px; }
+  #page-dashboard .two-col > .card { overflow: hidden; display: flex; flex-direction: column; height: 100%; margin-bottom: 0; }
+  #page-dashboard .two-col > .card .activity-list { overflow-y: auto; flex: 1; }
   .activity-card { height: 100%; }
 
   @media (max-width: 900px) {
@@ -1699,7 +1698,7 @@ function getDashboardHTML() {
         </div>
       </div>
 
-      <div class="two-col" style="height: calc(100% - 175px);">
+      <div class="two-col">
         <!-- Manual Send -->
         <div class="card" style="margin-bottom:0; overflow:hidden;">
           <div class="card-title">Kirim Pesan Manual</div>
@@ -1924,6 +1923,7 @@ function render(d) {
         <div class="activity-meta">
           <span class="activity-user">\${a.from||'?'}</span>
           <div style="display:flex;gap:6px;align-items:center;">
+            <span class="prov-tag">\${a.tokens||0} tokens</span>
             <span class="prov-tag">\${a.provider||''}</span>
             <span class="activity-time">\${a.time||''}</span>
           </div>
