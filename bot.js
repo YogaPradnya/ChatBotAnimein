@@ -1471,6 +1471,15 @@ function startDashboard() {
         res.json({ success: true });
     });
 
+    app.post('/api/knowledge/delete', (req, res) => {
+        const { index } = req.body;
+        if (index < 0 || index >= ANIMEIN_KNOWLEDGE.length) return res.status(400).json({ success: false, error: 'Index tidak valid.' });
+        const removed = ANIMEIN_KNOWLEDGE.splice(index, 1);
+        fs.writeFileSync('./knowledge.json', JSON.stringify(ANIMEIN_KNOWLEDGE, null, 2));
+        console.log(`[KNOWLEDGE] Entry #${index} (${removed[0]?.keywords?.[0]}) dihapus via dashboard.`);
+        res.json({ success: true });
+    });
+
     app.get('/api/laporan', async (req, res) => {
         try {
             const result = await db.execute('SELECT * FROM laporan ORDER BY id DESC LIMIT 100');
@@ -1494,6 +1503,15 @@ function startDashboard() {
         const { id } = req.body;
         try {
             await db.execute({ sql: 'DELETE FROM laporan WHERE id = ?', args: [id] });
+            res.json({ success: true });
+        } catch (e) {
+            res.json({ success: false, error: e.message });
+        }
+    });
+
+    app.post('/api/laporan/delete-all', async (req, res) => {
+        try {
+            await db.execute('DELETE FROM laporan');
             res.json({ success: true });
         } catch (e) {
             res.json({ success: false, error: e.message });
@@ -1655,6 +1673,22 @@ function getDashboardHTML() {
   .modal-title { font-size: 17px; font-weight: 700; margin-bottom: 20px; }
   .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
   .modal-textarea { min-height: 180px; }
+
+  /* CUSTOM CONFIRM DIALOG */
+  #confirmOverlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:none; align-items:center; justify-content:center; z-index:9999; backdrop-filter:blur(4px); }
+  #confirmOverlay.active { display:flex; animation:fadeInOverlay 0.18s ease; }
+  @keyframes fadeInOverlay { from { opacity:0; } to { opacity:1; } }
+  #confirmBox { background:var(--surface); border-radius:14px; padding:32px 28px 24px; width:380px; max-width:92vw; box-shadow:0 30px 60px rgba(0,0,0,0.2); animation:slideUpBox 0.2s ease; text-align:center; }
+  @keyframes slideUpBox { from { transform:translateY(16px); opacity:0; } to { transform:translateY(0); opacity:1; } }
+  #confirmIcon { width:52px; height:52px; border-radius:50%; background:#fff5f0; display:flex; align-items:center; justify-content:center; margin:0 auto 18px; border:2px solid var(--accent); }
+  #confirmIcon svg { width:26px; height:26px; stroke:var(--accent); fill:none; stroke-width:2.5; stroke-linecap:round; stroke-linejoin:round; }
+  #confirmTitle { font-size:16px; font-weight:700; color:var(--text); margin-bottom:8px; }
+  #confirmMsg { font-size:13px; color:var(--muted); line-height:1.6; margin-bottom:24px; }
+  #confirmActions { display:flex; gap:10px; justify-content:center; }
+  #confirmActions button { flex:1; padding:9px 0; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; border:none; transition:opacity 0.15s; }
+  #confirmActions button:hover { opacity:0.85; }
+  #confirmBtnCancel { background:var(--bg); color:var(--text); border:1px solid var(--border) !important; }
+  #confirmBtnOk { background:var(--accent); color:#fff; }
 
   /* KNOWLEDGE VIEWER */
   .knowledge-list { display: flex; flex-direction: column; gap: 10px; }
@@ -1884,6 +1918,7 @@ function getDashboardHTML() {
               <option value="selesai">Selesai</option>
             </select>
             <button class="btn-sm btn-sm-toggle" onclick="loadLaporan()">↻ Refresh</button>
+            <button class="btn-sm btn-sm-del" onclick="deleteAllLaporan()">Hapus Semua</button>
           </div>
         </div>
         <div class="table-wrap">
@@ -1957,7 +1992,42 @@ function getDashboardHTML() {
   </div>
 </div>
 
+<!-- Custom Confirm Dialog -->
+<div id="confirmOverlay">
+  <div id="confirmBox">
+    <div id="confirmIcon">
+      <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    </div>
+    <div id="confirmTitle">Konfirmasi</div>
+    <div id="confirmMsg">Apakah kamu yakin?</div>
+    <div id="confirmActions">
+      <button id="confirmBtnCancel" onclick="resolveConfirm(false)">Batal</button>
+      <button id="confirmBtnOk" onclick="resolveConfirm(true)">Ya, Lanjutkan</button>
+    </div>
+  </div>
+</div>
+
 <script>
+// ---- CUSTOM CONFIRM ----
+let _confirmResolve = null;
+function customConfirm(msg, title = 'Konfirmasi', okLabel = 'Ya, Lanjutkan', okDanger = true) {
+  document.getElementById('confirmMsg').textContent = msg;
+  document.getElementById('confirmTitle').textContent = title;
+  document.getElementById('confirmBtnOk').textContent = okLabel;
+  document.getElementById('confirmBtnOk').style.background = okDanger ? '#ef4444' : 'var(--accent)';
+  document.getElementById('confirmOverlay').classList.add('active');
+  return new Promise(resolve => { _confirmResolve = resolve; });
+}
+function resolveConfirm(result) {
+  document.getElementById('confirmOverlay').classList.remove('active');
+  if (_confirmResolve) { _confirmResolve(result); _confirmResolve = null; }
+}
+// Close on overlay click
+document.getElementById('confirmOverlay').addEventListener('click', function(e) {
+  if (e.target === this) resolveConfirm(false);
+});
+
+
 // ---- PAGE NAV ----
 function showPage(id, el) {
   document.querySelectorAll('.page').forEach(p => {
@@ -2135,7 +2205,8 @@ async function saveEntry() {
 }
 
 async function deleteEntry(id) {
-  if (!confirm('Hapus entri ini dari cache?')) return;
+  const ok = await customConfirm('Hapus entri cache ini dari database?', 'Hapus Cache Entry', 'Hapus');
+  if (!ok) return;
   await fetch('/api/cache/delete', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id })
   });
@@ -2175,6 +2246,7 @@ function renderKnowledge(knowledge) {
           <span style="font-size:12px; font-weight:600;">\${(k.keywords||[])[0] || 'Item ' + (i+1)}</span>
         </div>
         <button class="btn-sm btn-sm-edit" onclick="editKw(\${i})" style="flex-shrink:0;">Edit</button>
+        <button class="btn-sm btn-sm-del" onclick="deleteKw(\${i})" style="flex-shrink:0;">Hapus</button>
       </div>
       <div class="kw-body">
         <div class="kw-info">\${k.info||''}</div>
@@ -2251,6 +2323,22 @@ function editKw(index) {
   document.getElementById('kwKeywords').value = (k.keywords || []).join('\\n');
   document.getElementById('kwInfo').value = k.info || '';
   document.getElementById('kwModal').classList.add('open');
+}
+
+async function deleteKw(index) {
+  const ok = await customConfirm('Knowledge ini akan dihapus secara permanen dari database.', 'Hapus Knowledge', 'Hapus');
+  if (!ok) return;
+  const res = await fetch('/api/knowledge/delete', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ index })
+  });
+  if (res.ok) {
+    const kRes = await fetch('/api/knowledge');
+    const kd = await kRes.json();
+    if (kd.success) { knowledgeData = kd.knowledge; renderKnowledge(knowledgeData); renderDomainTags(); }
+  } else {
+    alert('Gagal menghapus knowledge.');
+  }
 }
 
 function closeKwModal() {
@@ -2341,11 +2429,19 @@ async function updateLaporanStatus(id, status) {
 }
 
 async function deleteLaporan(id) {
-  if (!confirm('Hapus laporan ini?')) return;
+  const ok = await customConfirm('Laporan ini akan dihapus secara permanen.', 'Hapus Laporan', 'Hapus');
+  if (!ok) return;
   await fetch('/api/laporan/delete', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id })
   });
+  loadLaporan();
+}
+
+async function deleteAllLaporan() {
+  const ok = await customConfirm('Semua laporan akan dihapus secara permanen dan tidak dapat dikembalikan.', 'Hapus Semua Laporan', 'Hapus Semua');
+  if (!ok) return;
+  await fetch('/api/laporan/delete-all', { method: 'POST' });
   loadLaporan();
 }
 
@@ -2362,7 +2458,8 @@ async function toggleKey(id) {
 }
 
 async function clearCache() {
-  if (!confirm('Yakin hapus semua cache?')) return;
+  const ok = await customConfirm('Semua entry cache akan dihapus. Bot akan memproses ulang pertanyaan yang sama.', 'Hapus Semua Cache', 'Hapus Semua');
+  if (!ok) return;
   await fetch('/api/cache/clear', { method: 'POST' });
   refresh();
   loadCache();
@@ -2383,7 +2480,8 @@ async function sendTemplate(type) {
   const msg = type === 'online'
     ? 'rara kembali aktif, silahkan tanya apapun rara siap menjawab, jika ada pertanyaan yang rara tidak mengerti langsung tag @Yogaa sebagai pemilik rara untuk memperbaiki dan menambahkan responnya'
     : 'Rara istirahat dulu ya kak, sampai jumpa lagi! (Mode Offline Aktif)';
-  if (!confirm('Kirim broadcast ' + type + '?')) return;
+  const ok = await customConfirm('Broadcast pesan ' + type + ' akan dikirim ke semua user di chat.', 'Kirim Broadcast', 'Kirim', false);
+  if (!ok) return;
   await fetch('/api/chat/send', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: msg })
   });
