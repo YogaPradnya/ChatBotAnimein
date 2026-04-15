@@ -2313,7 +2313,7 @@ function getDashboardHTML() {
     <button class="nav-item" onclick="showPage('autoreply', this)">Auto Reply</button>
     <button class="nav-item" onclick="showPage('filter', this)">Filter Kata</button>
     <button class="nav-item" onclick="showPage('laporan', this)">Laporan</button>
-    <button class="nav-item" onclick="showPage('kuis', this)">🕹️ Kuis System</button>
+    <button class="nav-item" onclick="showPage('kuis', this)">Kuis System</button>
   </nav>
   <div class="sidebar-status">
     <span class="s-dot" id="statusDot" style="background:var(--red)"></span>
@@ -2398,7 +2398,7 @@ function getDashboardHTML() {
 
           <!-- Active Quiz Card -->
           <div class="card" id="quizCard" style="display:none; border: 1px solid var(--accent); background: var(--accent-light);">
-            <div class="card-title" style="color:var(--accent);">🕹️ Kuis Berjalan</div>
+            <div class="card-title" style="color:var(--accent);"> Kuis Berjalan</div>
             <div id="quizContent"></div>
           </div>
         </div>
@@ -2810,8 +2810,8 @@ function render(d) {
               '<div>' +
                 '<div style="font-weight:700; font-size:16px; color:var(--accent);">' + d.activeQuiz.title + '</div>' +
                 '<div style="margin-top:8px; display:flex; gap:15px; font-size:12px; font-weight:600;">' +
-                    '<span>💡 Hint Terbuka: ' + d.activeQuiz.hints + '/5</span>' +
-                    '<span>⏳ Sisa Waktu: ' + Math.floor(remaining/60) + 'm ' + (remaining%60) + 's</span>' +
+                    '<span> Hint Terbuka: ' + d.activeQuiz.hints + '/5</span>' +
+                    '<span> Sisa Waktu: ' + Math.floor(remaining/60) + 'm ' + (remaining%60) + 's</span>' +
                 '</div>' +
               '</div>' +
               '<button class="btn-sm btn-sm-del" style="padding:10px 16px; font-size:12px;" onclick="stopQuiz()">STOP KUIS</button>' +
