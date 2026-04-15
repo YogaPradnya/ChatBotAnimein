@@ -1770,6 +1770,7 @@ function startDashboard() {
             const uptime = Math.floor((Date.now() - new Date(stats.startTime)) / 1000);
             const logsCount = await db.execute("SELECT COUNT(*) as count FROM chat_logs");
             const laporanCount = await db.execute("SELECT COUNT(*) as count FROM laporan");
+            const quizCount = await db.execute("SELECT COUNT(*) as count FROM quiz_pool");
             
             res.json({ 
                 ...stats, 
@@ -1777,6 +1778,7 @@ function startDashboard() {
                 isBotActive,
                 totalDBLogs: logsCount.rows[0].count,
                 totalReports: laporanCount.rows[0].count,
+                totalDBKuis: quizCount.rows[0].count,
                 activeQuiz: activeQuiz.isRunning ? {
                     title: activeQuiz.original,
                     hints: activeQuiz.hintsRevealed,
@@ -2298,6 +2300,7 @@ function getDashboardHTML() {
     <button class="nav-item" onclick="showPage('autoreply', this)">Auto Reply</button>
     <button class="nav-item" onclick="showPage('filter', this)">Filter Kata</button>
     <button class="nav-item" onclick="showPage('laporan', this)">Laporan</button>
+    <button class="nav-item" onclick="showPage('kuis', this)">🕹️ Kuis System</button>
   </nav>
   <div class="sidebar-status">
     <span class="s-dot" id="statusDot" style="background:var(--red)"></span>
@@ -2588,6 +2591,37 @@ function getDashboardHTML() {
         </div>
       </div>
     </div>
+    
+    <!-- PAGE: KUIS SYSTEM -->
+    <div class="page" id="page-kuis">
+      <div class="card">
+        <div class="card-title"> Monitoring Kuis Animein</div>
+        <div class="stats-grid" style="grid-template-columns: repeat(2, 1fr); margin-bottom:24px;">
+          <div class="stat-card">
+            <div class="label">Total Soal di Database</div>
+            <div class="value" id="kuisPageTotalDB">0</div>
+          </div>
+          <div class="stat-card orange">
+            <div class="label">Status Kuis</div>
+            <div class="value" id="kuisPageStatus">Idle</div>
+          </div>
+        </div>
+
+        <div id="kuisPageCurrentCard" class="card" style="display:none; border: 1px solid var(--accent); background: var(--accent-light);">
+          <div class="card-title" style="color:var(--accent);">Kuis yang Sedang Berjalan</div>
+          <div id="kuisPageContent"></div>
+        </div>
+
+        <div class="card" style="margin-top:20px;">
+          <div class="card-title">Informasi Sistem Kuis</div>
+          <p style="font-size:13px; color:var(--muted); line-height:1.6;">
+            Sistem kuis mengambil data secara otomatis dari AnimeinWeb setiap jam. 
+            Data yang diambil mencakup Sinopsis (Indo), Studio, Genre, dan Skor. 
+            Database menggunakan perintah <code>INSERT OR IGNORE</code> untuk memastikan tidak ada soal ganda.
+          </p>
+        </div>
+      </div>
+    </div>
 
   </div><!-- /content -->
 </div><!-- /main -->
@@ -2693,7 +2727,7 @@ function showPage(id, el) {
     target.style.display = 'block';
   }
   el.classList.add('active');
-  const titles = { dashboard: 'Dashboard', model: 'Model', database: 'Database', prompt: 'Prompt & Knowledge', autoreply: 'Bot Auto Reply', laporan: 'Laporan', filter: 'Filter Kata' };
+  const titles = { dashboard: 'Dashboard', model: 'Model', database: 'Database', prompt: 'Prompt & Knowledge', autoreply: 'Bot Auto Reply', laporan: 'Laporan', filter: 'Filter Kata', kuis: 'Kuis System' };
   document.getElementById('pageTitle').textContent = titles[id] || id;
   if (id === 'dashboard') refresh();
   if (id === 'database') loadCache();
@@ -2737,7 +2771,33 @@ function render(d) {
   setT('totalReports', (d.totalReports||0).toLocaleString('id-ID'));
   setT('filterBlockedCount', (d.filter?.blocked||0).toLocaleString('id-ID'));
 
-  // Render model list
+  // Kuis Page Updates
+  const kPageTotalDB = document.getElementById('kuisPageTotalDB');
+  if (kPageTotalDB) kPageTotalDB.textContent = (d.totalDBKuis||0).toLocaleString('id-ID');
+  
+  const kPageStatus = document.getElementById('kuisPageStatus');
+  const kPageCard = document.getElementById('kuisPageCurrentCard');
+  const kPageContent = document.getElementById('kuisPageContent');
+
+  if (d.activeQuiz) {
+    if (kPageStatus) { kPageStatus.textContent = 'RUNNING'; kPageStatus.style.color = 'var(--accent)'; }
+    if (kPageCard) kPageCard.style.display = 'block';
+    
+    if (kPageContent) {
+        const remaining = Math.max(0, Math.floor((300000 - (Date.now() - d.activeQuiz.start)) / 1000));
+        kPageContent.innerHTML = 
+            '<div style="font-weight:700; font-size:16px; color:var(--accent);">' + d.activeQuiz.title + '</div>' +
+            '<div style="margin-top:8px; display:flex; gap:15px; font-size:12px; font-weight:600;">' +
+                '<span>Hint Terbuka: ' + d.activeQuiz.hints + '/5</span>' +
+                '<span>⏳ Sisa Waktu: ' + Math.floor(remaining/60) + 'm ' + (remaining%60) + 's</span>' +
+            '</div>';
+    }
+  } else {
+    if (kPageStatus) { kPageStatus.textContent = 'IDLE'; kPageStatus.style.color = 'var(--muted)'; }
+    if (kPageCard) kPageCard.style.display = 'none';
+  }
+
+  // Quiz Dashboard Update
   const ml = document.getElementById('modelList');
   if (ml && Array.isArray(d.otak)) {
     ml.innerHTML = d.otak.map((o, i) => {
