@@ -1880,6 +1880,19 @@ function startDashboard() {
     });
 
 
+    app.post('/api/quiz/stop', async (req, res) => {
+        if (!activeQuiz.isRunning) return res.status(400).json({ success: false, message: 'Tidak ada kuis aktif' });
+        
+        const answer = activeQuiz.original;
+        activeQuiz.isRunning = false;
+        clearQuizTimers();
+        
+        console.log(`[QUIZ] Stopped by Admin. Answer: ${answer}`);
+        await sendChatMessage(`🛑 Kuis telah dihentikan oleh Admin.\nJawaban yang benar: ${answer}`);
+        
+        res.json({ success: true });
+    });
+
     app.get('/api/debug/trending', async (req, res) => {
         try {
             const r = await axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, {
@@ -2362,6 +2375,10 @@ function getDashboardHTML() {
           <div class="label">Total Laporan</div>
           <div class="value" id="totalReports">0</div>
         </div>
+        <div class="stat-card">
+          <div class="label">Total Kuis</div>
+          <div class="value" id="kuisDashboardTotal">0</div>
+        </div>
       </div>
 
       <div class="two-col">
@@ -2471,7 +2488,7 @@ function getDashboardHTML() {
       </div>
     </div>
 
-    <!-- PAGE: LAPORAN -->
+    <!-- PAGE: AUTO REPLY -->
     <div class="page" id="page-autoreply">
       <div class="card" style="margin-bottom:20px;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -2775,6 +2792,9 @@ function render(d) {
   const kPageTotalDB = document.getElementById('kuisPageTotalDB');
   if (kPageTotalDB) kPageTotalDB.textContent = (d.totalDBKuis||0).toLocaleString('id-ID');
   
+  const kDashboardTotal = document.getElementById('kuisDashboardTotal');
+  if (kDashboardTotal) kDashboardTotal.textContent = (d.totalDBKuis||0).toLocaleString('id-ID');
+  
   const kPageStatus = document.getElementById('kuisPageStatus');
   const kPageCard = document.getElementById('kuisPageCurrentCard');
   const kPageContent = document.getElementById('kuisPageContent');
@@ -2786,10 +2806,15 @@ function render(d) {
     if (kPageContent) {
         const remaining = Math.max(0, Math.floor((300000 - (Date.now() - d.activeQuiz.start)) / 1000));
         kPageContent.innerHTML = 
-            '<div style="font-weight:700; font-size:16px; color:var(--accent);">' + d.activeQuiz.title + '</div>' +
-            '<div style="margin-top:8px; display:flex; gap:15px; font-size:12px; font-weight:600;">' +
-                '<span>Hint Terbuka: ' + d.activeQuiz.hints + '/5</span>' +
-                '<span>⏳ Sisa Waktu: ' + Math.floor(remaining/60) + 'm ' + (remaining%60) + 's</span>' +
+            '<div style="display:flex; justify-content:space-between; align-items:start;">' +
+              '<div>' +
+                '<div style="font-weight:700; font-size:16px; color:var(--accent);">' + d.activeQuiz.title + '</div>' +
+                '<div style="margin-top:8px; display:flex; gap:15px; font-size:12px; font-weight:600;">' +
+                    '<span>💡 Hint Terbuka: ' + d.activeQuiz.hints + '/5</span>' +
+                    '<span>⏳ Sisa Waktu: ' + Math.floor(remaining/60) + 'm ' + (remaining%60) + 's</span>' +
+                '</div>' +
+              '</div>' +
+              '<button class="btn-sm btn-sm-del" style="padding:10px 16px; font-size:12px;" onclick="stopQuiz()">STOP KUIS</button>' +
             '</div>';
     }
   } else {
@@ -2834,9 +2859,12 @@ function render(d) {
       const remaining = Math.max(0, Math.floor((300000 - (Date.now() - d.activeQuiz.start)) / 1000));
       quizContent.innerHTML = 
           '<div style="font-weight:700; font-size:15px; margin-bottom:4px;">' + d.activeQuiz.title + '</div>' + 
-          '<div style="display:flex; gap:12px; font-size:11px; color:var(--muted); font-weight:600;">' +
-              '<span> Hint Open: ' + d.activeQuiz.hints + '/5</span>' +
-              '<span> Sisa: ' + Math.floor(remaining/60) + 'm ' + (remaining%60) + 's</span>' +
+          '<div style="display:flex; justify-content:space-between; align-items:center;">' +
+            '<div style="display:flex; gap:12px; font-size:11px; color:var(--muted); font-weight:600;">' +
+                '<span> Hint Open: ' + d.activeQuiz.hints + '/5</span>' +
+                '<span> Sisa: ' + Math.floor(remaining/60) + 'm ' + (remaining%60) + 's</span>' +
+            '</div>' +
+            '<button class="btn-sm btn-sm-del" style="font-size:10px; padding:4px 8px;" onclick="stopQuiz()">Batal</button>' +
           '</div>';
   } else if (quizCard) {
       quizCard.style.display = 'none';
@@ -2917,6 +2945,15 @@ function editEntry(id) {
 
 function closeModal() {
   document.getElementById('editModal').classList.remove('open');
+}
+
+async function stopQuiz() {
+  if (!confirm('Apakah Anda yakin ingin menghentikan kuis yang sedang berjalan?')) return;
+  try {
+    const res = await fetch('/api/quiz/stop', { method: 'POST' });
+    const d = await res.json();
+    if (d.success) refresh(); else alert('Gagal: ' + d.message);
+  } catch(e) { alert('Terjadi kesalahan.'); }
 }
 
 async function saveEntry() {
