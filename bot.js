@@ -95,12 +95,205 @@ async function initDB() {
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         `);
-        console.log("[DB] Turso Database connected & Tables ready (chat_logs + response_cache + laporan).");
+        await db.execute(`
+            CREATE TABLE IF NOT EXISTS user_stats (
+                username TEXT PRIMARY KEY,
+                xp INTEGER DEFAULT 0,
+                level INTEGER DEFAULT 1
+            )
+        `);
+        console.log("[DB] Turso Database connected & Tables ready (chat_logs + response_cache + laporan + user_stats).");
     } catch (e) {
         console.error("[DB] Gagal inisialisasi Turso:", e.message);
     }
 }
 initDB();
+
+// --- GAMIFICATION ---
+async function addXP(username, amount) {
+    if (!CONFIG.TURSO_URL) return { leveledUp: false, level: 1, xp: 0 };
+    try {
+        const res = await db.execute({ sql: "SELECT xp, level FROM user_stats WHERE username = ?", args: [username] });
+        let xp = 0, level = 1;
+        if (res.rows.length === 0) {
+            xp = amount;
+            await db.execute({ sql: "INSERT INTO user_stats (username, xp, level) VALUES (?, ?, ?)", args: [username, xp, level] });
+        } else {
+            xp = res.rows[0].xp + amount;
+            level = res.rows[0].level;
+            
+            // Susah dapet level: Dibutuhkan XP = Level^3 * 50
+            let reqXP = Math.floor(50 * Math.pow(level, 3));
+            let leveledUp = false;
+            while(xp >= reqXP) {
+                level++;
+                leveledUp = true;
+                reqXP = Math.floor(50 * Math.pow(level, 3));
+            }
+            await db.execute({ sql: "UPDATE user_stats SET xp = ?, level = ? WHERE username = ?", args: [xp, level, username] });
+            
+            return { leveledUp, level, xp };
+        }
+        return { leveledUp: false, level, xp };
+    } catch (e) {
+        console.error("[GAMIFICATION] Add XP error:", e.message);
+        return { leveledUp: false, level: 1, xp: 0 };
+    }
+}
+
+// --- QUIZ STATE ---
+const QUIZ_DURATION_MS = 5 * 60 * 1000; // 5 menit
+const QUIZ_HINT_INTERVAL = 60 * 1000;   // Hint baru tiap 60 detik
+
+let activeQuiz = {
+    isRunning: false,
+    original: '',
+    titleLower: '',
+    startedAt: 0,
+    hintsRevealed: 0, // 0=judul tersensor, 1=studio, 2=genre, 3=tahun, 4=sinopsis
+    clues: {},        // { studio, genre, year, synopsis }
+    wrongGuessers: new Set(), // username yg sudah salah tebak
+    hintTimer: null,
+    expireTimer: null,
+};
+
+function clearQuizTimers() {
+    if (activeQuiz.hintTimer) { clearTimeout(activeQuiz.hintTimer); activeQuiz.hintTimer = null; }
+    if (activeQuiz.expireTimer) { clearTimeout(activeQuiz.expireTimer); activeQuiz.expireTimer = null; }
+}
+
+function buildHintMessage(level) {
+    const title = activeQuiz.original;
+    const c = activeQuiz.clues;
+    
+    // Level < 4: semua tersensor. Level 4+: buka huruf pertama tiap kata
+    let hiddenTitle = title.replace(/[a-zA-Z0-9]/g, '*');
+    if (level >= 4) {
+        hiddenTitle = title.split(' ').map(word => {
+            if (!word) return word;
+            return word[0] + word.slice(1).replace(/[a-zA-Z0-9]/g, '*');
+        }).join(' ');
+    }
+    if (level >= 5) {
+        // Buka lebih banyak huruf jika level 5
+        hiddenTitle = title.split(' ').map(word => {
+            if (word.length <= 2) return word;
+            return word.slice(0, 2) + word.slice(2).replace(/[a-zA-Z0-9]/g, '*');
+        }).join(' ');
+    }
+
+    const remaining = Math.floor((QUIZ_DURATION_MS - (Date.now() - activeQuiz.startedAt)) / 1000);
+    const timeStr = `${Math.floor(remaining/60)}m ${remaining%60}s`;
+
+    // Ambil kalimat dari sinopsis
+    const sentences = (c.synopsis || '').split('.').map(s => s.trim()).filter(s => s.length > 5);
+    
+    const lines = [
+        `🎮 [KUIS TEBAK ANIME] 🕒 Sisa: ${timeStr}`,
+        `🔹 Judul: ${hiddenTitle} (${title.length} char)`,
+    ];
+
+    // Hint berdasarkan level (deskripsi sbg fokus utama)
+    if (level === 0) {
+        const words = (sentences[0] || '').split(' ').slice(0, 8).join(' ');
+        lines.push(`📖 Clue Awal: "${words}..."`);
+    }
+    if (level >= 1) {
+        lines.push(`📖 Deskripsi P1: "${sentences[0] || '?'}"`);
+        lines.push(`🏢 Studio: ${c.studio}`);
+    }
+    if (level >= 2) {
+        lines.push(`📖 Deskripsi P2: "${sentences[1] || '?'}"`);
+        lines.push(`📅 Tahun: ${c.year} | 🎭 Genre: ${c.genre}`);
+    }
+    if (level >= 3) {
+        lines.push(`📖 Deskripsi P3: "${sentences[2] || (sentences[1] ? 'Cari anime dengan tema tersebut!' : '?')}"`);
+        lines.push(`⭐ Skor: ${c.score} | 📺 Tipe: ${c.type}`);
+    }
+    if (level >= 4) {
+        lines.push(`✨ [BONUS HINT] Huruf depan judul sudah terbuka!`);
+    }
+    if (level >= 5) {
+        lines.push(`📖 Full Sinopsis: "${(c.synopsis || '').slice(0, 200)}..."`);
+    }
+
+    lines.push(``);
+    lines.push(`Ketik: .tebak [jawaban]  |  Minta hint: .hint`);
+    return lines.join('\n');
+}
+
+async function scheduleNextHint(hintMsgId) {
+    clearQuizTimers();
+    const timeLeft = QUIZ_DURATION_MS - (Date.now() - activeQuiz.startedAt);
+    if (timeLeft <= 0) { expireQuiz(hintMsgId); return; }
+
+    if (activeQuiz.hintsRevealed < 5) {
+        activeQuiz.hintTimer = setTimeout(async () => {
+            if (!activeQuiz.isRunning) return;
+            activeQuiz.hintsRevealed++;
+            const msg = `💡 [HINT OTOMATIS ${activeQuiz.hintsRevealed}/5]\n` + buildHintMessage(activeQuiz.hintsRevealed);
+            await sendChatMessage(msg, hintMsgId);
+            scheduleNextHint(hintMsgId);
+        }, Math.min(QUIZ_HINT_INTERVAL, timeLeft));
+    }
+
+    activeQuiz.expireTimer = setTimeout(() => expireQuiz(hintMsgId), timeLeft);
+}
+
+async function expireQuiz(lastMsgId) {
+    if (!activeQuiz.isRunning) return;
+    activeQuiz.isRunning = false;
+    clearQuizTimers();
+    await sendChatMessage(
+        `Waktu kuis habis! Tidak ada yang berhasil menebak.\nJawaban yang benar: ${activeQuiz.original}`,
+        lastMsgId
+    );
+}
+
+async function startQuiz(senderName, msgId) {
+    if (activeQuiz.isRunning) {
+        const remaining = Math.floor((QUIZ_DURATION_MS - (Date.now() - activeQuiz.startedAt)) / 1000);
+        await sendChatMessage(`@${senderName} Kuis masih berlangsung! Sisa waktu ${Math.floor(remaining/60)}m ${remaining%60}s. Ketik .tebak [jawaban]`, msgId);
+        return;
+    }
+
+    if (cache.quizPool.length < 10) await fetchHomeAnime();
+    
+    // Filter data yang benar-benar lengkap sinopsis Indonesianya
+    const pool = cache.quizPool.filter(a => a.synopsis && a.synopsis.length > 50 && a.synopsis !== '?');
+    
+    if (pool.length === 0) {
+        await sendChatMessage(`@${senderName} Rara gagal mengambil data anime dari server Animein. Coba lagi kuisnya bentar lagi ya!`, msgId);
+        return;
+    }
+
+    const anime = pool[Math.floor(Math.random() * pool.length)];
+    
+    // Siapkan data clues
+    activeQuiz = {
+        isRunning: true,
+        original: anime.title,
+        titleLower: anime.title.toLowerCase(),
+        startedAt: Date.now(),
+        hintsRevealed: 0,
+        clues: {
+            studio: anime.studio || '?',
+            genre: anime.genre || '?',
+            year: anime.year || '?',
+            synopsis: anime.synopsis.replace(/\[Written by MAL Rewrite\]/g, '').trim(),
+            score: anime.score || '?',
+            type: anime.type || 'SERIES'
+        },
+        wrongGuessers: new Set(),
+        hintTimer: null,
+        expireTimer: null,
+    };
+
+    const introMsg = `🎮 [KUIS TEBAK ANIME - DATA ANIMEIN]\n${buildHintMessage(0)}\n\nHint otomatis muncul tiap 60 detik. Ketik .hint untuk hint lebih awal (-1 XP).`;
+    await sendChatMessage(introMsg, msgId);
+    scheduleNextHint(msgId);
+}
+
 
 async function saveChatLog(username, question, answer, provider, tokens) {
     if (!CONFIG.TURSO_URL) return;
@@ -417,6 +610,20 @@ if (fs.existsSync(domainsPath)) {
     fs.writeFileSync(domainsPath, '[]');
 }
 
+const autoReplyPath = path.join(__dirname, 'autoreply.json');
+let AUTO_REPLY = [];
+if (fs.existsSync(autoReplyPath)) {
+    try {
+        AUTO_REPLY = JSON.parse(fs.readFileSync(autoReplyPath, 'utf-8'));
+    } catch(e) { console.error("[ERROR] Gagal memuat autoreply.json:", e); }
+} else {
+    AUTO_REPLY = [
+        { keyword: "link error", answer: "Laporanmu keren! Tunggu admin cek n benerin ya." },
+        { keyword: "admin mana", answer: "Admin biasanya nongol malam hari, ditunggu aja ya bre!" }
+    ];
+    fs.writeFileSync(autoReplyPath, JSON.stringify(AUTO_REPLY, null, 2));
+}
+
 /** Expert Knowledge Routing: Deteksi domain lalu filter knowledge */
 function getKnowledgeContext(query) {
     const lowerQ = query.toLowerCase();
@@ -627,6 +834,7 @@ const cache = {
     trending: { data: [], lastFetch: 0 },
     popular: { data: [], lastFetch: 0 },
     topRated: { data: [], lastFetch: 0 },
+    quizPool: [], 
     schedule: { data: null, lastFetch: 0 },
     genres: { data: null, lastFetch: 0 },
     genreCache: {},
@@ -693,13 +901,25 @@ async function fetchHomeAnime() {
                         const d = detailRes.data.data.movie;
                         return {
                             ...m,
+                            synopsis: d.synopsis || '?',
+                            genre: d.genre || m.genre || '?',
                             studio: d.studio || m.studio || '?',
+                            score: d.favorites || m.favorites || '?',
                             year: (d.year && d.year !== 'UNKNOWN') ? d.year : (d.aired_start ? d.aired_start.split('-')[0] : (m.year || '?'))
                         };
                     }
                 } catch {}
                 return m;
             }));
+
+            // Masukkan data mentah ke quizPool untuk digunakan fitur KUIS
+            detailed.forEach(item => {
+                if (item.title && item.synopsis && item.synopsis !== '?') {
+                    if (!cache.quizPool.find(q => q.title === item.title)) {
+                        cache.quizPool.push(item);
+                    }
+                }
+            });
 
             return detailed.map((a, i) => {
                 let meta = `[Rating: ${a.favorites || '?'}, Views: ${a.views || '?'}, Studio: ${a.studio || '?'}, Tahun: ${a.year || '?'}]`;
@@ -972,17 +1192,13 @@ async function buildAnimeContext(intent, question) {
             const list = await searchAnime(cleanQuery);
             if (list.length > 0) {
                 const results = list.slice(0, 10).map(t => `- ${t}`);
-                contextData += `\n\n[DATA ANIMEIN - Rekomendasi Khusus Tema "${cleanQuery}"]: \n${results.join('\n')}\nInstruksi AI: User minta saran anime dengan tema spesifik "${cleanQuery}" (bukan sekadar genre biasa). Bacakan 3-5 judul teratas ini dan rekomendasikan dengan gaya bahasa tongkrongan seru!`;
+                contextData += `\n\n[DATA ANIMEIN - Rekomendasi Khusus Tema "${cleanQuery}"]: \n${results.join('\n')}\nInstruksi AI: User minta saran anime dengan tema spesifik "${cleanQuery}" (bukan sekadar genre biasa). Bacakan 10 judul teratas ini dan rekomendasikan dengan gaya bahasa tongkrongan seru!`;
             }
         }
     }
 
     return contextData;
 }
-
-
-
-
 
 /** Groq (Llama 3.1) - kualitas lebih baik */
 async function askGroq(index, userMessage, senderName, contextData = '', chatHistory = []) {
@@ -998,7 +1214,7 @@ async function askGroq(index, userMessage, senderName, contextData = '', chatHis
             ...chatHistory,
             { role: 'user', content: `${senderName} berkata: "${userMessage}".` }
         ],
-        max_tokens: 300,
+        max_tokens: 1024,
         temperature: 0.75,
     }).withResponse();
 
@@ -1214,6 +1430,10 @@ async function fetchMessages() {
 }
 
 async function sendChatMessage(text, replyTo = '0') {
+    // Aktifkan cooldown 10 detik setiap kali bot berhasil atau mencoba mengirim pesan
+    isGlobalCooldown = true;
+    setTimeout(() => { isGlobalCooldown = false; }, 10000);
+    
     try {
         const params = new URLSearchParams();
         params.append('text', text);
@@ -1250,75 +1470,151 @@ async function processMessages(messages) {
 
         if (!isBotActive) continue;
 
-        if (isGlobalCooldown) continue;
-
         if (String(msg.user_id) === String(auth.userId)) continue;
 
         const senderName = msg.user_name || 'User';
-        const msgText = msg.text || '';
-        if (!msgText || !isMentioned(msgText)) continue;
-
-
-        const username = CONFIG.USERNAME.toLowerCase();
-        const triggerRegex = new RegExp(`\\.ai|ai\\.|\\.rara|rara\\.|@${username}`, 'gi');
-        const cleanText = msgText.replace(triggerRegex, '').trim();
+        let msgText = msg.text || '';
         
-        console.log(`[TRIGGER] ${senderName}: ${msgText}`);
-        stats.totalTriggers++;
-
-
-        // Cek apakah ini pesan .lapor
-        const laporTrigger = /^\.lapor\s*/i;
-        if (laporTrigger.test(msgText)) {
-            const isiLaporan = msgText.replace(laporTrigger, '').trim();
+        // --- 1. NORMALISASI PESAN (Strip Mentions) ---
+        const botName = (CONFIG.USERNAME || 'AnimeinAi').toLowerCase();
+        const mentionRegex = new RegExp(`@${botName}\\s*:?|${botName}\\s*:?|@AnimeinAi\\s*:?|@AnimeinBot\\s*:?`, 'gi');
+        const cleanMsg = msgText.replace(mentionRegex, '').trim();
+        const lowerMsg = cleanMsg.toLowerCase();
+        
+        // --- 2. CEK LAPOR (Bypass Cooldown) ---
+        if (lowerMsg.startsWith('.lapor')) {
+            let isiLaporan = cleanMsg.substring(6).trim();
             if (!isiLaporan) {
-                await sendChatMessage(`@${senderName} Tulis laporan kamu setelah .lapor, contoh: .lapor video episode 3 rusak`, msg.id);
+                await sendChatMessage(`🔰 @${senderName} Tulis laporan kamu setelah .lapor\nContoh: .lapor link rusak episode 5`, msg.id);
             } else {
                 try {
-                    await db.execute({
-                        sql: 'INSERT INTO laporan (username, pesan) VALUES (?, ?)',
-                        args: [senderName, isiLaporan]
-                    });
-                    console.log(`[LAPORAN] Laporan dari ${senderName}: ${isiLaporan}`);
-                    await sendChatMessage(`@${senderName} Laporan kamu sudah diterima! Tim admin akan segera menindaklanjuti.`, msg.id);
+                    await db.execute({ sql: 'INSERT INTO laporan (username, pesan) VALUES (?, ?)', args: [senderName, isiLaporan] });
+                    console.log(`[LAPORAN] ${senderName}: ${isiLaporan}`);
+                    await sendChatMessage(`✅ @${senderName} Laporan diterima! Terima kasih informasinya.`, msg.id);
                 } catch (e) {
-                    console.error('[LAPORAN] Gagal simpan laporan:', e.message);
-                    await sendChatMessage(`@${senderName} Gagal menyimpan laporan. Coba lagi nanti ya.`, msg.id);
+                    await sendChatMessage(`❌ @${senderName} Gagal menyimpan laporan. Coba lagi nanti.`, msg.id);
                 }
             }
             continue;
         }
 
+        // --- 3. CEK GAME (Bypass Mention) ---
+        if (lowerMsg.startsWith('.tebak ')) {
+            if (isGlobalCooldown) continue;
+            const answer = lowerMsg.substring(7).trim();
+            if (!activeQuiz.isRunning) {
+                await sendChatMessage(`🛑 @${senderName} Tidak ada kuis aktif. Ketik .kuis untuk mulai!`, msg.id);
+            } else if (Date.now() - activeQuiz.startedAt > QUIZ_DURATION_MS) {
+                await expireQuiz(msg.id);
+            } else {
+                const titleWords = activeQuiz.titleLower.split(/\s+/).filter(w => w.length > 2);
+                const userWords = answer.split(/\s+/).filter(w => w.length > 2);
+                const matches = userWords.filter(w => titleWords.includes(w)).length;
+                
+                const isFuzzy = activeQuiz.titleLower.includes(answer) && answer.length >= Math.floor(activeQuiz.original.length * 0.7);
+                const isWordMatch = (titleWords.length >= 2 && matches >= 2) || (titleWords.length >= 3 && matches >= 2);
+                
+                if (activeQuiz.titleLower === answer || isFuzzy || isWordMatch) {
+                    activeQuiz.isRunning = false;
+                    clearQuizTimers();
+                    const xpEarned = Math.max(30, 200 - (activeQuiz.hintsRevealed * 35));
+                    const xpRes = await addXP(senderName, xpEarned);
+                    let result = `🎉 BENAR! @${senderName} menebak: ${activeQuiz.original}\n💰 XP: +${xpEarned} (Hint: ${activeQuiz.hintsRevealed}/5)`;
+                    if (xpRes.leveledUp) result += `\n🌟 SELAMAT! Kamu naik ke Level ${xpRes.level}!`;
+                    await sendChatMessage(result, msg.id);
+                } else {
+                    activeQuiz.wrongGuessers.add(senderName);
+                    await sendChatMessage(`❌ @${senderName} Salah! Coba lagi. (Panjang: ${activeQuiz.original.length} char)`, msg.id);
+                    await addXP(senderName, -5);
+                }
+            }
+            continue;
+        }
+
+        if (lowerMsg === '.hint') {
+            if (isGlobalCooldown) continue;
+            if (!activeQuiz.isRunning) {
+                await sendChatMessage(`📌 @${senderName} Tidak ada kuis aktif.`, msg.id);
+            } else if (activeQuiz.hintsRevealed >= 5) {
+                await sendChatMessage(`📌 @${senderName} Semua hint sudah terbuka. Cek pesan lama ya.`, msg.id);
+            } else {
+                activeQuiz.hintsRevealed++;
+                await addXP(senderName, -1);
+                await sendChatMessage(`💡 [HINT ${activeQuiz.hintsRevealed}/5 - Minta @${senderName}, -1 XP]\n` + buildHintMessage(activeQuiz.hintsRevealed), msg.id);
+            }
+            continue;
+        }
+
+        if (lowerMsg === '.kuis' || lowerMsg === '.kius' || lowerMsg === '.game') {
+            if (isGlobalCooldown) continue;
+            await startQuiz(senderName, msg.id);
+            continue;
+        }
+
+        if (lowerMsg === '.menu') {
+            const menu = `🔰 DAFTAR MENU RARA 🔰\n\n1️⃣ Panggil Rara: .ai atau .rara\n2️⃣ Laporan: .lapor [pesan]\n3️⃣ Main Kuis: .kuis (jawab dgn .tebak)\n4️⃣ Cek Profil: .profil\n5️⃣ Peringkat: .rank\n\n✨ Ngobrol bareng Rara juga nambah EXP loh!`;
+            await sendChatMessage(`@${senderName}\n${menu}`, msg.id);
+            continue;
+        }
+
+        if (lowerMsg === '.profil') {
+            if (isGlobalCooldown) continue;
+            try {
+                const res = await db.execute({ sql: "SELECT xp, level FROM user_stats WHERE username = ?", args: [senderName] });
+                const {xp, level} = res.rows[0] || {xp:0, level:1};
+                const req = Math.floor(50 * Math.pow(level, 3));
+                const bar = '🟩'.repeat(Math.floor((xp/req)*10)) + '⬜'.repeat(10-Math.floor((xp/req)*10));
+                await sendChatMessage(`🔰 [PROFIL] @${senderName} 🔰\n🏆 Level: ${level}\n📈 XP: ${xp} / ${req}\n📊 Progress: ${bar}`, msg.id);
+            } catch(e) {}
+            continue;
+        }
+
+        if (lowerMsg === '.rank' || lowerMsg === '.leaderboard') {
+            if (isGlobalCooldown) continue;
+            try {
+                const res = await db.execute("SELECT username, level, xp FROM user_stats ORDER BY xp DESC LIMIT 10");
+                let rankMsg = `🏆 [LEADERBOARD RARA] 🏆\n${'='.repeat(25)}\n`;
+                const medals = ['🥇','🥈','🥉','🎖️','🎖️','🏅','🏅','🏅','🏅','🏅'];
+                res.rows.forEach((r, i) => {
+                    rankMsg += `${medals[i]} ${r.username.padEnd(14)} Lvl ${r.level} (${r.xp} XP)\n`;
+                });
+                await sendChatMessage(rankMsg, msg.id);
+            } catch(e) {}
+            continue;
+        }
+
+        // --- 4. COOLDOWN AI & MENTION ---
+        if (isGlobalCooldown) continue;
+        if (!isMentioned(msgText)) continue;
+        
+        const triggerRegex = new RegExp(`\\.ai|ai\\.|\\.rara|rara\\.|@${botName}`, 'gi');
+        const cleanText = msgText.replace(triggerRegex, '').trim();
+        
+        // --- 5. AUTO REPLY (Bypass AI) ---
+        const matchedAuto = AUTO_REPLY.find(a => cleanText.toLowerCase().includes(a.keyword.toLowerCase()));
+        if (matchedAuto) {
+            await sendChatMessage(`@${senderName} ${matchedAuto.answer}`, msg.id);
+            addActivity('text', senderName, cleanText, matchedAuto.answer, 'AutoReply', 0);
+            await addXP(senderName, 5); 
+            continue;
+        }
+        
         if (containsProfanity(cleanText)) {
             stats.filter.blocked++;
-            stats.filter.lastBlocked = senderName;
-            console.log(`[FILTER] Pesan dari ${senderName} mengandung kata kasar. Skip.`);
-            await sendChatMessage(`@${senderName} ${FILTER_DATA.response}`, msg.id);
+            await sendChatMessage(`🚨 @${senderName} ${FILTER_DATA.response}`, msg.id);
             addActivity('blocked', senderName, cleanText, FILTER_DATA.response, 'Filter');
             continue;
         }
 
-        {
-            let combinedText = cleanText;
-            if (msg.replay_text) {
-                combinedText = `PERTANYAAN/PESAN UTAMA YANG HARUS KAMU JAWAB:\n"${cleanText}"\n\n[INFO TAMBAHAN KONTEKS: Pesan di atas adalah balasan untuk pesan sebelumnya dari ${msg.replay_user_name || 'User'} yang isinya: "${msg.replay_text}". Gunakan info tambahan ini HANYA JIKA berkaitan dengan pesan utama.]`;
-            }
-
-            const question = combinedText || 'kamu manggil?';
+        { // Blok AI
+            console.log(`[TRIGGER] ${senderName}: ${msgText}`);
+            stats.totalTriggers++;
+            const question = cleanText || 'panggil rara?';
             const { text: aiText, provider, tokens } = await getAIResponse(question, senderName, !!msg.replay_text);
-            const reply = `@${senderName} ${aiText}`;
-            console.log(`[BOT/${provider}] ${reply}`);
-            await sendChatMessage(reply, msg.id);
+            await sendChatMessage(`@${senderName} ${aiText}`, msg.id);
             addActivity('text', senderName, question, aiText, provider, tokens);
-            
-            // Simpan ke database Turso secara asinkron (tidak membebani performa)
+            await addXP(senderName, 10);
             saveChatLog(senderName, question, aiText, provider, tokens);
-            
-            isGlobalCooldown = true;
-
-            setTimeout(() => {
-                isGlobalCooldown = false;
-            }, 10000);
         }
     }
 }
@@ -1491,6 +1787,31 @@ function startDashboard() {
 
     app.get('/api/prompt', (req, res) => {
         res.json({ success: true, prompt: SYSTEM_PROMPT });
+    });
+
+    // --- AUTOREPLY MANAGEMENT ---
+    app.get('/api/autoreply', (req, res) => {
+        res.json({ success: true, autoreply: AUTO_REPLY });
+    });
+
+    app.post('/api/autoreply/add', (req, res) => {
+        const { keyword, answer } = req.body;
+        if (!keyword || !answer) return res.status(400).json({ success: false, error: 'Keyword dan pesan wajib diisi.' });
+        if (AUTO_REPLY.find(a => a.keyword.toLowerCase() === keyword.toLowerCase())) {
+            return res.status(400).json({ success: false, error: 'Keyword sudah ada! Hapus dulu yang lama jika ingin diubah.' });
+        }
+        AUTO_REPLY.push({ keyword: keyword.trim(), answer: answer.trim() });
+        fs.writeFileSync(autoReplyPath, JSON.stringify(AUTO_REPLY, null, 2));
+        console.log(`[AUTOREPLY] Keyword "${keyword}" ditambahkan via dashboard.`);
+        res.json({ success: true });
+    });
+
+    app.post('/api/autoreply/delete', (req, res) => {
+        const { keyword } = req.body;
+        AUTO_REPLY = AUTO_REPLY.filter(a => a.keyword.toLowerCase() !== keyword.toLowerCase());
+        fs.writeFileSync(autoReplyPath, JSON.stringify(AUTO_REPLY, null, 2));
+        console.log(`[AUTOREPLY] Keyword "${keyword}" dihapus via dashboard.`);
+        res.json({ success: true });
     });
 
     // --- FILTER MANAGEMENT ---
@@ -1859,6 +2180,7 @@ function getDashboardHTML() {
     <button class="nav-item" onclick="showPage('model', this)">Model</button>
     <button class="nav-item" onclick="showPage('database', this)">Database</button>
     <button class="nav-item" onclick="showPage('prompt', this)">Prompt & Knowledge</button>
+    <button class="nav-item" onclick="showPage('autoreply', this)">Auto Reply</button>
     <button class="nav-item" onclick="showPage('filter', this)">Filter Kata</button>
     <button class="nav-item" onclick="showPage('laporan', this)">Laporan</button>
   </nav>
@@ -1992,9 +2314,6 @@ function getDashboardHTML() {
           <!-- System Prompt Editor -->
           <div class="card">
             <div class="card-title">System Prompt (Live Edit)</div>
-            <div style="font-size:11px; color:var(--green); margin-bottom:12px; padding:8px; background:#f0fdf4; border-radius:6px;">
-              Perubahan disimpan secara permanen ke file prompt.txt.
-            </div>
             <div class="form-group">
               <textarea id="promptEditor" style="min-height:400px; font-family:monospace; font-size:12px;"></textarea>
             </div>
@@ -2027,6 +2346,33 @@ function getDashboardHTML() {
     </div>
 
     <!-- PAGE: LAPORAN -->
+    <div class="page" id="page-autoreply">
+      <div class="card" style="margin-bottom:20px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <h3 style="font-size:15px; margin-bottom:5px;">Konfigurasi Auto Reply</h3>
+            <p style="color:var(--muted); font-size:12px;">Tambahkan kata kunci untuk Rara membalas pesan instan tanpa harus melibatkan AI (Bypass API Token).</p>
+          </div>
+          <button class="btn-primary" onclick="showAddAutoReply()">+ Tambah Auto Reply</button>
+        </div>
+      </div>
+      
+      <div class="card">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 25%">Keyword Trigger</th>
+                <th>Pesan Balasan</th>
+                <th style="width: 80px">Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="autoReplyList"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <div class="page" id="page-laporan">
       <div class="card">
         <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
@@ -2224,12 +2570,14 @@ function showPage(id, el) {
     target.style.display = 'block';
   }
   el.classList.add('active');
-  const titles = { dashboard: 'Dashboard', model: 'Model', database: 'Database', prompt: 'Prompt & Knowledge', laporan: 'Laporan', filter: 'Filter Kata' };
+  const titles = { dashboard: 'Dashboard', model: 'Model', database: 'Database', prompt: 'Prompt & Knowledge', autoreply: 'Bot Auto Reply', laporan: 'Laporan', filter: 'Filter Kata' };
   document.getElementById('pageTitle').textContent = titles[id] || id;
+  if (id === 'dashboard') refresh();
   if (id === 'database') loadCache();
   if (id === 'prompt') loadPrompt();
   if (id === 'laporan') loadLaporan();
   if (id === 'filter') loadFilter();
+  if (id === 'autoreply') loadAutoReply();
 }
 
 // ---- UPTIME ----
@@ -2515,7 +2863,7 @@ function editKw(index) {
   document.getElementById('kwModalTitle').textContent = 'Edit Knowledge Entry';
   document.getElementById('kwIndex').value = index;
   setupDomainSelect(k.domain || '');
-  document.getElementById('kwKeywords').value = (k.keywords || []).join('\\n');
+  document.getElementById('kwKeywords').value = (k.keywords || []).join(String.fromCharCode(10));
   document.getElementById('kwInfo').value = k.info || '';
   document.getElementById('kwModal').classList.add('open');
 }
@@ -2543,7 +2891,7 @@ function closeKwModal() {
 async function saveKw() {
   const index = parseInt(document.getElementById('kwIndex').value);
   const domain = document.getElementById('kwDomain').value.trim();
-  const newKeywords = document.getElementById('kwKeywords').value.split('\\n').map(s => s.trim()).filter(Boolean);
+  const newKeywords = document.getElementById('kwKeywords').value.split(String.fromCharCode(10)).map(s => s.trim()).filter(Boolean);
   const newInfo = document.getElementById('kwInfo').value.trim();
   
   if (!domain) return alert('Domain tidak boleh kosong.');
@@ -2607,7 +2955,7 @@ function renderLaporan(data) {
       <td><span style="background:\${statusColor[l.status]||'#ccc'};color:#fff;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;">\${l.status||'baru'}</span></td>
       <td style="font-size:11px; color:var(--muted);">\${l.timestamp ? new Date(l.timestamp).toLocaleString('id-ID') : '-'}</td>
       <td class="td-actions">
-        \${l.status !== 'selesai' ? \`<button class="btn-sm btn-sm-edit" onclick="updateLaporanStatus(\${l.id}, 'selesai')">✓ Selesai</button>\` : ''}
+        \${l.status !== 'selesai' ? \`<button class="btn-sm btn-sm-edit" onclick="updateLaporanStatus(\${l.id}, 'selesai')">Selesai</button>\` : ''}
         \${l.status === 'baru' ? \`<button class="btn-sm btn-sm-toggle" onclick="updateLaporanStatus(\${l.id}, 'diproses')">Proses</button>\` : ''}
         <button class="btn-sm btn-sm-del" onclick="deleteLaporan(\${l.id})">Hapus</button>
       </td>
@@ -2702,15 +3050,51 @@ async function deleteFilterWord(word) {
 }
 
 async function saveFilterResponse() {
-  const response = document.getElementById('filterResponseEditor').value.trim();
-  if (!response) { alert('Pesan balasan tidak boleh kosong.'); return; }
+  const val = document.getElementById('filterResponseEditor').value.trim();
   const res = await fetch('/api/filter/response', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ response })
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ response: val })
   });
-  const d = await res.json();
-  if (d.success) alert('Pesan balasan berhasil disimpan!');
-  else alert('Gagal menyimpan pesan.');
+  if (res.ok) { alert('Pesan balasan filter berhasil diperbarui!'); loadFilter(); }
+}
+
+// ---- AUTO REPLY ----
+async function loadAutoReply() {
+    try {
+        const res = await fetch('/api/autoreply');
+        const d = await res.json();
+        if(!d.success) return;
+        const tbody = document.getElementById('autoReplyList');
+        if(!d.autoreply || d.autoreply.length === 0) {
+            tbody.innerHTML = \`<tr><td colspan="3" style="text-align:center; color:var(--muted); padding:20px;">Belum ada Auto Reply.</td></tr>\`;
+            return;
+        }
+        tbody.innerHTML = d.autoreply.map(a => \`
+          <tr>
+            <td><strong style="color:var(--accent)">\${a.keyword}</strong></td>
+            <td style="font-size:12px; line-height:1.5;">\${a.answer.replace(/\\n/g, '<br>')}</td>
+            <td><button class="btn-sm btn-sm-del" onclick="delAutoReply('\${a.keyword}')">Hapus</button></td>
+          </tr>
+        \`).join('');
+    } catch(e) {}
+}
+
+async function showAddAutoReply() {
+    const k = prompt("Masukkan Keyword pemicu (cth: 'link error'):");
+    if (!k || !k.trim()) return;
+    const a = prompt("Masukkan Pesan Balasan:");
+    if (!a || !a.trim()) return;
+
+    if (confirm(\`Simpan Auto Reply untuk keyword "\${k}"?\`)) {
+        await fetch('/api/autoreply/add', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({keyword: k, answer: a}) });
+        loadAutoReply();
+    }
+}
+
+async function delAutoReply(k) {
+    if (confirm(\`Hapus Auto Reply dengan keyword "\${k}"?\`)) {
+        await fetch('/api/autoreply/delete', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({keyword: k}) });
+        loadAutoReply();
+    }
 }
 
 // ---- OTHER FUNCTIONS UNCHANGED ----

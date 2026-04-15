@@ -1,0 +1,14 @@
+[
+  {
+    "keyword": ".menu",
+    "answer": "Gunakan perintah `.menu` secara langsung (tanpa di-tag) ya biar lebih cepat dan nggak pakai delay! Menu udah aktif kok."
+  },
+  {
+    "keyword": "link error",
+    "answer": "Laporanmu keren! Mending pakai command `.lapor link error` biar kecatat di database admin ya."
+  },
+  {
+    "keyword": "admin mana",
+    "answer": "Admin biasanya nongol malam hari, ditunggu aja ya bre!"
+  }
+]
