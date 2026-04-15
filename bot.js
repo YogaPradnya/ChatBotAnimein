@@ -301,7 +301,7 @@ async function startQuiz(senderName, msgId) {
         expireTimer: null,
     };
 
-    const introMsg = `🎮 [KUIS TEBAK ANIME - DATA ANIMEIN]\n${buildHintMessage(0)}\n\nHint otomatis muncul tiap 60 detik. Ketik .hint untuk hint lebih awal (-1 s/d 5 XP).`;
+    const introMsg = `${buildHintMessage(0)}\n\nHint otomatis muncul tiap 60 detik. Ketik .hint untuk hint lebih awal (-1 s/d 5 XP).`;
     await sendChatMessage(introMsg, msgId);
     scheduleNextHint(msgId);
 }
@@ -1525,12 +1525,24 @@ async function processMessages(messages) {
 
                 const titleWords = normTitle.split(/\s+/).filter(w => w.length > 2);
                 const userWords = normAnswer.split(/\s+/).filter(w => w.length > 2);
-                const matches = userWords.filter(w => titleWords.includes(w)).length;
                 
-                const isFuzzy = normTitle.includes(normAnswer) && normAnswer.length >= Math.floor(normTitle.length * 0.7);
-                const isWordMatch = (titleWords.length >= 2 && matches >= 2) || (titleWords.length >= 3 && matches >= 2);
+                // Cek kecocokan kata dengan toleransi typo (Levenshtein distance <= 2)
+                let matches = 0;
+                userWords.forEach(uw => {
+                    const isMatch = titleWords.some(tw => {
+                        // Jika kata pendek, harus match persis. Jika panjang, boleh typo 2 huruf.
+                        const maxDist = tw.length <= 4 ? 1 : 2;
+                        return levenshtein(uw, tw) <= maxDist;
+                    });
+                    if (isMatch) matches++;
+                });
                 
-                if (normTitle === normAnswer || isFuzzy || isWordMatch) {
+                // Fuzzy match keseluruhan string (fallback)
+                const isFuzzyFull = normTitle.includes(normAnswer) && normAnswer.length >= Math.floor(normTitle.length * 0.7);
+                // Menang jika match minimal 2 kata (untuk judul panjang) atau fuzzy full
+                const isWordMatch = (titleWords.length >= 2 && matches >= 2);
+                
+                if (normTitle === normAnswer || isFuzzyFull || isWordMatch) {
                     activeQuiz.isRunning = false;
                     clearQuizTimers();
                     const xpEarned = Math.max(20, 100 - (activeQuiz.hintsRevealed * 10));
@@ -1637,6 +1649,24 @@ async function processMessages(messages) {
 }
 
 
+
+function levenshtein(a, b) {
+    if (a.length === 0) return b.length;
+    if (b.length === 0) return a.length;
+    const matrix = [];
+    for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+    for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+    for (let i = 1; i <= b.length; i++) {
+        for (let j = 1; j <= a.length; j++) {
+            if (b.charAt(i - 1) === a.charAt(j - 1)) {
+                matrix[i][j] = matrix[i - 1][j - 1];
+            } else {
+                matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1));
+            }
+        }
+    }
+    return matrix[b.length][a.length];
+}
 
 async function startBot() {
     const loggedIn = await login();
