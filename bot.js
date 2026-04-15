@@ -947,16 +947,16 @@ async function fetchHomeAnime() {
             });
         };
 
-        cache.trending.data = await mapData(resHome.data?.data?.hot || [], 90);
+        cache.trending.data = await mapData(resHome.data?.data?.hot || [], 30);
         cache.trending.lastFetch = now;
 
-        cache.popular.data = await mapData(popMovies, 100);
+        cache.popular.data = await mapData(popMovies, 50);
         cache.popular.lastFetch = now;
 
-        cache.topRated.data = await mapData(starMovies, 100);
+        cache.topRated.data = await mapData(starMovies, 50);
         cache.topRated.lastFetch = now;
 
-        await mapData(latestMovies, 100); // Hanya masukkan ke quizPool
+        await mapData(latestMovies, 50); // Hanya masukkan ke quizPool
 
         console.log(`[ANIMEIN] Cache updated: ${cache.trending.data.length} trending, ${cache.popular.data.length} global pop, ${cache.topRated.data.length} top rated. Total Pool Kuis: ${cache.quizPool.length}`);
         return true;
