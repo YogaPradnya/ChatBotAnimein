@@ -162,6 +162,7 @@ const QUIZ_HINT_INTERVAL = 60 * 1000;   // Hint baru tiap 60 detik
 
 let activeQuiz = {
     isRunning: false,
+    isStarting: false,
     original: '',
     titleLower: '',
     startedAt: 0,
@@ -278,62 +279,72 @@ async function expireQuiz(lastMsgId) {
 }
 
 async function startQuiz(senderName, msgId) {
-    if (activeQuiz.isRunning) {
-        const remaining = Math.floor((QUIZ_DURATION_MS - (Date.now() - activeQuiz.startedAt)) / 1000);
-        const timeStr = `${Math.floor(remaining/60)}m ${remaining%60}s`;
-        const msg = `📌 @${senderName} Kuis masih berlangsung (Sisa ${timeStr})!\n\n` + buildHintMessage(activeQuiz.hintsRevealed) + `\n\nKetik .tebak [jawaban] untuk menjawab!`;
+    if (activeQuiz.isRunning || activeQuiz.isStarting) {
+        const remaining = Math.floor((QUIZ_DURATION_MS - (Date.now() - (activeQuiz.startedAt || Date.now()))) / 1000);
+        const timeStr = remaining > 0 ? `${Math.floor(remaining/60)}m ${remaining%60}s` : 'menunggu...';
+        const msg = `📌 @${senderName} Kuis masih berlangsung!\n\n` + (activeQuiz.isRunning ? buildHintMessage(activeQuiz.hintsRevealed) : '🔄 Sedang menyiapkan soal kuis...') + `\n\nKetik .tebak [jawaban] untuk menjawab!`;
         await sendChatMessage(msg, msgId);
         return;
     }
 
-    // Ambil data satu anime acak dari database quiz_pool
-    let anime = null;
+    activeQuiz.isStarting = true;
     try {
-        const res = await db.execute("SELECT * FROM quiz_pool ORDER BY RANDOM() LIMIT 1");
-        if (res.rows.length > 0) {
-            anime = res.rows[0];
+        // Ambil data satu anime acak dari database quiz_pool
+        let anime = null;
+        try {
+            const res = await db.execute("SELECT * FROM quiz_pool ORDER BY RANDOM() LIMIT 1");
+            if (res.rows.length > 0) {
+                anime = res.rows[0];
+            }
+        } catch (e) {
+            console.error("[QUIZ] Gagal ambil data dari DB:", e.message);
         }
-    } catch (e) {
-        console.error("[QUIZ] Gagal ambil data dari DB:", e.message);
-    }
-    
-    // Jika DB kosong, coba fetch dulu
-    if (!anime) {
-        await fetchHomeAnime();
-        const resRetry = await db.execute("SELECT * FROM quiz_pool ORDER BY RANDOM() LIMIT 1");
-        if (resRetry.rows.length > 0) {
-            anime = resRetry.rows[0];
+        
+        // Jika DB kosong, coba fetch dulu
+        if (!anime) {
+            await fetchHomeAnime();
+            const resRetry = await db.execute("SELECT * FROM quiz_pool ORDER BY RANDOM() LIMIT 1");
+            if (resRetry.rows.length > 0) {
+                anime = resRetry.rows[0];
+            }
         }
-    }
-    
-    if (!anime) {
-        await sendChatMessage(`@${senderName} Rara gagal mengambil data kuis dari database. Coba lagi kuisnya bentar lagi ya!`, msgId);
-        return;
-    }
-    
-    // Siapkan data clues
-    activeQuiz = {
-        isRunning: true,
-        original: anime.title,
-        titleLower: anime.title.toLowerCase(),
-        startedAt: Date.now(),
-        hintsRevealed: 0,
-        clues: {
-            studio: anime.studio || '?',
-            genre: anime.genre || '?',
-            year: anime.year || '?',
-            synopsis: anime.synopsis.replace(/\[Written by MAL Rewrite\]/g, '').trim(),
-            score: anime.score || '?',
-            type: anime.type || 'SERIES'
-        },
-        wrongGuessers: new Set(),
-        hintTimer: null,
-        expireTimer: null,
-    };
+        
+        if (!anime) {
+            await sendChatMessage(`@${senderName} Rara gagal mengambil data kuis dari database. Coba lagi kuisnya bentar lagi ya!`, msgId);
+            activeQuiz.isStarting = false;
+            return;
+        }
+        
+        // Siapkan data clues
+        const quizData = {
+            isRunning: true,
+            isStarting: false,
+            original: anime.title,
+            titleLower: anime.title.toLowerCase(),
+            startedAt: Date.now(),
+            hintsRevealed: 0,
+            clues: {
+                studio: anime.studio || '?',
+                genre: anime.genre || '?',
+                year: anime.year || '?',
+                synopsis: anime.synopsis.replace(/\[Written by MAL Rewrite\]/g, '').trim(),
+                score: anime.score || '?',
+                type: anime.type || 'SERIES'
+            },
+            wrongGuessers: new Set(),
+            hintTimer: null,
+            expireTimer: null,
+        };
+        
+        activeQuiz = quizData;
 
-    const introMsg = `${buildHintMessage(0)}\n\nHint otomatis muncul tiap 60 detik. Ketik .hint untuk hint lebih awal (-1 s/d 5 XP).`;
-    await sendChatMessage(introMsg, msgId);
-    scheduleNextHint(msgId);
+        const introMsg = `${buildHintMessage(0)}\n\nHint otomatis muncul tiap 60 detik. Ketik .hint untuk hint lebih awal (-1 s/d 5 XP).`;
+        await sendChatMessage(introMsg, msgId);
+        scheduleNextHint(msgId);
+    } catch (err) {
+        console.error("[QUIZ] Error starting:", err);
+        activeQuiz.isStarting = false;
+    }
 }
 
 
@@ -1765,7 +1776,12 @@ function startDashboard() {
                 uptime, 
                 isBotActive,
                 totalDBLogs: logsCount.rows[0].count,
-                totalReports: laporanCount.rows[0].count
+                totalReports: laporanCount.rows[0].count,
+                activeQuiz: activeQuiz.isRunning ? {
+                    title: activeQuiz.original,
+                    hints: activeQuiz.hintsRevealed,
+                    start: activeQuiz.startedAt
+                } : null
             });
         } catch (e) {
             res.json({ ...stats, isBotActive, error: e.message });
@@ -2346,16 +2362,24 @@ function getDashboardHTML() {
       </div>
 
       <div class="two-col">
-        <!-- Manual Send -->
-        <div class="card" style="margin-bottom:0; overflow:hidden;">
-          <div class="card-title">Kirim Pesan Manual</div>
-          <div class="form-group">
-            <input type="text" id="manualText" placeholder="Ketik pesan..." onkeydown="if(event.key==='Enter') sendManual()">
+        <div style="display:flex; flex-direction:column; gap:20px;">
+          <!-- Manual Send -->
+          <div class="card" style="margin-bottom:0; overflow:hidden;">
+            <div class="card-title">Kirim Pesan Manual</div>
+            <div class="form-group">
+              <input type="text" id="manualText" placeholder="Ketik pesan..." onkeydown="if(event.key==='Enter') sendManual()">
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button class="btn-primary" onclick="sendManual()">Kirim</button>
+              <button class="btn-secondary" onclick="sendTemplate('online')">Broadcast Online</button>
+              <button class="btn-danger" onclick="sendTemplate('offline')">Broadcast Offline</button>
+            </div>
           </div>
-          <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <button class="btn-primary" onclick="sendManual()">Kirim</button>
-            <button class="btn-secondary" onclick="sendTemplate('online')">Broadcast Online</button>
-            <button class="btn-danger" onclick="sendTemplate('offline')">Broadcast Offline</button>
+
+          <!-- Active Quiz Card -->
+          <div class="card" id="quizCard" style="display:none; border: 1px solid var(--accent); background: var(--accent-light);">
+            <div class="card-title" style="color:var(--accent);">🕹️ Kuis Berjalan</div>
+            <div id="quizContent"></div>
           </div>
         </div>
 
@@ -2740,6 +2764,22 @@ function render(d) {
         \${o.lastError ? \`<div style="font-size:10px; color:var(--red); margin-top:4px; width:100%;">\${o.lastError}</div>\` : ''}
       </div>\`;
     }).join('');
+  }
+
+  // Quiz Update
+  const quizCard = document.getElementById('quizCard');
+  const quizContent = document.getElementById('quizContent');
+  if (d.activeQuiz && quizCard && quizContent) {
+      quizCard.style.display = 'block';
+      const remaining = Math.max(0, Math.floor((300000 - (Date.now() - d.activeQuiz.start)) / 1000));
+      quizContent.innerHTML = 
+          '<div style="font-weight:700; font-size:15px; margin-bottom:4px;">' + d.activeQuiz.title + '</div>' + 
+          '<div style="display:flex; gap:12px; font-size:11px; color:var(--muted); font-weight:600;">' +
+              '<span> Hint Open: ' + d.activeQuiz.hints + '/5</span>' +
+              '<span> Sisa: ' + Math.floor(remaining/60) + 'm ' + (remaining%60) + 's</span>' +
+          '</div>';
+  } else if (quizCard) {
+      quizCard.style.display = 'none';
   }
 
   // Render activity
