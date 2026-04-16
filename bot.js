@@ -26,14 +26,8 @@ try {
 } catch (e) {
     console.warn('[POKEMON] Gagal memuat pokemon_data.json', e.message);
 }
-const filterPath = path.join(__dirname, 'filters.json');
 let FILTER_DATA = { profanities: [], response: 'Maaf, saya tidak akan menjawab pesan tersebut.' };
-try {
-    FILTER_DATA = JSON.parse(fs.readFileSync(filterPath, 'utf-8'));
-    console.log(`[FILTER] Loaded ${FILTER_DATA.profanities.length} kata kasar dari filters.json`);
-} catch (e) {
-    console.warn('[FILTER] Gagal membaca filters.json, filter dinonaktifkan.');
-}
+// FILTER_DATA will be loaded from DB in initDB
 
 const CONFIG = {
     BASE_URL: process.env.ANIMEIN_API_URL,
@@ -134,6 +128,28 @@ async function initDB() {
         `);
         // Pastikan kolom baru ada
         await db.execute(`ALTER TABLE user_stats ADD COLUMN custom_title TEXT DEFAULT NULL`).catch(() => {});
+        
+        // Load Filters from DB
+        const filterRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'filter_data'" });
+        if (filterRes.rows.length > 0) {
+            FILTER_DATA = JSON.parse(filterRes.rows[0].value);
+            console.log(`[FILTER] Loaded from DB: ${FILTER_DATA.profanities.length} kata.`);
+        } else {
+            // Try migrate from file if exists
+            const filterPath = path.join(__dirname, 'filters.json');
+            if (fs.existsSync(filterPath)) {
+                try {
+                    const fileData = JSON.parse(fs.readFileSync(filterPath, 'utf-8'));
+                    FILTER_DATA = fileData;
+                    await db.execute({ 
+                        sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('filter_data', ?)", 
+                        args: [JSON.stringify(FILTER_DATA)] 
+                    });
+                    console.log(`[FILTER] Migrated from file to DB: ${FILTER_DATA.profanities.length} kata.`);
+                } catch(e) {}
+            }
+        }
+
         await db.execute(`
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
@@ -1878,6 +1894,45 @@ function startDashboard() {
         sendChatMessage(msg).catch(e => console.error("[BROADCAST ERROR] Event announcement failed:", e.message));
         
         res.json({ success: true, active: IS_DOUBLE_XP });
+    });
+
+    app.post('/api/filter/add', async (req, res) => {
+        const { word } = req.body;
+        if (!word) return res.json({ success: false });
+        if (!FILTER_DATA.profanities.includes(word)) {
+            FILTER_DATA.profanities.push(word);
+            try {
+                await db.execute({ 
+                    sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('filter_data', ?)", 
+                    args: [JSON.stringify(FILTER_DATA)] 
+                });
+            } catch(e) {}
+        }
+        res.json({ success: true });
+    });
+
+    app.post('/api/filter/delete', async (req, res) => {
+        const { word } = req.body;
+        FILTER_DATA.profanities = FILTER_DATA.profanities.filter(w => w !== word);
+        try {
+            await db.execute({ 
+                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('filter_data', ?)", 
+                args: [JSON.stringify(FILTER_DATA)] 
+            });
+        } catch(e) {}
+        res.json({ success: true });
+    });
+
+    app.post('/api/filter/save-response', async (req, res) => {
+        const { response } = req.body;
+        FILTER_DATA.response = response;
+        try {
+            await db.execute({ 
+                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('filter_data', ?)", 
+                args: [JSON.stringify(FILTER_DATA)] 
+            });
+        } catch(e) {}
+        res.json({ success: true });
     });
 
     app.post('/api/quiz/config', (req, res) => {
