@@ -1747,11 +1747,12 @@ async function processMessages(messages) {
         if (lowerMsg === '.profil') {
             if (isGlobalCooldown) continue;
             try {
-                const res = await db.execute({ sql: "SELECT xp, level FROM user_stats WHERE username = ?", args: [senderName] });
-                const {xp, level} = res.rows[0] || {xp:0, level:1};
+                const res = await db.execute({ sql: "SELECT xp, level, custom_title FROM user_stats WHERE username = ?", args: [senderName] });
+                const {xp, level, custom_title} = res.rows[0] || {xp:0, level:1, custom_title: null};
+                const gelar = getGelar(level, custom_title);
                 const req = Math.floor(50 * Math.pow(level, 3));
                 const bar = '🟩'.repeat(Math.floor((xp/req)*10)) + '⬜'.repeat(10-Math.floor((xp/req)*10));
-                await sendChatMessage(`🔰 [PROFIL] @${senderName} 🔰\n🏆 Level: ${level}\n📈 XP: ${xp} / ${req}\n📊 Progress: ${bar}`, msg.id);
+                await sendChatMessage(`🔰 [PROFIL] @${senderName} 🔰\n🎖️ Gelar: ${gelar || 'Wibu Baru'}\n🏆 Level: ${level}\n📈 XP: ${xp} / ${req}\n📊 Progress: ${bar}`, msg.id);
             } catch(e) {}
             continue;
         }
