@@ -5,7 +5,19 @@ const fs = require('fs');
 const path = require('path');
 const FormData = require('form-data');
 const { createClient } = require('@libsql/client');
+const { getDashboardHTML, getLoginHTML } = require('./dashboard.js');
+const crypto = require('crypto');
 require('dotenv').config();
+
+const SESSIONS = new Set();
+
+function getGelar(level, customTitle = null) {
+    if (customTitle) return customTitle;
+    if (level >= 100) return "🏆 Dewa Animein";
+    if (level >= 50) return "⚔️ Legenda Otaku";
+    if (level >= 10) return "🏷️ Ksatria Animein";
+    return "";
+}
 
 let pokemonData = [];
 try {
@@ -116,9 +128,12 @@ async function initDB() {
             CREATE TABLE IF NOT EXISTS user_stats (
                 username TEXT PRIMARY KEY,
                 xp INTEGER DEFAULT 0,
-                level INTEGER DEFAULT 1
+                level INTEGER DEFAULT 1,
+                custom_title TEXT DEFAULT NULL
             )
         `);
+        // Pastikan kolom baru ada
+        await db.execute(`ALTER TABLE user_stats ADD COLUMN custom_title TEXT DEFAULT NULL`).catch(() => {});
         await db.execute(`
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
@@ -136,16 +151,17 @@ async function initDB() {
 async function addXP(username, amount) {
     if (!CONFIG.TURSO_URL) return { leveledUp: false, level: 1, xp: 0 };
     try {
-        const res = await db.execute({ sql: "SELECT xp, level FROM user_stats WHERE username = ?", args: [username] });
-        let xp = 0, level = 1;
+        const res = await db.execute({ sql: "SELECT xp, level, custom_title FROM user_stats WHERE username = ?", args: [username] });
+        let xp = 0, level = 1, custom_title = null;
         if (res.rows.length === 0) {
-            xp = Math.max(0, IS_DOUBLE_XP ? amount * 2 : amount);
+            xp = Math.max(0, (IS_DOUBLE_XP && amount > 0) ? amount * 2 : amount);
             await db.execute({ sql: "INSERT INTO user_stats (username, xp, level) VALUES (?, ?, ?)", args: [username, xp, level] });
             console.log(`[XP] New User: ${username} (XP: ${xp})`);
         } else {
-            const finalAmount = IS_DOUBLE_XP ? amount * 2 : amount;
-            xp = Math.max(0, res.rows[0].xp + finalAmount);
+            const finalAmount = (IS_DOUBLE_XP && amount > 0) ? amount * 2 : amount;
+            xp = res.rows[0].xp + finalAmount;
             level = res.rows[0].level;
+            custom_title = res.rows[0].custom_title;
             
             let reqXP = Math.floor(50 * Math.pow(level, 3));
             let leveledUp = false;
@@ -154,12 +170,15 @@ async function addXP(username, amount) {
                 leveledUp = true;
                 reqXP = Math.floor(50 * Math.pow(level, 3));
             }
+            // Pastikan XP tidak negatif
+            xp = Math.max(0, xp);
+            
             await db.execute({ sql: "UPDATE user_stats SET xp = ?, level = ? WHERE username = ?", args: [xp, level, username] });
             console.log(`[XP] Update: ${username} (XP: ${xp}, Level: ${level})`);
             
-            return { leveledUp, level, xp };
+            return { leveledUp, level, xp, custom_title };
         }
-        return { leveledUp: false, level, xp };
+        return { leveledUp: false, level, xp, custom_title: null };
     } catch (e) {
         console.error("[GAMIFICATION] Add XP error:", e.message);
         return { leveledUp: false, level: 1, xp: 0 };
@@ -260,22 +279,12 @@ function buildHintMessage(level) {
     return lines.join('\n');
 }
 
-async function scheduleNextHint(hintMsgId) {
+async function scheduleQuizExpiry(lastMsgId) {
     clearQuizTimers();
     const timeLeft = QUIZ_DURATION_MS - (Date.now() - activeQuiz.startedAt);
-    if (timeLeft <= 0) { expireQuiz(hintMsgId); return; }
+    if (timeLeft <= 0) { expireQuiz(lastMsgId); return; }
 
-    if (activeQuiz.hintsRevealed < 5) {
-        activeQuiz.hintTimer = setTimeout(async () => {
-            if (!activeQuiz.isRunning) return;
-            activeQuiz.hintsRevealed++;
-            const msg = `💡 [HINT OTOMATIS ${activeQuiz.hintsRevealed}/5]\n` + buildHintMessage(activeQuiz.hintsRevealed);
-            await sendChatMessage(msg, hintMsgId);
-            scheduleNextHint(hintMsgId);
-        }, Math.min(QUIZ_HINT_INTERVAL, timeLeft));
-    }
-
-    activeQuiz.expireTimer = setTimeout(() => expireQuiz(hintMsgId), timeLeft);
+    activeQuiz.expireTimer = setTimeout(() => expireQuiz(lastMsgId), timeLeft);
 }
 
 async function expireQuiz(lastMsgId) {
@@ -359,9 +368,9 @@ async function startQuiz(senderName, msgId) {
         
         activeQuiz = quizData;
 
-        const introMsg = `${buildHintMessage(0)}\n\nHint otomatis muncul tiap 60 detik. Ketik .hint untuk hint lebih awal (-1 s/d 5 XP).`;
+        const introMsg = `${buildHintMessage(0)}\n\nKetik .hint untuk mendapatkan hint baru (-1 s/d 5 XP).`;
         await sendChatMessage(introMsg, msgId);
-        scheduleNextHint(msgId);
+        scheduleQuizExpiry(msgId);
     } catch (err) {
         console.error("[QUIZ] Error starting:", err);
         activeQuiz.isStarting = false;
@@ -1655,8 +1664,12 @@ async function processMessages(messages) {
                     const xpEarned = Math.max(10, 100 - (activeQuiz.hintsRevealed * 15) - penaltyWrong);
                     
                     const xpRes = await addXP(senderName, xpEarned);
-                    let result = `🎉 BENAR! @${senderName} menebak: ${activeQuiz.original}\n💰 XP: +${xpEarned} (Salah Tebak Total: ${activeQuiz.wrongGuessCount || 0})`;
-                    if (xpRes.leveledUp) result += `\n🌟 SELAMAT! Kamu naik ke Level ${xpRes.level}!`;
+                    const finalDisplayXP = (IS_DOUBLE_XP && xpEarned > 0) ? xpEarned * 2 : xpEarned;
+                    let result = `🎉 BENAR! @${senderName} menebak: ${activeQuiz.original}\n💰 XP: +${finalDisplayXP} ${IS_DOUBLE_XP ? '(Event x2!)' : ''} (Salah Tebak Total: ${activeQuiz.wrongGuessCount || 0})`;
+                    if (xpRes.leveledUp) {
+                        const gelar = getGelar(xpRes.level, xpRes.custom_title);
+                        result += `\n🌟 SELAMAT! @${senderName} naik ke Level ${xpRes.level}! ${gelar ? `\n👑 Gelar Baru: *${gelar}*` : ''}`;
+                    }
                     await sendChatMessage(result, msg.id);
                 } else {
                     activeQuiz.wrongGuessCount = (activeQuiz.wrongGuessCount || 0) + 1;
@@ -1820,6 +1833,39 @@ function startDashboard() {
     app.use(express.json());
     app.use(express.urlencoded({ extended: true }));
 
+    function checkAuth(req, res, next) {
+        if (req.path === '/login' || req.path === '/logout') return next();
+        const cookies = req.headers.cookie || '';
+        const token = cookies.split(';').find(c => c.trim().startsWith('dashboard_session='))?.split('=')[1];
+        if (token && SESSIONS.has(token)) return next();
+        if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'Unauthorized' });
+        res.redirect('/login');
+    }
+
+    app.get('/login', (req, res) => res.send(getLoginHTML()));
+    app.post('/login', (req, res) => {
+        const { username, password } = req.body;
+        if (username === process.env.DASHBOARD_USER && password === process.env.DASHBOARD_PASS) {
+            const token = crypto.randomBytes(32).toString('hex');
+            SESSIONS.add(token);
+            res.setHeader('Set-Cookie', `dashboard_session=${token}; HttpOnly; Path=/; Max-Age=86400`);
+            res.redirect('/');
+        } else {
+            res.send(getLoginHTML('Username atau Password salah!'));
+        }
+    });
+
+    app.get('/logout', (req, res) => {
+        const cookies = req.headers.cookie || '';
+        const token = cookies.split(';').find(c => c.trim().startsWith('dashboard_session='))?.split('=')[1];
+        if (token) SESSIONS.delete(token);
+        res.setHeader('Set-Cookie', 'dashboard_session=; Path=/; Max-Age=0');
+        res.redirect('/login');
+    });
+
+    // Lindungi semua route setelah ini
+    app.use(checkAuth);
+
     app.post('/api/config/double-xp', (req, res) => {
         IS_DOUBLE_XP = !IS_DOUBLE_XP;
         console.log(`[EVENT] Double XP Mode: ${IS_DOUBLE_XP ? 'ENABLED' : 'DISABLED'}`);
@@ -1848,12 +1894,16 @@ function startDashboard() {
             const laporanCount = await db.execute("SELECT COUNT(*) as count FROM laporan");
             const quizCount = await db.execute("SELECT COUNT(*) as count FROM quiz_pool");
             
+            const titleRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'available_titles'" });
+            const availableTitles = titleRes.rows.length > 0 ? JSON.parse(titleRes.rows[0].value) : [];
+
             res.json({ 
                 ...stats, 
                 uptime, 
                 isBotActive,
                 isDoubleXP: IS_DOUBLE_XP,
                 quizFilter: QUIZ_FILTER,
+                availableTitles,
                 totalDBLogs: logsCount.rows[0].count,
                 totalReports: laporanCount.rows[0].count,
                 totalDBKuis: quizCount.rows[0].count,
@@ -1968,16 +2018,59 @@ function startDashboard() {
                 args = [`%${q}%`];
             }
             const result = await db.execute({ sql, args });
-            res.json({ success: true, data: result.rows });
+            
+            // Get available titles for the dropdown
+            const titleRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'available_titles'" });
+            const titles = titleRes.rows.length > 0 ? JSON.parse(titleRes.rows[0].value) : [];
+
+            res.json({ success: true, data: result.rows, availableTitles: titles });
         } catch (e) { res.status(500).json({ success: false, error: e.message }); }
     });
 
+    app.get('/api/titles', async (req, res) => {
+        try {
+            const result = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'available_titles'" });
+            const titles = result.rows.length > 0 ? JSON.parse(result.rows[0].value) : [];
+            res.json({ success: true, titles });
+        } catch (e) { res.json({ success: false, error: e.message }); }
+    });
+
+    app.post('/api/titles/add', async (req, res) => {
+        const { title } = req.body;
+        try {
+            const getRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'available_titles'" });
+            let titles = getRes.rows.length > 0 ? JSON.parse(getRes.rows[0].value) : [];
+            if (!titles.includes(title)) {
+                titles.push(title);
+                await db.execute({ 
+                    sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('available_titles', ?)", 
+                    args: [JSON.stringify(titles)] 
+                });
+            }
+            res.json({ success: true });
+        } catch (e) { res.json({ success: false, error: e.message }); }
+    });
+
+    app.post('/api/titles/delete', async (req, res) => {
+        const { title } = req.body;
+        try {
+            const getRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'available_titles'" });
+            let titles = getRes.rows.length > 0 ? JSON.parse(getRes.rows[0].value) : [];
+            titles = titles.filter(t => t !== title);
+            await db.execute({ 
+                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('available_titles', ?)", 
+                args: [JSON.stringify(titles)] 
+            });
+            res.json({ success: true });
+        } catch (e) { res.json({ success: false, error: e.message }); }
+    });
+
     app.post('/api/users/update-xp', async (req, res) => {
-        const { username, xp, level } = req.body;
+        const { username, xp, level, custom_title } = req.body;
         try {
             await db.execute({ 
-                sql: "UPDATE user_stats SET xp = ?, level = ? WHERE username = ?", 
-                args: [xp, level, username] 
+                sql: "UPDATE user_stats SET xp = ?, level = ?, custom_title = ? WHERE username = ?", 
+                args: [xp, level, custom_title === "" ? null : custom_title, username] 
             });
             res.json({ success: true });
         } catch (e) { res.status(500).json({ success: false, error: e.message }); }
@@ -2206,1468 +2299,6 @@ function startDashboard() {
         console.log(`Dashboard: http://localhost:${CONFIG.DASHBOARD_PORT}`);
     });
 }
-
-function getDashboardHTML() {
-    return `<!DOCTYPE html>
-<html lang="id">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AnimeinBot Dashboard</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>
-  :root {
-    --bg: #f5f5f5;
-    --surface: #ffffff;
-    --sidebar: #1a1a1a;
-    --sidebar-text: #a0a0a0;
-    --sidebar-active: #ffffff;
-    --border: #ececec;
-    --accent: #f97316;
-    --accent-light: #fff7ed;
-    --text: #1a1a1a;
-    --muted: #888888;
-    --green: #10b981;
-    --red: #ef4444;
-    --blue: #3b82f6;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; font-size: 14px; display: flex; height: 100vh; overflow: hidden; }
-
-  /* SIDEBAR */
-  .sidebar { width: 220px; background: var(--sidebar); height: 100vh; display: flex; flex-direction: column; flex-shrink: 0; overflow-y: auto; }
-  .sidebar-brand { padding: 24px 20px 20px; border-bottom: 1px solid #333; }
-  .sidebar-brand h1 { font-size: 15px; font-weight: 700; color: #fff; letter-spacing: 0.05em; }
-  .sidebar-brand p { font-size: 11px; color: var(--sidebar-text); margin-top: 3px; }
-  .sidebar-nav { padding: 16px 10px; flex: 1; }
-  .nav-item { display: block; width: 100%; padding: 10px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--sidebar-text); background: none; border: none; text-align: left; margin-bottom: 2px; transition: all 0.15s; }
-  .nav-item:hover { background: #2a2a2a; color: #fff; }
-  .nav-item.active { background: var(--accent); color: #fff; }
-  .sidebar-status { padding: 16px 20px; border-top: 1px solid #333; }
-  .sidebar-status .s-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 6px; }
-  .sidebar-status span { font-size: 12px; color: var(--sidebar-text); font-weight: 600; }
-
-  /* MAIN */
-  .main { flex: 1; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-  .topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 14px 30px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
-  .topbar h2 { font-size: 16px; font-weight: 700; }
-  .topbar-actions { display: flex; gap: 10px; align-items: center; }
-  .content { padding: 25px 30px; flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
-
-  /* PAGE SECTIONS */
-  .page { display: none; width: 100%; flex: 1; min-height: 0; }
-  .page.active { display: block; overflow-y: auto; }
-
-  /* CARDS */
-  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 25px; }
-  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
-  .stat-card .label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
-  .stat-card .value { font-size: 26px; font-weight: 700; color: var(--text); }
-  .stat-card.accent { border-color: var(--accent); }
-  .stat-card.green { border-color: var(--green); }
-  .stat-card.blue { border-color: var(--blue); }
-  .stat-card.red { border-color: var(--red); }
-
-  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
-
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 20px; }
-  .card-title { font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 15px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
-
-  /* ACTIVITY */
-  .activity-list { display: flex; flex-direction: column; gap: 14px; }
-  .activity-item { padding-bottom: 14px; border-bottom: 1px dashed var(--border); }
-  .activity-item:last-child { border-bottom: none; padding-bottom: 0; }
-  .activity-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
-  .activity-user { font-weight: 700; color: var(--accent); font-size: 13px; }
-  .activity-time { font-size: 11px; color: var(--muted); }
-  .activity-q { font-size: 13px; color: #555; margin-bottom: 3px; }
-  .activity-a { font-size: 13px; color: var(--text); padding-left: 10px; border-left: 2px solid var(--accent); }
-  .prov-tag { font-size: 10px; background: var(--border); padding: 2px 7px; border-radius: 4px; color: var(--muted); }
-
-  /* MODEL CARDS */
-  .model-list { display: flex; flex-direction: column; gap: 10px; }
-  .model-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; display: flex; align-items: center; gap: 16px; }
-  .model-card.active { border-color: var(--green); background: #f0fdf4; }
-  .model-card.cooldown { border-color: #f59e0b; background: #fffbeb; }
-  .model-card.inactive { opacity: 0.5; }
-  .model-num { font-size: 13px; font-weight: 700; min-width: 60px; }
-  .model-metrics { display: flex; gap: 16px; flex: 1; }
-  .m-stat .m-lbl { font-size: 9px; font-weight: 700; color: var(--muted); text-transform: uppercase; }
-  .m-stat .m-val { font-size: 13px; font-weight: 700; }
-  /* Toggle pill for model */
-  .toggle-pill { display: flex; align-items: center; gap: 0; border-radius: 20px; overflow: hidden; border: 1.5px solid var(--border); cursor: pointer; font-size: 11px; font-weight: 700; }
-  .toggle-pill .pill-on { padding: 4px 10px; background: var(--green); color: #fff; }
-  .toggle-pill .pill-off { padding: 4px 10px; background: #eee; color: #aaa; }
-  .toggle-pill.is-off .pill-on { background: #eee; color: #bbb; }
-  .toggle-pill.is-off .pill-off { background: var(--red); color: #fff; }
-  /* Bot toggle in topbar */
-  .bot-toggle-wrap { display: flex; align-items: center; gap: 8px; }
-  .bot-toggle-lbl { font-size: 11px; font-weight: 600; color: var(--muted); }
-  .bot-toggle-pill { display: flex; align-items: center; border-radius: 20px; overflow: hidden; border: 1.5px solid var(--border); cursor: pointer; font-size: 11px; font-weight: 700; user-select: none; }
-  /* Default = OFF state */
-  .bot-toggle-pill .btp-on { padding: 5px 14px; background: #e5e7eb; color: #9ca3af; transition: all 0.2s; }
-  .bot-toggle-pill .btp-off { padding: 5px 14px; background: var(--red); color: #fff; transition: all 0.2s; }
-  /* is-on = ON state */
-  .bot-toggle-pill.is-on .btp-on { background: var(--green); color: #fff; }
-  .bot-toggle-pill.is-on .btp-off { background: #e5e7eb; color: #9ca3af; }
-
-  /* CONTROLS */
-  .control-row { display: flex; gap: 10px; align-items: stretch; margin-bottom: 15px; }
-  .control-row input[type="text"], .control-row textarea { flex: 1; }
-  input[type="text"], textarea, select { width: 100%; border: 1px solid var(--border); padding: 10px 14px; border-radius: 8px; font-family: inherit; font-size: 13px; outline: none; transition: border-color 0.2s; background: var(--surface); color: var(--text); }
-  input[type="text"]:focus, textarea:focus { border-color: var(--accent); }
-  textarea { resize: vertical; min-height: 120px; }
-  .form-group { margin-bottom: 15px; }
-  .form-label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.03em; }
-
-  /* BUTTONS */
-  button { padding: 9px 18px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; font-family: inherit; font-size: 13px; transition: all 0.2s; }
-  .btn-primary { background: var(--accent); color: white; }
-  .btn-primary:hover { opacity: 0.88; }
-  .btn-danger { background: #fef2f2; color: var(--red); border: 1px solid #fee2e2; }
-  .btn-danger:hover { background: var(--red); color: #fff; }
-  .btn-secondary { background: var(--border); color: var(--text); }
-  .btn-secondary:hover { background: #ddd; }
-  .btn-sm { padding: 5px 12px; font-size: 11px; border-radius: 5px; border: 1px solid var(--border); font-weight: 600; cursor: pointer; }
-  .btn-sm-edit { color: var(--blue); background: #eff6ff; border-color: #bfdbfe; }
-  .btn-sm-del { color: var(--red); background: #fef2f2; border-color: #fee2e2; }
-  .btn-sm-toggle { color: var(--accent); background: var(--accent-light); border-color: #fed7aa; }
-
-  /* CACHE TABLE */
-  .table-wrap { overflow-x: auto; margin-top: 5px; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--border); }
-  th { font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; background: #fafafa; }
-  tr:hover td { background: #f9f9f9; }
-  .td-key { font-size: 12px; font-weight: 600; max-width: 300px; word-break: break-word; }
-  .td-actions { display: flex; gap: 6px; }
-
-  /* MODAL */
-  .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.45); display: none; align-items: center; justify-content: center; z-index: 999; }
-  .modal-overlay.open { display: flex; }
-  .modal { background: var(--surface); padding: 28px; border-radius: 12px; width: 640px; max-width: 92vw; box-shadow: 0 25px 50px rgba(0,0,0,0.15); }
-  .modal-title { font-size: 17px; font-weight: 700; margin-bottom: 20px; }
-  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
-  .modal-textarea { min-height: 180px; }
-
-  /* CUSTOM CONFIRM DIALOG */
-  #confirmOverlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:none; align-items:center; justify-content:center; z-index:9999; backdrop-filter:blur(4px); }
-  #confirmOverlay.active { display:flex; animation:fadeInOverlay 0.18s ease; }
-  @keyframes fadeInOverlay { from { opacity:0; } to { opacity:1; } }
-  #confirmBox { background:var(--surface); border-radius:14px; padding:32px 28px 24px; width:380px; max-width:92vw; box-shadow:0 30px 60px rgba(0,0,0,0.2); animation:slideUpBox 0.2s ease; text-align:center; }
-  @keyframes slideUpBox { from { transform:translateY(16px); opacity:0; } to { transform:translateY(0); opacity:1; } }
-  #confirmIcon { width:52px; height:52px; border-radius:50%; background:#fff5f0; display:flex; align-items:center; justify-content:center; margin:0 auto 18px; border:2px solid var(--accent); }
-  #confirmIcon svg { width:26px; height:26px; stroke:var(--accent); fill:none; stroke-width:2.5; stroke-linecap:round; stroke-linejoin:round; }
-  #confirmTitle { font-size:16px; font-weight:700; color:var(--text); margin-bottom:8px; }
-  #confirmMsg { font-size:13px; color:var(--muted); line-height:1.6; margin-bottom:24px; }
-  #confirmActions { display:flex; gap:10px; justify-content:center; }
-  #confirmActions button { flex:1; padding:9px 0; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; border:none; transition:opacity 0.15s; }
-  #confirmActions button:hover { opacity:0.85; }
-  #confirmBtnCancel { background:var(--bg); color:var(--text); border:1px solid var(--border) !important; }
-  #confirmBtnOk { background:var(--accent); color:#fff; }
-
-  /* KNOWLEDGE VIEWER */
-  .knowledge-list { display: flex; flex-direction: column; gap: 10px; }
-  .kw-item { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-  .kw-header { padding: 10px 14px; background: #fafafa; display: flex; justify-content: space-between; align-items: center; }
-  .kw-header-left { display: flex; align-items: center; gap: 10px; cursor: pointer; flex: 1; }
-  .kw-domain { font-size: 10px; font-weight: 700; text-transform: uppercase; background: var(--accent); color: #fff; padding: 2px 8px; border-radius: 4px; }
-  .kw-body { padding: 14px; display: none; }
-  .kw-body.open { display: block; }
-  .kw-info { font-size: 12px; line-height: 1.7; color: #444; white-space: pre-wrap; background: #f9f9f9; padding: 10px; border-radius: 6px; margin-bottom: 8px; }
-  .kw-keywords { font-size: 11px; color: var(--muted); }
-
-  /* SEARCH */
-  .search-box { margin-bottom: 15px; }
-
-  /* UPTIME */
-  .uptime-box { font-size: 22px; font-weight: 700; color: var(--accent); }
-
-  /* Dashboard layout: fixed heights — applied only when active via JS */
-  .page.active.dash-flex { display: flex !important; flex-direction: column; height: 100%; overflow: hidden; }
-  #page-dashboard .stats-grid { flex-shrink: 0; }
-  #page-dashboard .two-col { flex: 1; min-height: 0; gap: 20px; }
-  #page-dashboard .two-col > .card { overflow: hidden; display: flex; flex-direction: column; height: 100%; margin-bottom: 0; }
-  #page-dashboard .two-col > .card .activity-list { overflow-y: auto; flex: 1; }
-  .activity-card { height: 100%; }
-
-  @media (max-width: 900px) {
-    .stats-grid { grid-template-columns: repeat(2, 1fr); }
-    .two-col, .three-col { grid-template-columns: 1fr; }
-    .sidebar { width: 180px; }
-    .model-metrics { flex-wrap: wrap; gap: 10px; }
-  }
-  @media (max-width: 650px) {
-    body { flex-direction: column; height: auto; overflow: auto; }
-    .sidebar { width: 100%; height: auto; }
-    .main { height: auto; }
-    .content { overflow: visible; }
-    .sidebar-nav { display: flex; overflow-x: auto; padding: 8px; }
-    .nav-item { white-space: nowrap; }
-  }
-</style>
-</head>
-<body>
-
-<div class="sidebar">
-  <div class="sidebar-brand">
-    <h1>ANIMEINBOT</h1>
-    <p>Control Panel</p>
-  </div>
-  <nav class="sidebar-nav">
-    <button class="nav-item active" onclick="showPage('dashboard', this)">Dashboard</button>
-    <button class="nav-item" onclick="showPage('model', this)">Model</button>
-    <button class="nav-item" onclick="showPage('database', this)">Database</button>
-    <button class="nav-item" onclick="showPage('prompt', this)">Prompt & Knowledge</button>
-    <button class="nav-item" onclick="showPage('autoreply', this)">Auto Reply</button>
-    <button class="nav-item" onclick="showPage('filter', this)">Filter Kata</button>
-    <button class="nav-item" onclick="showPage('laporan', this)">Laporan</button>
-    <button class="nav-item" onclick="showPage('kuis', this)">Kuis System</button>
-    <button class="nav-item" onclick="showPage('users', this)">Leaderboard & User</button>
-  </nav>
-  <div class="sidebar-status">
-    <span class="s-dot" id="statusDot" style="background:var(--red)"></span>
-    <span id="statusLabel">OFFLINE</span>
-  </div>
-</div>
-
-<div class="main">
-
-  <!-- TOPBAR -->
-  <div class="topbar">
-    <h2 id="pageTitle">Dashboard</h2>
-    <div class="topbar-actions">
-      <div class="bot-toggle-wrap">
-        <span class="bot-toggle-lbl">Double XP</span>
-        <div class="bot-toggle-pill" id="xpTogglePill" onclick="toggleDoubleXP()">
-          <span class="btp-on">ON</span>
-          <span class="btp-off">OFF</span>
-        </div>
-      </div>
-      <div class="bot-toggle-wrap">
-        <span class="bot-toggle-lbl">Bot AI</span>
-        <div class="bot-toggle-pill" id="botTogglePill" onclick="toggleBot()">
-          <span class="btp-on">ON</span>
-          <span class="btp-off">OFF</span>
-        </div>
-      </div>
-      <button class="btn-sm btn-sm-del" onclick="clearCache()">Clear Cache</button>
-    </div>
-  </div>
-
-  <div class="content">
-
-    <!-- PAGE: DASHBOARD -->
-    <div class="page active" id="page-dashboard">
-      <div class="stats-grid">
-        <div class="stat-card accent">
-          <div class="label">Total Trigger</div>
-          <div class="value" id="totalTriggers">0</div>
-        </div>
-        <div class="stat-card">
-          <div class="label">Uptime</div>
-          <div class="uptime-box" id="uptime">00:00:00</div>
-        </div>
-        <div class="stat-card blue">
-          <div class="label">Token Dipakai</div>
-          <div class="value" id="totalTokens">0</div>
-        </div>
-        <div class="stat-card green">
-          <div class="label">Cache Hits (sesi)</div>
-          <div class="value" id="cacheHits">0</div>
-        </div>
-        <div class="stat-card red">
-          <div class="label">Pesan Diblokir</div>
-          <div class="value" id="filterBlocked">0</div>
-        </div>
-        <div class="stat-card">
-          <div class="label">DB Logs</div>
-          <div class="value" id="totalDBLogs">0</div>
-        </div>
-        <div class="stat-card">
-          <div class="label">Cache Entries</div>
-          <div class="value" id="cacheTotal">0</div>
-        </div>
-        <div class="stat-card orange">
-          <div class="label">Total Laporan</div>
-          <div class="value" id="totalReports">0</div>
-        </div>
-        <div class="stat-card">
-          <div class="label">Total Kuis</div>
-          <div class="value" id="kuisDashboardTotal">0</div>
-        </div>
-      </div>
-
-      <div class="two-col">
-        <div style="display:flex; flex-direction:column; gap:20px;">
-          <!-- Manual Send -->
-          <div class="card" style="margin-bottom:0; overflow:hidden;">
-            <div class="card-title">Kirim Pesan Manual</div>
-            <div class="form-group">
-              <input type="text" id="manualText" placeholder="Ketik pesan..." onkeydown="if(event.key==='Enter') sendManual()">
-            </div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap;">
-              <button class="btn-primary" onclick="sendManual()">Kirim</button>
-              <button class="btn-secondary" onclick="sendTemplate('online')">Broadcast Online</button>
-              <button class="btn-danger" onclick="sendTemplate('offline')">Broadcast Offline</button>
-            </div>
-          </div>
-
-          <!-- Active Quiz Card -->
-          <div class="card" id="quizCard" style="display:none; border: 1px solid var(--accent); background: var(--accent-light);">
-            <div class="card-title" style="color:var(--accent);">Kuis Berjalan</div>
-            <div id="quizContent"></div>
-          </div>
-        </div>
-
-        <!-- Recent Activity -->
-        <div class="card activity-card" style="margin-bottom:0; overflow:hidden; display:flex; flex-direction:column;">
-          <div class="card-title" style="flex-shrink:0;">Recent Activity</div>
-          <div class="activity-list" id="activityList" style="overflow-y:auto; flex:1;">
-            <div style="color:var(--muted); text-align:center; padding:20px;">Belum ada aktivitas</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- PAGE: MODEL -->
-    <div class="page" id="page-model">
-      <div class="card">
-        <div class="card-title">Daftar Otak (Groq Keys)</div>
-        <div class="model-list" id="modelList">
-          <div style="color:var(--muted);">Memuat...</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- PAGE: DATABASE -->
-    <div class="page" id="page-database">
-      <div class="card">
-        <div class="card-title">Cache Entries</div>
-        <div class="search-box">
-          <input type="text" id="cacheSearch" placeholder="Cari question key..." oninput="filterCache()">
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Question Key</th>
-                <th>Domain</th>
-                <th>Hits</th>
-                <th>Variasi</th>
-                <th>Aksi</th>
-              </tr>
-            </thead>
-            <tbody id="cacheList">
-              <tr><td colspan="5" style="color:var(--muted); text-align:center;">Memuat...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- PAGE: PROMPT & KNOWLEDGE -->
-    <div class="page" id="page-prompt">
-      <div class="two-col">
-        <!-- Left Column: System Prompt + Domain Manager -->
-        <div style="display:flex; flex-direction:column; gap:16px;">
-          <!-- System Prompt Editor -->
-          <div class="card">
-            <div class="card-title">System Prompt (Live Edit)</div>
-            <div class="form-group">
-              <textarea id="promptEditor" style="min-height:400px; font-family:monospace; font-size:12px;"></textarea>
-            </div>
-            <button class="btn-primary" onclick="savePrompt()">Simpan Prompt</button>
-          </div>
-
-          <!-- Domain Manager -->
-          <div class="card">
-            <div class="card-title">Kelola Domain</div>
-            <div style="font-size:11px; color:var(--muted); margin-bottom:12px;">Daftar kategori domain yang tersedia untuk digunakan saat menambah/mengedit Knowledge.</div>
-            <div id="domainTagList" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;"></div>
-            <div style="display:flex; gap:8px;">
-              <input type="text" id="newDomainInput" placeholder="Nama domain baru..." style="flex:1;">
-              <button class="btn-primary" onclick="addNewDomain()" style="white-space:nowrap;">+ Tambah</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Knowledge Editor -->
-        <div class="card">
-          <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
-             <span>Animein Knowledge Base</span>
-             <button class="btn-sm btn-sm-toggle" onclick="addKw()">+ Add New</button>
-          </div>
-          <div class="knowledge-list" id="knowledgeList">
-            <div style="color:var(--muted);">Memuat...</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- PAGE: AUTO REPLY -->
-    <div class="page" id="page-autoreply">
-      <div class="card" style="margin-bottom:20px;">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <div>
-            <h3 style="font-size:15px; margin-bottom:5px;">Konfigurasi Auto Reply</h3>
-            <p style="color:var(--muted); font-size:12px;">Tambahkan kata kunci untuk Rara membalas pesan instan tanpa harus melibatkan AI (Bypass API Token).</p>
-          </div>
-          <button class="btn-primary" onclick="showAddAutoReply()">+ Tambah Auto Reply</button>
-        </div>
-      </div>
-      
-      <div class="card">
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th style="width: 25%">Keyword Trigger</th>
-                <th>Pesan Balasan</th>
-                <th style="width: 80px">Aksi</th>
-              </tr>
-            </thead>
-            <tbody id="autoReplyList"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <div class="page" id="page-laporan">
-      <div class="card">
-        <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
-          <span>Laporan Masuk</span>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <select id="laporanFilter" onchange="filterLaporanUI()" style="padding:6px 10px; border-radius:6px; border:1px solid var(--border); background:var(--surface); font-size:12px;">
-              <option value="">Semua Status</option>
-              <option value="baru">Baru</option>
-              <option value="diproses">Diproses</option>
-              <option value="selesai">Selesai</option>
-            </select>
-            <button class="btn-sm btn-sm-toggle" onclick="loadLaporan()">Refresh</button>
-            <button class="btn-sm btn-sm-del" onclick="deleteAllLaporan()">Hapus Semua</button>
-          </div>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Username</th>
-                <th>Pesan Laporan</th>
-                <th>Status</th>
-                <th>Waktu</th>
-                <th>Aksi</th>
-              </tr>
-            </thead>
-            <tbody id="laporanList">
-              <tr><td colspan="6" style="color:var(--muted); text-align:center;">Memuat...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- PAGE: FILTER KATA -->
-    <div class="page" id="page-filter">
-      <div class="two-col">
-        <!-- Left: Add word + Edit response -->
-        <div style="display:flex; flex-direction:column; gap:16px;">
-          <!-- Add new word -->
-          <div class="card">
-            <div class="card-title">Tambah Kata Filter</div>
-            <div style="font-size:11px; color:var(--muted); margin-bottom:12px;">Tambahkan kata atau frasa yang ingin diblokir. Bot akan mengabaikan pesan yang mengandung kata tersebut.</div>
-            <div class="form-group">
-              <label class="form-label">Kata / Frasa Baru</label>
-              <input type="text" id="filterWordInput" placeholder="contoh: kata_kasar" onkeydown="if(event.key==='Enter') addFilterWord()">
-            </div>
-            <button class="btn-primary" onclick="addFilterWord()">+ Tambahkan</button>
-          </div>
-
-          <!-- Edit bot response -->
-          <div class="card">
-            <div class="card-title">Pesan Balasan Filter</div>
-            <div style="font-size:11px; color:var(--muted); margin-bottom:12px;">Pesan ini yang akan dikirim bot ketika mendeteksi kata terlarang.</div>
-            <div class="form-group">
-              <textarea id="filterResponseEditor" style="min-height:80px;"></textarea>
-            </div>
-            <button class="btn-primary" onclick="saveFilterResponse()">Simpan Pesan</button>
-          </div>
-
-          <!-- Stats -->
-          <div class="card">
-            <div class="card-title">Statistik Filter</div>
-            <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:8px;">
-              <div style="flex:1; text-align:center; padding:12px; background:var(--bg); border-radius:8px;">
-                <div style="font-size:22px; font-weight:700; color:var(--accent);" id="filterWordCount">0</div>
-                <div style="font-size:11px; color:var(--muted);">Total Kata Filter</div>
-              </div>
-              <div style="flex:1; text-align:center; padding:12px; background:var(--bg); border-radius:8px;">
-                <div style="font-size:22px; font-weight:700; color:var(--red);" id="filterBlockedCount">0</div>
-                <div style="font-size:11px; color:var(--muted);">Diblokir (sesi)</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Right: Word list -->
-        <div class="card" style="margin-bottom:0;">
-          <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
-            <span>Daftar Kata Terlarang</span>
-            <div style="display:flex; gap:8px;">
-              <input type="text" id="filterSearch" placeholder="Cari kata..." oninput="filterSearchUI()" style="padding:5px 10px; width:140px; font-size:12px; border-radius:6px; border:1px solid var(--border); background:var(--surface);">
-              <button class="btn-sm btn-sm-toggle" onclick="loadFilter()">Refresh</button>
-            </div>
-          </div>
-          <div id="filterTagContainer" style="display:flex; flex-wrap:wrap; gap:6px; max-height:520px; overflow-y:auto; padding:4px 0; margin-top:8px;">
-            <div style="color:var(--muted); font-size:13px;">Memuat...</div>
-          </div>
-        </div>
-      </div>
-    </div>
-    
-    <!-- PAGE: USERS -->
-    <div class="page" id="page-users">
-      <div class="card">
-        <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
-          <span>Leaderboard & Management User</span>
-          <div style="display:flex; gap:8px;">
-            <input type="text" id="userSearch" placeholder="Cari username..." oninput="loadUsers()" style="padding:6px 12px; border:1px solid var(--border); border-radius:6px; background:var(--surface); font-size:12px; width:180px;">
-            <button class="btn-sm btn-sm-toggle" onclick="loadUsers()">Refresh</button>
-          </div>
-        </div>
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th style="width:50px;">Rank</th>
-              <th>Username</th>
-              <th>Level</th>
-              <th>Total XP</th>
-              <th style="width:120px; text-align:right;">Aksi</th>
-            </tr>
-          </thead>
-          <tbody id="userList">
-            <tr><td colspan="5" style="text-align:center; padding:20px; color:var(--muted);">Memuat data...</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="page" id="page-kuis">
-      <div class="card">
-        <div class="card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-          <span>Monitoring Kuis Animein</span>
-          <div style="display:flex; gap:10px; align-items:center;">
-            <select id="quizFilterSelect" onchange="saveQuizConfig()" style="padding:6px 10px; border-radius:6px; border:1px solid var(--border); font-size:12px; background:var(--surface);">
-              <option value="all">Semua Kategori</option>
-              <option value="high-rating">Rating Tinggi (>8.0)</option>
-              <option value="genre:Action">Kategori: Action</option>
-              <option value="genre:Romance">Kategori: Romance</option>
-              <option value="genre:Comedy">Kategori: Comedy</option>
-              <option value="genre:Horror">Kategori: Horror</option>
-              <option value="genre:Slice of Life">Kategori: Slice of Life</option>
-            </select>
-            <button class="btn-primary btn-sm" onclick="refetchQuiz()" id="refetchBtn">Ambil Data Baru</button>
-          </div>
-        </div>
-        <div class="stats-grid" style="grid-template-columns: repeat(2, 1fr); margin-bottom:24px;">
-          <div class="stat-card">
-            <div class="label">Total Soal di Database</div>
-            <div class="value" id="kuisPageTotalDB">0</div>
-          </div>
-          <div class="stat-card orange">
-            <div class="label">Status Kuis</div>
-            <div class="value" id="kuisPageStatus">Idle</div>
-          </div>
-        </div>
-
-        <div id="kuisPageCurrentCard" class="card" style="display:none; border: 1px solid var(--accent); background: var(--accent-light);">
-          <div class="card-title" style="color:var(--accent);">Kuis yang Sedang Berjalan</div>
-          <div id="kuisPageContent"></div>
-        </div>
-
-        <div class="card" style="margin-top:20px;">
-          <div class="card-title">Informasi Sistem Kuis</div>
-          <p style="font-size:13px; color:var(--muted); line-height:1.6;">
-            Sistem kuis mengambil data secara otomatis dari AnimeinWeb setiap jam. 
-            Data yang diambil mencakup Sinopsis (Indo), Studio, Genre, dan Skor. 
-            Database menggunakan perintah <code>INSERT OR IGNORE</code> untuk memastikan tidak ada soal ganda.
-          </p>
-        </div>
-      </div>
-    </div>
-
-  </div><!-- /content -->
-</div><!-- /main -->
-
-<!-- Edit Cache Modal -->
-<div class="modal-overlay" id="editModal">
-  <div class="modal">
-    <div class="modal-title">Edit Cache Entry</div>
-    <input type="hidden" id="editId">
-    <div class="form-group">
-      <label class="form-label">Question Key</label>
-      <input type="text" id="editKey">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Domain</label>
-      <input type="text" id="editDomain">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Answer (JSON Array of variations)</label>
-      <textarea id="editAnswer" class="modal-textarea"></textarea>
-    </div>
-    <div class="modal-actions">
-      <button class="btn-secondary" onclick="closeModal()">Batal</button>
-      <button class="btn-primary" onclick="saveEntry()">Simpan</button>
-    </div>
-  </div>
-</div>
-
-<!-- Edit Knowledge Modal -->
-<div class="modal-overlay" id="kwModal">
-  <div class="modal">
-    <div class="modal-title" id="kwModalTitle">Edit Knowledge Entry</div>
-    <input type="hidden" id="kwIndex">
-    <div class="form-group">
-      <label class="form-label">Domain</label>
-      <select id="kwDomain" style="width:100%; padding:8px; border-radius:6px; border:1px solid var(--border); background:var(--surface); font-size:13px;"></select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Keywords (satu per baris)</label>
-      <textarea id="kwKeywords" class="modal-textarea" style="min-height:120px;"></textarea>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Info Teks</label>
-      <textarea id="kwInfo" class="modal-textarea" style="min-height:200px;"></textarea>
-    </div>
-    <div class="modal-actions">
-      <button class="btn-secondary" onclick="closeKwModal()">Batal</button>
-      <button class="btn-primary" onclick="saveKw()">Simpan Knowledge</button>
-    </div>
-  </div>
-</div>
-
-<!-- Edit User Stats Modal -->
-<div class="modal-overlay" id="userModal">
-  <div class="modal" style="width:340px;">
-    <div class="modal-title">Edit Stats: @<span id="editUserTitle"></span></div>
-    <input type="hidden" id="editUserUsername">
-    <div class="form-group">
-      <label class="form-label">Level</label>
-      <input type="number" id="editUserLevel">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Total XP</label>
-      <input type="number" id="editUserXP">
-    </div>
-    <div class="modal-actions">
-      <button class="btn-secondary" onclick="closeUserModal()">Batal</button>
-      <button class="btn-primary" onclick="saveUserStats()">Simpan Stats</button>
-    </div>
-  </div>
-</div>
-
-<!-- Custom Confirm Dialog -->
-<div id="confirmOverlay">
-  <div id="confirmBox">
-    <div id="confirmIcon">
-      <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-    </div>
-    <div id="confirmTitle">Konfirmasi</div>
-    <div id="confirmMsg">Apakah kamu yakin?</div>
-    <div id="confirmActions">
-      <button id="confirmBtnCancel" onclick="resolveConfirm(false)">Batal</button>
-      <button id="confirmBtnOk" onclick="resolveConfirm(true)">Ya, Lanjutkan</button>
-    </div>
-  </div>
-</div>
-
-<script>
-// ---- CUSTOM CONFIRM ----
-let _confirmResolve = null;
-function customConfirm(msg, title = 'Konfirmasi', okLabel = 'Ya, Lanjutkan', okDanger = true) {
-  document.getElementById('confirmMsg').textContent = msg;
-  document.getElementById('confirmTitle').textContent = title;
-  document.getElementById('confirmBtnOk').textContent = okLabel;
-  document.getElementById('confirmBtnOk').style.background = okDanger ? '#ef4444' : 'var(--accent)';
-  document.getElementById('confirmOverlay').classList.add('active');
-  return new Promise(resolve => { _confirmResolve = resolve; });
-}
-function resolveConfirm(result) {
-  document.getElementById('confirmOverlay').classList.remove('active');
-  if (_confirmResolve) { _confirmResolve(result); _confirmResolve = null; }
-}
-// Close on overlay click
-document.getElementById('confirmOverlay').addEventListener('click', function(e) {
-  if (e.target === this) resolveConfirm(false);
-});
-
-
-// ---- PAGE NAV ----
-function showPage(id, el) {
-  document.querySelectorAll('.page').forEach(p => {
-    p.classList.remove('active');
-    p.classList.remove('dash-flex');
-    p.style.display = 'none';
-  });
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  const target = document.getElementById('page-' + id);
-  target.classList.add('active');
-  if (id === 'dashboard') {
-    target.classList.add('dash-flex');
-    target.style.display = 'flex';
-  } else {
-    target.style.display = 'block';
-  }
-  el.classList.add('active');
-  const titles = { dashboard: 'Dashboard', model: 'Model', database: 'Database', prompt: 'Prompt & Knowledge', autoreply: 'Bot Auto Reply', laporan: 'Laporan', filter: 'Filter Kata', kuis: 'Kuis System' };
-  document.getElementById('pageTitle').textContent = titles[id] || id;
-  if (id === 'dashboard') refresh();
-  if (id === 'database') loadCache();
-  if (id === 'prompt') loadPrompt();
-  if (id === 'laporan') loadLaporan();
-  if (id === 'filter') loadFilter();
-  if (id === 'autoreply') loadAutoReply();
-  if (id === 'users') loadUsers();
-  if (id === 'model') {
-    loadStats();
-    loadConfig();
-  }
-}
-
-// ---- UPTIME ----
-function formatUptime(sec) {
-  const h = Math.floor(sec/3600).toString().padStart(2,'0');
-  const m = Math.floor((sec%3600)/60).toString().padStart(2,'0');
-  const s = (sec%60).toString().padStart(2,'0');
-  return h+':'+m+':'+s;
-}
-
-// ---- RENDER STATS ----
-function render(d) {
-  if (!d) return;
-  const online = d.botStatus === 'online';
-  const dot = document.getElementById('statusDot');
-  const lbl = document.getElementById('statusLabel');
-  if (dot) dot.style.background = online ? 'var(--green)' : 'var(--red)';
-  if (lbl) { lbl.textContent = online ? 'ONLINE' : 'OFFLINE'; lbl.style.color = online ? 'var(--green)' : 'var(--red)'; }
-
-  const isBotOn = d.isBotActive;
-  const pill = document.getElementById('botTogglePill');
-  if (pill) {
-    if (isBotOn) pill.classList.add('is-on'); else pill.classList.remove('is-on');
-  }
-
-  const isXpOn = d.isDoubleXP;
-  const xpPill = document.getElementById('xpTogglePill');
-  if (xpPill) {
-    if (isXpOn) xpPill.classList.add('is-on'); else xpPill.classList.remove('is-on');
-  }
-
-  const qFilterSelect = document.getElementById('quizFilterSelect');
-  if (qFilterSelect && d.quizFilter) qFilterSelect.value = d.quizFilter;
-
-  const setT = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-  setT('totalTriggers', (d.totalTriggers||0).toLocaleString('id-ID'));
-  setT('uptime', d.uptime !== undefined ? formatUptime(d.uptime) : '--');
-  setT('totalTokens', (d.totalTokensUsed||0).toLocaleString('id-ID'));
-  setT('cacheHits', (d.cacheHits||0).toLocaleString('id-ID'));
-  setT('filterBlocked', (d.filter?.blocked||0).toLocaleString('id-ID'));
-  setT('totalDBLogs', (d.totalDBLogs||0).toLocaleString('id-ID'));
-  setT('cacheTotal', (d.cacheTotal||0).toLocaleString('id-ID'));
-  setT('totalReports', (d.totalReports||0).toLocaleString('id-ID'));
-  setT('filterBlockedCount', (d.filter?.blocked||0).toLocaleString('id-ID'));
-
-  // Kuis Page Updates
-  const kPageTotalDB = document.getElementById('kuisPageTotalDB');
-  if (kPageTotalDB) kPageTotalDB.textContent = (d.totalDBKuis||0).toLocaleString('id-ID');
-  
-  const kDashboardTotal = document.getElementById('kuisDashboardTotal');
-  if (kDashboardTotal) kDashboardTotal.textContent = (d.totalDBKuis||0).toLocaleString('id-ID');
-  
-  const kPageStatus = document.getElementById('kuisPageStatus');
-  const kPageCard = document.getElementById('kuisPageCurrentCard');
-  const kPageContent = document.getElementById('kuisPageContent');
-
-  if (d.activeQuiz) {
-    if (kPageStatus) { kPageStatus.textContent = 'RUNNING'; kPageStatus.style.color = 'var(--accent)'; }
-    if (kPageCard) kPageCard.style.display = 'block';
-    
-    if (kPageContent) {
-        const remaining = Math.max(0, Math.floor((300000 - (Date.now() - d.activeQuiz.start)) / 1000));
-        kPageContent.innerHTML = 
-            '<div style="display:flex; justify-content:space-between; align-items:start;">' +
-              '<div>' +
-                '<div style="font-weight:700; font-size:16px; color:var(--accent);">' + d.activeQuiz.title + '</div>' +
-                '<div style="margin-top:8px; display:flex; gap:15px; font-size:12px; font-weight:600;">' +
-                    '<span>Hint Terbuka: ' + d.activeQuiz.hints + '/5</span>' +
-                    '<span>Sisa Waktu: ' + Math.floor(remaining/60) + 'm ' + (remaining%60) + 's</span>' +
-                '</div>' +
-              '</div>' +
-              '<button class="btn-sm btn-sm-del" style="padding:10px 16px; font-size:12px;" onclick="stopQuiz()">STOP KUIS</button>' +
-            '</div>';
-    }
-  } else {
-    if (kPageStatus) { kPageStatus.textContent = 'IDLE'; kPageStatus.style.color = 'var(--muted)'; }
-    if (kPageCard) kPageCard.style.display = 'none';
-  }
-
-  // Quiz Dashboard Update
-  const ml = document.getElementById('modelList');
-  if (ml && Array.isArray(d.otak)) {
-    ml.innerHTML = d.otak.map((o, i) => {
-      const isCooldown = o.cooldownUntil > Date.now();
-      const stateClass = !o.active ? 'inactive' : isCooldown ? 'cooldown' : 'active';
-      const stateLabel = !o.active ? 'Nonaktif' : isCooldown ? 'Cooldown' : 'Aktif';
-      const stateLabelColor = !o.active ? 'var(--red)' : isCooldown ? '#f59e0b' : 'var(--green)';
-      const pillClass = !o.active ? '' : '';
-      return \`<div class="model-card \${stateClass}">
-        <div class="model-num">Otak #\${i+1}</div>
-        <div class="model-metrics">
-          <div class="m-stat"><div class="m-lbl">Req</div><div class="m-val">\${o.requests||0}</div></div>
-          <div class="m-stat"><div class="m-lbl">OK</div><div class="m-val" style="color:var(--green);">\${o.success||0}</div></div>
-          <div class="m-stat"><div class="m-lbl">Err</div><div class="m-val" style="color:var(--red);">\${o.errors||0}</div></div>
-          <div class="m-stat"><div class="m-lbl">Sisa Req</div><div class="m-val">\${o.remainingReqs||'?'}</div></div>
-        </div>
-        <div style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
-          <span style="font-size:11px; font-weight:700; color:\${stateLabelColor};">\${stateLabel}</span>
-          <div class="toggle-pill \${o.active ? '' : 'is-off'}" onclick="toggleKey(\${i})">
-            <span class="pill-on">ON</span>
-            <span class="pill-off">OFF</span>
-          </div>
-        </div>
-        \${o.lastError ? \`<div style="font-size:10px; color:var(--red); margin-top:4px; width:100%;">\${o.lastError}</div>\` : ''}
-      </div>\`;
-    }).join('');
-  }
-
-  // Quiz Update
-  const quizCard = document.getElementById('quizCard');
-  const quizContent = document.getElementById('quizContent');
-  if (d.activeQuiz && quizCard && quizContent) {
-      quizCard.style.display = 'block';
-      const remaining = Math.max(0, Math.floor((300000 - (Date.now() - d.activeQuiz.start)) / 1000));
-      quizContent.innerHTML = 
-          '<div style="font-weight:700; font-size:15px; margin-bottom:4px;">' + d.activeQuiz.title + '</div>' + 
-          '<div style="display:flex; justify-content:space-between; align-items:center;">' +
-            '<div style="display:flex; gap:12px; font-size:11px; color:var(--muted); font-weight:600;">' +
-                '<span> Hint Open: ' + d.activeQuiz.hints + '/5</span>' +
-                '<span> Sisa: ' + Math.floor(remaining/60) + 'm ' + (remaining%60) + 's</span>' +
-            '</div>' +
-            '<button class="btn-sm btn-sm-del" style="font-size:10px; padding:4px 8px;" onclick="stopQuiz()">Batal</button>' +
-          '</div>';
-  } else if (quizCard) {
-      quizCard.style.display = 'none';
-  }
-
-  // Render activity
-  const al = document.getElementById('activityList');
-  if (al && Array.isArray(d.recentActivity) && d.recentActivity.length > 0) {
-    al.innerHTML = d.recentActivity.map(a => \`
-      <div class="activity-item">
-        <div class="activity-meta">
-          <span class="activity-user">\${a.from||'?'}</span>
-          <div style="display:flex;gap:6px;align-items:center;">
-            <span class="prov-tag">\${a.tokens||0} tokens</span>
-            <span class="prov-tag">\${a.provider||''}</span>
-            <span class="activity-time">\${a.time||''}</span>
-          </div>
-        </div>
-        <div class="activity-q">Tanya: \${(a.text||'').slice(0,80)}</div>
-        <div class="activity-a">\${(a.response||'').slice(0,100)}</div>
-      </div>
-    \`).join('');
-  }
-}
-
-// ---- CACHE ----
-let cacheData = [];
-async function loadCache() {
-  try {
-    const res = await fetch('/api/cache/list');
-    const d = await res.json();
-    if (d.success) {
-      cacheData = d.data;
-      document.getElementById('cacheTotal').textContent = d.data.length;
-      renderCacheList(d.data);
-    }
-  } catch(e) {}
-}
-
-function renderCacheList(data) {
-  const list = document.getElementById('cacheList');
-  if (!list) return;
-  if (!data || data.length === 0) {
-    list.innerHTML = \`<tr><td colspan="5" style="text-align:center; color:var(--muted);">Belum ada cache entry</td></tr>\`;
-    return;
-  }
-  list.innerHTML = data.map(item => {
-    let varCount = 1;
-    try { const v = JSON.parse(item.answer); if (Array.isArray(v)) varCount = v.length; } catch(e) {}
-    return \`<tr>
-      <td class="td-key">\${item.question_key}</td>
-      <td><span class="prov-tag">\${item.domain||'umum'}</span></td>
-      <td style="font-weight:700;">\${item.hit_count||0}</td>
-      <td>\${varCount}/3</td>
-      <td class="td-actions">
-        <button class="btn-sm btn-sm-edit" onclick="editEntry(\${item.id})">Edit</button>
-        <button class="btn-sm btn-sm-del" onclick="deleteEntry(\${item.id})">Hapus</button>
-      </td>
-    </tr>\`;
-  }).join('');
-}
-
-function filterCache() {
-  const q = document.getElementById('cacheSearch').value.toLowerCase();
-  const filtered = cacheData.filter(c => c.question_key.includes(q) || (c.domain||'').includes(q));
-  renderCacheList(filtered);
-}
-
-function editEntry(id) {
-  const item = cacheData.find(c => c.id === id);
-  if (!item) return;
-  document.getElementById('editId').value = item.id;
-  document.getElementById('editKey').value = item.question_key;
-  document.getElementById('editDomain').value = item.domain || 'umum';
-  document.getElementById('editAnswer').value = item.answer;
-  document.getElementById('editModal').classList.add('open');
-}
-
-function closeModal() {
-  document.getElementById('editModal').classList.remove('open');
-}
-
-async function refetchQuiz() {
-  const btn = document.getElementById('refetchBtn');
-  if (!confirm('Paksa bot mengambil data kuis baru sekarang? Ini akan memakan waktu 1-2 menit.')) return;
-  btn.textContent = 'Memproses...'; btn.disabled = true;
-  try {
-    const res = await fetch('/api/quiz/refetch', { method: 'POST' });
-    const d = await res.json();
-    if (d.success) alert('Berhasil! ' + d.message); else alert('Gagal: ' + d.message);
-  } catch(e) { alert('Terjadi kesalahan.'); }
-  btn.textContent = 'Paksa Ambil Data Baru'; btn.disabled = false;
-  refresh();
-}
-
-async function stopQuiz() {
-  if (!confirm('Apakah Anda yakin ingin menghentikan kuis yang sedang berjalan?')) return;
-  try {
-    const res = await fetch('/api/quiz/stop', { method: 'POST' });
-    const d = await res.json();
-    if (d.success) refresh(); else alert('Gagal: ' + d.message);
-  } catch(e) { alert('Terjadi kesalahan.'); }
-}
-
-async function saveEntry() {
-  const data = {
-    id: document.getElementById('editId').value,
-    question_key: document.getElementById('editKey').value,
-    domain: document.getElementById('editDomain').value,
-    answer: document.getElementById('editAnswer').value
-  };
-  const res = await fetch('/api/cache/save', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
-  });
-  if (res.ok) { closeModal(); loadCache(); }
-  else alert('Gagal menyimpan. Pastikan Question Key unik.');
-}
-
-async function saveQuizConfig() {
-  const filter = document.getElementById('quizFilterSelect').value;
-  await fetch('/api/quiz/config', { 
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, 
-    body: JSON.stringify({ filter }) 
-  });
-}
-
-async function deleteEntry(id) {
-  const ok = await customConfirm('Hapus entri cache ini dari database?', 'Hapus Cache Entry', 'Hapus');
-  if (!ok) return;
-  await fetch('/api/cache/delete', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id })
-  });
-  loadCache();
-}
-
-// ---- PROMPT & KNOWLEDGE ----
-let knowledgeData = [];
-async function loadPrompt() {
-  try {
-    const [p, k, d] = await Promise.all([fetch('/api/prompt'), fetch('/api/knowledge'), fetch('/api/domains')]);
-    const pd = await p.json();
-    const kd = await k.json();
-    const dd = await d.json();
-    if (pd.success) document.getElementById('promptEditor').value = pd.prompt;
-    if (kd.success) { knowledgeData = kd.knowledge; renderKnowledge(kd.knowledge); }
-    if (dd.success) { customDomains = dd.domains; }
-    renderDomainTags();
-  } catch(e) {}
-}
-
-async function savePrompt() {
-  const prompt = document.getElementById('promptEditor').value;
-  const res = await fetch('/api/prompt/save', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt })
-  });
-  if (res.ok) alert('Prompt berhasil disimpan secara permanen!');
-  else alert('Gagal menyimpan prompt.');
-}
-
-function renderKnowledge(knowledge) {
-  const list = document.getElementById('knowledgeList');
-  if (!list || !knowledge) return;
-  list.innerHTML = knowledge.map((k, i) => {
-    const kwPreview = (k.keywords || []).slice(0, 6).join(', ');
-    return \`<div class="kw-item">
-      <div class="kw-header">
-        <div class="kw-header-left" onclick="toggleKw(this.parentElement)">
-          <span class="kw-domain">\${k.domain||'umum'}</span>
-          <span style="font-size:12px; font-weight:600;">\${(k.keywords||[])[0] || 'Item ' + (i+1)}</span>
-        </div>
-        <button class="btn-sm btn-sm-edit" onclick="editKw(\${i})" style="flex-shrink:0;">Edit</button>
-        <button class="btn-sm btn-sm-del" onclick="deleteKw(\${i})" style="flex-shrink:0;">Hapus</button>
-      </div>
-      <div class="kw-body">
-        <div class="kw-info">\${k.info||''}</div>
-        <div class="kw-keywords"><b>Keywords:</b> \${kwPreview}...</div>
-      </div>
-    </div>\`;
-  }).join('');
-}
-
-function toggleKw(headerEl) {
-  const body = headerEl.nextElementSibling;
-  body.classList.toggle('open');
-}
-
-// Daftar domain custom (akan di-sync dari knowledgeData)
-let customDomains = [];
-
-function getUniqueDomains() {
-  const fromKnowledge = knowledgeData.map(k => k.domain).filter(Boolean);
-  return [...new Set([...fromKnowledge, ...customDomains])].sort();
-}
-
-function renderDomainTags() {
-  const container = document.getElementById('domainTagList');
-  if (!container) return;
-  const domains = getUniqueDomains();
-  container.innerHTML = domains.map(d => \`
-    <span style="display:inline-flex;align-items:center;gap:4px;background:var(--accent);color:#fff;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600;">
-      \${d}
-      <span onclick="deleteDomainTag('\${d}')" style="cursor:pointer;font-size:14px;line-height:1;margin-left:2px;opacity:0.8;" title="Hapus domain">&times;</span>
-    </span>
-  \`).join('');
-}
-
-async function addNewDomain() {
-  const inp = document.getElementById('newDomainInput');
-  const val = inp.value.trim().toLowerCase();
-  if (!val) return alert('Nama domain tidak boleh kosong.');
-  if (getUniqueDomains().includes(val)) return alert('Domain sudah ada.');
-  await fetch('/api/domains/add', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ domain: val })
-  });
-  customDomains.push(val);
-  inp.value = '';
-  renderDomainTags();
-  setupDomainSelect('');
-}
-
-async function deleteDomainTag(domain) {
-  const usedInKnowledge = knowledgeData.some(k => k.domain === domain);
-  if (usedInKnowledge) return alert('Domain ini masih digunakan oleh ' + knowledgeData.filter(k => k.domain === domain).length + ' entry. Hapus atau pindahkan entry tersebut terlebih dahulu.');
-  await fetch('/api/domains/delete', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ domain })
-  });
-  customDomains = customDomains.filter(d => d !== domain);
-  renderDomainTags();
-  setupDomainSelect('');
-}
-
-function setupDomainSelect(selectedValue) {
-  const sel = document.getElementById('kwDomain');
-  if (!sel) return;
-  const domains = getUniqueDomains();
-  sel.innerHTML = '<option value="">-- Pilih Domain --</option>' + domains.map(d => \`<option value="\${d}" \${d === selectedValue ? 'selected' : ''}>\${d}</option>\`).join('');
-}
-
-function addKw() {
-  document.getElementById('kwModalTitle').textContent = 'Add New Knowledge';
-  document.getElementById('kwIndex').value = -1;
-  setupDomainSelect('');
-  document.getElementById('kwKeywords').value = '';
-  document.getElementById('kwInfo').value = '';
-  document.getElementById('kwModal').classList.add('open');
-}
-
-function editKw(index) {
-  const k = knowledgeData[index];
-  if (!k) return;
-  document.getElementById('kwModalTitle').textContent = 'Edit Knowledge Entry';
-  document.getElementById('kwIndex').value = index;
-  setupDomainSelect(k.domain || '');
-  document.getElementById('kwKeywords').value = (k.keywords || []).join(String.fromCharCode(10));
-  document.getElementById('kwInfo').value = k.info || '';
-  document.getElementById('kwModal').classList.add('open');
-}
-
-async function deleteKw(index) {
-  const ok = await customConfirm('Knowledge ini akan dihapus secara permanen dari database.', 'Hapus Knowledge', 'Hapus');
-  if (!ok) return;
-  const res = await fetch('/api/knowledge/delete', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ index })
-  });
-  if (res.ok) {
-    const kRes = await fetch('/api/knowledge');
-    const kd = await kRes.json();
-    if (kd.success) { knowledgeData = kd.knowledge; renderKnowledge(knowledgeData); renderDomainTags(); }
-  } else {
-    alert('Gagal menghapus knowledge.');
-  }
-}
-
-function closeKwModal() {
-  document.getElementById('kwModal').classList.remove('open');
-}
-
-async function saveKw() {
-  const index = parseInt(document.getElementById('kwIndex').value);
-  const domain = document.getElementById('kwDomain').value.trim();
-  const newKeywords = document.getElementById('kwKeywords').value.split(String.fromCharCode(10)).map(s => s.trim()).filter(Boolean);
-  const newInfo = document.getElementById('kwInfo').value.trim();
-  
-  if (!domain) return alert('Domain tidak boleh kosong.');
-  if (newKeywords.length === 0) return alert('Keywords tidak boleh kosong.');
-  if (!newInfo) return alert('Info tidak boleh kosong.');
-  
-  // Save via API
-  const res = await fetch('/api/knowledge/save', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ index, domain, keywords: newKeywords, info: newInfo })
-  });
-  
-  if (res.ok) { 
-    closeKwModal(); 
-    // Re-fetch all knowledge to stay in sync
-    const kRes = await fetch('/api/knowledge');
-    const kd = await kRes.json();
-    if (kd.success) {
-      knowledgeData = kd.knowledge;
-      renderKnowledge(knowledgeData);
-    }
-    alert(index === -1 ? 'Knowledge baru ditambahkan!' : 'Knowledge berhasil disimpan!'); 
-  } else {
-    alert('Gagal menyimpan.');
-  }
-}
-
-// ---- LAPORAN ----
-let laporanData = [];
-
-async function loadLaporan() {
-  try {
-    const res = await fetch('/api/laporan');
-    const d = await res.json();
-    if (d.success) {
-      laporanData = d.data;
-      filterLaporanUI();
-    }
-  } catch(e) {}
-}
-
-function filterLaporanUI() {
-  const filter = document.getElementById('laporanFilter')?.value || '';
-  const filtered = filter ? laporanData.filter(l => l.status === filter) : laporanData;
-  renderLaporan(filtered);
-}
-
-function renderLaporan(data) {
-  const tbody = document.getElementById('laporanList');
-  if (!tbody) return;
-  if (!data || data.length === 0) {
-    tbody.innerHTML = \`<tr><td colspan="6" style="text-align:center; color:var(--muted); padding:20px;">Belum ada laporan</td></tr>\`;
-    return;
-  }
-  const statusColor = { baru: 'var(--accent)', diproses: '#f59e0b', selesai: 'var(--green)' };
-  tbody.innerHTML = data.map((l, i) => \`
-    <tr>
-      <td style="font-weight:700; color:var(--muted);">\${i+1}</td>
-      <td style="font-weight:700; color:var(--accent);">@\${l.username || '-'}</td>
-      <td style="max-width:300px;">\${l.pesan || '-'}</td>
-      <td><span style="background:\${statusColor[l.status]||'#ccc'};color:#fff;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;">\${l.status||'baru'}</span></td>
-      <td style="font-size:11px; color:var(--muted);">\${l.timestamp ? new Date(l.timestamp).toLocaleString('id-ID') : '-'}</td>
-      <td class="td-actions">
-        \${l.status !== 'selesai' ? \`<button class="btn-sm btn-sm-edit" onclick="updateLaporanStatus(\${l.id}, 'selesai')">Selesai</button>\` : ''}
-        \${l.status === 'baru' ? \`<button class="btn-sm btn-sm-toggle" onclick="updateLaporanStatus(\${l.id}, 'diproses')">Proses</button>\` : ''}
-        <button class="btn-sm btn-sm-del" onclick="deleteLaporan(\${l.id})">Hapus</button>
-      </td>
-    </tr>
-  \`).join('');
-}
-
-async function updateLaporanStatus(id, status) {
-  await fetch('/api/laporan/status', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, status })
-  });
-  loadLaporan();
-}
-
-async function deleteLaporan(id) {
-  const ok = await customConfirm('Laporan ini akan dihapus secara permanen.', 'Hapus Laporan', 'Hapus');
-  if (!ok) return;
-  await fetch('/api/laporan/delete', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id })
-  });
-  loadLaporan();
-}
-
-async function deleteAllLaporan() {
-  const ok = await customConfirm('Semua laporan akan dihapus secara permanen dan tidak dapat dikembalikan.', 'Hapus Semua Laporan', 'Hapus Semua');
-  if (!ok) return;
-  await fetch('/api/laporan/delete-all', { method: 'POST' });
-  loadLaporan();
-}
-
-// ---- FILTER FUNCTIONS ----
-let filterData = [];
-
-async function loadFilter() {
-  try {
-    const res = await fetch('/api/filter');
-    const d = await res.json();
-    if (d.success) {
-      filterData = d.profanities || [];
-      document.getElementById('filterResponseEditor').value = d.response || '';
-      document.getElementById('filterWordCount').textContent = filterData.length.toLocaleString('id-ID');
-      renderFilterTags(filterData);
-    }
-  } catch(e) {}
-}
-
-function renderFilterTags(words) {
-  const container = document.getElementById('filterTagContainer');
-  if (!container) return;
-  if (!words || words.length === 0) {
-    container.innerHTML = '<div style="color:var(--muted); font-size:13px;">Belum ada kata filter.</div>';
-    return;
-  }
-  container.innerHTML = words.map(w => \`
-    <span style="display:inline-flex;align-items:center;gap:4px;background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:500;">
-      \${w}
-      <span onclick="deleteFilterWord('\${w.replace(/'/g, "\\\\'")}')" style="cursor:pointer;font-size:15px;line-height:1;margin-left:2px;opacity:0.7;font-weight:700;" title="Hapus kata ini">&times;</span>
-    </span>
-  \`).join('');
-}
-
-function filterSearchUI() {
-  const q = (document.getElementById('filterSearch')?.value || '').toLowerCase();
-  const filtered = q ? filterData.filter(w => w.includes(q)) : filterData;
-  renderFilterTags(filtered);
-}
-
-async function addFilterWord() {
-  const inp = document.getElementById('filterWordInput');
-  const word = inp.value.trim().toLowerCase();
-  if (!word) return;
-  const res = await fetch('/api/filter/add', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ word })
-  });
-  const d = await res.json();
-  if (!d.success) { alert(d.error || 'Gagal menambahkan kata.'); return; }
-  inp.value = '';
-  loadFilter();
-}
-
-async function deleteFilterWord(word) {
-  const ok = await customConfirm(\`Hapus kata "\${word}" dari daftar filter?\`, 'Hapus Kata Filter', 'Hapus');
-  if (!ok) return;
-  await fetch('/api/filter/delete', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ word })
-  });
-  loadFilter();
-}
-
-async function saveFilterResponse() {
-  const val = document.getElementById('filterResponseEditor').value.trim();
-  const res = await fetch('/api/filter/response', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ response: val })
-  });
-  if (res.ok) { alert('Pesan balasan filter berhasil diperbarui!'); loadFilter(); }
-}
-
-// ---- AUTO REPLY ----
-async function loadAutoReply() {
-    try {
-        const res = await fetch('/api/autoreply');
-        const d = await res.json();
-        if(!d.success) return;
-        const tbody = document.getElementById('autoReplyList');
-        if(!d.autoreply || d.autoreply.length === 0) {
-            tbody.innerHTML = \`<tr><td colspan="3" style="text-align:center; color:var(--muted); padding:20px;">Belum ada Auto Reply.</td></tr>\`;
-            return;
-        }
-        tbody.innerHTML = d.autoreply.map(a => \`
-          <tr>
-            <td><strong style="color:var(--accent)">\${a.keyword}</strong></td>
-            <td style="font-size:12px; line-height:1.5;">\${a.answer.replace(/\\n/g, '<br>')}</td>
-            <td><button class="btn-sm btn-sm-del" onclick="delAutoReply('\${a.keyword}')">Hapus</button></td>
-          </tr>
-        \`).join('');
-    } catch(e) {}
-}
-
-async function showAddAutoReply() {
-    const k = prompt("Masukkan Keyword pemicu (cth: 'link error'):");
-    if (!k || !k.trim()) return;
-    const a = prompt("Masukkan Pesan Balasan:");
-    if (!a || !a.trim()) return;
-
-    if (confirm(\`Simpan Auto Reply untuk keyword "\${k}"?\`)) {
-        await fetch('/api/autoreply/add', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({keyword: k, answer: a}) });
-        loadAutoReply();
-    }
-}
-
-async function delAutoReply(k) {
-    if (confirm(\`Hapus Auto Reply dengan keyword "\${k}"?\`)) {
-        await fetch('/api/autoreply/delete', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({keyword: k}) });
-        loadAutoReply();
-    }
-}
-
-// ---- OTHER FUNCTIONS UNCHANGED ----
-// ---- CONTROLS ----
-async function toggleDoubleXP() {
-  await fetch('/api/config/double-xp', { method: 'POST' });
-  refresh();
-}
-
-async function toggleBot() {
-  await fetch('/api/bot/toggle', { method: 'POST' });
-  refresh();
-}
-
-async function toggleKey(id) {
-  await fetch('/api/groq/toggle/' + id, { method: 'POST' });
-  refresh();
-}
-
-async function clearCache() {
-  const ok = await customConfirm('Semua entry cache akan dihapus. Bot akan memproses ulang pertanyaan yang sama.', 'Hapus Semua Cache', 'Hapus Semua');
-  if (!ok) return;
-  await fetch('/api/cache/clear', { method: 'POST' });
-  refresh();
-  loadCache();
-}
-
-async function sendManual() {
-  const input = document.getElementById('manualText');
-  const text = input.value.trim();
-  if (!text) return;
-  await fetch('/api/chat/send', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text })
-  });
-  input.value = '';
-  refresh();
-}
-
-async function sendTemplate(type) {
-  const msg = type === 'online'
-    ? 'rara kembali aktif, silahkan tanya apapun rara siap menjawab, jika ada pertanyaan yang rara tidak mengerti langsung tag @Yogaa sebagai pemilik rara untuk memperbaiki dan menambahkan responnya'
-    : 'Rara istirahat dulu ya kak, sampai jumpa lagi! (Mode Offline Aktif)';
-  const ok = await customConfirm('Broadcast pesan ' + type + ' akan dikirim ke semua user di chat.', 'Kirim Broadcast', 'Kirim', false);
-  if (!ok) return;
-  await fetch('/api/chat/send', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: msg })
-  });
-  refresh();
-}
-
-// ---- USER MANAGEMENT ----
-async function loadUsers() {
-  const q = document.getElementById('userSearch')?.value || '';
-  try {
-    const res = await fetch('/api/users/list?q=' + encodeURIComponent(q));
-    const d = await res.json();
-    const tbody = document.getElementById('userList');
-    if (!tbody || !d.success) return;
-    if (d.data.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:var(--muted);">Tidak ada user ditemukan.</td></tr>';
-      return;
-    }
-    tbody.innerHTML = d.data.map((u, i) => \`
-      <tr>
-        <td style="font-weight:700; color:var(--muted);">\${i+1}</td>
-        <td style="font-weight:700; color:var(--accent);">@\${u.username}</td>
-        <td><span class="prov-tag" style="background:var(--accent); color:#fff; border:none;">Lv \${u.level}</span></td>
-        <td style="font-weight:600;">\${(u.xp||0).toLocaleString('id-ID')} XP</td>
-        <td class="td-actions">
-          <button class="btn-sm btn-sm-edit" onclick="editUserStats('\${u.username}', \${u.level}, \${u.xp})">Edit Stats</button>
-        </td>
-      </tr>
-    \`).join('');
-  } catch(e) {}
-}
-
-function editUserStats(user, level, xp) {
-  document.getElementById('editUserUsername').value = user;
-  document.getElementById('editUserTitle').textContent = user;
-  document.getElementById('editUserLevel').value = level;
-  document.getElementById('editUserXP').value = xp;
-  document.getElementById('userModal').classList.add('open');
-}
-
-function closeUserModal() {
-  document.getElementById('userModal').classList.remove('open');
-}
-
-async function saveUserStats() {
-  const data = {
-    username: document.getElementById('editUserUsername').value,
-    level: parseInt(document.getElementById('editUserLevel').value),
-    xp: parseInt(document.getElementById('editUserXP').value)
-  };
-  const res = await fetch('/api/users/update-xp', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
-  });
-  if (res.ok) { closeUserModal(); loadUsers(); }
-  else alert('Gagal memperbarui stats.');
-}
-
-// ---- REFRESH LOOP ----
-async function loadConfig() {
-  // Personality selector removed
-}
-
-async function refresh() {
-  try {
-    const res = await fetch('/api/stats');
-    const d = await res.json();
-    render(d);
-  } catch(e) {}
-}
-
-refresh();
-setInterval(refresh, 5000);
-</script>
-</body>
-</html>`;
-}
-
-
-
-
 process.on('uncaughtException', (err) => { console.error('Uncaught Exception:', err.message); });
 
 startDashboard();
