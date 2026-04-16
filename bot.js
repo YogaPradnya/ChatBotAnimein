@@ -623,8 +623,15 @@ async function updateDBStats() {
     try {
         const result = await db.execute("SELECT COUNT(*) as count FROM chat_logs");
         stats.totalDBLogs = result.rows[0].count;
+        
         const cacheResult = await db.execute("SELECT COUNT(*) as count FROM response_cache");
         stats.cacheTotal = cacheResult.rows[0].count;
+
+        const kuisResult = await db.execute("SELECT COUNT(*) as count FROM kuis_pool");
+        stats.totalDBKuis = kuisResult.rows[0].count;
+
+        const reportResult = await db.execute("SELECT COUNT(*) as count FROM laporan");
+        stats.totalReports = reportResult.rows[0].count;
     } catch (e) {
         // Silent error to prevent log spam
     }
@@ -668,6 +675,9 @@ const stats = {
         lastBlocked: null,
     },
     totalTokensUsed: 0,
+    totalDBLogs: 0,
+    totalDBKuis: 0,
+    totalReports: 0,
     recentActivity: []
 };
 
@@ -2040,18 +2050,46 @@ function startDashboard() {
     app.get('/api/cache/list', async (req, res) => {
         try {
             const result = await db.execute("SELECT * FROM response_cache ORDER BY created_at DESC");
-            res.json({ success: true, data: result.rows });
+            const data = result.rows.map(r => {
+                let vCount = 0;
+                try {
+                    const parsed = JSON.parse(r.answer);
+                    vCount = Array.isArray(parsed) ? parsed.length : 1;
+                } catch(e) {
+                    vCount = 1;
+                }
+                return {
+                    ...r,
+                    hits: r.hit_count || 0,
+                    variations_count: vCount
+                };
+            });
+            res.json({ success: true, data });
         } catch (e) {
             res.status(500).json({ success: false, error: e.message });
         }
     });
 
-    app.post('/api/cache/save', async (req, res) => {
+    app.get('/api/cache/get', async (req, res) => {
         try {
-            const { id, question_key, answer, domain } = req.body;
+            const { id } = req.query;
+            const result = await db.execute({ sql: "SELECT * FROM response_cache WHERE id = ?", args: [id] });
+            if (result.rows.length === 0) return res.status(404).json({ success: false });
+            
+            // Dashboard expects answer_json instead of answer
+            const data = { ...result.rows[0], answer_json: result.rows[0].answer };
+            res.json({ success: true, data });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
+    app.post('/api/cache/update', async (req, res) => {
+        try {
+            const { id, key, answer, domain } = req.body; // Dashboard sends 'key'
             await db.execute({
                 sql: "UPDATE response_cache SET question_key = ?, answer = ?, domain = ? WHERE id = ?",
-                args: [question_key, answer, domain, id]
+                args: [key, answer, domain, id]
             });
             res.json({ success: true });
         } catch (e) {

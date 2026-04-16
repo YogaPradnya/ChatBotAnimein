@@ -355,9 +355,9 @@ function getDashboardHTML() {
   #confirmBtnCancel { background:var(--bg); color:var(--text); border:1px solid var(--border) !important; }
   #confirmBtnOk { background:var(--accent); color:#fff; }
 
-  /* KNOWLEDGE VIEWER */
-  .knowledge-list { display: flex; flex-direction: column; gap: 10px; }
-  .kw-item { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  /* KNOWLEDGE VIEWER EXPLICIT FIX */
+  .knowledge-list { display: block !important; overflow-y: auto !important; padding-right: 10px; flex: 1; min-height: 0; }
+  .kw-item { display: block !important; margin-bottom: 15px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--surface); box-shadow: var(--shadow-sm); min-height: max-content; height: auto !important; }
   .kw-header { padding: 10px 14px; background: #fafafa; display: flex; justify-content: space-between; align-items: center; }
   .kw-header-left { display: flex; align-items: center; gap: 10px; cursor: pointer; flex: 1; }
   .kw-domain { font-size: 10px; font-weight: 700; text-transform: uppercase; background: var(--accent); color: #fff; padding: 2px 8px; border-radius: 4px; }
@@ -380,12 +380,17 @@ function getDashboardHTML() {
   #page-dashboard .two-col > .card .activity-list { overflow-y: auto; flex: 1; }
   .activity-card { height: 100%; }
   
-  /* Prompt & Knowledge Layout */
-  #page-prompt.dash-flex .two-col { flex: 1; min-height: 0; height: 100%; }
-  #page-prompt.dash-flex .two-col > div { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
-  #page-prompt.dash-flex .knowledge-card { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-  #page-prompt.dash-flex .knowledge-list { overflow-y: auto; flex: 1; }
-  #page-prompt.dash-flex .prompt-col { overflow-y: auto; padding-right: 10px; }
+  /* Prompt & Knowledge Layout Fix */
+  #page-prompt.dash-flex { height: 100%; min-height: 600px; display: flex !important; flex-direction: column; overflow: hidden; }
+  #page-prompt.dash-flex .two-col { flex: 1; min-height: 0; height: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; overflow: hidden; }
+  #page-prompt.dash-flex .prompt-col { display: flex; flex-direction: column; gap: 20px; overflow-y: auto; height: 100%; padding-right: 12px; min-height: 0; }
+  #page-prompt.dash-flex .knowledge-col { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; }
+  #page-prompt.dash-flex .knowledge-card { flex: 1; display: flex; flex-direction: column; overflow: hidden; margin-bottom: 0; min-height: 0; }
+  #page-prompt.dash-flex .knowledge-list { flex: 1; overflow-y: auto !important; min-height: 0; padding-bottom: 30px; }
+  
+  /* Scrollbar styling for better look */
+  #page-prompt .knowledge-list::-webkit-scrollbar, #page-prompt .prompt-col::-webkit-scrollbar { width: 6px; }
+  #page-prompt .knowledge-list::-webkit-scrollbar-thumb, #page-prompt .prompt-col::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
 
   @media (max-width: 900px) {
     .stats-grid { grid-template-columns: repeat(2, 1fr); }
@@ -567,9 +572,8 @@ function getDashboardHTML() {
     <!-- PAGE: PROMPT & KNOWLEDGE -->
     <div class="page" id="page-prompt">
       <div class="two-col">
-        <!-- Left Column: System Prompt + Domain Manager -->
+        <!-- Left Column -->
         <div class="prompt-col">
-          <!-- System Prompt Editor -->
           <div class="card">
             <div class="card-title">System Prompt (Live Edit)</div>
             <div class="form-group">
@@ -578,7 +582,6 @@ function getDashboardHTML() {
             <button class="btn-primary" onclick="savePrompt()">Simpan Prompt</button>
           </div>
 
-          <!-- Domain Manager -->
           <div class="card">
             <div class="card-title">Kelola Domain</div>
             <div style="font-size:11px; color:var(--muted); margin-bottom:12px;">Daftar kategori domain yang tersedia untuk digunakan saat menambah/mengedit Knowledge.</div>
@@ -590,14 +593,16 @@ function getDashboardHTML() {
           </div>
         </div>
 
-        <!-- Knowledge Editor -->
-        <div class="card knowledge-card">
-          <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
-             <span>Animein Knowledge Base</span>
-             <button class="btn-sm btn-sm-toggle" onclick="addKw()">+ Add New</button>
-          </div>
-          <div class="knowledge-list" id="knowledgeList">
-            <div style="color:var(--muted);">Memuat...</div>
+        <!-- Right Column -->
+        <div class="knowledge-col">
+          <div class="card knowledge-card">
+            <div class="card-title">
+               <span>Animein Knowledge Base</span>
+               <button class="btn-sm btn-sm-toggle" onclick="addKw()">+ Add New</button>
+            </div>
+            <div class="knowledge-list" id="knowledgeList">
+              <div style="color:var(--muted); padding:20px; text-align:center;">Memuat data...</div>
+            </div>
           </div>
         </div>
       </div>
