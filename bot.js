@@ -636,7 +636,7 @@ setInterval(updateDBStats, 60000);
 setTimeout(updateDBStats, 5000);
 
 
-let isBotActive = true;
+let isBotActive = false;
 let IS_DOUBLE_XP = false;
 let QUIZ_FILTER = 'all';
 

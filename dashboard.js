@@ -379,6 +379,13 @@ function getDashboardHTML() {
   #page-dashboard .two-col > .card { overflow: hidden; display: flex; flex-direction: column; height: 100%; margin-bottom: 0; }
   #page-dashboard .two-col > .card .activity-list { overflow-y: auto; flex: 1; }
   .activity-card { height: 100%; }
+  
+  /* Prompt & Knowledge Layout */
+  #page-prompt.dash-flex .two-col { flex: 1; min-height: 0; height: 100%; }
+  #page-prompt.dash-flex .two-col > div { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+  #page-prompt.dash-flex .knowledge-card { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  #page-prompt.dash-flex .knowledge-list { overflow-y: auto; flex: 1; }
+  #page-prompt.dash-flex .prompt-col { overflow-y: auto; padding-right: 10px; }
 
   @media (max-width: 900px) {
     .stats-grid { grid-template-columns: repeat(2, 1fr); }
@@ -561,7 +568,7 @@ function getDashboardHTML() {
     <div class="page" id="page-prompt">
       <div class="two-col">
         <!-- Left Column: System Prompt + Domain Manager -->
-        <div style="display:flex; flex-direction:column; gap:16px;">
+        <div class="prompt-col">
           <!-- System Prompt Editor -->
           <div class="card">
             <div class="card-title">System Prompt (Live Edit)</div>
@@ -584,7 +591,7 @@ function getDashboardHTML() {
         </div>
 
         <!-- Knowledge Editor -->
-        <div class="card">
+        <div class="card knowledge-card">
           <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
              <span>Animein Knowledge Base</span>
              <button class="btn-sm btn-sm-toggle" onclick="addKw()">+ Add New</button>
@@ -965,7 +972,7 @@ function getDashboardHTML() {
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     const target = document.getElementById('page-' + id);
     target.classList.add('active');
-    if (id === 'dashboard') {
+    if (id === 'dashboard' || id === 'prompt') {
       target.classList.add('dash-flex');
       target.style.display = 'flex';
     } else {
@@ -983,15 +990,13 @@ function getDashboardHTML() {
     if (id === 'kuis') { loadTitles(); loadUsers(); }
     if (id === 'model') {
       loadStats();
-      loadConfig();
     }
   }
 
   async function loadStats() {
-    // Stats loader for Model page (Logic defined in refresh loop)
+    refresh();
   }
 
-  // ---- UPTIME ----
   function formatUptime(sec) {
     const h = Math.floor(sec/3600).toString().padStart(2,'0');
     const m = Math.floor((sec%3600)/60).toString().padStart(2,'0');
@@ -999,7 +1004,6 @@ function getDashboardHTML() {
     return h+':'+m+':'+s;
   }
 
-  // ---- RENDER STATS ----
   function render(d) {
     if (!d) return;
     const online = d.botStatus === 'online';
@@ -1033,7 +1037,6 @@ function getDashboardHTML() {
     setT('cacheTotal', (d.cacheTotal||0).toLocaleString('id-ID'));
     setT('totalReports', (d.totalReports||0).toLocaleString('id-ID'));
     setT('filterBlockedCount', (d.filter?.blocked||0).toLocaleString('id-ID'));
-    setT('totalDBKuis', (d.totalDBKuis||0).toLocaleString('id-ID'));
     setT('kuisDashboardTotal', (d.totalDBKuis||0).toLocaleString('id-ID'));
     setT('kuisPageTotalDB', (d.totalDBKuis||0).toLocaleString('id-ID'));
 
@@ -1093,14 +1096,17 @@ function getDashboardHTML() {
           aList.innerHTML = activityData.map(a => \`
             <div class="activity-item">
               <div class="activity-meta">
-                <span class="activity-user">\${a.user}</span>
+                <span class="activity-user">\${a.from || 'User'}</span>
                 <span class="activity-time">\${a.time}</span>
               </div>
-              <div class="activity-q">\${a.question}</div>
-              <div class="activity-a">\${a.answer}</div>
-              <div style="margin-top:5px;"><span class="prov-tag">\${a.provider}</span></div>
+              <div class="activity-q">\${a.text || ''}</div>
+              <div class="activity-a">\${a.response || ''}</div>
+              <div style="margin-top:5px; display:flex; gap:5px;">
+                <span class="prov-tag">\${a.provider}</span>
+                \${a.tokens ? \`<span class="prov-tag" style="background:var(--blue); color:#fff; border:none;">\${a.tokens} tokens</span>\` : ''}
+              </div>
             </div>
-          \`).reverse().join('');
+          \`).join('');
         }
       }
     }
@@ -1118,7 +1124,6 @@ function getDashboardHTML() {
       const d = await res.json();
       stats = d;
       
-      // Auto update titles if available in stats/user list response
       if (d.availableTitles) {
         availableTitles = d.availableTitles;
         updateModalTitleDropdown();
@@ -1129,7 +1134,6 @@ function getDashboardHTML() {
     } catch(e) {}
   }
 
-  // ---- MANUAL SEND ----
   async function sendManual() {
     const inp = document.getElementById('manualText');
     const text = inp.value.trim();
@@ -1150,7 +1154,6 @@ function getDashboardHTML() {
     refresh();
   }
 
-  // ---- CACHE TABLE ----
   let fullCache = [];
   async function loadCache() {
     const res = await fetch('/api/cache/list');
@@ -1215,7 +1218,6 @@ function getDashboardHTML() {
     loadCache();
   }
 
-  // ---- PROMPT & KNOWLEDGE ----
   async function loadPrompt() {
     const res = await fetch('/api/prompt');
     const d = await res.json();
@@ -1241,7 +1243,6 @@ function getDashboardHTML() {
       </span>
     \`).join('');
     
-    // Update select in modal
     const sel = document.getElementById('kwDomain');
     sel.innerHTML = d.domains.map(dom => \`<option value="\${dom}">\${dom}</option>\`).join('');
   }
@@ -1336,7 +1337,6 @@ function getDashboardHTML() {
     loadKnowledge();
   }
 
-  // ---- AUTOREPLY ----
   async function loadAutoReply() {
     const res = await fetch('/api/autoreply');
     const d = await res.json();
@@ -1373,7 +1373,6 @@ function getDashboardHTML() {
     loadAutoReply();
   }
 
-  // ---- LAPORAN ----
   async function loadLaporan() {
     const res = await fetch('/api/laporan');
     const d = await res.json();
@@ -1429,7 +1428,6 @@ function getDashboardHTML() {
     loadLaporan();
   }
 
-  // ---- FILTER FUNCTIONS ----
   let filterData = [];
   async function loadFilter() {
     try {
@@ -1491,7 +1489,6 @@ function getDashboardHTML() {
     alert('Pesan balasan disimpan!');
   }
 
-  // ---- TITLES MANAGEMENT ----
   async function loadTitles() {
     try {
       const res = await fetch('/api/titles');
@@ -1562,7 +1559,6 @@ function getDashboardHTML() {
     sel.value = currentVal;
   }
 
-  // ---- KUIS & USERS ----
   async function refetchQuiz() {
     const btn = document.getElementById('refetchBtn');
     btn.disabled = true;
@@ -1590,7 +1586,6 @@ function getDashboardHTML() {
         tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:var(--muted);">Tidak ada user ditemukan.</td></tr>';
         return;
       }
-      // Update globally
       availableTitles = d.availableTitles || [];
       updateModalTitleDropdown();
       renderTitlesList();
@@ -1635,8 +1630,6 @@ function getDashboardHTML() {
     else alert('Gagal memperbarui stats.');
   }
 
-  // --- CUSTOM CONFIRM ---
-  let confirmCallback = null;
   function customConfirm(msg, title='Konfirmasi', btnOk='Ya', showIcon=true) {
     return new Promise((resolve) => {
       document.getElementById('confirmMsg').textContent = msg;
@@ -1658,9 +1651,8 @@ function getDashboardHTML() {
     });
   }
 
-  // init load
   refresh();
-  loadTitles(); // Load titles on start
+  loadTitles();
   setInterval(refresh, 5000);
 </script>
 </body>
