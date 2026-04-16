@@ -106,9 +106,12 @@ async function initDB() {
                 year TEXT,
                 score TEXT,
                 type TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                last_used_at INTEGER DEFAULT 0
             )
         `);
+        // Pastikan kolom last_used_at ada (jika tabel sudah terlanjur dibuat)
+        await db.execute(`ALTER TABLE quiz_pool ADD COLUMN last_used_at INTEGER DEFAULT 0`).catch(() => {});
         await db.execute(`
             CREATE TABLE IF NOT EXISTS user_stats (
                 username TEXT PRIMARY KEY,
@@ -289,12 +292,16 @@ async function startQuiz(senderName, msgId) {
 
     activeQuiz.isStarting = true;
     try {
-        // Ambil data satu anime acak dari database quiz_pool
-        let anime = null;
+        // Ambil data anime yang paling jarang muncul (Least Recently Used) secara acak
         try {
-            const res = await db.execute("SELECT * FROM quiz_pool ORDER BY RANDOM() LIMIT 1");
+            const res = await db.execute("SELECT * FROM quiz_pool ORDER BY last_used_at ASC, RANDOM() LIMIT 1");
             if (res.rows.length > 0) {
                 anime = res.rows[0];
+                // Update tanggal penggunaan agar tidak muncul lagi dalam waktu dekat
+                await db.execute({
+                    sql: "UPDATE quiz_pool SET last_used_at = ? WHERE id = ?",
+                    args: [Math.floor(Date.now() / 1000), anime.id]
+                });
             }
         } catch (e) {
             console.error("[QUIZ] Gagal ambil data dari DB:", e.message);
@@ -906,57 +913,61 @@ async function fetchHomeAnime() {
     if (cache.trending.data.length > 0 && now - cache.trending.lastFetch < cache.TTL) {
         return true;
     }
-
     try {
-        const days = ['AHAD', 'SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT', 'SABTU'];
-        const today = days[getJakartaDate().getDay()];
-
-        const resHome = await axios.get(`${CONFIG.BASE_URL}/3/2/home/data`, {
-            params: { day: today },
-            headers: ANIMEIN_HEADERS,
-            timeout: 10000,
-        });
-
-        const popPromises = [];
-        const starPromises = [];
-        const latestPromises = [];
-        for (let i = 1; i <= 40; i++) {
-            popPromises.push(axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, { params: { sort: 'popular', page: i }, headers: ANIMEIN_HEADERS, timeout: 10000 }).catch(() => null));
-            starPromises.push(axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, { params: { sort: 'stars', page: i }, headers: ANIMEIN_HEADERS, timeout: 10000 }).catch(() => null));
-            latestPromises.push(axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, { params: { sort: 'latest', page: i }, headers: ANIMEIN_HEADERS, timeout: 10000 }).catch(() => null));
+        // 1. Ambil List Anime secara masif (100 halaman = ~2500 per kategori)
+        const categories = ['popular', 'stars', 'latest'];
+        let allRawMovies = [];
+        
+        console.log(`[ANIMEIN] Megafetching start (100 pages per category)...`);
+        
+        for (const cat of categories) {
+            const pagePromises = [];
+            for (let i = 1; i <= 100; i++) {
+                pagePromises.push(
+                    axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, { 
+                        params: { sort: cat, page: i }, 
+                        headers: ANIMEIN_HEADERS, 
+                        timeout: 10000 
+                    }).catch(() => null)
+                );
+            }
+            const responses = await Promise.all(pagePromises);
+            responses.forEach(res => {
+                if (res?.data?.data?.movie) {
+                    allRawMovies = allRawMovies.concat(res.data.data.movie);
+                }
+            });
         }
 
-        const [popResponses, starResponses, latestResponses] = await Promise.all([
-            Promise.all(popPromises), 
-            Promise.all(starPromises),
-            Promise.all(latestPromises)
-        ]);
+        // 2. Unikkan berdasarkan ID
+        const uniqueRaw = [];
+        const seenId = new Set();
+        allRawMovies.forEach(m => {
+            if (m.id && !seenId.has(m.id)) {
+                seenId.add(m.id);
+                uniqueRaw.push(m);
+            }
+        });
+
+        // 3. Filter yang sudah ada di DB
+        const existingIdsRes = await db.execute("SELECT anime_id FROM quiz_pool");
+        const existingIds = new Set(existingIdsRes.rows.map(r => r.anime_id));
+        const newMovies = uniqueRaw.filter(m => !existingIds.has(String(m.id)));
+
+        console.log(`[ANIMEIN] Found ${uniqueRaw.length} unique items. ${newMovies.length} are new.`);
+
+        // 4. Ambil detail untuk yang baru (Batasi 200 per run agar tidak kena limit/berat)
+        const batchToFetch = newMovies.slice(0, 200);
+        const detailed = [];
         
-        let popMovies = [];
-        popResponses.forEach(res => { if (res?.data?.data?.movie) popMovies = popMovies.concat(res.data.data.movie); });
-
-        let starMovies = [];
-        starResponses.forEach(res => { if (res?.data?.data?.movie) starMovies = starMovies.concat(res.data.data.movie); });
-        
-        let latestMovies = [];
-        latestResponses.forEach(res => { if (res?.data?.data?.movie) latestMovies = latestMovies.concat(res.data.data.movie); });
-
-        const cleanSort = (v) => parseInt(String(v || 0).replace(/[^\d]/g, '')) || 0;
-        popMovies.sort((a, b) => cleanSort(b.views) - cleanSort(a.views));
-        starMovies.sort((a, b) => (parseFloat(b.favorites) || 0) - (parseFloat(a.favorites) || 0));
-
-        const mapData = async (raw, limit = 25) => {
-            const seen = new Set();
-            const unique = raw.filter(a => {
-                if (!a.title || seen.has(a.title)) return false;
-                seen.add(a.title); return true;
-            }).slice(0, limit);
-
-            const detailed = await Promise.all(unique.map(async (m) => {
+        // Fetch detail in chunks of 20 to avoid overwhelm
+        for (let i = 0; i < batchToFetch.length; i += 20) {
+            const chunk = batchToFetch.slice(i, i + 20);
+            const chunkResults = await Promise.all(chunk.map(async (m) => {
                 try {
                     const detailRes = await axios.get(`${CONFIG.BASE_URL}/3/2/movie/detail/${m.id}`, {
                         headers: ANIMEIN_HEADERS,
-                        timeout: 3000
+                        timeout: 5000
                     }).catch(() => null);
                     if (detailRes?.data?.data?.movie) {
                         const d = detailRes.data.data.movie;
@@ -966,49 +977,45 @@ async function fetchHomeAnime() {
                             genre: d.genre || m.genre || '?',
                             studio: d.studio || m.studio || '?',
                             score: d.favorites || m.favorites || '?',
-                            year: (d.year && d.year !== 'UNKNOWN') ? d.year : (d.aired_start ? d.aired_start.split('-')[0] : (m.year || '?'))
+                            year: (d.year && d.year !== 'UNKNOWN') ? d.year : (d.aired_start ? d.aired_start.split('-')[0] : (m.year || '?')),
+                            type: d.type || m.type || '?'
                         };
                     }
                 } catch {}
-                return m;
+                return null;
             }));
+            detailed.push(...chunkResults.filter(Boolean));
+            // Small pause between chunks
+            await new Promise(r => setTimeout(r, 500));
+        }
 
-            // Masukkan data mentah ke database quiz_pool
-            for (const item of detailed) {
-                if (item.title && item.synopsis && item.synopsis !== '?' && item.synopsis.length > 30) {
-                    try {
-                        await db.execute({
-                            sql: "INSERT OR IGNORE INTO quiz_pool (anime_id, title, synopsis, studio, genre, year, score, type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                            args: [String(item.id), item.title, item.synopsis, item.studio, item.genre, item.year, item.score, item.type]
-                        });
-                    } catch (e) {}
-                }
+        // 5. Insert ke Database
+        let inserted = 0;
+        for (const item of detailed) {
+            if (item.title && item.synopsis && item.synopsis !== '?' && item.synopsis.length > 20) {
+                try {
+                    await db.execute({
+                        sql: "INSERT OR IGNORE INTO quiz_pool (anime_id, title, synopsis, studio, genre, year, score, type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        args: [String(item.id), item.title, item.synopsis, item.studio, item.genre, item.year, item.score, item.type]
+                    });
+                    inserted++;
+                } catch (e) {}
             }
+        }
 
-            return detailed.map((a, i) => {
-                let meta = `[Rating: ${a.favorites || '?'}, Views: ${a.views || '?'}, Studio: ${a.studio || '?'}, Tahun: ${a.year || '?'}]`;
-                let entry = `${i + 1}. ${a.title}`;
-                if (a.synonyms) entry += ` (Alt: ${a.synonyms})`;
-                return entry + ` ${meta}`;
-            });
-        };
-
-        cache.trending.data = await mapData(resHome.data?.data?.hot || [], 30);
-        cache.trending.lastFetch = now;
-
-        cache.popular.data = await mapData(popMovies, 50);
-        cache.popular.lastFetch = now;
-
-        cache.topRated.data = await mapData(starMovies, 50);
-        cache.topRated.lastFetch = now;
-
-        await mapData(latestMovies, 50); // Hanya masukkan ke quizPool
+        // Update Cache untuk trending (ambil dari hot data home)
+        const resHome = await axios.get(`${CONFIG.BASE_URL}/3/2/home/data`, { headers: ANIMEIN_HEADERS }).catch(() => null);
+        if (resHome?.data?.data?.hot) {
+            const hot = resHome.data.data.hot.slice(0, 30);
+            cache.trending.data = hot.map((a, i) => `${i+1}. ${a.title} [Rating: ${a.favorites||'?'}]`);
+            cache.trending.lastFetch = now;
+        }
 
         const totalDB = await db.execute("SELECT COUNT(*) as count FROM quiz_pool");
-        console.log(`[ANIMEIN] Cache updated: ${cache.trending.data.length} trending, ${cache.popular.data.length} global pop, ${cache.topRated.data.length} top rated. Total DB Kuis: ${totalDB.rows[0].count}`);
+        console.log(`[ANIMEIN] Megafetch Done. New: ${inserted}. Total Quiz Pool: ${totalDB.rows[0].count}`);
         return true;
     } catch (e) {
-        console.warn(`[ANIMEIN] Gagal fetch data home:`, e.message.slice(0, 60));
+        console.warn(`[ANIMEIN] Error during megafetch:`, e.message);
         return false;
     }
 }
@@ -1600,15 +1607,20 @@ async function processMessages(messages) {
                 if (normTitle === normAnswer || isFuzzyFull || isWordMatch) {
                     activeQuiz.isRunning = false;
                     clearQuizTimers();
-                    const xpEarned = Math.max(20, 100 - (activeQuiz.hintsRevealed * 10));
+                    
+                    // XP Berkurang jika banyak salah tebak
+                    const penaltyWrong = (activeQuiz.wrongGuessCount || 0) * 5;
+                    const xpEarned = Math.max(10, 100 - (activeQuiz.hintsRevealed * 15) - penaltyWrong);
+                    
                     const xpRes = await addXP(senderName, xpEarned);
-                    let result = `🎉 BENAR! @${senderName} menebak: ${activeQuiz.original}\n💰 XP: +${xpEarned} (Hint: ${activeQuiz.hintsRevealed}/5)`;
+                    let result = `🎉 BENAR! @${senderName} menebak: ${activeQuiz.original}\n💰 XP: +${xpEarned} (Salah Tebak Total: ${activeQuiz.wrongGuessCount || 0})`;
                     if (xpRes.leveledUp) result += `\n🌟 SELAMAT! Kamu naik ke Level ${xpRes.level}!`;
                     await sendChatMessage(result, msg.id);
                 } else {
+                    activeQuiz.wrongGuessCount = (activeQuiz.wrongGuessCount || 0) + 1;
                     activeQuiz.wrongGuessers.add(senderName);
-                    await sendChatMessage(`❌ @${senderName} Salah! Coba lagi. (Panjang: ${activeQuiz.original.length} char)`, msg.id);
-                    await addXP(senderName, -5);
+                    await sendChatMessage(`❌ @${senderName} Salah! XP Hadiah berkurang -5.\nCoba lagi. (Panjang: ${activeQuiz.original.length} char)`, msg.id);
+                    await addXP(senderName, -3); // Masih ada penalti kecil ke user
                 }
             }
             continue;
