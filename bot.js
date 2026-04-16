@@ -1581,7 +1581,7 @@ async function processMessages(messages) {
             } else if (Date.now() - activeQuiz.startedAt > QUIZ_DURATION_MS) {
                 await expireQuiz(msg.id);
             } else {
-                const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+                const norm = (s) => (s || '').normalize('NFKC').normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
                 const normTitle = norm(activeQuiz.original);
                 const normAnswer = norm(answer);
 
