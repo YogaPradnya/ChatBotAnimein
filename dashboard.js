@@ -1055,7 +1055,8 @@ function getDashboardHTML() {
       const q = d.activeQuiz;
       const html = \`
         <div style="font-weight:700; font-size:16px; margin-bottom:8px;">\${q.title}</div>
-        <div style="font-size:12px; color:var(--muted); font-weight:600;">Hint Terbuka: \${q.hints}/5 &nbsp;&bull;&nbsp; Sisa Waktu: \${Math.max(0, Math.floor((300000 - (Date.now() - q.start))/1000))}s</div>
+        <div style="font-size:12px; color:var(--muted); font-weight:600; margin-bottom:12px;">Hint Terbuka: \${q.hints}/5 &nbsp;&bull;&nbsp; Sisa Waktu: \${Math.max(0, Math.floor((300000 - (Date.now() - q.start))/1000))}s</div>
+        <button class="btn-sm btn-sm-del" onclick="stopQuiz()" style="width:100%;">🛑 Batalkan Kuis</button>
       \`;
       if (kPageContent) kPageContent.innerHTML = html;
       
@@ -1654,6 +1655,13 @@ function getDashboardHTML() {
       document.getElementById('confirmBtnOk').onclick = () => finish(true);
       document.getElementById('confirmBtnCancel').onclick = () => finish(false);
     });
+  }
+
+  async function stopQuiz() {
+    const ok = await customConfirm('Kuis yang sedang berjalan akan dihentikan paksa dan jawaban akan dibocorkan. Lanjutkan?', 'Hentikan Kuis', 'Ya, Hentikan');
+    if (!ok) return;
+    await fetch('/api/quiz/stop', { method: 'POST' });
+    refresh();
   }
 
   refresh();
