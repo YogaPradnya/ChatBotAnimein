@@ -150,12 +150,58 @@ async function initDB() {
             }
         }
 
-        await db.execute(`
-            CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY,
-                value TEXT
-            )
-        `);
+        // Load Prompt from DB
+        const promptRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'system_prompt'" });
+        if (promptRes.rows.length > 0) {
+            SYSTEM_PROMPT = promptRes.rows[0].value;
+            console.log(`[PROMPT] Loaded from DB.`);
+        } else if (SYSTEM_PROMPT) {
+            await db.execute({ 
+                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('system_prompt', ?)", 
+                args: [SYSTEM_PROMPT] 
+            });
+            console.log(`[PROMPT] Initialized/Migrated to DB.`);
+        }
+
+        // Load Knowledge from DB
+        const kwRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'animein_knowledge'" });
+        if (kwRes.rows.length > 0) {
+            ANIMEIN_KNOWLEDGE = JSON.parse(kwRes.rows[0].value);
+            console.log(`[KNOWLEDGE] Loaded from DB: ${ANIMEIN_KNOWLEDGE.length} items.`);
+        } else if (ANIMEIN_KNOWLEDGE.length > 0) {
+            await db.execute({ 
+                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('animein_knowledge', ?)", 
+                args: [JSON.stringify(ANIMEIN_KNOWLEDGE)] 
+            });
+            console.log(`[KNOWLEDGE] Migrated to DB.`);
+        }
+
+        // Load Domains from DB
+        const domRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'custom_domains'" });
+        if (domRes.rows.length > 0) {
+            CUSTOM_DOMAINS = JSON.parse(domRes.rows[0].value);
+            console.log(`[DOMAINS] Loaded from DB: ${CUSTOM_DOMAINS.length} items.`);
+        } else if (CUSTOM_DOMAINS.length > 0) {
+            await db.execute({ 
+                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('custom_domains', ?)", 
+                args: [JSON.stringify(CUSTOM_DOMAINS)] 
+            });
+            console.log(`[DOMAINS] Migrated to DB.`);
+        }
+
+        // Load AutoReply from DB
+        const arRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'auto_reply'" });
+        if (arRes.rows.length > 0) {
+            AUTO_REPLY = JSON.parse(arRes.rows[0].value);
+            console.log(`[AUTOREPLY] Loaded from DB: ${AUTO_REPLY.length} items.`);
+        } else if (AUTO_REPLY.length > 0) {
+            await db.execute({ 
+                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('auto_reply', ?)", 
+                args: [JSON.stringify(AUTO_REPLY)] 
+            });
+            console.log(`[AUTOREPLY] Migrated to DB.`);
+        }
+
         console.log("[DB] Turso Database connected & Tables ready (chat_logs + response_cache + laporan + user_stats + quiz_pool + settings).");
     } catch (e) {
         console.error("[DB] Gagal inisialisasi Turso:", e.message);
@@ -637,13 +683,7 @@ function addActivity(type, from, text, response, provider, tokens = 0) {
 
 const groqClients = CONFIG.GROQ_KEYS.map(key => new Groq({ apiKey: key }));
 
-const promptPath = path.join(__dirname, 'prompt.txt');
-let SYSTEM_PROMPT = "Kamu adalah Rara, asisten chat Animein buatan Yogaa. Kamu orang asli, bukan AI.";
-if (fs.existsSync(promptPath)) {
-    SYSTEM_PROMPT = fs.readFileSync(promptPath, 'utf-8');
-} else {
-    fs.writeFileSync(promptPath, SYSTEM_PROMPT);
-}
+let SYSTEM_PROMPT = `Anda adalah Rara, asisten AI dari Animein.ai. Anda bersifat ramah, ceria, dan sangat menyukai anime. Balas pesan user dengan gaya bahasa santai dan gaul.`;
 
 const POKEMON_LIST = [
   "Bulbasaur", "Ivysaur", "Venusaur", "Charmander", "Charmeleon", "Charizard", "Squirtle", "Wartortle", "Blastoise", "Caterpie", 
@@ -690,39 +730,9 @@ const POKEMON_GRADES = {
 const GENRE_LIST = ["Action", "Adventure", "Comedy", "Demons", "Drama", "Ecchi", "Fantasy", "Game", "Harem", "Historical", "Horror", "Magic", "Martial Arts", "Mecha", "Military", "Music", "Mystery", "Parody", "Psychological", "Romance", "School", "Sci-Fi", "Seinen", "Shoujo", "Shoujo Ai", "Shounen", "Shounen Ai", "Slice of Life", "Sports", "Super Power", "Supernatural", "Thriller", "Tokusatsu"];
 const STUDIO_LIST = ["MAPPA", "Ufotable", "Kyoto Animation", "Bones", "Madhouse", "A-1 Pictures", "CloverWorks", "Toei Animation", "Sunrise", "Wit Studio", "Pierrot", "Production I.G", "J.C.Staff", "Trigger", "Shaft", "OLM", "Doga Kobo", "White Fox", "Kinema Citrus", "David Production", "P.A. Works", "Feel.", "LIDENFILMS"];
 
-const knowledgePath = path.join(__dirname, 'knowledge.json');
 let ANIMEIN_KNOWLEDGE = [];
-if (fs.existsSync(knowledgePath)) {
-    try {
-        ANIMEIN_KNOWLEDGE = JSON.parse(fs.readFileSync(knowledgePath, 'utf-8'));
-    } catch(e) { console.error("[ERROR] Gagal memuat knowledge.json:", e); }
-} else {
-    fs.writeFileSync(knowledgePath, '[]');
-}
-
-const domainsPath = path.join(__dirname, 'domains.json');
 let CUSTOM_DOMAINS = [];
-if (fs.existsSync(domainsPath)) {
-    try {
-        CUSTOM_DOMAINS = JSON.parse(fs.readFileSync(domainsPath, 'utf-8'));
-    } catch(e) { console.error("[ERROR] Gagal memuat domains.json:", e); }
-} else {
-    fs.writeFileSync(domainsPath, '[]');
-}
-
-const autoReplyPath = path.join(__dirname, 'autoreply.json');
 let AUTO_REPLY = [];
-if (fs.existsSync(autoReplyPath)) {
-    try {
-        AUTO_REPLY = JSON.parse(fs.readFileSync(autoReplyPath, 'utf-8'));
-    } catch(e) { console.error("[ERROR] Gagal memuat autoreply.json:", e); }
-} else {
-    AUTO_REPLY = [
-        { keyword: "link error", answer: "Laporanmu keren! Tunggu admin cek n benerin ya." },
-        { keyword: "admin mana", answer: "Admin biasanya nongol malam hari, ditunggu aja ya bre!" }
-    ];
-    fs.writeFileSync(autoReplyPath, JSON.stringify(AUTO_REPLY, null, 2));
-}
 
 /** Expert Knowledge Routing: Deteksi domain lalu filter knowledge */
 function getKnowledgeContext(query) {
@@ -2182,23 +2192,29 @@ function startDashboard() {
         res.json({ success: true, autoreply: AUTO_REPLY });
     });
 
-    app.post('/api/autoreply/add', (req, res) => {
+    app.post('/api/autoreply/add', async (req, res) => {
         const { keyword, answer } = req.body;
-        if (!keyword || !answer) return res.status(400).json({ success: false, error: 'Keyword dan pesan wajib diisi.' });
-        if (AUTO_REPLY.find(a => a.keyword.toLowerCase() === keyword.toLowerCase())) {
-            return res.status(400).json({ success: false, error: 'Keyword sudah ada! Hapus dulu yang lama jika ingin diubah.' });
+        if (keyword && answer) {
+            AUTO_REPLY.push({ keyword, answer });
+            try {
+                await db.execute({ 
+                    sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('auto_reply', ?)", 
+                    args: [JSON.stringify(AUTO_REPLY)] 
+                });
+            } catch(e) {}
         }
-        AUTO_REPLY.push({ keyword: keyword.trim(), answer: answer.trim() });
-        fs.writeFileSync(autoReplyPath, JSON.stringify(AUTO_REPLY, null, 2));
-        console.log(`[AUTOREPLY] Keyword "${keyword}" ditambahkan via dashboard.`);
         res.json({ success: true });
     });
 
-    app.post('/api/autoreply/delete', (req, res) => {
+    app.post('/api/autoreply/delete', async (req, res) => {
         const { keyword } = req.body;
-        AUTO_REPLY = AUTO_REPLY.filter(a => a.keyword.toLowerCase() !== keyword.toLowerCase());
-        fs.writeFileSync(autoReplyPath, JSON.stringify(AUTO_REPLY, null, 2));
-        console.log(`[AUTOREPLY] Keyword "${keyword}" dihapus via dashboard.`);
+        AUTO_REPLY = AUTO_REPLY.filter(a => a.keyword !== keyword);
+        try {
+            await db.execute({ 
+                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('auto_reply', ?)", 
+                args: [JSON.stringify(AUTO_REPLY)] 
+            });
+        } catch(e) {}
         res.json({ success: true });
     });
 
@@ -2239,12 +2255,16 @@ function startDashboard() {
     });
 
 
-    app.post('/api/prompt/save', (req, res) => {
+    app.post('/api/prompt/save', async (req, res) => {
         const { prompt } = req.body;
         if (!prompt || prompt.trim().length < 10) return res.status(400).json({ success: false, error: 'Prompt terlalu pendek.' });
         SYSTEM_PROMPT = prompt;
-        fs.writeFileSync(path.join(__dirname, 'prompt.txt'), SYSTEM_PROMPT);
-        console.log('[PROMPT] System prompt updated via dashboard (saved permanently).');
+        try {
+            await db.execute({ 
+                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('system_prompt', ?)", 
+                args: [SYSTEM_PROMPT] 
+            });
+        } catch(e) {}
         res.json({ success: true });
     });
 
@@ -2257,51 +2277,57 @@ function startDashboard() {
         res.json({ success: true, domains: CUSTOM_DOMAINS });
     });
 
-    app.post('/api/domains/add', (req, res) => {
+    app.post('/api/domains/add', async (req, res) => {
         const { domain } = req.body;
-        if (!domain) return res.status(400).json({ success: false, error: 'Domain kosong.' });
-        const d = domain.trim().toLowerCase();
-        if (!CUSTOM_DOMAINS.includes(d)) {
-            CUSTOM_DOMAINS.push(d);
-            fs.writeFileSync(domainsPath, JSON.stringify(CUSTOM_DOMAINS, null, 2));
+        if (domain && !CUSTOM_DOMAINS.includes(domain)) {
+            CUSTOM_DOMAINS.push(domain);
+            try {
+                await db.execute({ 
+                    sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('custom_domains', ?)", 
+                    args: [JSON.stringify(CUSTOM_DOMAINS)] 
+                });
+            } catch(e) {}
         }
         res.json({ success: true });
     });
 
-    app.post('/api/domains/delete', (req, res) => {
+    app.post('/api/domains/delete', async (req, res) => {
         const { domain } = req.body;
         CUSTOM_DOMAINS = CUSTOM_DOMAINS.filter(d => d !== domain);
-        fs.writeFileSync(domainsPath, JSON.stringify(CUSTOM_DOMAINS, null, 2));
+        try {
+            await db.execute({ 
+                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('custom_domains', ?)", 
+                args: [JSON.stringify(CUSTOM_DOMAINS)] 
+            });
+        } catch(e) {}
         res.json({ success: true });
     });
 
-    app.post('/api/knowledge/save', (req, res) => {
+    app.post('/api/knowledge/save', async (req, res) => {
         const { index, domain, keywords, info } = req.body;
-        if (!info || !Array.isArray(keywords) || !domain) return res.status(400).json({ success: false, error: 'Data tidak valid.' });
-        
         if (index === -1) {
-            // Add new
             ANIMEIN_KNOWLEDGE.push({ domain, keywords, info });
-            console.log(`[KNOWLEDGE] New entry added via dashboard: ${keywords[0]}`);
         } else {
-            // Update existing
-            if (index < 0 || index >= ANIMEIN_KNOWLEDGE.length) return res.status(400).json({ success: false, error: 'Index tidak valid.' });
-            ANIMEIN_KNOWLEDGE[index].domain = domain;
-            ANIMEIN_KNOWLEDGE[index].keywords = keywords;
-            ANIMEIN_KNOWLEDGE[index].info = info;
-            console.log(`[KNOWLEDGE] Entry #${index} (${keywords[0]}) diperbarui via dashboard.`);
+            ANIMEIN_KNOWLEDGE[index] = { domain, keywords, info };
         }
-        
-        fs.writeFileSync(path.join(__dirname, 'knowledge.json'), JSON.stringify(ANIMEIN_KNOWLEDGE, null, 2));
+        try {
+            await db.execute({ 
+                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('animein_knowledge', ?)", 
+                args: [JSON.stringify(ANIMEIN_KNOWLEDGE)] 
+            });
+        } catch(e) {}
         res.json({ success: true });
     });
 
-    app.post('/api/knowledge/delete', (req, res) => {
+    app.post('/api/knowledge/delete', async (req, res) => {
         const { index } = req.body;
-        if (index < 0 || index >= ANIMEIN_KNOWLEDGE.length) return res.status(400).json({ success: false, error: 'Index tidak valid.' });
-        const removed = ANIMEIN_KNOWLEDGE.splice(index, 1);
-        fs.writeFileSync(path.join(__dirname, 'knowledge.json'), JSON.stringify(ANIMEIN_KNOWLEDGE, null, 2));
-        console.log(`[KNOWLEDGE] Entry #${index} (${removed[0]?.keywords?.[0]}) dihapus via dashboard.`);
+        ANIMEIN_KNOWLEDGE.splice(index, 1);
+        try {
+            await db.execute({ 
+                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('animein_knowledge', ?)", 
+                args: [JSON.stringify(ANIMEIN_KNOWLEDGE)] 
+            });
+        } catch(e) {}
         res.json({ success: true });
     });
 
