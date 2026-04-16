@@ -119,12 +119,18 @@ async function initDB() {
                 level INTEGER DEFAULT 1
             )
         `);
-        console.log("[DB] Turso Database connected & Tables ready (chat_logs + response_cache + laporan + user_stats + quiz_pool).");
+        await db.execute(`
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        `);
+        console.log("[DB] Turso Database connected & Tables ready (chat_logs + response_cache + laporan + user_stats + quiz_pool + settings).");
     } catch (e) {
         console.error("[DB] Gagal inisialisasi Turso:", e.message);
     }
 }
-initDB();
+// initDB will be called in startBot
 
 // --- GAMIFICATION ---
 async function addXP(username, amount) {
@@ -133,11 +139,12 @@ async function addXP(username, amount) {
         const res = await db.execute({ sql: "SELECT xp, level FROM user_stats WHERE username = ?", args: [username] });
         let xp = 0, level = 1;
         if (res.rows.length === 0) {
-            xp = Math.max(0, amount);
+            xp = Math.max(0, IS_DOUBLE_XP ? amount * 2 : amount);
             await db.execute({ sql: "INSERT INTO user_stats (username, xp, level) VALUES (?, ?, ?)", args: [username, xp, level] });
             console.log(`[XP] New User: ${username} (XP: ${xp})`);
         } else {
-            xp = Math.max(0, res.rows[0].xp + amount);
+            const finalAmount = IS_DOUBLE_XP ? amount * 2 : amount;
+            xp = Math.max(0, res.rows[0].xp + finalAmount);
             level = res.rows[0].level;
             
             let reqXP = Math.floor(50 * Math.pow(level, 3));
@@ -294,10 +301,17 @@ async function startQuiz(senderName, msgId) {
     try {
         // Ambil data anime yang paling jarang muncul (Least Recently Used) secara acak
         try {
-            const res = await db.execute("SELECT * FROM quiz_pool ORDER BY last_used_at ASC, RANDOM() LIMIT 1");
+            let sql = "SELECT * FROM quiz_pool";
+            let where = [];
+            if (QUIZ_FILTER === 'high-rating') where.push("score >= '8.0'");
+            else if (QUIZ_FILTER.startsWith('genre:')) where.push(`genre LIKE '%${QUIZ_FILTER.split(':')[1]}%'`);
+            
+            if (where.length > 0) sql += " WHERE " + where.join(" AND ");
+            sql += " ORDER BY last_used_at ASC, RANDOM() LIMIT 1";
+
+            const res = await db.execute(sql);
             if (res.rows.length > 0) {
                 anime = res.rows[0];
-                // Update tanggal penggunaan agar tidak muncul lagi dalam waktu dekat
                 await db.execute({
                     sql: "UPDATE quiz_pool SET last_used_at = ? WHERE id = ?",
                     args: [Math.floor(Date.now() / 1000), anime.id]
@@ -552,6 +566,8 @@ setTimeout(updateDBStats, 5000);
 
 
 let isBotActive = true;
+let IS_DOUBLE_XP = false;
+let QUIZ_FILTER = 'all';
 
 
 const stats = {
@@ -597,11 +613,10 @@ function addActivity(type, from, text, response, provider, tokens = 0) {
 const groqClients = CONFIG.GROQ_KEYS.map(key => new Groq({ apiKey: key }));
 
 const promptPath = path.join(__dirname, 'prompt.txt');
-let SYSTEM_PROMPT = "";
+let SYSTEM_PROMPT = "Kamu adalah Rara, asisten chat Animein buatan Yogaa. Kamu orang asli, bukan AI.";
 if (fs.existsSync(promptPath)) {
     SYSTEM_PROMPT = fs.readFileSync(promptPath, 'utf-8');
 } else {
-    SYSTEM_PROMPT = "Kamu adalah Rara, asisten chat Animein buatan Yogaa. Kamu orang asli, bukan AI.";
     fs.writeFileSync(promptPath, SYSTEM_PROMPT);
 }
 
@@ -914,6 +929,29 @@ async function fetchHomeAnime() {
         return true;
     }
     try {
+        // --- A. CEK RESET 2 MINGGU ---
+        const lastResetRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = ?", args: ['last_quiz_reset'] });
+        const lastReset = lastResetRes.rows.length > 0 ? parseInt(lastResetRes.rows[0].value) : 0;
+        const nowMs = Date.now();
+        
+        // 14 hari = 14 * 24 * 60 * 60 * 1000 = 1209600000 ms
+        if (nowMs - lastReset > 1209600000) {
+            console.log("[QUIZ] Reset 2 Mingguan: Menghapus database kuis lama...");
+            await db.execute("DELETE FROM quiz_pool");
+            await db.execute({ 
+                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
+                args: ['last_quiz_reset', String(nowMs)] 
+            });
+        }
+
+        // --- B. CEK LIMIT 1500 ---
+        const currentCountRes = await db.execute("SELECT COUNT(*) as count FROM quiz_pool");
+        const currentCount = currentCountRes.rows[0].count;
+        if (currentCount >= 1500) {
+            console.log(`[QUIZ] Limit 1500 tercapai (${currentCount}). Skip penambahan.`);
+            return true;
+        }
+
         // 1. Ambil List Anime secara masif (100 halaman = ~2500 per kategori)
         const categories = ['popular', 'stars', 'latest'];
         let allRawMovies = [];
@@ -957,7 +995,11 @@ async function fetchHomeAnime() {
         console.log(`[ANIMEIN] Found ${uniqueRaw.length} unique items. ${newMovies.length} are new.`);
 
         // 4. Ambil detail untuk yang baru (Batasi 200 per run agar tidak kena limit/berat)
-        const batchToFetch = newMovies.slice(0, 200);
+        // Pastikan tidak melebihi limit 1500 total
+        const remainingSpace = 1500 - (await db.execute("SELECT COUNT(*) as count FROM quiz_pool")).rows[0].count;
+        if (remainingSpace <= 0) return true;
+
+        const batchToFetch = newMovies.slice(0, Math.min(200, remainingSpace));
         const detailed = [];
         
         // Fetch detail in chunks of 20 to avoid overwhelm
@@ -1736,6 +1778,7 @@ function levenshtein(a, b) {
 }
 
 async function startBot() {
+    await initDB();
     const loggedIn = await login();
     if (!loggedIn) { stats.botStatus = 'login_failed'; return; }
 
@@ -1777,6 +1820,27 @@ function startDashboard() {
     app.use(express.json());
     app.use(express.urlencoded({ extended: true }));
 
+    app.post('/api/config/double-xp', (req, res) => {
+        IS_DOUBLE_XP = !IS_DOUBLE_XP;
+        console.log(`[EVENT] Double XP Mode: ${IS_DOUBLE_XP ? 'ENABLED' : 'DISABLED'}`);
+        
+        // Broadcast ke grup chat
+        const msg = IS_DOUBLE_XP 
+            ? "🚀 [EVENT] DOUBLE XP AKTIF!\n\nSemua kuis dan interaksi memberikan hadiah XP 2x lipat! Ayo kumpulin XP sebanyak-banyaknya sekarang juga! 🔥"
+            : "🏁 [EVENT] DOUBLE XP BERAKHIR!\n\nTerima kasih sudah berpartisipasi. Hadiah XP kembali normal. Sampai jumpa di event berikutnya! 👋";
+        
+        sendChatMessage(msg).catch(e => console.error("[BROADCAST ERROR] Event announcement failed:", e.message));
+        
+        res.json({ success: true, active: IS_DOUBLE_XP });
+    });
+
+    app.post('/api/quiz/config', (req, res) => {
+        const { filter } = req.body;
+        if (filter) QUIZ_FILTER = filter;
+        console.log(`[QUIZ] Theme filter updated to: ${QUIZ_FILTER}`);
+        res.json({ success: true });
+    });
+
     app.get('/api/stats', async (req, res) => {
         try {
             const uptime = Math.floor((Date.now() - new Date(stats.startTime)) / 1000);
@@ -1788,6 +1852,8 @@ function startDashboard() {
                 ...stats, 
                 uptime, 
                 isBotActive,
+                isDoubleXP: IS_DOUBLE_XP,
+                quizFilter: QUIZ_FILTER,
                 totalDBLogs: logsCount.rows[0].count,
                 totalReports: laporanCount.rows[0].count,
                 totalDBKuis: quizCount.rows[0].count,
@@ -1889,6 +1955,38 @@ function startDashboard() {
         } catch (e) {
             res.status(500).json({ success: false, error: e.message });
         }
+    });
+
+
+    app.get('/api/users/list', async (req, res) => {
+        const q = req.query.q || '';
+        try {
+            let sql = "SELECT * FROM user_stats ORDER BY level DESC, xp DESC LIMIT 100";
+            let args = [];
+            if (q) {
+                sql = "SELECT * FROM user_stats WHERE username LIKE ? ORDER BY level DESC, xp DESC LIMIT 100";
+                args = [`%${q}%`];
+            }
+            const result = await db.execute({ sql, args });
+            res.json({ success: true, data: result.rows });
+        } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+    });
+
+    app.post('/api/users/update-xp', async (req, res) => {
+        const { username, xp, level } = req.body;
+        try {
+            await db.execute({ 
+                sql: "UPDATE user_stats SET xp = ?, level = ? WHERE username = ?", 
+                args: [xp, level, username] 
+            });
+            res.json({ success: true });
+        } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+    });
+
+    app.post('/api/quiz/refetch', async (req, res) => {
+        console.log(`[QUIZ] Manual refetch triggered from Dashboard.`);
+        fetchHomeAnime().catch(e => console.error("[MANUAL FETCH] Error:", e.message));
+        res.json({ success: true, message: 'Proses background fetch dimulai.' });
     });
 
 
@@ -2326,6 +2424,7 @@ function getDashboardHTML() {
     <button class="nav-item" onclick="showPage('filter', this)">Filter Kata</button>
     <button class="nav-item" onclick="showPage('laporan', this)">Laporan</button>
     <button class="nav-item" onclick="showPage('kuis', this)">Kuis System</button>
+    <button class="nav-item" onclick="showPage('users', this)">Leaderboard & User</button>
   </nav>
   <div class="sidebar-status">
     <span class="s-dot" id="statusDot" style="background:var(--red)"></span>
@@ -2339,6 +2438,13 @@ function getDashboardHTML() {
   <div class="topbar">
     <h2 id="pageTitle">Dashboard</h2>
     <div class="topbar-actions">
+      <div class="bot-toggle-wrap">
+        <span class="bot-toggle-lbl">Double XP</span>
+        <div class="bot-toggle-pill" id="xpTogglePill" onclick="toggleDoubleXP()">
+          <span class="btp-on">ON</span>
+          <span class="btp-off">OFF</span>
+        </div>
+      </div>
       <div class="bot-toggle-wrap">
         <span class="bot-toggle-lbl">Bot AI</span>
         <div class="bot-toggle-pill" id="botTogglePill" onclick="toggleBot()">
@@ -2410,7 +2516,7 @@ function getDashboardHTML() {
 
           <!-- Active Quiz Card -->
           <div class="card" id="quizCard" style="display:none; border: 1px solid var(--accent); background: var(--accent-light);">
-            <div class="card-title" style="color:var(--accent);"> Kuis Berjalan</div>
+            <div class="card-title" style="color:var(--accent);">Kuis Berjalan</div>
             <div id="quizContent"></div>
           </div>
         </div>
@@ -2539,7 +2645,7 @@ function getDashboardHTML() {
               <option value="diproses">Diproses</option>
               <option value="selesai">Selesai</option>
             </select>
-            <button class="btn-sm btn-sm-toggle" onclick="loadLaporan()">↻ Refresh</button>
+            <button class="btn-sm btn-sm-toggle" onclick="loadLaporan()">Refresh</button>
             <button class="btn-sm btn-sm-del" onclick="deleteAllLaporan()">Hapus Semua</button>
           </div>
         </div>
@@ -2611,7 +2717,7 @@ function getDashboardHTML() {
             <span>Daftar Kata Terlarang</span>
             <div style="display:flex; gap:8px;">
               <input type="text" id="filterSearch" placeholder="Cari kata..." oninput="filterSearchUI()" style="padding:5px 10px; width:140px; font-size:12px; border-radius:6px; border:1px solid var(--border); background:var(--surface);">
-              <button class="btn-sm btn-sm-toggle" onclick="loadFilter()">↻ Refresh</button>
+              <button class="btn-sm btn-sm-toggle" onclick="loadFilter()">Refresh</button>
             </div>
           </div>
           <div id="filterTagContainer" style="display:flex; flex-wrap:wrap; gap:6px; max-height:520px; overflow-y:auto; padding:4px 0; margin-top:8px;">
@@ -2621,10 +2727,50 @@ function getDashboardHTML() {
       </div>
     </div>
     
-    <!-- PAGE: KUIS SYSTEM -->
+    <!-- PAGE: USERS -->
+    <div class="page" id="page-users">
+      <div class="card">
+        <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
+          <span>Leaderboard & Management User</span>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="userSearch" placeholder="Cari username..." oninput="loadUsers()" style="padding:6px 12px; border:1px solid var(--border); border-radius:6px; background:var(--surface); font-size:12px; width:180px;">
+            <button class="btn-sm btn-sm-toggle" onclick="loadUsers()">Refresh</button>
+          </div>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th style="width:50px;">Rank</th>
+              <th>Username</th>
+              <th>Level</th>
+              <th>Total XP</th>
+              <th style="width:120px; text-align:right;">Aksi</th>
+            </tr>
+          </thead>
+          <tbody id="userList">
+            <tr><td colspan="5" style="text-align:center; padding:20px; color:var(--muted);">Memuat data...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <div class="page" id="page-kuis">
       <div class="card">
-        <div class="card-title"> Monitoring Kuis Animein</div>
+        <div class="card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+          <span>Monitoring Kuis Animein</span>
+          <div style="display:flex; gap:10px; align-items:center;">
+            <select id="quizFilterSelect" onchange="saveQuizConfig()" style="padding:6px 10px; border-radius:6px; border:1px solid var(--border); font-size:12px; background:var(--surface);">
+              <option value="all">Semua Kategori</option>
+              <option value="high-rating">Rating Tinggi (>8.0)</option>
+              <option value="genre:Action">Kategori: Action</option>
+              <option value="genre:Romance">Kategori: Romance</option>
+              <option value="genre:Comedy">Kategori: Comedy</option>
+              <option value="genre:Horror">Kategori: Horror</option>
+              <option value="genre:Slice of Life">Kategori: Slice of Life</option>
+            </select>
+            <button class="btn-primary btn-sm" onclick="refetchQuiz()" id="refetchBtn">Ambil Data Baru</button>
+          </div>
+        </div>
         <div class="stats-grid" style="grid-template-columns: repeat(2, 1fr); margin-bottom:24px;">
           <div class="stat-card">
             <div class="label">Total Soal di Database</div>
@@ -2703,6 +2849,26 @@ function getDashboardHTML() {
   </div>
 </div>
 
+<!-- Edit User Stats Modal -->
+<div class="modal-overlay" id="userModal">
+  <div class="modal" style="width:340px;">
+    <div class="modal-title">Edit Stats: @<span id="editUserTitle"></span></div>
+    <input type="hidden" id="editUserUsername">
+    <div class="form-group">
+      <label class="form-label">Level</label>
+      <input type="number" id="editUserLevel">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Total XP</label>
+      <input type="number" id="editUserXP">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeUserModal()">Batal</button>
+      <button class="btn-primary" onclick="saveUserStats()">Simpan Stats</button>
+    </div>
+  </div>
+</div>
+
 <!-- Custom Confirm Dialog -->
 <div id="confirmOverlay">
   <div id="confirmBox">
@@ -2764,6 +2930,11 @@ function showPage(id, el) {
   if (id === 'laporan') loadLaporan();
   if (id === 'filter') loadFilter();
   if (id === 'autoreply') loadAutoReply();
+  if (id === 'users') loadUsers();
+  if (id === 'model') {
+    loadStats();
+    loadConfig();
+  }
 }
 
 // ---- UPTIME ----
@@ -2788,6 +2959,15 @@ function render(d) {
   if (pill) {
     if (isBotOn) pill.classList.add('is-on'); else pill.classList.remove('is-on');
   }
+
+  const isXpOn = d.isDoubleXP;
+  const xpPill = document.getElementById('xpTogglePill');
+  if (xpPill) {
+    if (isXpOn) xpPill.classList.add('is-on'); else xpPill.classList.remove('is-on');
+  }
+
+  const qFilterSelect = document.getElementById('quizFilterSelect');
+  if (qFilterSelect && d.quizFilter) qFilterSelect.value = d.quizFilter;
 
   const setT = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   setT('totalTriggers', (d.totalTriggers||0).toLocaleString('id-ID'));
@@ -2822,8 +3002,8 @@ function render(d) {
               '<div>' +
                 '<div style="font-weight:700; font-size:16px; color:var(--accent);">' + d.activeQuiz.title + '</div>' +
                 '<div style="margin-top:8px; display:flex; gap:15px; font-size:12px; font-weight:600;">' +
-                    '<span> Hint Terbuka: ' + d.activeQuiz.hints + '/5</span>' +
-                    '<span> Sisa Waktu: ' + Math.floor(remaining/60) + 'm ' + (remaining%60) + 's</span>' +
+                    '<span>Hint Terbuka: ' + d.activeQuiz.hints + '/5</span>' +
+                    '<span>Sisa Waktu: ' + Math.floor(remaining/60) + 'm ' + (remaining%60) + 's</span>' +
                 '</div>' +
               '</div>' +
               '<button class="btn-sm btn-sm-del" style="padding:10px 16px; font-size:12px;" onclick="stopQuiz()">STOP KUIS</button>' +
@@ -2959,6 +3139,19 @@ function closeModal() {
   document.getElementById('editModal').classList.remove('open');
 }
 
+async function refetchQuiz() {
+  const btn = document.getElementById('refetchBtn');
+  if (!confirm('Paksa bot mengambil data kuis baru sekarang? Ini akan memakan waktu 1-2 menit.')) return;
+  btn.textContent = 'Memproses...'; btn.disabled = true;
+  try {
+    const res = await fetch('/api/quiz/refetch', { method: 'POST' });
+    const d = await res.json();
+    if (d.success) alert('Berhasil! ' + d.message); else alert('Gagal: ' + d.message);
+  } catch(e) { alert('Terjadi kesalahan.'); }
+  btn.textContent = 'Paksa Ambil Data Baru'; btn.disabled = false;
+  refresh();
+}
+
 async function stopQuiz() {
   if (!confirm('Apakah Anda yakin ingin menghentikan kuis yang sedang berjalan?')) return;
   try {
@@ -2980,6 +3173,14 @@ async function saveEntry() {
   });
   if (res.ok) { closeModal(); loadCache(); }
   else alert('Gagal menyimpan. Pastikan Question Key unik.');
+}
+
+async function saveQuizConfig() {
+  const filter = document.getElementById('quizFilterSelect').value;
+  await fetch('/api/quiz/config', { 
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, 
+    body: JSON.stringify({ filter }) 
+  });
 }
 
 async function deleteEntry(id) {
@@ -3347,6 +3548,11 @@ async function delAutoReply(k) {
 
 // ---- OTHER FUNCTIONS UNCHANGED ----
 // ---- CONTROLS ----
+async function toggleDoubleXP() {
+  await fetch('/api/config/double-xp', { method: 'POST' });
+  refresh();
+}
+
 async function toggleBot() {
   await fetch('/api/bot/toggle', { method: 'POST' });
   refresh();
@@ -3388,7 +3594,62 @@ async function sendTemplate(type) {
   refresh();
 }
 
+// ---- USER MANAGEMENT ----
+async function loadUsers() {
+  const q = document.getElementById('userSearch')?.value || '';
+  try {
+    const res = await fetch('/api/users/list?q=' + encodeURIComponent(q));
+    const d = await res.json();
+    const tbody = document.getElementById('userList');
+    if (!tbody || !d.success) return;
+    if (d.data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:var(--muted);">Tidak ada user ditemukan.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = d.data.map((u, i) => \`
+      <tr>
+        <td style="font-weight:700; color:var(--muted);">\${i+1}</td>
+        <td style="font-weight:700; color:var(--accent);">@\${u.username}</td>
+        <td><span class="prov-tag" style="background:var(--accent); color:#fff; border:none;">Lv \${u.level}</span></td>
+        <td style="font-weight:600;">\${(u.xp||0).toLocaleString('id-ID')} XP</td>
+        <td class="td-actions">
+          <button class="btn-sm btn-sm-edit" onclick="editUserStats('\${u.username}', \${u.level}, \${u.xp})">Edit Stats</button>
+        </td>
+      </tr>
+    \`).join('');
+  } catch(e) {}
+}
+
+function editUserStats(user, level, xp) {
+  document.getElementById('editUserUsername').value = user;
+  document.getElementById('editUserTitle').textContent = user;
+  document.getElementById('editUserLevel').value = level;
+  document.getElementById('editUserXP').value = xp;
+  document.getElementById('userModal').classList.add('open');
+}
+
+function closeUserModal() {
+  document.getElementById('userModal').classList.remove('open');
+}
+
+async function saveUserStats() {
+  const data = {
+    username: document.getElementById('editUserUsername').value,
+    level: parseInt(document.getElementById('editUserLevel').value),
+    xp: parseInt(document.getElementById('editUserXP').value)
+  };
+  const res = await fetch('/api/users/update-xp', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
+  });
+  if (res.ok) { closeUserModal(); loadUsers(); }
+  else alert('Gagal memperbarui stats.');
+}
+
 // ---- REFRESH LOOP ----
+async function loadConfig() {
+  // Personality selector removed
+}
+
 async function refresh() {
   try {
     const res = await fetch('/api/stats');
