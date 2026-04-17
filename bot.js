@@ -1940,7 +1940,7 @@ function startDashboard() {
             ? "🚀 [EVENT] DOUBLE XP AKTIF!\n\nSemua kuis dan interaksi memberikan hadiah XP 2x lipat! Ayo kumpulin XP sebanyak-banyaknya sekarang juga! 🔥"
             : "🏁 [EVENT] DOUBLE XP BERAKHIR!\n\nTerima kasih sudah berpartisipasi. Hadiah XP kembali normal. Sampai jumpa di event berikutnya! 👋";
         
-        sendChatMessage(msg).catch(e => console.error("[BROADCAST ERROR] Event announcement failed:", e.message));
+        sendChatMessage(bots[1], msg).catch(e => console.error("[BROADCAST ERROR] Event announcement failed:", e.message));
         
         res.json({ success: true, active: IS_DOUBLE_XP });
     });
@@ -2223,7 +2223,7 @@ function startDashboard() {
         clearQuizTimers();
         
         console.log(`[QUIZ] Stopped by Admin. Answer: ${answer}`);
-        await sendChatMessage(`🛑 Kuis telah dihentikan oleh Admin.\nJawaban yang benar: ${answer}`);
+        await sendChatMessage(bots[1], `🛑 Kuis telah dihentikan oleh Admin.\nJawaban yang benar: ${answer}`);
         
         res.json({ success: true });
     });
