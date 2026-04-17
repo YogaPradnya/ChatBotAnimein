@@ -1631,17 +1631,19 @@ function getDashboardHTML() {
       updateModalTitleDropdown();
       renderTitlesList();
 
-      tbody.innerHTML = d.data.map((u, i) => \`
-        <tr>
-          <td style="font-weight:700; color:var(--muted);">\${i+1}</td>
-          <td style="font-weight:700; color:var(--accent);">@\${u.username} <div style="font-size:10px; color:var(--muted); font-weight:500;">\${getUserTitle(u.level, u.custom_title)}</div></td>
-          <td><span class="prov-tag" style="background:var(--accent); color:#fff; border:none;">Lv \${u.level}</span></td>
-          <td style="font-weight:600;">\${(u.xp||0).toLocaleString('id-ID')} XP</td>
-          <td class="td-actions">
-            <button class="btn-sm btn-sm-edit" onclick="editUserStats('\${u.username}', \${u.level}, \${u.xp}, '\${(u.custom_title || '').replace(/'/g, "\\\\'")}')">Edit Stats</button>
-          </td>
-        </tr>
-      \`).join('');
+      tbody.innerHTML = d.data.map((u, i) => {
+        const req = Math.floor(50 * Math.pow(u.level, 3));
+        const xpDisplay = (u.xp||0).toLocaleString('id-ID') + ' / ' + req.toLocaleString('id-ID') + ' XP';
+        const title = getUserTitle(u.level, u.custom_title);
+        const safeTitle = (u.custom_title || '').replace(/'/g, "\\'");
+        return '<tr>' +
+          '<td style="font-weight:700; color:var(--muted);">' + (i+1) + '</td>' +
+          '<td style="font-weight:700; color:var(--accent);">@' + u.username + '<div style="font-size:10px; color:var(--muted); font-weight:500;">' + title + '</div></td>' +
+          '<td><span class="prov-tag" style="background:var(--accent); color:#fff; border:none;">Lv ' + u.level + '</span></td>' +
+          '<td style="font-weight:600;">' + xpDisplay + '</td>' +
+          '<td class="td-actions"><button class="btn-sm btn-sm-edit" onclick="editUserStats(\'' + u.username + '\', ' + u.level + ', ' + u.xp + ', \'' + safeTitle + '\')">Edit Stats</button></td>' +
+          '</tr>';
+      }).join('');
     } catch(e) {}
   }
   function editUserStats(user, level, xp, customTitle = '') {

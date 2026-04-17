@@ -981,19 +981,19 @@ const ANIMEIN_HEADERS = {
 };
 
 /** Ambil data anime dari Animein berdasarkan tipe (trending/hot atau popular) */
-async function fetchHomeAnime() {
+async function fetchHomeAnime(force = false) {
     const now = Date.now();
-    if (cache.trending.data.length > 0 && now - cache.trending.lastFetch < cache.TTL) {
+    if (!force && cache.trending.data.length > 0 && now - cache.trending.lastFetch < cache.TTL) {
         return true;
     }
     try {
-        // --- A. CEK RESET 2 MINGGU ---
+        // --- A. CEK RESET 2 MINGGU (hanya jika bukan force) ---
         const lastResetRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = ?", args: ['last_quiz_reset'] });
         const lastReset = lastResetRes.rows.length > 0 ? parseInt(lastResetRes.rows[0].value) : 0;
         const nowMs = Date.now();
         
         // 14 hari = 14 * 24 * 60 * 60 * 1000 = 1209600000 ms
-        if (nowMs - lastReset > 1209600000) {
+        if (!force && nowMs - lastReset > 1209600000) {
             console.log("[QUIZ] Reset 2 Mingguan: Menghapus database kuis lama...");
             await db.execute("DELETE FROM quiz_pool");
             await db.execute({ 
@@ -1002,10 +1002,10 @@ async function fetchHomeAnime() {
             });
         }
 
-        // --- B. CEK LIMIT 1500 ---
+        // --- B. CEK LIMIT 1500 (bypass jika force) ---
         const currentCountRes = await db.execute("SELECT COUNT(*) as count FROM quiz_pool");
         const currentCount = currentCountRes.rows[0].count;
-        if (currentCount >= 1500) {
+        if (!force && currentCount >= 1500) {
             console.log(`[QUIZ] Limit 1500 tercapai (${currentCount}). Skip penambahan.`);
             return true;
         }
@@ -2251,9 +2251,12 @@ function startDashboard() {
     });
 
     app.post('/api/quiz/refetch', async (req, res) => {
-        console.log(`[QUIZ] Manual refetch triggered from Dashboard.`);
-        fetchHomeAnime().catch(e => console.error("[MANUAL FETCH] Error:", e.message));
-        res.json({ success: true, message: 'Proses background fetch dimulai.' });
+        console.log(`[QUIZ] Manual force-refetch triggered from Dashboard.`);
+        // Reset in-memory cache agar fetchHomeAnime tidak skip
+        cache.trending.data = [];
+        cache.trending.lastFetch = 0;
+        fetchHomeAnime(true).catch(e => console.error("[MANUAL FETCH] Error:", e.message));
+        res.json({ success: true, message: 'Proses fetch dimulai! Data baru akan ditambahkan ke database dalam beberapa menit. Cek jumlah database untuk melihat progres.' });
     });
 
 
