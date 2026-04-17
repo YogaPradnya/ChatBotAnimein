@@ -229,38 +229,77 @@ async function initDB() {
 }
 // initDB will be called in startBot
 
-// --- GAMIFICATION ---
+
+// --- OPTIMIZATION CACHE ---
+const USER_STATS_CACHE = {};     // { username: { xp, level, custom_title } }
+const XP_PENDING_UPDATES = {};    // { username: total_xp_to_add }
+const SHALLOW_AI_CACHE = [];     // Array of { query, answer, timestamp }
+
+// Flush XP Buffering to DB every 60 seconds
+setInterval(async () => {
+    const pendingCount = Object.keys(XP_PENDING_UPDATES).length;
+    if (pendingCount === 0) return;
+
+    try {
+        console.log(`[SYNC] Flushing XP updates for ${pendingCount} users...`);
+        const batch = [];
+        for (const [user, amount] of Object.entries(XP_PENDING_UPDATES)) {
+            const stats = USER_STATS_CACHE[user];
+            if (stats) {
+                batch.push({
+                    sql: "INSERT INTO user_stats (username, xp, level, custom_title) VALUES (?, ?, ?, ?) ON CONFLICT(username) DO UPDATE SET xp = ?, level = ?, custom_title = ?",
+                    args: [user, stats.xp, stats.level, stats.custom_title, stats.xp, stats.level, stats.custom_title]
+                });
+            }
+        }
+        if (batch.length > 0) {
+            await db.batch(batch, "write");
+        }
+        // Clear pending but keep cache
+        for (const user in XP_PENDING_UPDATES) delete XP_PENDING_UPDATES[user];
+        console.log(`[SYNC] Successfully synced ${pendingCount} users to database.`);
+    } catch (e) {
+        console.error("[SYNC] Global XP Flush failed:", e.message);
+    }
+}, 60000);
 async function addXP(username, amount) {
     if (!CONFIG.TURSO_URL) return { leveledUp: false, level: 1, xp: 0 };
     try {
-        const res = await db.execute({ sql: "SELECT xp, level, custom_title FROM user_stats WHERE username = ?", args: [username] });
-        let xp = 0, level = 1, custom_title = null;
-        if (res.rows.length === 0) {
-            xp = Math.max(0, (XP_MULTIPLIER > 1 && amount > 0) ? amount * XP_MULTIPLIER : amount);
-            await db.execute({ sql: "INSERT INTO user_stats (username, xp, level) VALUES (?, ?, ?)", args: [username, xp, level] });
-            console.log(`[XP] New User: ${username} (XP: ${xp})`);
-        } else {
-            const finalAmount = (XP_MULTIPLIER > 1 && amount > 0) ? amount * XP_MULTIPLIER : amount;
-            xp = res.rows[0].xp + finalAmount;
-            level = res.rows[0].level;
-            custom_title = res.rows[0].custom_title;
-            
-            let reqXP = Math.floor(50 * Math.pow(level, 3));
-            let leveledUp = false;
-            while(xp >= reqXP) {
-                level++;
-                leveledUp = true;
-                reqXP = Math.floor(50 * Math.pow(level, 3));
+        // 1. Check Cache First
+        let stats = USER_STATS_CACHE[username];
+        
+        if (!stats) {
+            // Load if not in cache
+            const res = await db.execute({ sql: "SELECT xp, level, custom_title FROM user_stats WHERE username = ?", args: [username] });
+            if (res.rows.length > 0) {
+                stats = { xp: res.rows[0].xp, level: res.rows[0].level, custom_title: res.rows[0].custom_title };
+            } else {
+                stats = { xp: 0, level: 1, custom_title: null };
             }
-            // Pastikan XP tidak negatif
-            xp = Math.max(0, xp);
-            
-            await db.execute({ sql: "UPDATE user_stats SET xp = ?, level = ? WHERE username = ?", args: [xp, level, username] });
-            console.log(`[XP] Update: ${username} (XP: ${xp}, Level: ${level})`);
-            
-            return { leveledUp, level, xp, custom_title };
+            USER_STATS_CACHE[username] = stats;
         }
-        return { leveledUp: false, level, xp, custom_title: null };
+
+        // 2. Calculate New Stats (Memory Only)
+        const multiplier = (XP_MULTIPLIER > 1 && amount > 0) ? XP_MULTIPLIER : 1;
+        const finalAmount = amount * multiplier;
+        
+        const oldLevel = stats.level;
+        stats.xp = Math.max(0, stats.xp + finalAmount);
+        
+        let reqXP = Math.floor(50 * Math.pow(stats.level, 3));
+        while(stats.xp >= reqXP) {
+            stats.level++;
+            reqXP = Math.floor(50 * Math.pow(stats.level, 3));
+        }
+        
+        const leveledUp = stats.level > oldLevel;
+
+        // 3. Buffer for DB Sync (Point 2)
+        XP_PENDING_UPDATES[username] = (XP_PENDING_UPDATES[username] || 0) + finalAmount;
+        
+        console.log(`[XP Buffer] ${username} +${finalAmount} -> Total: ${stats.xp} (Lvl: ${stats.level})`);
+        
+        return { leveledUp, level: stats.level, xp: stats.xp, custom_title: stats.custom_title };
     } catch (e) {
         console.error("[GAMIFICATION] Add XP error:", e.message);
         return { leveledUp: false, level: 1, xp: 0 };
@@ -1397,6 +1436,17 @@ async function askGroq(index, userMessage, senderName, contextData = '', chatHis
     const client = groqClients[index];
     const stat = stats.otak[index];
     
+    // SHALLOW SEMANTIC CACHE LOOKUP (Point 4)
+    // Filter out very short queries from cache
+    const queryKey = userMessage.trim().toLowerCase();
+    if (queryKey.length >= 5) {
+        const cached = SHALLOW_AI_CACHE.find(c => c.query === queryKey);
+        if (cached && (Date.now() - cached.timestamp < 15 * 60 * 1000)) { // 15 menit cache
+            console.log(`[CACHE HIT] Memoized answer for: "${userMessage}"`);
+            return { text: cached.answer, tokens: 0 };
+        }
+    }
+
     stat.requests++;
     const systemContent = SYSTEM_PROMPT + `\n\nInfo: Kamu sedang mengobrol dengan ${senderName}.` + contextData;
     const { data: completion, response } = await client.chat.completions.create({
@@ -1409,6 +1459,14 @@ async function askGroq(index, userMessage, senderName, contextData = '', chatHis
         max_tokens: 1024,
         temperature: 0.75,
     }).withResponse();
+
+    const answer = completion.choices[0].message.content;
+
+    // SAVE TO CACHE
+    if (queryKey.length >= 5) {
+        SHALLOW_AI_CACHE.push({ query: queryKey, answer, timestamp: Date.now() });
+        if (SHALLOW_AI_CACHE.length > 50) SHALLOW_AI_CACHE.shift(); // Keep only 50 latest
+    }
 
     if (response && response.headers) {
         stat.remainingReqs = response.headers.get('x-ratelimit-remaining-requests') || '?';
