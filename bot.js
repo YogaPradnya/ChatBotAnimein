@@ -32,6 +32,7 @@ let FILTER_DATA = { profanities: [], response: 'Maaf, saya tidak akan menjawab p
 const CONFIG = {
     BASE_URL: process.env.ANIMEIN_API_URL,
     USERNAME: process.env.ANIMEIN_USERNAME,
+    KUIS_USERNAME: process.env.ANIMEIN_KUIS_USERNAME,
     PASSWORD: process.env.ANIMEIN_PASSWORD,
 
     GROQ_KEYS: [
@@ -341,36 +342,37 @@ function buildHintMessage(level) {
     return lines.join('\n');
 }
 
-async function scheduleQuizExpiry(lastMsgId) {
+async function scheduleQuizExpiry(bot, lastMsgId) {
     clearQuizTimers();
     const timeLeft = QUIZ_DURATION_MS - (Date.now() - activeQuiz.startedAt);
-    if (timeLeft <= 0) { expireQuiz(lastMsgId); return; }
+    if (timeLeft <= 0) { expireQuiz(bot, lastMsgId); return; }
 
-    activeQuiz.expireTimer = setTimeout(() => expireQuiz(lastMsgId), timeLeft);
+    activeQuiz.expireTimer = setTimeout(() => expireQuiz(bot, lastMsgId), timeLeft);
 }
 
-async function expireQuiz(lastMsgId) {
+async function expireQuiz(bot, lastMsgId) {
     if (!activeQuiz.isRunning) return;
     activeQuiz.isRunning = false;
     clearQuizTimers();
     await sendChatMessage(
+        bot,
         `Waktu kuis habis! Tidak ada yang berhasil menebak.\nJawaban yang benar: ${activeQuiz.original}`,
         lastMsgId
     );
 }
 
-async function startQuiz(senderName, msgId) {
+async function startQuiz(bot, senderName, msgId) {
     if (activeQuiz.isRunning || activeQuiz.isStarting) {
         const remaining = Math.floor((QUIZ_DURATION_MS - (Date.now() - (activeQuiz.startedAt || Date.now()))) / 1000);
         const timeStr = remaining > 0 ? `${Math.floor(remaining/60)}m ${remaining%60}s` : 'menunggu...';
         const msg = `📌 @${senderName} Kuis masih berlangsung!\n\n` + (activeQuiz.isRunning ? buildHintMessage(activeQuiz.hintsRevealed) : '🔄 Sedang menyiapkan soal kuis...') + `\n\nKetik .tebak [jawaban] untuk menjawab!`;
-        await sendChatMessage(msg, msgId);
+        await sendChatMessage(bot, msg, msgId);
         return;
     }
 
     activeQuiz.isStarting = true;
     try {
-        // Ambil data anime yang paling jarang muncul (Least Recently Used) secara acak
+        let anime = null;
         try {
             let sql = "SELECT * FROM quiz_pool";
             let where = [];
@@ -392,22 +394,18 @@ async function startQuiz(senderName, msgId) {
             console.error("[QUIZ] Gagal ambil data dari DB:", e.message);
         }
         
-        // Jika DB kosong, coba fetch dulu
         if (!anime) {
             await fetchHomeAnime();
             const resRetry = await db.execute("SELECT * FROM quiz_pool ORDER BY RANDOM() LIMIT 1");
-            if (resRetry.rows.length > 0) {
-                anime = resRetry.rows[0];
-            }
+            if (resRetry.rows.length > 0) anime = resRetry.rows[0];
         }
         
         if (!anime) {
-            await sendChatMessage(`@${senderName} Rara gagal mengambil data kuis dari database. Coba lagi kuisnya bentar lagi ya!`, msgId);
+            await sendChatMessage(bot, `@${senderName} Rara gagal mengambil data kuis dari database. Coba lagi kuisnya bentar lagi ya!`, msgId);
             activeQuiz.isStarting = false;
             return;
         }
         
-        // Siapkan data clues
         const quizData = {
             isRunning: true,
             isStarting: false,
@@ -419,7 +417,7 @@ async function startQuiz(senderName, msgId) {
                 studio: anime.studio || '?',
                 genre: anime.genre || '?',
                 year: anime.year || '?',
-                synopsis: anime.synopsis.replace(/\[Written by MAL Rewrite\]/g, '').trim(),
+                synopsis: (anime.synopsis || '').replace(/\[Written by MAL Rewrite\]/g, '').trim(),
                 score: anime.score || '?',
                 type: anime.type || 'SERIES'
             },
@@ -431,8 +429,8 @@ async function startQuiz(senderName, msgId) {
         activeQuiz = quizData;
 
         const introMsg = `${buildHintMessage(0)}\n\nKetik .hint untuk mendapatkan hint baru (-1 s/d 5 XP).`;
-        await sendChatMessage(introMsg, msgId);
-        scheduleQuizExpiry(msgId);
+        await sendChatMessage(bot, introMsg, msgId);
+        scheduleQuizExpiry(bot, msgId);
     } catch (err) {
         console.error("[QUIZ] Error starting:", err);
         activeQuiz.isStarting = false;
@@ -832,9 +830,11 @@ Instruksi AI: Jika user nanya "siapa pokemon terkuat, dewa, paling OP, terhebat"
 
 
 
-let auth = { userId: null, userKey: null };
-let lastMessageId = 0;
-let isFirstRun = true;
+let bots = [
+    { username: CONFIG.USERNAME, password: CONFIG.PASSWORD, role: 'info', auth: { userId: null, userKey: null }, lastMessageId: 0, isFirstRun: true },
+    { username: CONFIG.KUIS_USERNAME, password: CONFIG.PASSWORD, role: 'kuis', auth: { userId: null, userKey: null }, lastMessageId: 0, isFirstRun: true }
+];
+
 let isGlobalCooldown = false; 
 
 /** Fungsi untuk mendeteksi apakah topik pembicaraan sudah berubah secara signifikan */
@@ -1485,7 +1485,7 @@ async function getAIResponse(userMessage, senderName, isReply = false) {
     return { text: 'Maaf kak, semua koneksi AI Rara lagi sibuk/limit. Coba lagi nanti ya! 🙏', provider: 'Error', tokens: 0 };
 }
 
-async function sendChatWithImage(imageData, caption, replyTo = '0') {
+async function sendChatWithImage(bot, imageData, caption, replyTo = '0') {
     try {
         const buffer = Buffer.from(imageData.data, 'base64');
         let ext = imageData.mimeType.split('/')[1] || 'jpg';
@@ -1496,8 +1496,8 @@ async function sendChatWithImage(imageData, caption, replyTo = '0') {
         const form = new FormData();
         form.append('text', caption);
         form.append('id_chat_replay', replyTo);
-        form.append('id_user', auth.userId);
-        form.append('key_client', auth.userKey);
+        form.append('id_user', bot.auth.userId);
+        form.append('key_client', bot.auth.userKey);
         form.append('image', buffer, { filename, contentType });
         
         const res = await axios.post(`${CONFIG.BASE_URL}/3/2/chat/do`, form, {
@@ -1527,12 +1527,12 @@ async function sendChatWithImage(imageData, caption, replyTo = '0') {
 
 
 
-async function login() {
+async function login(bot) {
     try {
-        console.log('Logging in to AnimeinWeb...');
+        console.log(`Logging in to AnimeinWeb as ${bot.username}...`);
         const params = new URLSearchParams();
-        params.append('username_or_email', CONFIG.USERNAME);
-        params.append('password', CONFIG.PASSWORD);
+        params.append('username_or_email', bot.username);
+        params.append('password', bot.password);
         
         const loginUrl = `${CONFIG.BASE_URL.replace(/"/g, '')}/auth/login`;
         
@@ -1547,9 +1547,9 @@ async function login() {
 
         const resData = response.data;
         if (resData && resData.data && resData.data.user) {
-            auth.userId = resData.data.user.id;
-            auth.userKey = resData.data.user.key_client;
-            console.log(`[AUTH] Login Successful! User ID: ${auth.userId}`);
+            bot.auth.userId = resData.data.user.id;
+            bot.auth.userKey = resData.data.user.key_client;
+            console.log(`[AUTH] Login Successful! [${bot.username}] User ID: ${bot.auth.userId}`);
             return true;
         }
         
@@ -1565,10 +1565,10 @@ async function login() {
     }
 }
 
-async function fetchMessages() {
+async function fetchMessages(bot) {
     try {
-        const queryParams = { id_user: auth.userId, key_client: auth.userKey };
-        if (lastMessageId > 0) queryParams.highest_id = lastMessageId;
+        const queryParams = { id_user: bot.auth.userId, key_client: bot.auth.userKey };
+        if (bot.lastMessageId > 0) queryParams.highest_id = bot.lastMessageId;
         const response = await axios.get(`${CONFIG.BASE_URL}/3/2/chat/data`, { 
             params: queryParams,
             headers: {
@@ -1590,7 +1590,13 @@ async function fetchMessages() {
     }
 }
 
-async function sendChatMessage(text, replyTo = '0') {
+async function sendChatMessage(bot, text, replyTo = '0') {
+    // Gunakan bot pertama (info) sebagai default jika parameter bot adalah string (legacy support)
+    if (typeof bot === 'string') {
+        replyTo = text || '0';
+        text = bot;
+        bot = bots[0]; 
+    }
     // Aktifkan cooldown 10 detik setiap kali bot berhasil atau mencoba mengirim pesan
     isGlobalCooldown = true;
     setTimeout(() => { isGlobalCooldown = false; }, 10000);
@@ -1599,8 +1605,8 @@ async function sendChatMessage(text, replyTo = '0') {
         const params = new URLSearchParams();
         params.append('text', text);
         params.append('id_chat_replay', replyTo);
-        params.append('id_user', auth.userId);
-        params.append('key_client', auth.userKey);
+        params.append('id_user', bot.auth.userId);
+        params.append('key_client', bot.auth.userKey);
         await axios.post(`${CONFIG.BASE_URL}/3/2/chat/do`, params, {
             headers: { 
                 'Accept': 'application/json, text/plain, */*',
@@ -1623,186 +1629,196 @@ async function sendChatMessage(text, replyTo = '0') {
 }
 
 
-async function processMessages(messages) {
+async function processMessages(bot, messages) {
     for (const msg of messages) {
         const msgId = parseInt(msg.id || 0);
-        if (!msgId || msgId <= lastMessageId) continue;
-        lastMessageId = msgId;
+        if (!msgId || msgId <= bot.lastMessageId) continue;
+        bot.lastMessageId = msgId;
 
         if (!isBotActive) continue;
 
-        if (String(msg.user_id) === String(auth.userId)) continue;
+        if (String(msg.user_id) === String(bot.auth.userId)) continue;
 
         const senderName = msg.user_name || 'User';
         let msgText = msg.text || '';
         
         // --- 1. NORMALISASI PESAN (Strip Mentions) ---
-        const botName = (CONFIG.USERNAME || 'AnimeinAi').toLowerCase();
+        const botName = bot.username.toLowerCase();
         const mentionRegex = new RegExp(`@${botName}\\s*:?|${botName}\\s*:?|@AnimeinAi\\s*:?|@AnimeinBot\\s*:?`, 'gi');
         const cleanMsg = msgText.replace(mentionRegex, '').trim();
         const lowerMsg = cleanMsg.toLowerCase();
         
-        // --- 2. CEK LAPOR (Bypass Cooldown) ---
-        if (lowerMsg.startsWith('.lapor')) {
-            let isiLaporan = cleanMsg.substring(6).trim();
-            if (!isiLaporan) {
-                await sendChatMessage(`🔰 @${senderName} Tulis laporan kamu setelah .lapor\nContoh: .lapor link rusak episode 5`, msg.id);
-            } else {
-                try {
-                    await db.execute({ sql: 'INSERT INTO laporan (username, pesan) VALUES (?, ?)', args: [senderName, isiLaporan] });
-                    console.log(`[LAPORAN] ${senderName}: ${isiLaporan}`);
-                    await sendChatMessage(`✅ @${senderName} Laporan diterima! Terima kasih informasinya.`, msg.id);
-                } catch (e) {
-                    await sendChatMessage(`❌ @${senderName} Gagal menyimpan laporan. Coba lagi nanti.`, msg.id);
-                }
-            }
-            continue;
-        }
-
-        // --- 3. CEK GAME (Bypass Mention) ---
-        if (lowerMsg.startsWith('.tebak ')) {
-            if (isGlobalCooldown) continue;
-            const answer = lowerMsg.substring(7).trim();
-            if (!activeQuiz.isRunning) {
-                await sendChatMessage(`🛑 @${senderName} Tidak ada kuis aktif. Ketik .kuis untuk mulai!`, msg.id);
-            } else if (Date.now() - activeQuiz.startedAt > QUIZ_DURATION_MS) {
-                await expireQuiz(msg.id);
-            } else {
-                const norm = (s) => (s || '').normalize('NFKC').normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
-                const normTitle = norm(activeQuiz.original);
-                const normAnswer = norm(answer);
-
-                const titleWords = normTitle.split(/\s+/).filter(w => w.length > 2);
-                const userWords = normAnswer.split(/\s+/).filter(w => w.length > 2);
-                
-                // Cek kecocokan kata dengan toleransi typo (Levenshtein distance <= 2)
-                let matches = 0;
-                userWords.forEach(uw => {
-                    const isMatch = titleWords.some(tw => {
-                        // Jika kata pendek, harus match persis. Jika panjang, boleh typo 2 huruf.
-                        const maxDist = tw.length <= 4 ? 1 : 2;
-                        return levenshtein(uw, tw) <= maxDist;
-                    });
-                    if (isMatch) matches++;
-                });
-                
-                // Fuzzy match keseluruhan string (fallback)
-                const isFuzzyFull = normTitle.includes(normAnswer) && normAnswer.length >= Math.floor(normTitle.length * 0.7);
-                // Menang jika match minimal 2 kata (untuk judul panjang) atau fuzzy full
-                const isWordMatch = (titleWords.length >= 2 && matches >= 2);
-                
-                if (normTitle === normAnswer || isFuzzyFull || isWordMatch) {
-                    activeQuiz.isRunning = false;
-                    clearQuizTimers();
-                    
-                    // XP Berkurang jika banyak salah tebak
-                    const penaltyWrong = (activeQuiz.wrongGuessCount || 0) * 5;
-                    const xpEarned = Math.max(10, 100 - (activeQuiz.hintsRevealed * 15) - penaltyWrong);
-                    
-                    const xpRes = await addXP(senderName, xpEarned);
-                    const finalDisplayXP = (IS_DOUBLE_XP && xpEarned > 0) ? xpEarned * 2 : xpEarned;
-                    let result = `🎉 BENAR! @${senderName} menebak: ${activeQuiz.original}\n💰 XP: +${finalDisplayXP} ${IS_DOUBLE_XP ? '(Event x2!)' : ''} (Salah Tebak Total: ${activeQuiz.wrongGuessCount || 0})`;
-                    if (xpRes.leveledUp) {
-                        const gelar = getGelar(xpRes.level, xpRes.custom_title);
-                        result += `\n🌟 SELAMAT! @${senderName} naik ke Level ${xpRes.level}! ${gelar ? `\n👑 Gelar Baru: *${gelar}*` : ''}`;
-                    }
-                    await sendChatMessage(result, msg.id);
+                // AKUN KUIS (AnimeinKuis): Hanya memproses game
+        if (bot.role === 'kuis') {
+            // Game Logic
+            if (lowerMsg.startsWith('.tebak ')) {
+                if (isGlobalCooldown) continue;
+                const answer = lowerMsg.substring(7).trim();
+                if (!activeQuiz.isRunning) {
+                    await sendChatMessage(bot, `🛑 @${senderName} Tidak ada kuis aktif. Ketik .kuis untuk mulai!`, msg.id);
+                } else if (Date.now() - activeQuiz.startedAt > QUIZ_DURATION_MS) {
+                    await expireQuiz(bot, msg.id);
                 } else {
-                    activeQuiz.wrongGuessCount = (activeQuiz.wrongGuessCount || 0) + 1;
-                    activeQuiz.wrongGuessers.add(senderName);
-                    await sendChatMessage(`❌ @${senderName} Salah! XP Hadiah berkurang -5.\nCoba lagi. (Panjang: ${activeQuiz.original.length} char)`, msg.id);
-                    await addXP(senderName, -3); // Masih ada penalti kecil ke user
+                    const norm = (s) => (s || '').normalize('NFKC').normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+                    const normTitle = norm(activeQuiz.original);
+                    const normAnswer = norm(answer);
+
+                    const titleWords = normTitle.split(/\s+/).filter(w => w.length > 2);
+                    const userWords = normAnswer.split(/\s+/).filter(w => w.length > 2);
+                    
+                    let matches = 0;
+                    userWords.forEach(uw => {
+                        const isMatch = titleWords.some(tw => {
+                            const maxDist = tw.length <= 4 ? 1 : 2;
+                            return levenshtein(uw, tw) <= maxDist;
+                        });
+                        if (isMatch) matches++;
+                    });
+                    
+                    const isFuzzyFull = normTitle.includes(normAnswer) && normAnswer.length >= Math.floor(normTitle.length * 0.7);
+                    const isWordMatch = (titleWords.length >= 2 && matches >= 2);
+                    
+                    if (normTitle === normAnswer || isFuzzyFull || isWordMatch) {
+                        activeQuiz.isRunning = false;
+                        clearQuizTimers();
+                        
+                        const penaltyWrong = (activeQuiz.wrongGuessCount || 0) * 5;
+                        const xpEarned = Math.max(10, 100 - (activeQuiz.hintsRevealed * 15) - penaltyWrong);
+                        
+                        const xpRes = await addXP(senderName, xpEarned);
+                        const finalDisplayXP = (IS_DOUBLE_XP && xpEarned > 0) ? xpEarned * 2 : xpEarned;
+                        let result = `🎉 BENAR! @${senderName} menebak: ${activeQuiz.original}\n💰 XP: +${finalDisplayXP} ${IS_DOUBLE_XP ? '(Event x2!)' : ''} (Salah Tebak Total: ${activeQuiz.wrongGuessCount || 0})`;
+                        if (xpRes.leveledUp) {
+                            const gelar = getGelar(xpRes.level, xpRes.custom_title);
+                            result += `\n🌟 SELAMAT! @${senderName} naik ke Level ${xpRes.level}! ${gelar ? `\n👑 Gelar Baru: *${gelar}*` : ''}`;
+                        }
+                        await sendChatMessage(bot, result, msg.id);
+                    } else {
+                        activeQuiz.wrongGuessCount = (activeQuiz.wrongGuessCount || 0) + 1;
+                        activeQuiz.wrongGuessers.add(senderName);
+                        await sendChatMessage(bot, `❌ @${senderName} Salah! XP Hadiah berkurang -5.\nCoba lagi. (Panjang: ${activeQuiz.original.length} char)`, msg.id);
+                        await addXP(senderName, -3);
+                    }
                 }
+                continue;
             }
-            continue;
-        }
 
-        if (lowerMsg === '.hint') {
-            if (isGlobalCooldown) continue;
-            if (!activeQuiz.isRunning) {
-                await sendChatMessage(`📌 @${senderName} Tidak ada kuis aktif.`, msg.id);
-            } else if (activeQuiz.hintsRevealed >= 5) {
-                await sendChatMessage(`📌 @${senderName} Semua hint sudah terbuka. Cek pesan lama ya.`, msg.id);
-            } else {
-                activeQuiz.hintsRevealed++;
-                const penalty = Math.floor(Math.random() * 5) + 1;
-                await addXP(senderName, -penalty);
-                await sendChatMessage(`💡 [HINT ${activeQuiz.hintsRevealed}/5 - Minta @${senderName}, -${penalty} XP]\n` + buildHintMessage(activeQuiz.hintsRevealed), msg.id);
+            if (lowerMsg === '.hint') {
+                if (isGlobalCooldown) continue;
+                if (!activeQuiz.isRunning) {
+                    await sendChatMessage(bot, `📌 @${senderName} Tidak ada kuis aktif.`, msg.id);
+                } else if (activeQuiz.hintsRevealed >= 5) {
+                    await sendChatMessage(bot, `📌 @${senderName} Semua hint sudah terbuka. Cek pesan lama ya.`, msg.id);
+                } else {
+                    activeQuiz.hintsRevealed++;
+                    const penalty = Math.floor(Math.random() * 5) + 1;
+                    await addXP(senderName, -penalty);
+                    await sendChatMessage(bot, `💡 [HINT ${activeQuiz.hintsRevealed}/5 - Minta @${senderName}, -${penalty} XP]\n` + buildHintMessage(activeQuiz.hintsRevealed), msg.id);
+                }
+                continue;
             }
-            continue;
-        }
 
-        if (lowerMsg === '.kuis' || lowerMsg === '.kius' || lowerMsg === '.game') {
-            if (isGlobalCooldown) continue;
-            await startQuiz(senderName, msg.id);
-            continue;
-        }
+            if (lowerMsg === '.kuis' || lowerMsg === '.kius' || lowerMsg === '.game') {
+                if (isGlobalCooldown) continue;
+                await startQuiz(bot, senderName, msg.id);
+                continue;
+            }
 
-        if (lowerMsg === '.menu') {
-            const menu = `🔰 DAFTAR MENU RARA 🔰\n\n1️⃣ Panggil Rara: .ai atau .rara\n2️⃣ Laporan: .lapor [pesan]\n3️⃣ Main Kuis: .kuis (jawab dgn .tebak)\n4️⃣ Cek Profil: .profil\n5️⃣ Peringkat: .rank\n\n✨ Ngobrol bareng Rara juga nambah EXP loh!`;
-            await sendChatMessage(`@${senderName}\n${menu}`, msg.id);
-            continue;
-        }
+            if (lowerMsg === '.menu') {
+                const menu = `🔰 DAFTAR MENU RARA 🔰\n\n1️⃣ Panggil Rara: .ai atau .rara\n2️⃣ Laporan: .lapor [pesan]\n3️⃣ Main Kuis: .kuis (jawab dgn .tebak)\n4️⃣ Cek Profil: .profil\n5️⃣ Peringkat: .rank\n\n✨ Ngobrol bareng Rara juga nambah EXP loh!`;
+                await sendChatMessage(bot, `@${senderName}\n${menu}`, msg.id);
+                continue;
+            }
 
-        if (lowerMsg === '.profil') {
-            if (isGlobalCooldown) continue;
-            try {
-                const res = await db.execute({ sql: "SELECT xp, level, custom_title FROM user_stats WHERE username = ?", args: [senderName] });
-                const {xp, level, custom_title} = res.rows[0] || {xp:0, level:1, custom_title: null};
-                const gelar = getGelar(level, custom_title);
-                const req = Math.floor(50 * Math.pow(level, 3));
-                const bar = '🟩'.repeat(Math.floor((xp/req)*10)) + '⬜'.repeat(10-Math.floor((xp/req)*10));
-                await sendChatMessage(`🔰 [PROFIL] @${senderName} 🔰\n🎖️ Gelar: ${gelar || 'Wibu Baru'}\n🏆 Level: ${level}\n📈 XP: ${xp} / ${req}\n📊 Progress: ${bar}`, msg.id);
-            } catch(e) {}
-            continue;
-        }
+            if (lowerMsg === '.profil') {
+                if (isGlobalCooldown) continue;
+                try {
+                    const res = await db.execute({ sql: "SELECT xp, level, custom_title FROM user_stats WHERE username = ?", args: [senderName] });
+                    const {xp, level, custom_title} = res.rows[0] || {xp:0, level:1, custom_title: null};
+                    const gelar = getGelar(level, custom_title);
+                    const req = Math.floor(50 * Math.pow(level, 3));
+                    const bar = '🟩'.repeat(Math.floor((xp/req)*10)) + '⬜'.repeat(10-Math.floor((xp/req)*10));
+                    await sendChatMessage(bot, `🔰 [PROFIL] @${senderName} 🔰\n🎖️ Gelar: ${gelar || 'Wibu Baru'}\n🏆 Level: ${level}\n📈 XP: ${xp} / ${req}\n📊 Progress: ${bar}`, msg.id);
+                } catch(e) {}
+                continue;
+            }
 
-        if (lowerMsg === '.rank' || lowerMsg === '.leaderboard') {
-            if (isGlobalCooldown) continue;
-            try {
-                const res = await db.execute("SELECT username, level, xp FROM user_stats ORDER BY xp DESC LIMIT 10");
-                let rankMsg = `🏆 [LEADERBOARD RARA] 🏆\n${'='.repeat(25)}\n`;
-                const medals = ['🥇','🥈','🥉','🎖️','🎖️','🏅','🏅','🏅','🏅','🏅'];
-                res.rows.forEach((r, i) => {
-                    rankMsg += `${medals[i]} ${r.username.padEnd(14)} Lvl ${r.level} (${r.xp} XP)\n`;
-                });
-                await sendChatMessage(rankMsg, msg.id);
-            } catch(e) {}
+            if (lowerMsg === '.rank' || lowerMsg === '.leaderboard') {
+                if (isGlobalCooldown) continue;
+                try {
+                    const res = await db.execute("SELECT username, level, xp FROM user_stats ORDER BY xp DESC LIMIT 10");
+                    let rankMsg = `🏆 [LEADERBOARD RARA] 🏆\n${'='.repeat(25)}\n`;
+                    const medals = ['🥇','🥈','🥉','🎖️','🎖️','🏅','🏅','🏅','🏅','🏅'];
+                    res.rows.forEach((r, i) => {
+                        rankMsg += `${medals[i]} ${r.username.padEnd(14)} Lvl ${r.level} (${r.xp} XP)\n`;
+                    });
+                    await sendChatMessage(bot, rankMsg, msg.id);
+                } catch(e) {}
+                continue;
+            }
+            
+            // Bot kuis mengabaikan semua pesan lain agar tidak berisik
             continue;
-        }
-
-        // --- 4. COOLDOWN AI & MENTION ---
-        if (isGlobalCooldown) continue;
-        if (!isMentioned(msgText)) continue;
+        } 
         
-        const triggerRegex = new RegExp(`\\.ai|ai\\.|\\.rara|rara\\.|@${botName}`, 'gi');
-        const cleanText = msgText.replace(triggerRegex, '').trim();
-        
-        // --- 5. AUTO REPLY (Bypass AI) ---
-        const matchedAuto = AUTO_REPLY.find(a => cleanText.toLowerCase().includes(a.keyword.toLowerCase()));
-        if (matchedAuto) {
-            await sendChatMessage(`@${senderName} ${matchedAuto.answer}`, msg.id);
-            addActivity('text', senderName, cleanText, matchedAuto.answer, 'AutoReply', 0);
-            await addXP(senderName, 5); 
-            continue;
-        }
-        
-        if (containsProfanity(cleanText)) {
-            stats.filter.blocked++;
-            await sendChatMessage(`🚨 @${senderName} ${FILTER_DATA.response}`, msg.id);
-            addActivity('blocked', senderName, cleanText, FILTER_DATA.response, 'Filter');
-            continue;
-        }
+        // AKUN INFO (AnimeinAI): Memproses AI, AutoReply, dan Lapor
+        if (bot.role === 'info') {
+            // Cek Lapor
+            if (lowerMsg.startsWith('.lapor')) {
+                let isiLaporan = cleanMsg.substring(6).trim();
+                if (!isiLaporan) {
+                    await sendChatMessage(bot, `🔰 @${senderName} Tulis laporan kamu setelah .lapor\nContoh: .lapor link rusak episode 5`, msg.id);
+                } else {
+                    try {
+                        await db.execute({ sql: 'INSERT INTO laporan (username, pesan) VALUES (?, ?)', args: [senderName, isiLaporan] });
+                        console.log(`[LAPORAN] ${senderName}: ${isiLaporan}`);
+                        await sendChatMessage(bot, `✅ @${senderName} Laporan diterima! Terima kasih informasinya.`, msg.id);
+                    } catch (e) {
+                        await sendChatMessage(bot, `❌ @${senderName} Gagal menyimpan laporan. Coba lagi nanti.`, msg.id);
+                    }
+                }
+                continue;
+            }
 
-        { // Blok AI
-            console.log(`[TRIGGER] ${senderName}: ${msgText}`);
-            stats.totalTriggers++;
-            const question = cleanText || 'panggil rara?';
-            const { text: aiText, provider, tokens } = await getAIResponse(question, senderName, !!msg.replay_text);
-            await sendChatMessage(`@${senderName} ${aiText}`, msg.id);
-            addActivity('text', senderName, question, aiText, provider, tokens);
-            await addXP(senderName, 10);
-            saveChatLog(senderName, question, aiText, provider, tokens);
+            // Abaikan command kuis agar tidak dobel respons
+            if (lowerMsg.startsWith('.tebak ') || lowerMsg === '.hint' || 
+                lowerMsg === '.kuis' || lowerMsg === '.game' || lowerMsg === '.menu' || 
+                lowerMsg === '.profil' || lowerMsg === '.rank') {
+                continue;
+            }
+
+            if (isGlobalCooldown) continue;
+            if (!isMentioned(msgText)) continue;
+            
+            const triggerRegex = new RegExp(`\\.ai|ai\\.|\\.rara|rara\\.|@AnimeinAi|@${bot.username}`, 'gi');
+            const cleanText = msgText.replace(triggerRegex, '').trim();
+            
+            // Auto Reply
+            const matchedAuto = AUTO_REPLY.find(a => cleanText.toLowerCase().includes(a.keyword.toLowerCase()));
+            if (matchedAuto) {
+                await sendChatMessage(bot, `@${senderName} ${matchedAuto.answer}`, msg.id);
+                addActivity('text', senderName, cleanText, matchedAuto.answer, 'AutoReply', 0);
+                await addXP(senderName, 5); 
+                continue;
+            }
+            
+            if (containsProfanity(cleanText)) {
+                stats.filter.blocked++;
+                await sendChatMessage(bot, `🚨 @${senderName} ${FILTER_DATA.response}`, msg.id);
+                addActivity('blocked', senderName, cleanText, FILTER_DATA.response, 'Filter');
+                continue;
+            }
+
+            { // Blok AI
+                console.log(`[TRIGGER-AI] ${senderName}: ${msgText}`);
+                stats.totalTriggers++;
+                const question = cleanText || 'panggil rara?';
+                const { text: aiText, provider, tokens } = await getAIResponse(question, senderName, !!msg.replay_text);
+                await sendChatMessage(bot, `@${senderName} ${aiText}`, msg.id);
+                addActivity('text', senderName, question, aiText, provider, tokens);
+                await addXP(senderName, 10);
+                saveChatLog(senderName, question, aiText, provider, tokens);
+            }
         }
     }
 }
@@ -1829,35 +1845,47 @@ function levenshtein(a, b) {
 
 async function startBot() {
     await initDB();
-    const loggedIn = await login();
-    if (!loggedIn) { stats.botStatus = 'login_failed'; return; }
-
-    stats.botStatus = 'online';
-    console.log(`Bot aktif! Trigger: .ai, ai., .rika, rika. | Dashboard: http://localhost:${CONFIG.DASHBOARD_PORT}`);
-
-    setInterval(async () => {
-        const data = await fetchMessages();
-        if (!data) return;
-
-        const messages = (data.data && Array.isArray(data.data.chat)) ? data.data.chat : [];
-
-        if (isFirstRun) {
-            for (const msg of messages) {
-                const id = parseInt(msg.id || 0);
-                if (id > lastMessageId) lastMessageId = id;
-            }
-            console.log(`Baseline ID: ${lastMessageId}. Bot siap!`);
-            isFirstRun = false;
-            return;
+    
+    // Login all bots
+    for (const bot of bots) {
+        const loggedIn = await login(bot);
+        if (!loggedIn) { 
+            console.error(`[FATAL] Gagal login untuk bot ${bot.username}`);
         }
+    }
+    
+    stats.botStatus = 'online';
+    console.log(`Bot aktif! Info: ${bots[0].username}, Kuis: ${bots[1].username}`);
+    console.log(`Dashboard: http://localhost:${CONFIG.DASHBOARD_PORT}`);
 
-        await processMessages(messages);
+    // Main Polling Loop
+    setInterval(async () => {
+        for (const bot of bots) {
+            if (!bot.auth.userId) continue;
+            
+            const data = await fetchMessages(bot);
+            if (!data) continue;
+
+            const messages = (data.data && Array.isArray(data.data.chat)) ? data.data.chat : [];
+
+            if (bot.isFirstRun) {
+                for (const msg of messages) {
+                    const id = parseInt(msg.id || 0);
+                    if (id > bot.lastMessageId) bot.lastMessageId = id;
+                }
+                console.log(`[${bot.username}] Baseline ID: ${bot.lastMessageId}.`);
+                bot.isFirstRun = false;
+                continue;
+            }
+
+            if (messages.length > 0) {
+                await processMessages(bot, messages);
+            }
+        }
     }, CONFIG.POLL_INTERVAL);
 
-    // Jalankan fetch pertama kali saat startup untuk mengisi DB kuis & cache
     fetchHomeAnime().catch(e => console.error("[STARTUP] Fetch anime failed:", e.message));
     
-    // Set interval 1 jam untuk terus memantau dan menambah koleksi kuis baru ke DB
     setInterval(() => {
         fetchHomeAnime().catch(e => console.error("[INTERVAL] Fetch anime failed:", e.message));
     }, 60 * 60 * 1000);
