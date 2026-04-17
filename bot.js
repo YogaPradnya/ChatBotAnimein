@@ -203,6 +203,13 @@ async function initDB() {
             console.log(`[AUTOREPLY] Migrated to DB.`);
         }
 
+        // Load Total Quizzes Started from DB
+        const quizCountRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'total_quizzes_started'" });
+        if (quizCountRes.rows.length > 0) {
+            stats.totalQuizzesStarted = parseInt(quizCountRes.rows[0].value) || 0;
+            console.log(`[QUIZ] Total quizzes started loaded: ${stats.totalQuizzesStarted}`);
+        }
+
         console.log("[DB] Turso Database connected & Tables ready (chat_logs + response_cache + laporan + user_stats + quiz_pool + settings).");
     } catch (e) {
         console.error("[DB] Gagal inisialisasi Turso:", e.message);
@@ -427,6 +434,11 @@ async function startQuiz(bot, senderName, msgId) {
         };
         
         activeQuiz = quizData;
+        stats.totalQuizzesStarted++;
+        db.execute({ 
+            sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('total_quizzes_started', ?)", 
+            args: [String(stats.totalQuizzesStarted)] 
+        }).catch(() => {});
 
         const introMsg = `${buildHintMessage(0)}\n\nKetik .hint untuk mendapatkan hint baru (-1 s/d 5 XP).`;
         await sendChatMessage(bot, introMsg, msgId);
@@ -676,6 +688,7 @@ const stats = {
     totalDBLogs: 0,
     totalDBKuis: 0,
     totalReports: 0,
+    totalQuizzesStarted: 0,
     recentActivity: []
 };
 
@@ -1991,6 +2004,34 @@ function startDashboard() {
         res.json({ success: true });
     });
 
+    app.post('/api/quiz/reset', async (req, res) => {
+        const { percent } = req.body;
+        const p = parseInt(percent);
+        if (isNaN(p) || p < 1 || p > 100) return res.json({ success: false, message: 'Persentase tidak valid' });
+
+        try {
+            const countRes = await db.execute("SELECT COUNT(*) as total FROM quiz_pool");
+            const total = countRes.rows[0].total;
+            const limit = Math.ceil(total * (p / 100));
+
+            if (p === 100) {
+                await db.execute("DELETE FROM quiz_pool");
+            } else {
+                // Hapus data tertua atau random? Kita hapus yang paling lama tidak digunakan agar rotasi kuis bagus
+                await db.execute({
+                    sql: "DELETE FROM quiz_pool WHERE id IN (SELECT id FROM quiz_pool ORDER BY last_used_at ASC LIMIT ?)",
+                    args: [limit]
+                });
+            }
+
+            console.log(`[QUIZ] Reset ${p}% data kuis. Berhasil menghapus ${limit} item.`);
+            res.json({ success: true, deleted: limit });
+        } catch (e) {
+            console.error("[QUIZ RESET ERROR]", e.message);
+            res.json({ success: false, message: e.message });
+        }
+    });
+
     app.get('/api/stats', async (req, res) => {
         try {
             const uptime = Math.floor((Date.now() - new Date(stats.startTime)) / 1000);
@@ -2011,6 +2052,7 @@ function startDashboard() {
                 totalDBLogs: logsCount.rows[0].count,
                 totalReports: laporanCount.rows[0].count,
                 totalDBKuis: quizCount.rows[0].count,
+                totalQuizzesStarted: stats.totalQuizzesStarted,
                 activeQuiz: activeQuiz.isRunning ? {
                     title: activeQuiz.original,
                     hints: activeQuiz.hintsRevealed,

@@ -119,8 +119,7 @@ function getDashboardHTML() {
   .sidebar-status .s-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 6px; }
   .sidebar-status span { font-size: 12px; color: var(--sidebar-text); font-weight: 600; }
   .nav-footer { padding: 12px 16px; border-top: 1px solid rgba(255,255,255,0.05); }
-  .btn-logout { width: 100%; padding: 8px; color: var(--red); background: rgba(239, 68, 68, 0.1); border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; border: none; text-align: center; }
-  .btn-logout:hover { background: var(--red); color: #fff; }
+
 
   /* MAIN */
   .main { flex: 1; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
@@ -260,14 +259,18 @@ function getDashboardHTML() {
   }
   .btn-primary:active { transform: translateY(0); }
   
-  .btn-danger { background: #fef2f2; color: var(--red); border: 1px solid #fee2e2; }
-  .btn-danger:hover { background: var(--red); color: #fff; }
-  .btn-secondary { background: #f1f5f9; color: var(--text); border: 1px solid var(--border); }
-  .btn-secondary:hover { background: #e2e8f0; }
-  .btn-sm { padding: 6px 14px; font-size: 11px; border-radius: 8px; border: 1px solid var(--border); font-weight: 700; cursor: pointer; }
-  .btn-sm-edit { color: var(--blue); background: #eff6ff; border-color: #bfdbfe; }
-  .btn-sm-del { color: var(--red); background: #fef2f2; border-color: #fee2e2; }
-  .btn-sm-toggle { color: var(--accent); background: var(--accent-light); border-color: #fed7aa; }
+  .btn-danger, .btn-secondary, .btn-sm-edit, .btn-sm-del, .btn-sm-toggle { 
+    background: var(--accent); 
+    color: #fff; 
+    border: 1px solid var(--accent-hover); 
+  }
+  .btn-danger:hover, .btn-secondary:hover, .btn-sm-edit:hover, .btn-sm-del:hover, .btn-sm-toggle:hover { 
+    background: var(--accent-hover); 
+    color: #fff; 
+  }
+  .btn-sm { padding: 6px 14px; font-size: 11px; border-radius: 8px; font-weight: 700; cursor: pointer; }
+  .btn-logout { width: 100%; padding: 8px; color: #fff; background: var(--accent); border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; border: none; text-align: center; }
+  .btn-logout:hover { background: var(--accent-hover); }
 
   /* CACHE TABLE */
   .table-wrap { overflow-x: auto; margin-top: 10px; border: 1px solid var(--border); border-radius: 12px; }
@@ -751,6 +754,18 @@ function getDashboardHTML() {
                   <div style="position: absolute; right: 14px; top: 50%; transform: translateY(-50%); pointer-events: none; font-size: 10px; color: var(--accent); font-weight: 800;">▼</div>
                 </div>
                 <button class="btn-primary btn-sm" onclick="refetchQuiz()" id="refetchBtn" style="padding: 10px 16px;">Ambil Data</button>
+                <div style="display:flex; gap:5px; align-items:center;">
+                  <div style="position: relative;">
+                    <select id="resetPercentSelect" style="padding:10px 24px 10px 10px; border-radius:12px; border:1.5px solid var(--border); font-size:12px; background:var(--bg); font-weight:700; width: 85px; appearance:none; text-align:center; cursor:pointer; color:var(--text); transition:all 0.2s;">
+                      <option value="25">25%</option>
+                      <option value="50">50%</option>
+                      <option value="75">75%</option>
+                      <option value="100">100%</option>
+                    </select>
+                    <div style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; font-size: 8px; color: var(--muted); font-weight: 800;">▼</div>
+                  </div>
+                  <button class="btn-primary" onclick="resetQuizData()" id="resetQuizBtn" style="padding: 10px 16px; font-size: 11px; height: 38px;">Reset Data</button>
+                </div>
               </div>
             </div>
             
@@ -760,8 +775,8 @@ function getDashboardHTML() {
                 <div class="value" id="kuisPageTotalDB" style="font-size: 24px;">0</div>
               </div>
               <div class="stat-card orange" style="padding: 20px; border-left: 4px solid #f59e0b;">
-                <div class="label" style="margin-bottom: 6px;">Status Kuis</div>
-                <div class="value" id="kuisPageStatus" style="font-size: 24px;">Idle</div>
+                <div class="label" style="margin-bottom: 6px;">Total Kuis yang Keluar</div>
+                <div class="value" id="kuisPageStatus" style="font-size: 24px;">0</div>
               </div>
             </div>
           </div>
@@ -1050,7 +1065,7 @@ function getDashboardHTML() {
     const kPageContent = document.getElementById('kuisPageContent');
 
     if (d.activeQuiz) {
-      if (kPageStatus) { kPageStatus.textContent = 'RUNNING'; kPageStatus.style.color = 'var(--accent)'; }
+      if (kPageStatus) { kPageStatus.textContent = (d.totalQuizzesStarted || 0).toLocaleString('id-ID'); kPageStatus.style.color = 'var(--text)'; }
       if (kPageCard) kPageCard.style.display = 'block';
       const q = d.activeQuiz;
       const html = \`
@@ -1065,7 +1080,7 @@ function getDashboardHTML() {
       if (mainQCard) mainQCard.style.display = 'block';
       if (mainQContent) mainQContent.innerHTML = html;
     } else {
-      if (kPageStatus) { kPageStatus.textContent = 'IDLE'; kPageStatus.style.color = 'var(--muted)'; }
+      if (kPageStatus) { kPageStatus.textContent = (d.totalQuizzesStarted || 0).toLocaleString('id-ID'); kPageStatus.style.color = 'var(--text)'; }
       if (kPageCard) kPageCard.style.display = 'none';
       const mainQCard = document.getElementById('quizCard');
       if (mainQCard) mainQCard.style.display = 'none';
@@ -1573,6 +1588,26 @@ function getDashboardHTML() {
     const d = await res.json();
     alert(d.message);
     setTimeout(() => { btn.disabled = false; btn.textContent = 'Ambil Data Baru'; }, 5000);
+  }
+  async function resetQuizData() {
+    const p = document.getElementById('resetPercentSelect').value;
+    const ok = await customConfirm(\`Anda akan menghapus \${p}% data kuis dari database. Data yang dihapus adalah data yang paling jarang digunakan. Lanjutkan?\`, 'Reset Data Kuis', 'Hapus Data');
+    if (!ok) return;
+
+    const btn = document.getElementById('resetQuizBtn');
+    btn.disabled = true;
+    const res = await fetch('/api/quiz/reset', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ percent: p })
+    });
+    const d = await res.json();
+    if (d.success) {
+      alert(\`Berhasil mereset \${d.deleted} data kuis!\`);
+      refresh();
+    } else {
+      alert('Gagal: ' + d.message);
+    }
+    btn.disabled = false;
   }
   async function saveQuizConfig() {
     const filter = document.getElementById('quizFilterSelect').value;
