@@ -444,11 +444,13 @@ function getDashboardHTML() {
     <h2 id="pageTitle">Dashboard</h2>
     <div class="topbar-actions">
       <div class="bot-toggle-wrap">
-        <span class="bot-toggle-lbl">Double XP</span>
-        <div class="bot-toggle-pill" id="xpTogglePill" onclick="toggleDoubleXP()">
-          <span class="btp-on">ON</span>
-          <span class="btp-off">OFF</span>
-        </div>
+        <span class="bot-toggle-lbl">XP Event <span id="xpTimer" style="font-size:10px; color:var(--accent); font-weight:800; margin-left:4px;"></span></span>
+        <select id="xpMultiplierSelect" onchange="changeXPMultiplier()" style="padding:6px 12px; border-radius:12px; border:1.5px solid var(--border); background:#f8fafc; font-size:11px; font-weight:800; outline:none; cursor:pointer; color:var(--accent);">
+          <option value="1">NORMAL</option>
+          <option value="2">x2 (Double)</option>
+          <option value="4">x4 (Super)</option>
+          <option value="8">x8 (Ultra)</option>
+        </select>
       </div>
       <div class="bot-toggle-wrap">
         <span class="bot-toggle-lbl">Bot AI</span>
@@ -978,6 +980,7 @@ function getDashboardHTML() {
   let isDoubleXP = false;
   let activityData = [];
   let availableTitles = [];
+  let doubleXPEndTime = 0;
   const DEFAULT_TITLES = [
     "🏷️ Ksatria Animein",
     "⚔️ Legenda Otaku",
@@ -1001,10 +1004,42 @@ function getDashboardHTML() {
     render({ ...stats, isBotInfoActive: d.isBotInfoActive, isBotKuisActive: d.isBotKuisActive });
   }
   
-  async function toggleDoubleXP() {
-    await fetch('/api/config/double-xp', { method: 'POST' });
+  async function changeXPMultiplier() {
+    const sel = document.getElementById('xpMultiplierSelect');
+    const val = parseInt(sel.value);
+    
+    if (val === 1) {
+      // Turn off
+      await fetch('/api/config/double-xp', { method: 'POST' });
+    } else {
+      const min = prompt("Berapa menit Event XP x" + val + " akan aktif? (Default 60 menit)", "60");
+      if (min === null) {
+        // Reset dropdown to current stats
+        sel.value = stats.xpMultiplier || 1;
+        return;
+      }
+      await fetch('/api/config/double-xp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ multiplier: val, minutes: parseInt(min) || 60 })
+      });
+    }
     refresh();
   }
+
+  function updateXPTimer() {
+    const el = document.getElementById('xpTimer');
+    if (!el) return;
+    if (!doubleXPEndTime || doubleXPEndTime <= Date.now()) {
+      el.textContent = '';
+      return;
+    }
+    const diff = doubleXPEndTime - Date.now();
+    const m = Math.floor(diff / 60000);
+    const s = Math.floor((diff % 60000) / 1000).toString().padStart(2, '0');
+    el.textContent = '(' + m + ':' + s + ')';
+  }
+  setInterval(updateXPTimer, 1000);
 
   async function clearCache() {
     const ok = await customConfirm('Semua cache jawaban AI akan dihapus. Performa AI mungkin sedikit melambat sementara.', 'Hapus Cache', 'Hapus');
@@ -1076,10 +1111,10 @@ function getDashboardHTML() {
     }
 
     const isXpOn = d.isDoubleXP;
-    const xpPill = document.getElementById('xpTogglePill');
-    if (xpPill) {
-      if (isXpOn) xpPill.classList.add('is-on'); else xpPill.classList.remove('is-on');
-    }
+    doubleXPEndTime = d.doubleXPEndTime || 0;
+    const xpSelect = document.getElementById('xpMultiplierSelect');
+    if (xpSelect) xpSelect.value = d.xpMultiplier || 1;
+    updateXPTimer();
 
     const qFilterSelect = document.getElementById('quizFilterSelect');
     if (qFilterSelect && d.quizFilter) qFilterSelect.value = d.quizFilter;

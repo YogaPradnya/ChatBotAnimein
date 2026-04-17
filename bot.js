@@ -236,11 +236,11 @@ async function addXP(username, amount) {
         const res = await db.execute({ sql: "SELECT xp, level, custom_title FROM user_stats WHERE username = ?", args: [username] });
         let xp = 0, level = 1, custom_title = null;
         if (res.rows.length === 0) {
-            xp = Math.max(0, (IS_DOUBLE_XP && amount > 0) ? amount * 2 : amount);
+            xp = Math.max(0, (XP_MULTIPLIER > 1 && amount > 0) ? amount * XP_MULTIPLIER : amount);
             await db.execute({ sql: "INSERT INTO user_stats (username, xp, level) VALUES (?, ?, ?)", args: [username, xp, level] });
             console.log(`[XP] New User: ${username} (XP: ${xp})`);
         } else {
-            const finalAmount = (IS_DOUBLE_XP && amount > 0) ? amount * 2 : amount;
+            const finalAmount = (XP_MULTIPLIER > 1 && amount > 0) ? amount * XP_MULTIPLIER : amount;
             xp = res.rows[0].xp + finalAmount;
             level = res.rows[0].level;
             custom_title = res.rows[0].custom_title;
@@ -667,7 +667,9 @@ setTimeout(updateDBStats, 5000);
 
 let isBotInfoActive = false;  // Bot AI (info)
 let isBotKuisActive = false;  // Bot Kuis (game)
-let IS_DOUBLE_XP = false;
+let XP_MULTIPLIER = 1;
+let doubleXPTimeout = null;
+let doubleXPEndTime = 0;
 let QUIZ_FILTER = 'all';
 
 
@@ -860,11 +862,11 @@ Instruksi AI: Jika user nanya "siapa pokemon terkuat, dewa, paling OP, terhebat"
 
 
 let bots = [
-    { username: CONFIG.USERNAME, password: CONFIG.PASSWORD, role: 'info', auth: { userId: null, userKey: null }, lastMessageId: 0, isFirstRun: true },
-    { username: CONFIG.KUIS_USERNAME, password: CONFIG.PASSWORD, role: 'kuis', auth: { userId: null, userKey: null }, lastMessageId: 0, isFirstRun: true }
+    { username: CONFIG.USERNAME, password: CONFIG.PASSWORD, role: 'info', auth: { userId: null, userKey: null }, lastMessageId: 0, isFirstRun: true, isCooldown: false },
+    { username: CONFIG.KUIS_USERNAME, password: CONFIG.PASSWORD, role: 'kuis', auth: { userId: null, userKey: null }, lastMessageId: 0, isFirstRun: true, isCooldown: false }
 ];
 
-let isGlobalCooldown = false; 
+// isGlobalCooldown dihapus, diganti per-bot property
 
 /** Fungsi untuk mendeteksi apakah topik pembicaraan sudah berubah secara signifikan */
 function isNewTopic(oldText, newText) {
@@ -1626,9 +1628,9 @@ async function sendChatMessage(bot, text, replyTo = '0') {
         text = bot;
         bot = bots[0]; 
     }
-    // Aktifkan cooldown 10 detik setiap kali bot berhasil atau mencoba mengirim pesan
-    isGlobalCooldown = true;
-    setTimeout(() => { isGlobalCooldown = false; }, 10000);
+    // Aktifkan cooldown 10 detik per bot
+    bot.isCooldown = true;
+    setTimeout(() => { bot.isCooldown = false; }, 10000);
     
     try {
         const params = new URLSearchParams();
@@ -1692,7 +1694,7 @@ async function processMessages(bot, messages) {
 
             // Game Logic
             if (lowerMsg.startsWith('.tebak ')) {
-                if (isGlobalCooldown) continue;
+                if (bot.isCooldown) continue;
                 const answer = lowerMsg.substring(7).trim();
                 if (!activeQuiz.isRunning) {
                     await sendChatMessage(bot, `🛑 @${senderName} Tidak ada kuis aktif. Ketik .kuis untuk mulai!`, msg.id);
@@ -1722,12 +1724,14 @@ async function processMessages(bot, messages) {
                         activeQuiz.isRunning = false;
                         clearQuizTimers();
                         
-                        const penaltyWrong = (activeQuiz.wrongGuessCount || 0) * 5;
-                        const xpEarned = Math.max(10, 100 - (activeQuiz.hintsRevealed * 15) - penaltyWrong);
+                        const baseXP = activeQuiz.original.length > 10 ? 200 : 150;
+                        const penaltyHint = activeQuiz.hintsRevealed * 20;
+                        const penaltyWrong = (activeQuiz.wrongGuessCount || 0) * 10;
+                        const xpEarned = Math.max(20, baseXP - penaltyHint - penaltyWrong);
                         
                         const xpRes = await addXP(senderName, xpEarned);
-                        const finalDisplayXP = (IS_DOUBLE_XP && xpEarned > 0) ? xpEarned * 2 : xpEarned;
-                        let result = `🎉 BENAR! @${senderName} menebak: ${activeQuiz.original}\n💰 XP: +${finalDisplayXP} ${IS_DOUBLE_XP ? '(Event x2!)' : ''} (Salah Tebak Total: ${activeQuiz.wrongGuessCount || 0})`;
+                        const finalDisplayXP = (XP_MULTIPLIER > 1 && xpEarned > 0) ? xpEarned * XP_MULTIPLIER : xpEarned;
+                        let result = `🎉 BENAR! @${senderName} menebak: ${activeQuiz.original}\n💰 XP: +${finalDisplayXP} ${XP_MULTIPLIER > 1 ? '(Event x' + XP_MULTIPLIER + '!)' : ''} (Salah Tebak Total: ${activeQuiz.wrongGuessCount || 0})`;
                         if (xpRes.leveledUp) {
                             const gelar = getGelar(xpRes.level, xpRes.custom_title);
                             result += `\n🌟 SELAMAT! @${senderName} naik ke Level ${xpRes.level}! ${gelar ? `\n👑 Gelar Baru: *${gelar}*` : ''}`;
@@ -1744,7 +1748,7 @@ async function processMessages(bot, messages) {
             }
 
             if (lowerMsg === '.hint') {
-                if (isGlobalCooldown) continue;
+                if (bot.isCooldown) continue;
                 if (!activeQuiz.isRunning) {
                     await sendChatMessage(bot, `📌 @${senderName} Tidak ada kuis aktif.`, msg.id);
                 } else if (activeQuiz.hintsRevealed >= 5) {
@@ -1759,7 +1763,7 @@ async function processMessages(bot, messages) {
             }
 
             if (lowerMsg === '.kuis' || lowerMsg === '.kius' || lowerMsg === '.game') {
-                if (isGlobalCooldown) continue;
+                if (bot.isCooldown) continue;
                 await startQuiz(bot, senderName, msg.id);
                 continue;
             }
@@ -1771,7 +1775,7 @@ async function processMessages(bot, messages) {
             }
 
             if (lowerMsg === '.profil') {
-                if (isGlobalCooldown) continue;
+                if (bot.isCooldown) continue;
                 try {
                     const res = await db.execute({ sql: "SELECT xp, level, custom_title FROM user_stats WHERE username = ?", args: [senderName] });
                     const {xp, level, custom_title} = res.rows[0] || {xp:0, level:1, custom_title: null};
@@ -1784,7 +1788,7 @@ async function processMessages(bot, messages) {
             }
 
             if (lowerMsg === '.rank' || lowerMsg === '.leaderboard') {
-                if (isGlobalCooldown) continue;
+                if (bot.isCooldown) continue;
                 try {
                     const res = await db.execute("SELECT username, level, xp FROM user_stats ORDER BY xp DESC LIMIT 10");
                     let rankMsg = `🏆 [LEADERBOARD RARA] 🏆\n${'='.repeat(25)}\n`;
@@ -1827,7 +1831,7 @@ async function processMessages(bot, messages) {
                 continue;
             }
 
-            if (isGlobalCooldown) continue;
+            if (bot.isCooldown) continue;
             if (!isMentioned(msgText)) continue;
             
             const triggerRegex = new RegExp(`\\.ai|ai\\.|\\.rara|rara\\.|@AnimeinAi|@${bot.username}`, 'gi');
@@ -1972,18 +1976,41 @@ function startDashboard() {
     app.use(checkAuth);
 
     app.post('/api/config/double-xp', (req, res) => {
-        IS_DOUBLE_XP = !IS_DOUBLE_XP;
-        console.log(`[EVENT] Double XP Mode: ${IS_DOUBLE_XP ? 'ENABLED' : 'DISABLED'}`);
+        const { minutes, multiplier } = req.body;
         
-        // Broadcast ke grup chat
-        const msg = IS_DOUBLE_XP 
-            ? "🚀 [EVENT] DOUBLE XP AKTIF!\n\nSemua kuis dan interaksi memberikan hadiah XP 2x lipat! Ayo kumpulin XP sebanyak-banyaknya sekarang juga! 🔥"
-            : "🏁 [EVENT] DOUBLE XP BERAKHIR!\n\nTerima kasih sudah berpartisipasi. Hadiah XP kembali normal. Sampai jumpa di event berikutnya! 👋";
+        if (XP_MULTIPLIER > 1 && !minutes) {
+            stopDoubleXP();
+            return res.json({ success: true, active: false, multiplier: 1 });
+        }
+
+        XP_MULTIPLIER = parseInt(multiplier) || 2;
+        const durationMin = parseInt(minutes) || 60;
+        const durationMs = durationMin * 60 * 1000;
+        doubleXPEndTime = Date.now() + durationMs;
+
+        if (doubleXPTimeout) clearTimeout(doubleXPTimeout);
+        doubleXPTimeout = setTimeout(() => {
+            stopDoubleXP();
+        }, durationMs);
+
+        console.log(`[EVENT] XP x${XP_MULTIPLIER} ENABLED for ${durationMin} minutes. Ends at: ${new Date(doubleXPEndTime).toLocaleTimeString()}`);
         
-        sendChatMessage(bots[1], msg).catch(e => console.error("[BROADCAST ERROR] Event announcement failed:", e.message));
+        const msg = `🚀 [EVENT] XP x${XP_MULTIPLIER} AKTIF!\n\nSemua kuis dan interaksi memberikan hadiah XP ${XP_MULTIPLIER}x lipat! Event berlaku selama ${durationMin} menit. Ayo kumpulin XP sekarang! 🔥`;
+        sendChatMessage(bots[1], msg).catch(e => console.error("[BROADCAST ERROR]:", e.message));
         
-        res.json({ success: true, active: IS_DOUBLE_XP });
+        res.json({ success: true, active: true, multiplier: XP_MULTIPLIER, endTime: doubleXPEndTime });
     });
+
+    function stopDoubleXP() {
+        if (XP_MULTIPLIER === 1) return;
+        XP_MULTIPLIER = 1;
+        doubleXPEndTime = 0;
+        if (doubleXPTimeout) clearTimeout(doubleXPTimeout);
+        doubleXPTimeout = null;
+        console.log(`[EVENT] Event Bonus XP: DISABLED`);
+        const msg = "🏁 [EVENT] BONUS XP BERAKHIR!\n\nTerima kasih sudah berpartisipasi. Hadiah XP kembali normal. Sampai jumpa di event berikutnya! 👋";
+        sendChatMessage(bots[1], msg).catch(e => console.error("[BROADCAST ERROR]:", e.message));
+    }
 
     app.post('/api/filter/add', async (req, res) => {
         const { word } = req.body;
@@ -2118,7 +2145,9 @@ function startDashboard() {
                 isBotActive: isBotInfoActive, // backward compat
                 isBotInfoActive,
                 isBotKuisActive,
-                isDoubleXP: IS_DOUBLE_XP,
+                isDoubleXP: XP_MULTIPLIER > 1,
+                xpMultiplier: XP_MULTIPLIER,
+                doubleXPEndTime: doubleXPEndTime,
                 quizFilter: QUIZ_FILTER,
                 availableTitles,
                 totalDBLogs: logsCount.rows[0].count,
