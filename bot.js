@@ -1768,11 +1768,6 @@ async function processMessages(bot, messages) {
                 continue;
             }
 
-            if (lowerMsg === '.menu') {
-                const menu = `🔰 DAFTAR MENU RARA 🔰\n\n1️⃣ Panggil Rara: .ai atau .rara\n2️⃣ Laporan: .lapor [pesan]\n3️⃣ Main Kuis: .kuis (jawab dgn .tebak)\n4️⃣ Cek Profil: .profil\n5️⃣ Peringkat: .rank\n\n✨ Ngobrol bareng Rara juga nambah EXP loh!`;
-                await sendChatMessage(bot, `@${senderName}\n${menu}`, msg.id);
-                continue;
-            }
 
             if (lowerMsg === '.profil') {
                 if (bot.isCooldown) continue;
@@ -1826,8 +1821,14 @@ async function processMessages(bot, messages) {
 
             // Abaikan command kuis agar tidak dobel respons
             if (lowerMsg.startsWith('.tebak ') || lowerMsg === '.hint' || 
-                lowerMsg === '.kuis' || lowerMsg === '.game' || lowerMsg === '.menu' || 
+                lowerMsg === '.kuis' || lowerMsg === '.game' || 
                 lowerMsg === '.profil' || lowerMsg === '.rank') {
+                continue;
+            }
+
+            if (lowerMsg === '.menu') {
+                const menu = `🔰 DAFTAR MENU RARA 🔰\n\n1️⃣ Panggil Rara: .ai atau .rara\n2️⃣ Laporan: .lapor [pesan]\n3️⃣ Main Kuis: .kuis (jawab dgn .tebak)\n4️⃣ Cek Profil: .profil\n5️⃣ Peringkat: .rank\n\n✨ Ngobrol bareng Rara juga nambah EXP loh!`;
+                await sendChatMessage(bot, `@${senderName}\n${menu}`, msg.id);
                 continue;
             }
 
@@ -2559,7 +2560,7 @@ function startDashboard() {
     app.get('/api/laporan', async (req, res) => {
         try {
             const result = await db.execute('SELECT * FROM laporan ORDER BY id DESC LIMIT 100');
-            res.json({ success: true, data: result.rows });
+            res.json({ success: true, laporan: result.rows });
         } catch (e) {
             res.json({ success: false, error: e.message });
         }

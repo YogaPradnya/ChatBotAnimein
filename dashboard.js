@@ -145,7 +145,7 @@ function getDashboardHTML() {
   .page.active { display: block; overflow-y: auto; }
 
   /* CARDS */
-  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 30px; }
+  .stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 20px; margin-bottom: 30px; }
   .stat-card { 
     background: var(--surface); 
     border: 1px solid var(--border); 
@@ -490,7 +490,7 @@ function getDashboardHTML() {
           <div class="label">Total Trigger</div>
           <div class="value" id="totalTriggers">0</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card blue">
           <div class="label">Uptime</div>
           <div class="uptime-box" id="uptime">00:00:00</div>
         </div>
@@ -506,22 +506,24 @@ function getDashboardHTML() {
           <div class="label">Pesan Diblokir</div>
           <div class="value" id="filterBlocked">0</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card accent">
           <div class="label">DB Logs</div>
           <div class="value" id="totalDBLogs">0</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card blue">
           <div class="label">Cache Entries</div>
           <div class="value" id="cacheTotal">0</div>
         </div>
-        <div class="stat-card orange">
+        <div class="stat-card accent">
           <div class="label">Total Laporan</div>
           <div class="value" id="totalReports">0</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card green">
           <div class="label">Total Kuis</div>
           <div class="value" id="kuisDashboardTotal">0</div>
         </div>
+        <!-- Card ke-10 untuk menjaga kerapian grid 5 kolom -->
+        <div class="stat-card" style="opacity:0; pointer-events:none;"></div>
       </div>
 
       <div class="two-col">
@@ -601,7 +603,7 @@ function getDashboardHTML() {
 
     <!-- PAGE: PROMPT & KNOWLEDGE -->
     <div class="page" id="page-prompt">
-      <div class="two-col">
+      <div class="two-col" style="align-items: flex-start;">
         <!-- Left Column -->
         <div class="prompt-col">
           <div class="card">
@@ -703,7 +705,7 @@ function getDashboardHTML() {
 
     <!-- PAGE: FILTER KATA -->
     <div class="page" id="page-filter">
-      <div class="two-col">
+      <div class="two-col" style="align-items: flex-start;">
         <!-- Left: Add word + Edit response -->
         <div style="display:flex; flex-direction:column; gap:16px;">
           <!-- Add new word -->
