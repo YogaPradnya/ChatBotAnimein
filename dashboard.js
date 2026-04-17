@@ -86,6 +86,8 @@ function getDashboardHTML() {
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; font-size: 14px; display: flex; height: 100vh; overflow: hidden; }
+  input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type=number] { -moz-appearance: textfield; }
 
   /* SIDEBAR */
   .sidebar { width: 240px; background: var(--sidebar); height: 100vh; display: flex; flex-direction: column; flex-shrink: 0; overflow-y: auto; border-right: 1px solid rgba(255,255,255,0.05); }
@@ -443,14 +445,23 @@ function getDashboardHTML() {
   <div class="topbar">
     <h2 id="pageTitle">Dashboard</h2>
     <div class="topbar-actions">
-      <div class="bot-toggle-wrap">
-        <span class="bot-toggle-lbl">XP Event <span id="xpTimer" style="font-size:10px; color:var(--accent); font-weight:800; margin-left:4px;"></span></span>
-        <select id="xpMultiplierSelect" onchange="changeXPMultiplier()" style="padding:6px 12px; border-radius:12px; border:1.5px solid var(--border); background:#f8fafc; font-size:11px; font-weight:800; outline:none; cursor:pointer; color:var(--accent);">
-          <option value="1">NORMAL</option>
-          <option value="2">x2 (Double)</option>
-          <option value="4">x4 (Super)</option>
-          <option value="8">x8 (Ultra)</option>
-        </select>
+      <div class="bot-toggle-wrap" style="gap:10px; padding-right:5px; background: #fff; border-radius:14px; border: 1px solid var(--border);">
+        <span class="bot-toggle-lbl" style="margin:0 0 0 12px;">XP Event <span id="xpTimer" style="font-size:10px; color:var(--accent); font-weight:800; margin-left:4px;"></span></span>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <select id="xpMultiplierSelect" style="padding:6px 8px; border-radius:10px; border:1px solid #e2e8f0; background:#f8fafc; font-size:11px; font-weight:800; outline:none; cursor:pointer; color:var(--accent);">
+            <option value="2">x2</option>
+            <option value="4">x4</option>
+            <option value="8">x8</option>
+          </select>
+          <div style="display:flex; align-items:center; gap:4px;">
+            <input type="number" id="xpDurationInput" value="60" min="1" style="width:45px; padding:6px 0; border-radius:10px; border:1px solid #cbd5e1; font-size:12px; font-weight:700; outline:none; text-align:center; background:#fff;">
+            <span style="font-size:10px; color:var(--muted); font-weight:800; min-width:20px;">min</span>
+          </div>
+          <div class="bot-toggle-pill" id="xpTogglePill" onclick="toggleXPEvent()" style="margin-left:4px;">
+            <span class="btp-on">ON</span>
+            <span class="btp-off">OFF</span>
+          </div>
+        </div>
       </div>
       <div class="bot-toggle-wrap">
         <span class="bot-toggle-lbl">Bot AI</span>
@@ -1004,24 +1015,18 @@ function getDashboardHTML() {
     render({ ...stats, isBotInfoActive: d.isBotInfoActive, isBotKuisActive: d.isBotKuisActive });
   }
   
-  async function changeXPMultiplier() {
-    const sel = document.getElementById('xpMultiplierSelect');
-    const val = parseInt(sel.value);
-    
-    if (val === 1) {
+  async function toggleXPEvent() {
+    if (stats.isDoubleXP) {
       // Turn off
       await fetch('/api/config/double-xp', { method: 'POST' });
     } else {
-      const min = prompt("Berapa menit Event XP x" + val + " akan aktif? (Default 60 menit)", "60");
-      if (min === null) {
-        // Reset dropdown to current stats
-        sel.value = stats.xpMultiplier || 1;
-        return;
-      }
+      const mul = document.getElementById('xpMultiplierSelect').value;
+      const min = document.getElementById('xpDurationInput').value;
+      
       await fetch('/api/config/double-xp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ multiplier: val, minutes: parseInt(min) || 60 })
+        body: JSON.stringify({ multiplier: parseInt(mul), minutes: parseInt(min) || 60 })
       });
     }
     refresh();
@@ -1112,8 +1117,19 @@ function getDashboardHTML() {
 
     const isXpOn = d.isDoubleXP;
     doubleXPEndTime = d.doubleXPEndTime || 0;
-    const xpSelect = document.getElementById('xpMultiplierSelect');
-    if (xpSelect) xpSelect.value = d.xpMultiplier || 1;
+    
+    const xpPill = document.getElementById('xpTogglePill');
+    const xpSel = document.getElementById('xpMultiplierSelect');
+    const xpInp = document.getElementById('xpDurationInput');
+    
+    if (xpPill) {
+      if (isXpOn) xpPill.classList.add('is-on'); else xpPill.classList.remove('is-on');
+    }
+    // Sinkronkan multiplier saja jika sedang aktif, tapi jangan kunci input agar user bisa prepare
+    if (xpSel && isXpOn) {
+      xpSel.value = d.xpMultiplier || 2;
+    }
+    
     updateXPTimer();
 
     const qFilterSelect = document.getElementById('quizFilterSelect');

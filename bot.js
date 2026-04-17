@@ -1976,7 +1976,7 @@ function startDashboard() {
     app.use(checkAuth);
 
     app.post('/api/config/double-xp', (req, res) => {
-        const { minutes, multiplier } = req.body;
+        const { minutes, multiplier } = req.body || {};
         
         if (XP_MULTIPLIER > 1 && !minutes) {
             stopDoubleXP();
