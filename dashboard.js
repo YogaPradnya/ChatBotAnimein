@@ -452,7 +452,14 @@ function getDashboardHTML() {
       </div>
       <div class="bot-toggle-wrap">
         <span class="bot-toggle-lbl">Bot AI</span>
-        <div class="bot-toggle-pill" id="botTogglePill" onclick="toggleBot()">
+        <div class="bot-toggle-pill" id="botInfoTogglePill" onclick="toggleBot('info')">
+          <span class="btp-on">ON</span>
+          <span class="btp-off">OFF</span>
+        </div>
+      </div>
+      <div class="bot-toggle-wrap">
+        <span class="bot-toggle-lbl">Bot Kuis</span>
+        <div class="bot-toggle-pill" id="botKuisTogglePill" onclick="toggleBot('kuis')">
           <span class="btp-on">ON</span>
           <span class="btp-off">OFF</span>
         </div>
@@ -509,6 +516,13 @@ function getDashboardHTML() {
           <!-- Manual Send -->
           <div class="card" style="margin-bottom:0; overflow:hidden;">
             <div class="card-title">Kirim Pesan Manual</div>
+            <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px;">
+              <span style="font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em;">Kirim via:</span>
+              <div style="display:flex; gap:0; border-radius:10px; overflow:hidden; border:1.5px solid var(--accent); flex-shrink:0;">
+                <button id="botBtn0" onclick="selectBot(0)" style="padding:6px 14px; font-size:11px; font-weight:700; background:var(--accent); color:#fff; border:none; cursor:pointer; transition:all 0.2s;">🤖 Bot AI</button>
+                <button id="botBtn1" onclick="selectBot(1)" style="padding:6px 14px; font-size:11px; font-weight:700; background:#fff; color:var(--accent); border:none; cursor:pointer; transition:all 0.2s;">🎮 Bot Kuis</button>
+              </div>
+            </div>
             <div class="form-group">
               <input type="text" id="manualText" placeholder="Ketik pesan..." onkeydown="if(event.key==='Enter') sendManual()">
             </div>
@@ -797,6 +811,22 @@ function getDashboardHTML() {
             <div class="card-title" style="color:var(--accent); border-bottom-color:rgba(249,115,22,0.1);">Kuis yang Sedang Berjalan</div>
             <div id="kuisPageContent"></div>
           </div>
+
+          <!-- Ban Management Card -->
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
+              <span>🚫 Kelola Ban Kuis</span>
+              <span id="banCount" style="font-size:11px; font-weight:600; color:var(--muted); background:var(--bg); padding:3px 10px; border-radius:20px; border:1px solid var(--border);">0 dibanned</span>
+            </div>
+            <div style="display:flex; gap:8px; margin-bottom:14px;">
+              <input type="text" id="banUsernameInput" placeholder="Username (tanpa @)..." style="flex:1; font-size:12px;">
+              <input type="text" id="banReasonInput" placeholder="Alasan (opsional)..." style="flex:1.5; font-size:12px;">
+              <button class="btn-primary" onclick="banUser()" style="padding:10px 14px; font-size:11px; white-space:nowrap;">🚫 Ban</button>
+            </div>
+            <div id="bannedList" style="display:flex; flex-direction:column; gap:8px; max-height:200px; overflow-y:auto;">
+              <div style="color:var(--muted); font-size:12px; text-align:center; padding:12px;">Memuat daftar ban...</div>
+            </div>
+          </div>
         </div>
 
         <!-- Right: Leaderboard (Scrollable) -->
@@ -944,7 +974,7 @@ function getDashboardHTML() {
 
 <script>
   let stats = {};
-  let isBotActive = true;
+  let isBotActive = false;
   let isDoubleXP = false;
   let activityData = [];
   let availableTitles = [];
@@ -962,11 +992,13 @@ function getDashboardHTML() {
     return "";
   }
 
-  async function toggleBot() {
-    const res = await fetch('/api/bot/toggle', { method: 'POST' });
+  async function toggleBot(role) {
+    const res = await fetch('/api/bot/toggle', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: role || 'info' })
+    });
     const d = await res.json();
-    isBotActive = d.isBotActive;
-    render({ ...stats, isBotActive });
+    render({ ...stats, isBotInfoActive: d.isBotInfoActive, isBotKuisActive: d.isBotKuisActive });
   }
   
   async function toggleDoubleXP() {
@@ -1007,7 +1039,7 @@ function getDashboardHTML() {
     if (id === 'laporan') loadLaporan();
     if (id === 'filter') loadFilter();
     if (id === 'autoreply') loadAutoReply();
-    if (id === 'kuis') { loadTitles(); loadUsers(); }
+    if (id === 'kuis') { loadTitles(); loadUsers(); loadBanned(); }
     if (id === 'model') {
       loadStats();
     }
@@ -1032,10 +1064,15 @@ function getDashboardHTML() {
     if (dot) dot.style.background = online ? 'var(--green)' : 'var(--red)';
     if (lbl) { lbl.textContent = online ? 'ONLINE' : 'OFFLINE'; lbl.style.color = online ? 'var(--green)' : 'var(--red)'; }
 
-    const isBotOn = d.isBotActive;
-    const pill = document.getElementById('botTogglePill');
-    if (pill) {
-      if (isBotOn) pill.classList.add('is-on'); else pill.classList.remove('is-on');
+    const isBotInfoOn = d.isBotInfoActive !== undefined ? d.isBotInfoActive : d.isBotActive;
+    const isBotKuisOn = d.isBotKuisActive !== undefined ? d.isBotKuisActive : false;
+    const infoPill = document.getElementById('botInfoTogglePill');
+    const kuisPill = document.getElementById('botKuisTogglePill');
+    if (infoPill) {
+      if (isBotInfoOn) infoPill.classList.add('is-on'); else infoPill.classList.remove('is-on');
+    }
+    if (kuisPill) {
+      if (isBotKuisOn) kuisPill.classList.add('is-on'); else kuisPill.classList.remove('is-on');
     }
 
     const isXpOn = d.isDoubleXP;
@@ -1152,7 +1189,22 @@ function getDashboardHTML() {
       }
 
       render(d);
-    } catch(e) {}
+    } catch(e) {
+      console.error("DASHBOARD REFRESH ERROR:", e);
+    }
+  }
+
+  let selectedBotIndex = 0;
+  function selectBot(index) {
+    selectedBotIndex = index;
+    const btn0 = document.getElementById('botBtn0');
+    const btn1 = document.getElementById('botBtn1');
+    if (btn0 && btn1) {
+      btn0.style.background = index === 0 ? 'var(--accent)' : '#fff';
+      btn0.style.color = index === 0 ? '#fff' : 'var(--accent)';
+      btn1.style.background = index === 1 ? 'var(--accent)' : '#fff';
+      btn1.style.color = index === 1 ? '#fff' : 'var(--accent)';
+    }
   }
 
   async function sendManual() {
@@ -1161,7 +1213,7 @@ function getDashboardHTML() {
     if (!text) return;
     await fetch('/api/chat/send', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text })
+      body: JSON.stringify({ text, botIndex: selectedBotIndex })
     });
     inp.value = '';
     refresh();
@@ -1170,7 +1222,7 @@ function getDashboardHTML() {
     const text = type === 'online' ? "Halo kawan-kawan! Rara is back ONLINE! Ayo sapa Rara sekarang atau ajak main kuis! 🚀" : "Rara izin istirahat dulu yaa, see you later kawan-kawan! Rara OFFLINE dulu 👋";
     await fetch('/api/chat/send', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text })
+      body: JSON.stringify({ text, botIndex: selectedBotIndex })
     });
     refresh();
   }
@@ -1519,7 +1571,7 @@ function getDashboardHTML() {
         renderTitlesList();
         updateModalTitleDropdown();
       }
-    } catch(e) {}
+    } catch(e) { console.error(e); }
   }
   function renderTitlesList() {
     const container = document.getElementById('availableTitlesList');
@@ -1598,7 +1650,7 @@ function getDashboardHTML() {
     btn.disabled = true;
     const res = await fetch('/api/quiz/reset', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ percent: p })
+      body: JSON.stringify({ percentage: p })
     });
     const d = await res.json();
     if (d.success) {
@@ -1635,14 +1687,14 @@ function getDashboardHTML() {
         const req = Math.floor(50 * Math.pow(u.level, 3));
         const xpDisplay = (u.xp||0).toLocaleString('id-ID') + ' / ' + req.toLocaleString('id-ID') + ' XP';
         const title = getUserTitle(u.level, u.custom_title);
-        const safeTitle = (u.custom_title || '').replace(/'/g, "\\'");
-        return '<tr>' +
-          '<td style="font-weight:700; color:var(--muted);">' + (i+1) + '</td>' +
-          '<td style="font-weight:700; color:var(--accent);">@' + u.username + '<div style="font-size:10px; color:var(--muted); font-weight:500;">' + title + '</div></td>' +
-          '<td><span class="prov-tag" style="background:var(--accent); color:#fff; border:none;">Lv ' + u.level + '</span></td>' +
-          '<td style="font-weight:600;">' + xpDisplay + '</td>' +
-          '<td class="td-actions"><button class="btn-sm btn-sm-edit" onclick="editUserStats(\'' + u.username + '\', ' + u.level + ', ' + u.xp + ', \'' + safeTitle + '\')">Edit Stats</button></td>' +
-          '</tr>';
+        const safeTitle = (u.custom_title || '').replace(/'/g, "\\\\'");
+        return \`<tr>
+          <td style="font-weight:700; color:var(--muted);">\${i+1}</td>
+          <td style="font-weight:700; color:var(--accent);">@\${u.username}<div style="font-size:10px; color:var(--muted); font-weight:500;">\${title}</div></td>
+          <td><span class="prov-tag" style="background:var(--accent); color:#fff; border:none;">Lv \${u.level}</span></td>
+          <td style="font-weight:600;">\${xpDisplay}</td>
+          <td class="td-actions"><button class="btn-sm btn-sm-edit" onclick="editUserStats('\${u.username}', \${u.level}, \${u.xp}, '\${safeTitle}')">Edit Stats</button></td>
+          </tr>\`;
       }).join('');
     } catch(e) {}
   }
@@ -1671,6 +1723,61 @@ function getDashboardHTML() {
     });
     if (res.ok) { closeUserModal(); loadUsers(); }
     else alert('Gagal memperbarui stats.');
+  }
+
+  async function loadBanned() {
+    try {
+      const res = await fetch('/api/quiz/banned');
+      const d = await res.json();
+      if (!d.success) return;
+      const list = document.getElementById('bannedList');
+      const countEl = document.getElementById('banCount');
+      if (countEl) countEl.textContent = d.banned.length + ' dibanned';
+      if (!list) return;
+      if (d.banned.length === 0) {
+        list.innerHTML = '<div style="color:var(--muted); font-size:12px; text-align:center; padding:12px;">Belum ada user yang dibanned.</div>';
+        return;
+      }
+      list.innerHTML = d.banned.map(b =>
+        \`<div style="display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--bg); border-radius:10px; border:1px solid var(--border);">
+          <div style="flex:1;">
+            <div style="font-weight:700; color:var(--text); font-size:13px;">@\${b.username}</div>
+            \${b.reason ? \`<div style="font-size:11px; color:var(--muted);">Alasan: \${b.reason}</div>\` : ''}
+            <div style="font-size:10px; color:var(--muted);">\${b.banned_at ? new Date(b.banned_at).toLocaleString('id-ID') : ''}</div>
+          </div>
+          <button onclick="unbanUser('\${b.username}')" style="padding:5px 12px; font-size:11px; font-weight:700; background:var(--accent); color:#fff; border:none; border-radius:8px; cursor:pointer;">Unban</button>
+        </div>\`
+      ).join('');
+    } catch(e) {}
+  }
+
+  async function banUser() {
+    const uInput = document.getElementById('banUsernameInput');
+    const rInput = document.getElementById('banReasonInput');
+    const username = (uInput?.value || '').trim();
+    const reason = (rInput?.value || '').trim();
+    if (!username) return alert('Username tidak boleh kosong!');
+    const ok = await customConfirm('Ban @' + username + ' dari kuis? Mereka tidak bisa main kuis sampai di-unban.', 'Konfirmasi Ban', 'Ban');
+    if (!ok) return;
+    const res = await fetch('/api/quiz/ban', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, reason })
+    });
+    const d = await res.json();
+    if (d.success) { uInput.value = ''; rInput.value = ''; loadBanned(); }
+    else alert('Gagal: ' + (d.message || 'Error'));
+  }
+
+  async function unbanUser(username) {
+    const ok = await customConfirm('Unban @' + username + '? Mereka bisa main kuis lagi.', 'Konfirmasi Unban', 'Unban');
+    if (!ok) return;
+    const res = await fetch('/api/quiz/unban', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username })
+    });
+    const d = await res.json();
+    if (d.success) loadBanned();
+    else alert('Gagal: ' + (d.message || 'Error'));
   }
 
   function customConfirm(msg, title='Konfirmasi', btnOk='Ya', showIcon=true) {

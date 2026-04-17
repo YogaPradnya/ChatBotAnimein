@@ -129,6 +129,13 @@ async function initDB() {
         `);
         // Pastikan kolom baru ada
         await db.execute(`ALTER TABLE user_stats ADD COLUMN custom_title TEXT DEFAULT NULL`).catch(() => {});
+        await db.execute(`
+            CREATE TABLE IF NOT EXISTS quiz_banned (
+                username TEXT PRIMARY KEY,
+                reason TEXT DEFAULT '',
+                banned_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
         
         // Load Filters from DB
         const filterRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'filter_data'" });
@@ -210,7 +217,12 @@ async function initDB() {
             console.log(`[QUIZ] Total quizzes started loaded: ${stats.totalQuizzesStarted}`);
         }
 
-        console.log("[DB] Turso Database connected & Tables ready (chat_logs + response_cache + laporan + user_stats + quiz_pool + settings).");
+        // Load Banned Users from DB
+        const bannedRes = await db.execute("SELECT username FROM quiz_banned");
+        bannedRes.rows.forEach(r => bannedUsers.add(r.username.toLowerCase()));
+        console.log(`[BAN] Loaded ${bannedUsers.size} banned users.`);
+
+        console.log("[DB] Turso Database connected & Tables ready.");
     } catch (e) {
         console.error("[DB] Gagal inisialisasi Turso:", e.message);
     }
@@ -653,7 +665,8 @@ setInterval(updateDBStats, 60000);
 setTimeout(updateDBStats, 5000);
 
 
-let isBotActive = false;
+let isBotInfoActive = false;  // Bot AI (info)
+let isBotKuisActive = false;  // Bot Kuis (game)
 let IS_DOUBLE_XP = false;
 let QUIZ_FILTER = 'all';
 
@@ -691,6 +704,9 @@ const stats = {
     totalQuizzesStarted: 0,
     recentActivity: []
 };
+
+// Set banned users (loaded from DB on init)
+const bannedUsers = new Set();
 
 function addActivity(type, from, text, response, provider, tokens = 0) {
     stats.recentActivity.unshift({
@@ -1648,7 +1664,9 @@ async function processMessages(bot, messages) {
         if (!msgId || msgId <= bot.lastMessageId) continue;
         bot.lastMessageId = msgId;
 
-        if (!isBotActive) continue;
+        // Cek active state masing-masing bot
+        if (bot.role === 'info' && !isBotInfoActive) continue;
+        if (bot.role === 'kuis' && !isBotKuisActive) continue;
 
         if (String(msg.user_id) === String(bot.auth.userId)) continue;
 
@@ -1661,8 +1679,17 @@ async function processMessages(bot, messages) {
         const cleanMsg = msgText.replace(mentionRegex, '').trim();
         const lowerMsg = cleanMsg.toLowerCase();
         
-                // AKUN KUIS (AnimeinKuis): Hanya memproses game
+        // AKUN KUIS (AnimeinKuis): Hanya memproses game
         if (bot.role === 'kuis') {
+            // Cek ban
+            if (bannedUsers.has(senderName.toLowerCase())) {
+                // Hanya balas jika mereka coba main kuis
+                if (lowerMsg.startsWith('.tebak ') || lowerMsg === '.kuis' || lowerMsg === '.game' || lowerMsg === '.hint') {
+                    await sendChatMessage(bot, `🚫 @${senderName} Kamu dibanned dari kuis.`, msg.id);
+                }
+                continue;
+            }
+
             // Game Logic
             if (lowerMsg.startsWith('.tebak ')) {
                 if (isGlobalCooldown) continue;
@@ -2032,6 +2059,47 @@ function startDashboard() {
         }
     });
 
+    // --- BAN MANAGEMENT ---
+    app.get('/api/quiz/banned', async (req, res) => {
+        try {
+            const rows = await db.execute("SELECT username, reason, banned_at FROM quiz_banned ORDER BY banned_at DESC");
+            res.json({ success: true, banned: rows.rows });
+        } catch(e) {
+            res.json({ success: false, message: e.message });
+        }
+    });
+
+    app.post('/api/quiz/ban', async (req, res) => {
+        const { username, reason } = req.body;
+        if (!username) return res.json({ success: false, message: 'Username wajib diisi' });
+        const u = username.replace(/^@/, '').trim();
+        try {
+            await db.execute({
+                sql: "INSERT OR REPLACE INTO quiz_banned (username, reason) VALUES (?, ?)",
+                args: [u, reason || '']
+            });
+            bannedUsers.add(u.toLowerCase());
+            console.log(`[BAN] ${u} dibanned dari kuis. Alasan: ${reason || '-'}`);
+            res.json({ success: true });
+        } catch(e) {
+            res.json({ success: false, message: e.message });
+        }
+    });
+
+    app.post('/api/quiz/unban', async (req, res) => {
+        const { username } = req.body;
+        if (!username) return res.json({ success: false, message: 'Username wajib diisi' });
+        const u = username.replace(/^@/, '').trim();
+        try {
+            await db.execute({ sql: "DELETE FROM quiz_banned WHERE username = ?", args: [u] });
+            bannedUsers.delete(u.toLowerCase());
+            console.log(`[BAN] ${u} di-unban dari kuis.`);
+            res.json({ success: true });
+        } catch(e) {
+            res.json({ success: false, message: e.message });
+        }
+    });
+
     app.get('/api/stats', async (req, res) => {
         try {
             const uptime = Math.floor((Date.now() - new Date(stats.startTime)) / 1000);
@@ -2042,10 +2110,14 @@ function startDashboard() {
             const titleRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'available_titles'" });
             const availableTitles = titleRes.rows.length > 0 ? JSON.parse(titleRes.rows[0].value) : [];
 
+            const botStatus = (bots[0] && bots[0].auth && bots[0].auth.userId) ? 'online' : 'offline';
             res.json({ 
                 ...stats, 
                 uptime, 
-                isBotActive,
+                botStatus,
+                isBotActive: isBotInfoActive, // backward compat
+                isBotInfoActive,
+                isBotKuisActive,
                 isDoubleXP: IS_DOUBLE_XP,
                 quizFilter: QUIZ_FILTER,
                 availableTitles,
@@ -2060,24 +2132,36 @@ function startDashboard() {
                 } : null
             });
         } catch (e) {
-            res.json({ ...stats, isBotActive, error: e.message });
+            const botStatus = (bots[0] && bots[0].auth && bots[0].auth.userId) ? 'online' : 'offline';
+            res.json({ ...stats, botStatus, isBotInfoActive, isBotKuisActive, error: e.message });
         }
     });
 
     app.post('/api/bot/toggle', (req, res) => {
-        isBotActive = !isBotActive;
-        console.log(`[DASHBOARD] Bot Power: ${isBotActive ? 'ON' : 'OFF'}`);
-        res.json({ success: true, isBotActive });
+        const { role } = req.body;
+        if (role === 'kuis') {
+            isBotKuisActive = !isBotKuisActive;
+            console.log(`[DASHBOARD] Bot Kuis: ${isBotKuisActive ? 'ON' : 'OFF'}`);
+            res.json({ success: true, isBotInfoActive, isBotKuisActive });
+        } else {
+            isBotInfoActive = !isBotInfoActive;
+            console.log(`[DASHBOARD] Bot Info: ${isBotInfoActive ? 'ON' : 'OFF'}`);
+            res.json({ success: true, isBotInfoActive, isBotKuisActive });
+        }
     });
 
     app.post('/api/chat/send', async (req, res) => {
-        const { text } = req.body;
+        const { text, botIndex } = req.body;
         if (!text) return res.status(400).json({ success: false, message: 'Text required' });
         
-        console.log(`[DASHBOARD] Manual Social: ${text}`);
-        await sendChatMessage(text);
-        addActivity('manual', 'Admin', '-', text, 'Dashboard');
-        res.json({ success: true });
+        const idx = (botIndex === 1) ? 1 : 0;
+        const targetBot = bots[idx];
+        const botName = targetBot ? targetBot.username : 'Unknown';
+        
+        console.log(`[DASHBOARD] Manual Send via ${botName}: ${text}`);
+        await sendChatMessage(targetBot, text);
+        addActivity('manual', 'Admin', '-', text, `Dashboard (${botName})`);
+        res.json({ success: true, via: botName });
     });
 
     app.post('/api/chat/send-image', async (req, res) => {
