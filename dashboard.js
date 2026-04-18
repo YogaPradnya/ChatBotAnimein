@@ -442,8 +442,10 @@ function getDashboardHTML() {
     #page-prompt.dash-flex .knowledge-col { height: auto; margin-top: 20px; }
     
     .page { height: auto !important; overflow: visible !important; }
-    .table-wrap { border-radius: 8px; }
-    th, td { padding: 10px 12px; font-size: 12px; }
+    .table-wrap { border-radius: 8px; margin: 0 -10px; width: calc(100% + 20px); }
+    th, td { padding: 8px 10px; font-size: 11px; }
+    .td-key { max-width: 150px; word-break: break-all; white-space: normal; }
+    .btn-sm-edit { padding: 4px 8px; font-size: 10px; }
     
     .topbar-actions .bot-toggle-wrap { display: none !important; } 
   }
@@ -632,15 +634,15 @@ function getDashboardHTML() {
             <button class="btn-sm btn-danger" onclick="clearCache()">Hapus</button>
           </div>
         </div>
-        <div class="table-wrap" style="overflow-x: auto;">
-          <table>
+        <div class="table-wrap" style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
+          <table style="min-width: 500px; width: 100%;">
             <thead>
               <tr>
-                <th>Question Key</th>
-                <th>Domain</th>
-                <th>Hits</th>
-                <th>Variasi</th>
-                <th>Aksi</th>
+                <th style="width: 35%; text-align: left;">Question Key</th>
+                <th style="width: 20%; text-align: left;">Domain</th>
+                <th style="width: 10%; text-align: center;">Hits</th>
+                <th style="width: 15%; text-align: center;">Variasi</th>
+                <th style="width: 20%; text-align: right;">Aksi</th>
               </tr>
             </thead>
             <tbody id="cacheList">
@@ -1796,15 +1798,14 @@ async function updateStats() {
 
       tbody.innerHTML = d.data.map((u, i) => {
         const req = Math.floor(50 * Math.pow(u.level, 3));
-        const xpDisplay = (u.xp||0).toLocaleString('id-ID') + ' / ' + req.toLocaleString('id-ID') + ' XP';
         const title = getUserTitle(u.level, u.custom_title);
-        const safeTitle = (u.custom_title || '').replace(/'/g, "\\\\'");
+        const safeTitle = (u.custom_title || '').replace(/'/g, "\\'");
         return \`<tr>
-          <td style="font-weight:700; color:var(--muted);">\${i+1}</td>
-          <td style="font-weight:700; color:var(--accent);">@\${u.username}<div style="font-size:10px; color:var(--muted); font-weight:500;">\${title}</div></td>
-          <td><span class="prov-tag" style="background:var(--accent); color:#fff; border:none;">Lv \${u.level}</span></td>
-          <td style="font-weight:600;">\${xpDisplay}</td>
-          <td class="td-actions"><button class="btn-sm btn-sm-edit" onclick="editUserStats('\${u.username}', \${u.level}, \${u.xp}, '\${safeTitle}')">Edit Stats</button></td>
+          <td style="font-weight:700; color:var(--muted); text-align:center;">\${i+1}</td>
+          <td style="font-weight:700; color:var(--accent); font-size:13px;">@\${u.username}<div style="font-size:10px; color:var(--muted); font-weight:500;">\${title}</div></td>
+          <td style="text-align:center;"><span class="prov-tag" style="background:var(--accent); color:#fff; border:none; padding:2px 6px;">Lv \${u.level}</span></td>
+          <td style="font-weight:600; font-size:11px; white-space:nowrap;">\${(u.xp||0).toLocaleString('id-ID')}<br>\${req.toLocaleString('id-ID')}</td>
+          <td class="td-actions"><button class="btn-sm btn-sm-edit" onclick="editUserStats('\${u.username}', \${u.level}, \${u.xp}, '\${safeTitle}')">Edit</button></td>
           </tr>\`;
       }).join('');
     } catch(e) {}
