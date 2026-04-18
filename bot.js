@@ -129,6 +129,7 @@ async function initDB() {
         `);
         // Pastikan kolom baru ada
         await db.execute(`ALTER TABLE user_stats ADD COLUMN custom_title TEXT DEFAULT NULL`).catch(() => {});
+        await db.execute(`ALTER TABLE user_stats ADD COLUMN core_memory TEXT DEFAULT ''`).catch(() => {});
         await db.execute(`
             CREATE TABLE IF NOT EXISTS quiz_banned (
                 username TEXT PRIMARY KEY,
@@ -231,7 +232,8 @@ async function initDB() {
 
 
 // --- OPTIMIZATION CACHE ---
-const USER_STATS_CACHE = {};     // { username: { xp, level, custom_title } }
+const USER_STATS_CACHE = {};     // { username: { xp, level, custom_title, core_memory } }
+const USER_CHAT_COUNT = {};      // { username: count_since_last_memory_update }
 const XP_PENDING_UPDATES = {};    // { username: total_xp_to_add }
 const SHALLOW_AI_CACHE = [];     // Array of { query, answer, timestamp }
 
@@ -241,14 +243,14 @@ setInterval(async () => {
     if (pendingCount === 0) return;
 
     try {
-        console.log(`[SYNC] Flushing XP updates for ${pendingCount} users...`);
+        console.log(`[SYNC] Flushing XP & Memory updates for ${pendingCount} users...`);
         const batch = [];
         for (const [user, amount] of Object.entries(XP_PENDING_UPDATES)) {
             const stats = USER_STATS_CACHE[user];
             if (stats) {
                 batch.push({
-                    sql: "INSERT INTO user_stats (username, xp, level, custom_title) VALUES (?, ?, ?, ?) ON CONFLICT(username) DO UPDATE SET xp = ?, level = ?, custom_title = ?",
-                    args: [user, stats.xp, stats.level, stats.custom_title, stats.xp, stats.level, stats.custom_title]
+                    sql: "INSERT INTO user_stats (username, xp, level, custom_title, core_memory) VALUES (?, ?, ?, ?, ?) ON CONFLICT(username) DO UPDATE SET xp = ?, level = ?, custom_title = ?, core_memory = ?",
+                    args: [user, stats.xp, stats.level, stats.custom_title, stats.core_memory || '', stats.xp, stats.level, stats.custom_title, stats.core_memory || '']
                 });
             }
         }
@@ -262,6 +264,50 @@ setInterval(async () => {
         console.error("[SYNC] Global XP Flush failed:", e.message);
     }
 }, 60000);
+
+/** 
+ * EXTRA PSIKIATRI: Ekstraksi Memori Inti (Solution 3)
+ * Mengubah percakapan menjadi poin-poin memori singkat agar hemat token.
+ */
+async function updateUserMemory(username, chatHistory) {
+    if (chatHistory.length < 4) return;
+    
+    try {
+        const stats = USER_STATS_CACHE[username];
+        if (!stats) return;
+
+        const recentChat = chatHistory.slice(-6).map(m => `${m.role}: ${m.content}`).join('\n');
+        const oldMemory = stats.core_memory || 'Belum ada memori.';
+
+        const memoryPrompt = `Tugas: Perbarui "Core Memory" (Profil Ringkas) untuk user @${username} berdasarkan percakapan terbaru.
+Core Memory Lama: ${oldMemory}
+Percakapan Baru: 
+${recentChat}
+
+INSTRUKSI:
+1. Tulis poin-poin penting saja (nama, hobi, anime favorit, sifat, atau fakta unik).
+2. JANGAN hapus informasi lama yang masih relevan.
+3. Maksimal 2-3 kalimat atau poin-poin singkat (hemat token).
+4. Hasil harus dalam Bahasa Indonesia gaya santai.
+5. Jika tidak ada fakta baru, kembalikan memori lama secara utuh.`;
+
+        // Gunakan model tercepat (index 0)
+        const client = groqClients[0];
+        const res = await client.chat.completions.create({
+            model: 'llama-3.1-8b-instant',
+            messages: [{ role: 'system', content: memoryPrompt }],
+            max_tokens: 150,
+            temperature: 0.3
+        });
+
+        const newMemory = res.choices[0].message.content.trim();
+        stats.core_memory = newMemory;
+        XP_PENDING_UPDATES[username] = (XP_PENDING_UPDATES[username] || 0) + 0; // Trigger sync
+        console.log(`[CORE MEMORY] Updated for ${username}: ${newMemory}`);
+    } catch (e) {
+        console.error(`[CORE MEMORY] Gagal update memori ${username}:`, e.message);
+    }
+}
 async function addXP(username, amount) {
     if (!CONFIG.TURSO_URL) return { leveledUp: false, level: 1, xp: 0 };
     try {
@@ -270,11 +316,11 @@ async function addXP(username, amount) {
         
         if (!stats) {
             // Load if not in cache
-            const res = await db.execute({ sql: "SELECT xp, level, custom_title FROM user_stats WHERE username = ?", args: [username] });
+            const res = await db.execute({ sql: "SELECT xp, level, custom_title, core_memory FROM user_stats WHERE username = ?", args: [username] });
             if (res.rows.length > 0) {
-                stats = { xp: res.rows[0].xp, level: res.rows[0].level, custom_title: res.rows[0].custom_title };
+                stats = { xp: res.rows[0].xp, level: res.rows[0].level, custom_title: res.rows[0].custom_title, core_memory: res.rows[0].core_memory || '' };
             } else {
-                stats = { xp: 0, level: 1, custom_title: null };
+                stats = { xp: 0, level: 1, custom_title: null, core_memory: '' };
             }
             USER_STATS_CACHE[username] = stats;
         }
@@ -720,7 +766,6 @@ const stats = {
     totalDBLogs: 0,
     cacheHits: 0,
     cacheTotal: 0,
-    filter: { blocked: 0 },
     lastUsedGroq: null,
     otak: CONFIG.GROQ_KEYS.map((key, index) => ({
         id: index + 1,
@@ -738,8 +783,6 @@ const stats = {
         blocked: 0,
         lastBlocked: null,
     },
-    totalTokensUsed: 0,
-    totalDBLogs: 0,
     totalDBKuis: 0,
     totalReports: 0,
     totalQuizzesStarted: 0,
@@ -1448,7 +1491,12 @@ async function askGroq(index, userMessage, senderName, contextData = '', chatHis
     }
 
     stat.requests++;
-    const systemContent = SYSTEM_PROMPT + `\n\nInfo: Kamu sedang mengobrol dengan ${senderName}.` + contextData;
+    
+    // Inject CORE MEMORY (Solution 3)
+    const userStats = USER_STATS_CACHE[senderName];
+    const coreMemory = (userStats && userStats.core_memory) ? `\n[CORE MEMORY @${senderName}]: ${userStats.core_memory}` : '';
+    
+    const systemContent = SYSTEM_PROMPT + `\n\nInfo: Kamu sedang mengobrol dengan ${senderName}.` + coreMemory + contextData;
     const { data: completion, response } = await client.chat.completions.create({
         model: 'llama-3.1-8b-instant',
         messages: [
@@ -1552,6 +1600,13 @@ async function getAIResponse(userMessage, senderName, isReply = false) {
         if (!stat.active || nowLoop < stat.cooldownUntil) continue;
 
         try {
+            // Update Core Memory every 8 interactions
+            USER_CHAT_COUNT[senderName] = (USER_CHAT_COUNT[senderName] || 0) + 1;
+            if (USER_CHAT_COUNT[senderName] >= 8) {
+                USER_CHAT_COUNT[senderName] = 0;
+                updateUserMemory(senderName, history);
+            }
+
             const { text, tokens } = await askGroq(i, userMessage, senderName, finalContext, history);
             if (text) {
                 stats.lastUsedGroq = i;
@@ -2118,7 +2173,7 @@ function startDashboard() {
     });
 
     app.post('/api/quiz/reset', async (req, res) => {
-        const { percent } = req.body;
+        const percent = req.body.percent || req.body.percentage;
         const p = parseInt(percent);
         if (isNaN(p) || p < 1 || p > 100) return res.json({ success: false, message: 'Persentase tidak valid' });
 
@@ -2257,7 +2312,8 @@ function startDashboard() {
         if (!image) return res.status(400).json({ success: false, message: 'Image required' });
         
         console.log(`[DASHBOARD] Manual Image: ${text || '(no caption)'}`);
-        const success = await sendChatWithImage({ data: image, mimeType: mimeType || 'image/jpeg' }, text || '');
+        // Fix: Added bots[0] as first argument to match function signature
+        const success = await sendChatWithImage(bots[0], { data: image, mimeType: mimeType || 'image/jpeg' }, text || '');
         if (success) {
             addActivity('image', 'Admin', text || '(image)', 'Image sent', 'Dashboard');
             res.json({ success: true });
@@ -2501,43 +2557,6 @@ function startDashboard() {
         } catch(e) {}
         res.json({ success: true });
     });
-
-    // --- FILTER MANAGEMENT ---
-    app.get('/api/filter', (req, res) => {
-        res.json({ success: true, profanities: FILTER_DATA.profanities, response: FILTER_DATA.response });
-    });
-
-    app.post('/api/filter/add', (req, res) => {
-        const { word } = req.body;
-        if (!word || !word.trim()) return res.status(400).json({ success: false, error: 'Kata tidak boleh kosong.' });
-        const w = word.trim().toLowerCase();
-        if (FILTER_DATA.profanities.includes(w)) return res.status(400).json({ success: false, error: 'Kata sudah ada dalam daftar.' });
-        FILTER_DATA.profanities.push(w);
-        fs.writeFileSync(filterPath, JSON.stringify(FILTER_DATA, null, 2));
-        console.log(`[FILTER] Kata "${w}" ditambahkan via dashboard.`);
-        res.json({ success: true });
-    });
-
-    app.post('/api/filter/delete', (req, res) => {
-        const { word } = req.body;
-        if (!word) return res.status(400).json({ success: false, error: 'Kata tidak boleh kosong.' });
-        const before = FILTER_DATA.profanities.length;
-        FILTER_DATA.profanities = FILTER_DATA.profanities.filter(w => w !== word);
-        if (FILTER_DATA.profanities.length === before) return res.status(404).json({ success: false, error: 'Kata tidak ditemukan.' });
-        fs.writeFileSync(filterPath, JSON.stringify(FILTER_DATA, null, 2));
-        console.log(`[FILTER] Kata "${word}" dihapus via dashboard.`);
-        res.json({ success: true });
-    });
-
-    app.post('/api/filter/response', (req, res) => {
-        const { response } = req.body;
-        if (!response || !response.trim()) return res.status(400).json({ success: false, error: 'Pesan balasan tidak boleh kosong.' });
-        FILTER_DATA.response = response.trim();
-        fs.writeFileSync(filterPath, JSON.stringify(FILTER_DATA, null, 2));
-        console.log('[FILTER] Pesan balasan diperbarui via dashboard.');
-        res.json({ success: true });
-    });
-
 
     app.post('/api/prompt/save', async (req, res) => {
         const { prompt } = req.body;

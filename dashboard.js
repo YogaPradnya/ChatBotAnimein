@@ -1703,7 +1703,7 @@ function getDashboardHTML() {
     btn.disabled = true;
     const res = await fetch('/api/quiz/reset', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ percentage: p })
+      body: JSON.stringify({ percent: p })
     });
     const d = await res.json();
     if (d.success) {
