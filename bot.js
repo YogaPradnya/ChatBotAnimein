@@ -2165,6 +2165,10 @@ function startDashboard() {
         res.json({ success: true });
     });
 
+    app.get('/api/filter', (req, res) => {
+        res.json({ success: true, profanities: FILTER_DATA.profanities, response: FILTER_DATA.response });
+    });
+
     app.post('/api/quiz/config', (req, res) => {
         const { filter } = req.body;
         if (filter) QUIZ_FILTER = filter;
