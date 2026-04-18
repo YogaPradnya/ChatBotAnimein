@@ -129,7 +129,34 @@ async function initDB() {
         `);
         // Pastikan kolom baru ada
         await db.execute(`ALTER TABLE user_stats ADD COLUMN custom_title TEXT DEFAULT NULL`).catch(() => {});
-        await db.execute(`ALTER TABLE user_stats ADD COLUMN core_memory TEXT DEFAULT ''`).catch(() => {});
+        await db.execute(`ALTER TABLE user_stats ADD COLUMN custom_title TEXT DEFAULT NULL`).catch(() => {});
+        
+        await db.execute(`
+            CREATE TABLE IF NOT EXISTS user_memories (
+                username TEXT PRIMARY KEY,
+                content TEXT DEFAULT '',
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        // Migrasi data lama dari user_stats ke user_memories jika ada
+        try {
+            const hasOldMemRes = await db.execute("SELECT username, core_memory FROM user_stats WHERE core_memory IS NOT NULL AND core_memory != ''");
+            if (hasOldMemRes.rows.length > 0) {
+                console.log(`[MIGRATION] Pindah ${hasOldMemRes.rows.length} memori ke tabel user_memories...`);
+                for (const row of hasOldMemRes.rows) {
+                    await db.execute({
+                        sql: "INSERT OR IGNORE INTO user_memories (username, content) VALUES (?, ?)",
+                        args: [row.username, row.core_memory]
+                    });
+                }
+                // Hapus kolom lama (opsional, tapi di SQLite ribet, jadikan kosong saja)
+                await db.execute("UPDATE user_stats SET core_memory = ''");
+            }
+        } catch(e) {
+            // Kolom core_memory mungkin sudah tidak ada atau error lain, aman diabaikan
+        }
+
         await db.execute(`
             CREATE TABLE IF NOT EXISTS quiz_banned (
                 username TEXT PRIMARY KEY,
@@ -249,14 +276,30 @@ setInterval(async () => {
             const stats = USER_STATS_CACHE[user];
             if (stats) {
                 batch.push({
-                    sql: "INSERT INTO user_stats (username, xp, level, custom_title, core_memory) VALUES (?, ?, ?, ?, ?) ON CONFLICT(username) DO UPDATE SET xp = ?, level = ?, custom_title = ?, core_memory = ?",
-                    args: [user, stats.xp, stats.level, stats.custom_title, stats.core_memory || '', stats.xp, stats.level, stats.custom_title, stats.core_memory || '']
+                    sql: "INSERT INTO user_stats (username, xp, level, custom_title) VALUES (?, ?, ?, ?) ON CONFLICT(username) DO UPDATE SET xp = ?, level = ?, custom_title = ?",
+                    args: [user, stats.xp, stats.level, stats.custom_title, stats.xp, stats.level, stats.custom_title]
                 });
             }
         }
         if (batch.length > 0) {
             await db.batch(batch, "write");
         }
+
+        // Sync Memory separately to dedicated table
+        const memoryBatch = [];
+        for (const [user, amount] of Object.entries(XP_PENDING_UPDATES)) {
+            const stats = USER_STATS_CACHE[user];
+            if (stats && stats.core_memory) {
+                memoryBatch.push({
+                    sql: "INSERT INTO user_memories (username, content, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(username) DO UPDATE SET content = ?, updated_at = CURRENT_TIMESTAMP",
+                    args: [user, stats.core_memory, stats.core_memory]
+                });
+            }
+        }
+        if (memoryBatch.length > 0) {
+            await db.batch(memoryBatch, "write");
+        }
+
         // Clear pending but keep cache
         for (const user in XP_PENDING_UPDATES) delete XP_PENDING_UPDATES[user];
         console.log(`[SYNC] Successfully synced ${pendingCount} users to database.`);
@@ -276,7 +319,8 @@ async function updateUserMemory(username, chatHistory) {
         const stats = USER_STATS_CACHE[username];
         if (!stats) return;
 
-        const recentChat = chatHistory.slice(-6).map(m => `${m.role}: ${m.content}`).join('\n');
+        // Ambil hanya 5 pesan terakhir untuk rangkuman (Hemat Token)
+        const recentChat = chatHistory.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n');
         const oldMemory = stats.core_memory || 'Belum ada memori.';
 
         const memoryPrompt = `Tugas: Perbarui "Core Memory" (Profil Ringkas) untuk user @${username} berdasarkan percakapan terbaru.
@@ -315,10 +359,22 @@ async function addXP(username, amount) {
         let stats = USER_STATS_CACHE[username];
         
         if (!stats) {
-            // Load if not in cache
-            const res = await db.execute({ sql: "SELECT xp, level, custom_title, core_memory FROM user_stats WHERE username = ?", args: [username] });
+            // Load stats and join with memories
+            const res = await db.execute({ 
+                sql: `SELECT s.xp, s.level, s.custom_title, m.content as core_memory 
+                      FROM user_stats s 
+                      LEFT JOIN user_memories m ON s.username = m.username 
+                      WHERE s.username = ?`, 
+                args: [username] 
+            });
+
             if (res.rows.length > 0) {
-                stats = { xp: res.rows[0].xp, level: res.rows[0].level, custom_title: res.rows[0].custom_title, core_memory: res.rows[0].core_memory || '' };
+                stats = { 
+                    xp: res.rows[0].xp, 
+                    level: res.rows[0].level, 
+                    custom_title: res.rows[0].custom_title, 
+                    core_memory: res.rows[0].core_memory || '' 
+                };
             } else {
                 stats = { xp: 0, level: 1, custom_title: null, core_memory: '' };
             }
@@ -636,9 +692,16 @@ function isWeakAnswer(userMessage, cachedAnswer, knowledgeContext) {
 }
 
 /** Simpan jawaban baru ke response cache (mendukung multi-variasi) */
-async function addToCache(question, answer, domain) {
+async function addToCache(question, answer, senderName, domain = 'general') {
     if (!CONFIG.TURSO_URL) return;
-    const key = normalizeQuestion(question);
+    
+    // JANGAN simpan ke global cache jika jawaban mengandung sapaan personal/username
+    const lowerAns = answer.toLowerCase();
+    if (lowerAns.includes('halo') || lowerAns.includes('hai ') || lowerAns.includes('selamat ') || lowerAns.includes('@')) {
+        return; 
+    }
+
+    const key = normalizeQuestion(question) + ":" + senderName;
     if (key.length < 5 || answer.length < 10) return;
 
     try {
@@ -1482,10 +1545,13 @@ async function askGroq(index, userMessage, senderName, contextData = '', chatHis
     // SHALLOW SEMANTIC CACHE LOOKUP (Point 4)
     // Filter out very short queries from cache
     const queryKey = userMessage.trim().toLowerCase();
+    // Cache per user agar sapaan tidak nyasar ke user lain
+    const cacheKey = `${senderName.toLowerCase()}|${queryKey}`;
+    
     if (queryKey.length >= 5) {
-        const cached = SHALLOW_AI_CACHE.find(c => c.query === queryKey);
-        if (cached && (Date.now() - cached.timestamp < 15 * 60 * 1000)) { // 15 menit cache
-            console.log(`[CACHE HIT] Memoized answer for: "${userMessage}"`);
+        const cached = SHALLOW_AI_CACHE.find(c => c.key === cacheKey);
+        if (cached && (Date.now() - cached.timestamp < 10 * 60 * 1000)) { // 10 menit cache
+            console.log(`[CACHE HIT] Memoized answer for ${senderName}: "${userMessage}"`);
             return { text: cached.answer, tokens: 0 };
         }
     }
@@ -1510,10 +1576,11 @@ async function askGroq(index, userMessage, senderName, contextData = '', chatHis
 
     const answer = completion.choices[0].message.content;
 
-    // SAVE TO CACHE
+    // SAVE TO CACHE (Per User)
     if (queryKey.length >= 5) {
-        SHALLOW_AI_CACHE.push({ query: queryKey, answer, timestamp: Date.now() });
-        if (SHALLOW_AI_CACHE.length > 50) SHALLOW_AI_CACHE.shift(); // Keep only 50 latest
+        const cacheKey = `${senderName.toLowerCase()}|${queryKey}`;
+        SHALLOW_AI_CACHE.push({ key: cacheKey, answer, timestamp: Date.now() });
+        if (SHALLOW_AI_CACHE.length > 50) SHALLOW_AI_CACHE.shift();
     }
 
     if (response && response.headers) {
@@ -1573,9 +1640,9 @@ async function getAIResponse(userMessage, senderName, isReply = false) {
     const now = Date.now();
     let history = [];
     
-    // Ambil history dari Database secara real-time
-    const dbHistory = await getHistoryFromDB(senderName, 5); 
-    history = dbHistory.messages;
+    // Ambil riwayat sangat pendek dari Database (Hemat Token)
+    const dbHistory = await getHistoryFromDB(senderName, 3); // 3 baris = 6 pesan, kita potong lagi di bawah
+    history = dbHistory.messages.slice(-5); // Pastikan maksimal 5 pesan total (2.5 turns)
     const lastTime = dbHistory.lastTime;
     
     // 1. Reset context jika idle > 10 menit
@@ -1600,9 +1667,9 @@ async function getAIResponse(userMessage, senderName, isReply = false) {
         if (!stat.active || nowLoop < stat.cooldownUntil) continue;
 
         try {
-            // Update Core Memory every 8 interactions
+            // Update Core Memory setiap 5 interaksi (Hemat Token)
             USER_CHAT_COUNT[senderName] = (USER_CHAT_COUNT[senderName] || 0) + 1;
-            if (USER_CHAT_COUNT[senderName] >= 8) {
+            if (USER_CHAT_COUNT[senderName] >= 5) {
                 USER_CHAT_COUNT[senderName] = 0;
                 updateUserMemory(senderName, history);
             }

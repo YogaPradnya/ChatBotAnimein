@@ -18,18 +18,23 @@ function getLoginHTML(error = '') {
     --red: #ef4444;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; }
-  .login-card { background: var(--surface); padding: 40px; border-radius: 24px; width: 400px; box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1); border: 1px solid var(--border); }
+  body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; padding: 20px; }
+  .login-card { background: var(--surface); padding: 40px; border-radius: 24px; width: 100%; max-width: 400px; box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1); border: 1px solid var(--border); }
   .brand { text-align: center; margin-bottom: 32px; }
   .brand h1 { font-size: 24px; font-weight: 800; color: var(--accent); letter-spacing: -0.02em; }
   .brand p { font-size: 13px; color: var(--muted); margin-top: 4px; font-weight: 500; }
   .form-group { margin-bottom: 20px; }
   .form-label { display: block; font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
-  input { width: 100%; padding: 12px 16px; border-radius: 12px; border: 1.5px solid var(--border); font-size: 14px; outline: none; transition: all 0.2s; background: #f8fafc; }
+  input { width: 100%; padding: 12px 16px; border-radius: 12px; border: 1.5px solid var(--border); font-size: 16px; outline: none; transition: all 0.2s; background: #f8fafc; }
   input:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 4px #fff7ed; }
-  .btn-login { width: 100%; padding: 14px; background: var(--accent); color: #fff; border: none; border-radius: 12px; font-weight: 700; cursor: pointer; transition: all 0.2s; margin-top: 10px; }
+  .btn-login { width: 100%; padding: 14px; background: var(--accent); color: #fff; border: none; border-radius: 12px; font-weight: 700; cursor: pointer; transition: all 0.2s; margin-top: 10px; font-size: 15px; }
   .btn-login:hover { background: var(--accent-hover); transform: translateY(-1px); }
   .error-msg { background: #fef2f2; color: var(--red); padding: 12px; border-radius: 10px; font-size: 13px; font-weight: 600; margin-bottom: 20px; text-align: center; border: 1px solid #fee2e2; }
+  
+  @media (max-width: 480px) {
+    .login-card { padding: 32px 24px; }
+    .brand h1 { font-size: 22px; }
+  }
 </style>
 </head>
 <body>
@@ -42,11 +47,11 @@ function getLoginHTML(error = '') {
     <form action="/login" method="POST">
       <div class="form-group">
         <label class="form-label">Username</label>
-        <input type="text" name="username" required autofocus>
+        <input type="text" name="username" required autofocus autocomplete="username">
       </div>
       <div class="form-group">
         <label class="form-label">Password</label>
-        <input type="password" name="password" required>
+        <input type="password" name="password" required autocomplete="current-password">
       </div>
       <button type="submit" class="btn-login">Login to Dashboard</button>
     </form>
@@ -138,7 +143,15 @@ function getDashboardHTML() {
   }
   .topbar h2 { font-size: 18px; font-weight: 800; color: var(--text); letter-spacing: -0.01em; }
   .topbar-actions { display: flex; gap: 10px; align-items: center; }
+  .menu-toggle { display: none; background: none; border: none; font-size: 24px; cursor: pointer; color: var(--text); padding: 0; margin-right: 15px; }
+
   .content { padding: 25px 30px; flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+
+  .sidebar-overlay { 
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+    background: rgba(0,0,0,0.5); z-index: 90; display: none; 
+  }
+  .sidebar-overlay.active { display: block; }
 
   /* PAGE SECTIONS */
   .page { display: none; width: 100%; flex: 1; min-height: 0; }
@@ -397,38 +410,68 @@ function getDashboardHTML() {
   #page-prompt .knowledge-list::-webkit-scrollbar, #page-prompt .prompt-col::-webkit-scrollbar { width: 6px; }
   #page-prompt .knowledge-list::-webkit-scrollbar-thumb, #page-prompt .prompt-col::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
 
-  @media (max-width: 900px) {
-    .stats-grid { grid-template-columns: repeat(2, 1fr); }
-    .two-col, .three-col { grid-template-columns: 1fr; }
-    .sidebar { width: 180px; }
-    .model-metrics { flex-wrap: wrap; gap: 10px; }
+  @media (max-width: 1024px) {
+    .stats-grid { grid-template-columns: repeat(3, 1fr); }
+    .three-col { grid-template-columns: repeat(2, 1fr); }
   }
-  @media (max-width: 650px) {
-    body { flex-direction: column; height: auto; overflow: auto; }
-    .sidebar { width: 100%; height: auto; }
-    .main { height: auto; }
-    .content { overflow: visible; }
-    .sidebar-nav { display: flex; overflow-x: auto; padding: 8px; }
-    .nav-item { white-space: nowrap; }
+
+  @media (max-width: 768px) {
+    body { flex-direction: column; height: 100vh; overflow: hidden; }
+    
+    .sidebar { 
+      position: fixed; left: -240px; top: 0; z-index: 100; 
+      transition: left 0.3s ease; 
+    }
+    .sidebar.active { left: 0; }
+    
+    .main { height: 100vh; width: 100%; }
+    .topbar { padding: 12px 20px; }
+    .menu-toggle { display: block; }
+    .content { padding: 15px; overflow-y: auto; }
+    
+    .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    .two-col, .three-col { grid-template-columns: 1fr; gap: 15px; }
+    .stat-card { padding: 16px; }
+    .stat-card .value { font-size: 22px; }
+    
+    .adaptive-flex { flex-direction: column !important; height: auto !important; overflow: visible !important; }
+    .adaptive-flex > div { width: 100% !important; flex: none !important; margin-bottom: 20px; height: auto !important; overflow: visible !important; }
+    
+    #page-prompt.dash-flex .two-col { grid-template-columns: 1fr; overflow-y: auto; height: auto; display: block; }
+    #page-prompt.dash-flex .prompt-col { height: auto; overflow: visible; padding-right: 0; }
+    #page-prompt.dash-flex .knowledge-col { height: auto; margin-top: 20px; }
+    
+    .page { height: auto !important; overflow: visible !important; }
+    .table-wrap { border-radius: 8px; }
+    th, td { padding: 10px 12px; font-size: 12px; }
+    
+    .topbar-actions .bot-toggle-wrap { display: none !important; } 
+  }
+
+  @media (max-width: 480px) {
+    .stats-grid { grid-template-columns: 1fr; }
+    .topbar h2 { font-size: 16px; }
+    .modal { padding: 20px; }
   }
 </style>
 </head>
 <body>
 
-<div class="sidebar">
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+<div class="sidebar" id="sidebar">
   <div class="sidebar-brand">
     <h1>ANIMEIN.AI</h1>
     <p>Control Panel <span style="font-size: 10px; font-weight: 400; color: var(--muted);">by yoga</span></p>
   </div>
   <nav class="sidebar-nav">
-    <button class="nav-item active" onclick="showPage('dashboard', this)">Dashboard</button>
-    <button class="nav-item" onclick="showPage('prompt', this)">Prompt & Knowledge</button>
-    <button class="nav-item" onclick="showPage('kuis', this)">Kuis & Leaderboard</button>
-    <button class="nav-item" onclick="showPage('filter', this)">Filter Kata</button>
-    <button class="nav-item" onclick="showPage('model', this)">Model AI</button>
-    <button class="nav-item" onclick="showPage('database', this)">Database</button>
-    <button class="nav-item" onclick="showPage('autoreply', this)">Auto Reply</button>
-    <button class="nav-item" onclick="showPage('laporan', this)">Laporan</button>
+    <button class="nav-item active" onclick="showPage('dashboard', this); toggleSidebar(false)">Dashboard</button>
+    <button class="nav-item" onclick="showPage('prompt', this); toggleSidebar(false)">Prompt & Knowledge</button>
+    <button class="nav-item" onclick="showPage('kuis', this); toggleSidebar(false)">Kuis & Leaderboard</button>
+    <button class="nav-item" onclick="showPage('filter', this); toggleSidebar(false)">Filter Kata</button>
+    <button class="nav-item" onclick="showPage('model', this); toggleSidebar(false)">Model AI</button>
+    <button class="nav-item" onclick="showPage('database', this); toggleSidebar(false)">Database</button>
+    <button class="nav-item" onclick="showPage('autoreply', this); toggleSidebar(false)">Auto Reply</button>
+    <button class="nav-item" onclick="showPage('laporan', this); toggleSidebar(false)">Laporan</button>
   </nav>
   <div class="sidebar-status">
     <span class="s-dot" id="statusDot" style="background:var(--red)"></span>
@@ -443,7 +486,10 @@ function getDashboardHTML() {
 
   <!-- TOPBAR -->
   <div class="topbar">
-    <h2 id="pageTitle">Dashboard</h2>
+    <div style="display:flex; align-items:center;">
+        <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+        <h2 id="pageTitle">Dashboard</h2>
+    </div>
     <div class="topbar-actions">
       <div class="bot-toggle-wrap" style="gap:10px; padding-right:5px; background: #fff; border-radius:14px; border: 1px solid var(--border);">
         <span class="bot-toggle-lbl" style="margin:0 0 0 12px;">XP Event <span id="xpTimer" style="font-size:10px; color:var(--accent); font-weight:800; margin-left:4px;"></span></span>
@@ -578,11 +624,15 @@ function getDashboardHTML() {
     <!-- PAGE: DATABASE -->
     <div class="page" id="page-database">
       <div class="card">
-        <div class="card-title">Cache Entries</div>
-        <div class="search-box">
-          <input type="text" id="cacheSearch" placeholder="Cari question key..." oninput="filterCache()">
+        <div class="card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+          <span>Database Respon AI</span>
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <input type="text" id="cacheSearch" placeholder="Cari..." oninput="filterCache()" style="padding:6px 12px; font-size:12px; width:120px;">
+            <button class="btn-sm btn-secondary" onclick="loadCache()">Refresh</button>
+            <button class="btn-sm btn-danger" onclick="clearCache()">Hapus</button>
+          </div>
         </div>
-        <div class="table-wrap">
+        <div class="table-wrap" style="overflow-x: auto;">
           <table>
             <thead>
               <tr>
@@ -683,7 +733,7 @@ function getDashboardHTML() {
             <button class="btn-sm btn-sm-del" onclick="deleteAllLaporan()">Hapus Semua</button>
           </div>
         </div>
-        <div class="table-wrap">
+        <div class="table-wrap" style="overflow-x: auto;">
           <table>
             <thead>
               <tr>
@@ -761,39 +811,35 @@ function getDashboardHTML() {
       </div>
     </div>
     
-    <div class="page" id="page-kuis" style="height: calc(100vh - 120px); padding-bottom: 0; overflow: hidden;">
-      <div style="display: flex; gap: 24px; height: 100%; overflow: hidden;">
+    <div class="page" id="page-kuis" style="padding-bottom: 0;">
+      <div class="adaptive-flex" style="display: flex; gap: 24px; height: 100%;">
         
         <!-- Left: Quiz System -->
-        <div style="flex: 1.2; display: flex; flex-direction: column; gap: 20px; min-width: 0; overflow-y: auto; padding-right: 8px;">
+        <div style="flex: 1.2; display: flex; flex-direction: column; gap: 20px; min-width: 0;">
           <div class="card" style="margin-bottom: 0; flex-shrink: 0;">
             <div class="card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
               <span style="display: flex; align-items: center; gap: 8px;">🎮 Monitoring Kuis</span>
-              <div style="display:flex; gap:10px; align-items:center;">
-                <div style="position: relative; min-width: 180px;">
-                  <select id="quizFilterSelect" onchange="saveQuizConfig()" style="padding:10px 36px 10px 14px; border-radius:12px; border:1.5px solid var(--border); font-size:12px; background:var(--bg); appearance:none; cursor:pointer; font-weight:700; color:var(--text); width: 100%; transition: all 0.2s;">
+              <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <div style="position: relative; min-width: 140px; flex:1;">
+                  <select id="quizFilterSelect" onchange="saveQuizConfig()" style="padding:8px 30px 8px 12px; border-radius:10px; font-size:11px; width: 100%;">
                     <option value="all"> Semua Kategori</option>
-                    <option value="high-rating"> Rating Tinggi (>8.0)</option>
+                    <option value="high-rating"> Rating Tinggi</option>
                     <option value="genre:Action"> Action</option>
                     <option value="genre:Romance"> Romance</option>
                     <option value="genre:Comedy"> Comedy</option>
                     <option value="genre:Horror"> Horror</option>
                     <option value="genre:Slice of Life"> Slice of Life</option>
                   </select>
-                  <div style="position: absolute; right: 14px; top: 50%; transform: translateY(-50%); pointer-events: none; font-size: 10px; color: var(--accent); font-weight: 800;">▼</div>
                 </div>
-                <button class="btn-primary btn-sm" onclick="refetchQuiz()" id="refetchBtn" style="padding: 10px 16px;">Ambil Data</button>
-                <div style="display:flex; gap:5px; align-items:center;">
-                  <div style="position: relative;">
-                    <select id="resetPercentSelect" style="padding:10px 24px 10px 10px; border-radius:12px; border:1.5px solid var(--border); font-size:12px; background:var(--bg); font-weight:700; width: 85px; appearance:none; text-align:center; cursor:pointer; color:var(--text); transition:all 0.2s;">
-                      <option value="25">25%</option>
-                      <option value="50">50%</option>
-                      <option value="75">75%</option>
-                      <option value="100">100%</option>
-                    </select>
-                    <div style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; font-size: 8px; color: var(--muted); font-weight: 800;">▼</div>
-                  </div>
-                  <button class="btn-primary" onclick="resetQuizData()" id="resetQuizBtn" style="padding: 10px 16px; font-size: 11px; height: 38px;">Reset Data</button>
+                <button class="btn-primary" onclick="refetchQuiz()" id="refetchBtn" style="padding: 8px 12px; font-size:11px;">Ambil Data</button>
+                <div style="display:flex; gap:5px; align-items:center; flex:1; min-width:140px;">
+                  <select id="resetPercentSelect" style="padding:8px 10px; border-radius:10px; font-size:11px; flex:1;">
+                    <option value="25">25%</option>
+                    <option value="50">50%</option>
+                    <option value="75">75%</option>
+                    <option value="100">100%</option>
+                  </select>
+                  <button class="btn-primary" onclick="resetQuizData()" id="resetQuizBtn" style="padding: 8px 12px; font-size: 11px;">Reset</button>
                 </div>
               </div>
             </div>
@@ -1087,7 +1133,19 @@ function getDashboardHTML() {
     }
   }
 
-  async function loadStats() {
+  function toggleSidebar(force) {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    if (force === false) {
+        sidebar.classList.remove('active');
+        overlay.classList.remove('active');
+    } else {
+        sidebar.classList.toggle('active');
+        overlay.classList.toggle('active');
+    }
+}
+
+async function updateStats() {
     refresh();
   }
 
