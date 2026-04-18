@@ -55,7 +55,7 @@ const CONFIG = {
     ].filter(Boolean),
     POLL_INTERVAL: 5000,
     DASHBOARD_PORT: process.env.PORT || 3500,
-    GROQ_COOLDOWN: 15 * 60 * 1000,
+    GROQ_COOLDOWN: 45 * 60 * 1000,
     TURSO_URL: process.env.TURSO_URL,
     TURSO_AUTH_TOKEN: process.env.TURSO_AUTH_TOKEN,
 };
@@ -867,7 +867,7 @@ function addActivity(type, from, text, response, provider, tokens = 0) {
 
 const groqClients = CONFIG.GROQ_KEYS.map(key => new Groq({ apiKey: key }));
 
-let SYSTEM_PROMPT = `Anda adalah Rara, asisten AI dari Animein.ai. Anda bersifat ramah, ceria, dan sangat menyukai anime. Balas pesan user dengan gaya bahasa santai dan gaul.`;
+let SYSTEM_PROMPT = `Anda Rara dari Animein.ai. Ramah, gaul, suka anime. Gunakan bahasa santai.`;
 
 const POKEMON_LIST = [
   "Bulbasaur", "Ivysaur", "Venusaur", "Charmander", "Charmeleon", "Charizard", "Squirtle", "Wartortle", "Blastoise", "Caterpie", 
@@ -1466,7 +1466,7 @@ async function buildAnimeContext(intent, question) {
 
     const nowLocal = new Date();
     const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' };
-    let contextData = `\n\n[INFO WAKTU SEKARANG]: Waktu server saat ini adalah ${nowLocal.toLocaleString('id-ID', options)} WIB. Pastikan kamu SELALU menggunakan waktu ini sebagai acuan saat user bertanya "jam berapa", "hari apa ini/besok", atau kapan rilisnya.`;
+    let contextData = `\n[Waktu: ${nowLocal.toLocaleString('id-ID', options)} WIB]`;
 
 
     const allGenres = await fetchGenresList();
@@ -1640,9 +1640,9 @@ async function getAIResponse(userMessage, senderName, isReply = false) {
     const now = Date.now();
     let history = [];
     
-    // Ambil riwayat sangat pendek dari Database (Hemat Token)
-    const dbHistory = await getHistoryFromDB(senderName, 3); // 3 baris = 6 pesan, kita potong lagi di bawah
-    history = dbHistory.messages.slice(-5); // Pastikan maksimal 5 pesan total (2.5 turns)
+    // Ambil riwayat ultra-pendek (Hemat Token)
+    const dbHistory = await getHistoryFromDB(senderName, 2); 
+    history = dbHistory.messages.slice(-3); // Cuma 3 pesan terakhir
     const lastTime = dbHistory.lastTime;
     
     // 1. Reset context jika idle > 10 menit
