@@ -900,6 +900,7 @@ function getDashboardHTML() {
               <div style="display:flex; gap:8px;">
                 <input type="text" id="userSearch" placeholder="Cari user..." oninput="loadUsers()" style="padding:8px 14px; border:1.5px solid var(--border); border-radius:10px; background:#f8fafc; font-size:12px; width:150px; outline: none;">
                 <button class="btn-sm btn-sm-toggle" onclick="loadUsers()" title="Refresh" style="padding: 8px 12px; border-radius: 10px;">🔄</button>
+                <button class="btn-sm btn-sm-del" onclick="resetAllUsers()" title="Reset All EXP & Level" style="padding: 8px 12px; border-radius: 10px; background: var(--red); border-color: var(--red);">🔥 Reset All</button>
               </div>
             </div>
             <div style="flex: 1; overflow-y: auto; background: #fff;">
@@ -1835,6 +1836,27 @@ async function updateStats() {
     });
     if (res.ok) { closeUserModal(); loadUsers(); }
     else alert('Gagal memperbarui stats.');
+  }
+
+  async function resetAllUsers() {
+    const ok = await customConfirm('PERINGATAN: Semua EXP, Level, Gelar Kustom, dan Memori user akan dihapus secara permanen. Tindakan ini tidak dapat dibatalkan!', 'Reset Semua User', 'Ya, Reset Semua', true);
+    if (!ok) return;
+
+    const pass = prompt('Ketik "RESET" untuk konfirmasi:');
+    if (pass !== 'RESET') return;
+
+    try {
+      const res = await fetch('/api/users/reset-all', { method: 'POST' });
+      const d = await res.json();
+      if (d.success) {
+        alert(d.message);
+        loadUsers();
+      } else {
+        alert('Gagal: ' + d.message);
+      }
+    } catch (e) {
+      alert('Error: ' + e.message);
+    }
   }
 
   async function loadBanned() {

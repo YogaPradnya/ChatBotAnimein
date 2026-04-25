@@ -1155,9 +1155,9 @@ async function fetchHomeAnime(force = false) {
         const lastReset = lastResetRes.rows.length > 0 ? parseInt(lastResetRes.rows[0].value) : 0;
         const nowMs = Date.now();
         
-        // 14 hari = 14 * 24 * 60 * 60 * 1000 = 1209600000 ms
-        if (!force && nowMs - lastReset > 1209600000) {
-            console.log("[QUIZ] Reset 2 Mingguan: Menghapus database kuis lama...");
+        // 1 jam 30 menit = 1.5 * 60 * 60 * 1000 = 5400000 ms
+        if (!force && nowMs - lastReset > 5400000) {
+            console.log("[QUIZ] Rotasi Berkala: Menghapus database kuis lama...");
             await db.execute("DELETE FROM quiz_pool");
             await db.execute({ 
                 sql: "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
@@ -1165,11 +1165,10 @@ async function fetchHomeAnime(force = false) {
             });
         }
 
-        // --- B. CEK LIMIT 1500 (bypass jika force) ---
         const currentCountRes = await db.execute("SELECT COUNT(*) as count FROM quiz_pool");
         const currentCount = currentCountRes.rows[0].count;
-        if (!force && currentCount >= 1500) {
-            console.log(`[QUIZ] Limit 1500 tercapai (${currentCount}). Skip penambahan.`);
+        if (!force && currentCount >= 250) {
+            console.log(`[QUIZ] Limit 250 tercapai (${currentCount}). Skip penambahan.`);
             return true;
         }
 
@@ -1215,12 +1214,12 @@ async function fetchHomeAnime(force = false) {
 
         console.log(`[ANIMEIN] Found ${uniqueRaw.length} unique items. ${newMovies.length} are new.`);
 
-        // 4. Ambil detail untuk yang baru (Batasi 200 per run agar tidak kena limit/berat)
-        // Pastikan tidak melebihi limit 1500 total
-        const remainingSpace = 1500 - (await db.execute("SELECT COUNT(*) as count FROM quiz_pool")).rows[0].count;
+        // 4. Ambil detail untuk yang baru (Batasi 100 per run agar tidak kena limit/berat)
+        // Pastikan tidak melebihi limit 250 total
+        const remainingSpace = 250 - (await db.execute("SELECT COUNT(*) as count FROM quiz_pool")).rows[0].count;
         if (remainingSpace <= 0) return true;
 
-        const batchToFetch = newMovies.slice(0, Math.min(200, remainingSpace));
+        const batchToFetch = newMovies.slice(0, Math.min(100, remainingSpace));
         const detailed = [];
         
         // Fetch detail in chunks of 20 to avoid overwhelm
@@ -1866,7 +1865,7 @@ async function processMessages(bot, messages) {
             // Cek ban
             if (bannedUsers.has(senderName.toLowerCase())) {
                 // Hanya balas jika mereka coba main kuis
-                if (lowerMsg.startsWith('.tebak ') || lowerMsg === '.kuis' || lowerMsg === '.game' || lowerMsg === '.hint') {
+                if (lowerMsg.startsWith('.tebak ') || lowerMsg === '.hint') {
                     await sendChatMessage(bot, `🚫 @${senderName} Kamu dibanned dari kuis.`, msg.id);
                 }
                 continue;
@@ -1877,7 +1876,7 @@ async function processMessages(bot, messages) {
                 if (bot.isCooldown) continue;
                 const answer = lowerMsg.substring(7).trim();
                 if (!activeQuiz.isRunning) {
-                    await sendChatMessage(bot, `🛑 @${senderName} Tidak ada kuis aktif. Ketik .kuis untuk mulai!`, msg.id);
+                    await sendChatMessage(bot, `🛑 @${senderName} Tidak ada kuis aktif. Kuis akan muncul otomatis setiap jam!`, msg.id);
                 } else if (Date.now() - activeQuiz.startedAt > QUIZ_DURATION_MS) {
                     await expireQuiz(bot, msg.id);
                 } else {
@@ -1904,10 +1903,10 @@ async function processMessages(bot, messages) {
                         activeQuiz.isRunning = false;
                         clearQuizTimers();
                         
-                        const baseXP = activeQuiz.original.length > 10 ? 200 : 150;
+                        const baseXP = 250; 
                         const penaltyHint = activeQuiz.hintsRevealed * 20;
                         const penaltyWrong = (activeQuiz.wrongGuessCount || 0) * 10;
-                        const xpEarned = Math.max(20, baseXP - penaltyHint - penaltyWrong);
+                        const xpEarned = Math.max(50, baseXP - penaltyHint - penaltyWrong);
                         
                         const xpRes = await addXP(senderName, xpEarned);
                         const finalDisplayXP = (XP_MULTIPLIER > 1 && xpEarned > 0) ? xpEarned * XP_MULTIPLIER : xpEarned;
@@ -1942,11 +1941,6 @@ async function processMessages(bot, messages) {
                 continue;
             }
 
-            if (lowerMsg === '.kuis' || lowerMsg === '.kius' || lowerMsg === '.game') {
-                if (bot.isCooldown) continue;
-                await startQuiz(bot, senderName, msg.id);
-                continue;
-            }
 
 
             if (lowerMsg === '.profil') {
@@ -2007,7 +2001,7 @@ async function processMessages(bot, messages) {
             }
 
             if (lowerMsg === '.menu') {
-                const menu = `🔰 DAFTAR MENU RARA 🔰\n\n1️⃣ Panggil Rara: .ai atau .rara\n2️⃣ Laporan: .lapor [pesan]\n3️⃣ Main Kuis: .kuis (jawab dgn .tebak)\n4️⃣ Cek Profil: .profil\n5️⃣ Peringkat: .rank\n\n✨ Ngobrol bareng Rara juga nambah EXP loh!`;
+                const menu = `🔰 DAFTAR MENU RARA 🔰\n\n1️⃣ Panggil Rara: .ai atau .rara\n2️⃣ Laporan: .lapor [pesan]\n3️⃣ Cek Profil: .profil\n4️⃣ Peringkat: .rank\n\n✨ Ngobrol bareng Rara juga nambah EXP loh!`;
                 await sendChatMessage(bot, `@${senderName}\n${menu}`, msg.id);
                 continue;
             }
@@ -2113,6 +2107,14 @@ async function startBot() {
     
     setInterval(() => {
         fetchHomeAnime().catch(e => console.error("[INTERVAL] Fetch anime failed:", e.message));
+    }, 90 * 60 * 1000);
+
+    // Otomatis Kuis setiap 1 jam
+    setInterval(async () => {
+        if (isBotKuisActive && bots[1] && bots[1].auth.userId) {
+            console.log("[AUTO-QUIZ] Menjalankan kuis otomatis...");
+            await startQuiz(bots[1], 'System', '0');
+        }
     }, 60 * 60 * 1000);
 }
 
@@ -2348,6 +2350,23 @@ function startDashboard() {
         } catch (e) {
             const botStatus = (bots[0] && bots[0].auth && bots[0].auth.userId) ? 'online' : 'offline';
             res.json({ ...stats, botStatus, isBotInfoActive, isBotKuisActive, error: e.message });
+        }
+    });
+
+    app.post('/api/users/reset-all', async (req, res) => {
+        try {
+            console.log("[DASHBOARD] Resetting all users XP and Level...");
+            await db.execute("UPDATE user_stats SET xp = 0, level = 1, custom_title = NULL");
+            await db.execute("DELETE FROM user_memories");
+            
+            // Clear cache
+            for (const key in USER_STATS_CACHE) delete USER_STATS_CACHE[key];
+            for (const key in XP_PENDING_UPDATES) delete XP_PENDING_UPDATES[key];
+            
+            res.json({ success: true, message: 'Semua data user berhasil direset!' });
+        } catch (e) {
+            console.error("[RESET ALL ERROR]", e.message);
+            res.status(500).json({ success: false, message: e.message });
         }
     });
 
