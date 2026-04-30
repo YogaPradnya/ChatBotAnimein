@@ -425,6 +425,8 @@ let activeQuiz = {
     expireTimer: null,
 };
 
+let nextQuizTime = Date.now() + (60 * 60 * 1000);
+
 function clearQuizTimers() {
     if (activeQuiz.hintTimer) { clearTimeout(activeQuiz.hintTimer); activeQuiz.hintTimer = null; }
     if (activeQuiz.expireTimer) { clearTimeout(activeQuiz.expireTimer); activeQuiz.expireTimer = null; }
@@ -1968,6 +1970,23 @@ async function processMessages(bot, messages) {
                 } catch(e) {}
                 continue;
             }
+
+            if (lowerMsg === '.kuis' || lowerMsg === '.kius') {
+                if (bot.isCooldown) continue;
+                if (activeQuiz.isRunning) {
+                    await sendChatMessage(bot, `📌 @${senderName} Kuis sedang berlangsung! Ketik .tebak [jawaban] untuk menjawab.`, msg.id);
+                } else {
+                    const diff = nextQuizTime - Date.now();
+                    if (diff <= 0) {
+                         await sendChatMessage(bot, `🔄 @${senderName} Kuis sedang disiapkan, tunggu sebentar ya!`, msg.id);
+                    } else {
+                        const minutes = Math.floor(diff / 60000);
+                        const seconds = Math.floor((diff % 60000) / 1000);
+                        await sendChatMessage(bot, `⏳ @${senderName} Kuis selanjutnya akan muncul dalam: ${minutes} menit ${seconds} detik.`, msg.id);
+                    }
+                }
+                continue;
+            }
             
             // Bot kuis mengabaikan semua pesan lain agar tidak berisik
             continue;
@@ -2112,7 +2131,10 @@ async function startBot() {
     setInterval(async () => {
         if (isBotKuisActive && bots[1] && bots[1].auth.userId) {
             console.log("[AUTO-QUIZ] Menjalankan kuis otomatis...");
+            nextQuizTime = Date.now() + (60 * 60 * 1000);
             await startQuiz(bots[1], 'System', '0');
+        } else {
+             nextQuizTime = Date.now() + (60 * 60 * 1000);
         }
     }, 60 * 60 * 1000);
 }
