@@ -5,6 +5,7 @@ function getLoginHTML(error = '') {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Login - AnimeinBot Dashboard</title>
+<link rel="icon" type="image/png" href="/favicon.png?v=1">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -40,6 +41,7 @@ function getLoginHTML(error = '') {
 <body>
   <div class="login-card">
     <div class="brand">
+      <img src="/logo.png?v=1" alt="Logo" style="width: 80px; height: 80px; margin-bottom: 16px; border-radius: 50%; border: 2px solid var(--accent);">
       <h1>ANIMEINBOT</h1>
       <p>Authentication Required</p>
     </div>
@@ -67,6 +69,7 @@ function getDashboardHTML() {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Animein.ai Dashboard</title>
+<link rel="icon" type="image/png" href="/favicon.png?v=1">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -462,7 +465,10 @@ function getDashboardHTML() {
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
 <div class="sidebar" id="sidebar">
   <div class="sidebar-brand">
-    <h1>ANIMEIN.AI</h1>
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+      <img src="/logo.png?v=1" alt="Logo" style="width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--accent);">
+      <h1 style="margin: 0;">ANIMEIN.AI</h1>
+    </div>
     <p>Control Panel <span style="font-size: 10px; font-weight: 400; color: var(--muted);">by yoga</span></p>
   </div>
   <nav class="sidebar-nav">

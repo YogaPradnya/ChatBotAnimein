@@ -1197,7 +1197,6 @@ async function fetchHomeAnime(force = false) {
             });
         }
 
-        // 2. Unikkan berdasarkan ID
         const uniqueRaw = [];
         const seenId = new Set();
         allRawMovies.forEach(m => {
@@ -2124,6 +2123,7 @@ function startDashboard() {
 
     app.use(express.json());
     app.use(express.urlencoded({ extended: true }));
+    app.use(express.static(path.join(__dirname, 'public')));
 
     function checkAuth(req, res, next) {
         if (req.path === '/login' || req.path === '/logout') return next();
