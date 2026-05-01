@@ -53,7 +53,7 @@ const CONFIG = {
         process.env.GROQ_API_KEY_15,
         
     ].filter(Boolean),
-    POLL_INTERVAL: 8000,
+    POLL_INTERVAL: 9000,
     DASHBOARD_PORT: process.env.PORT || 3500,
     GROQ_COOLDOWN: 45 * 60 * 1000,
     TURSO_URL: process.env.TURSO_URL,
@@ -1188,26 +1188,49 @@ async function fetchHomeAnime(force = false) {
         }
 
         const baseUrl = CONFIG.BASE_URL.replace(/\/$/, '');
-        recordPath('/3/2/explore/movie');
         
-        // 1. Ambil List Anime terbaru (Cukup halaman 1 saja agar ringan)
+        // 1. Ambil 2 Halaman secara acak dari Genre & Nomor Halaman berbeda
+        const genres = [
+            'Action', 'Adventure', 'Comedy', 'Drama', 'Fantasy', 'Horror', 'Mystery', 'Romance', 
+            'Sci-Fi', 'Slice of Life', 'Supernatural', 'Thriller', 'Sports', 'Mecha', 'Music', 
+            'Psychological', 'Historical', 'Martial Arts', 'School', 'Seinen', 'Shounen', 
+            'Shoujo', 'Josei', 'Isekai', 'Demons', 'Magic', 'Military', 'Parody', 'Police', 
+            'Samurai', 'Space', 'Vampire'
+        ];
         let allRawMovies = [];
-        const res = await axios.get(`${baseUrl}/3/2/explore/movie`, { 
-            params: { sort: 'latest', page: 1 }, 
-            headers: ANIMEIN_HEADERS, 
-            timeout: 10000 
-        }).catch(() => null);
+        
+        // Pilih 2 kombinasi acak
+        const fetchTasks = [1, 2].map(async () => {
+            const randomGenre = genres[Math.floor(Math.random() * genres.length)];
+            const randomPage = Math.floor(Math.random() * 50) + 1; // Page 1 - 100
+            
+            try {
+                const res = await axios.get(`${baseUrl}/3/2/explore/movie`, { 
+                    params: { genre: randomGenre, page: randomPage }, 
+                    headers: ANIMEIN_HEADERS, 
+                    timeout: 10000 
+                });
+                recordPath('/3/2/explore/movie');
+                if (res?.data?.data?.movie) return res.data.data.movie;
+            } catch (e) {
+                console.warn(`[ANIMEIN] Gagal ambil page acak (${randomGenre} p${randomPage}): ${e.message}`);
+            }
+            return [];
+        });
 
-        if (res?.data?.data?.movie) {
-            allRawMovies = res.data.data.movie;
-        }
+        const results = await Promise.all(fetchTasks);
+        allRawMovies = [].concat(...results);
 
         if (allRawMovies.length === 0) return false;
 
         // 2. Filter yang belum ada di DB
         const existingIdsRes = await db.execute("SELECT anime_id FROM quiz_pool");
         const existingIds = new Set(existingIdsRes.rows.map(r => r.anime_id));
-        const candidateMovies = allRawMovies.filter(m => !existingIds.has(String(m.id)));
+        
+        // Acak urutan candidate agar tidak selalu urutan atas yang diambil
+        const candidateMovies = allRawMovies
+            .filter(m => !existingIds.has(String(m.id)))
+            .sort(() => Math.random() - 0.5);
         
         // Ambil maksimal 5 saja
         const newMovies = candidateMovies.slice(0, 5);

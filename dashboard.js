@@ -485,6 +485,7 @@ function getDashboardHTML() {
     <button class="nav-item" onclick="showPage('database', this); toggleSidebar(false)">Database</button>
     <button class="nav-item" onclick="showPage('autoreply', this); toggleSidebar(false)">Auto Reply</button>
     <button class="nav-item" onclick="showPage('laporan', this); toggleSidebar(false)">Laporan</button>
+    <button class="nav-item" onclick="showPage('api-traffic', this); toggleSidebar(false)">API Monitor</button>
   </nav>
   <div class="sidebar-status">
     <span class="s-dot" id="statusDot" style="background:var(--red)"></span>
@@ -621,15 +622,18 @@ function getDashboardHTML() {
             <div style="color:var(--muted); text-align:center; padding:20px;">Belum ada aktivitas</div>
           </div>
         </div>
-
-        <!-- API Traffic Monitor -->
-        <div class="card" style="margin-bottom:0; overflow:hidden; display:flex; flex-direction:column;">
-          <div class="card-title" style="flex-shrink:0;">API Traffic Monitor</div>
-          <div id="pathMonitorList" style="overflow-y:auto; flex:1; padding: 10px 0;">
-            <div style="color:var(--muted); text-align:center;">No traffic recorded</div>
-          </div>
-        </div>
       </div>
+    </div>
+
+    <!-- PAGE: API TRAFFIC -->
+    <div class="page" id="page-api-traffic">
+       <div class="card" style="height: 100%; display: flex; flex-direction: column;">
+          <div class="card-title">API Traffic Monitor (Real-time)</div>
+          <p style="font-size: 12px; color: var(--muted); margin-bottom: 20px;">Memantau setiap request yang dilakukan bot ke server JAPI Animein.</p>
+          <div id="pathMonitorList" style="overflow-y: auto; flex: 1;">
+             <div style="color:var(--muted); text-align:center;">No traffic recorded</div>
+          </div>
+       </div>
     </div>
 
     <!-- PAGE: MODEL -->
@@ -854,7 +858,6 @@ function getDashboardHTML() {
                 </div>
                 <div style="display:flex; flex-direction:column; align-items:flex-end;">
                   <button class="btn-primary" onclick="refetchQuiz()" id="refetchBtn" style="padding: 8px 12px; font-size:11px;">Ambil Data</button>
-                  <span id="quizCountdown" style="font-size:9px; color:var(--muted); font-weight:700; margin-top:2px;">Next: --:--</span>
                 </div>
                 <div style="display:flex; gap:5px; align-items:center; min-width:140px;">
                   <select id="resetPercentSelect" style="padding:8px 10px; border-radius:10px; font-size:11px; flex:1;">
@@ -874,8 +877,8 @@ function getDashboardHTML() {
                 <div class="value" id="kuisPageTotalDB" style="font-size: 24px;">0</div>
               </div>
               <div class="stat-card orange" style="padding: 20px; border-left: 4px solid #f59e0b;">
-                <div class="label" style="margin-bottom: 6px;">Total Kuis yang Keluar</div>
-                <div class="value" id="kuisPageStatus" style="font-size: 24px;">0</div>
+                <div class="label" style="margin-bottom: 6px;">Next Microfetch</div>
+                <div class="value" id="quizCountdown" style="font-size: 24px;">--:--</div>
               </div>
             </div>
           </div>
