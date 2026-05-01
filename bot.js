@@ -1194,12 +1194,12 @@ async function fetchHomeAnime(force = false) {
         const categories = ['popular', 'stars', 'latest'];
         let allRawMovies = [];
         
-        console.log(`[ANIMEIN] Megafetching start (100 pages per category)...`);
+        console.log(`[ANIMEIN] Megafetching start (150 pages per category)...`);
         
         for (const cat of categories) {
             const pagePromises = [];
             // Ambil 200 halaman, tapi di-shuffle urutannya agar tidak selalu halaman 1 dulu
-            const pages = Array.from({length: 200}, (_, i) => i + 1);
+            const pages = Array.from({length: 150}, (_, i) => i + 1);
             for (let i = pages.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [pages[i], pages[j]] = [pages[j], pages[i]];
