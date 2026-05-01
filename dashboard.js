@@ -410,8 +410,13 @@ function getDashboardHTML() {
   #page-prompt.dash-flex .knowledge-list { flex: 1; overflow-y: auto !important; min-height: 0; padding-bottom: 30px; }
   
   /* Scrollbar styling for better look */
-  #page-prompt .knowledge-list::-webkit-scrollbar, #page-prompt .prompt-col::-webkit-scrollbar { width: 6px; }
   #page-prompt .knowledge-list::-webkit-scrollbar-thumb, #page-prompt .prompt-col::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+  
+  /* PATH MONITOR */
+  .path-item { margin-bottom: 12px; }
+  .path-header { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px; font-weight: 600; color: var(--text); }
+  .path-bar-bg { background: #e2e8f0; height: 8px; border-radius: 4px; overflow: hidden; }
+  .path-bar-fill { background: var(--blue); height: 100%; transition: width 0.5s ease; }
 
   @media (max-width: 1024px) {
     .stats-grid { grid-template-columns: repeat(3, 1fr); }
@@ -614,6 +619,14 @@ function getDashboardHTML() {
           <div class="card-title" style="flex-shrink:0;">Recent Activity</div>
           <div class="activity-list" id="activityList" style="overflow-y:auto; flex:1;">
             <div style="color:var(--muted); text-align:center; padding:20px;">Belum ada aktivitas</div>
+          </div>
+        </div>
+
+        <!-- API Traffic Monitor -->
+        <div class="card" style="margin-bottom:0; overflow:hidden; display:flex; flex-direction:column;">
+          <div class="card-title" style="flex-shrink:0;">API Traffic Monitor</div>
+          <div id="pathMonitorList" style="overflow-y:auto; flex:1; padding: 10px 0;">
+            <div style="color:var(--muted); text-align:center;">No traffic recorded</div>
           </div>
         </div>
       </div>
@@ -839,7 +852,10 @@ function getDashboardHTML() {
                     <option value="genre:Slice of Life"> Slice of Life</option>
                   </select>
                 </div>
-                <button class="btn-primary" onclick="refetchQuiz()" id="refetchBtn" style="padding: 8px 12px; font-size:11px;">Ambil Data</button>
+                <div style="display:flex; flex-direction:column; align-items:flex-end;">
+                  <button class="btn-primary" onclick="refetchQuiz()" id="refetchBtn" style="padding: 8px 12px; font-size:11px;">Ambil Data</button>
+                  <span id="quizCountdown" style="font-size:9px; color:var(--muted); font-weight:700; margin-top:2px;">Next: --:--</span>
+                </div>
                 <div style="display:flex; gap:5px; align-items:center; min-width:140px;">
                   <select id="resetPercentSelect" style="padding:8px 10px; border-radius:10px; font-size:11px; flex:1;">
                     <option value="25">25%</option>
@@ -1316,6 +1332,28 @@ async function updateStats() {
           \`).join('');
         }
       }
+    }
+
+    // API Path Monitor
+    if (d.pathStats) {
+        const list = document.getElementById('pathMonitorList');
+        if (list) {
+            const entries = Object.entries(d.pathStats).sort((a, b) => b[1] - a[1]);
+            const maxVal = entries.length > 0 ? entries[0][1] : 1;
+            
+            list.innerHTML = entries.map(([path, count]) => {
+                const pct = (count / maxVal) * 100;
+                return '<div class="path-item">' +
+                        '<div class="path-header">' +
+                        '<span style="font-family: monospace;">' + path + '</span>' +
+                        '<span>' + count + '</span>' +
+                        '</div>' +
+                        '<div class="path-bar-bg">' +
+                        '<div class="path-bar-fill" style="width: ' + pct + '%"></div>' +
+                        '</div>' +
+                        '</div>';
+            }).join('');
+        }
     }
   }
 

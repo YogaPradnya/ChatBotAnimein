@@ -53,12 +53,19 @@ const CONFIG = {
         process.env.GROQ_API_KEY_15,
         
     ].filter(Boolean),
-    POLL_INTERVAL: 5000,
+    POLL_INTERVAL: 8000,
     DASHBOARD_PORT: process.env.PORT || 3500,
     GROQ_COOLDOWN: 45 * 60 * 1000,
     TURSO_URL: process.env.TURSO_URL,
     TURSO_AUTH_TOKEN: process.env.TURSO_AUTH_TOKEN,
 };
+
+// Helper untuk mencatat traffic API
+function recordPath(path) {
+    // Normalisasi path: hapus double slash dan trailing slash
+    const cleanPath = path.replace(/\/+/g, '/').replace(/\/$/, '') || '/';
+    stats.pathStats[cleanPath] = (stats.pathStats[cleanPath] || 0) + 1;
+}
 
 // Inisialisasi Turso Client
 const db = createClient({
@@ -847,6 +854,8 @@ const stats = {
     totalDBLogs: 0,
     cacheHits: 0,
     cacheTotal: 0,
+    lastMicrofetch: 0,
+    pathStats: {},
     lastUsedGroq: null,
     otak: CONFIG.GROQ_KEYS.map((key, index) => ({
         id: index + 1,
@@ -1178,115 +1187,85 @@ async function fetchHomeAnime(force = false) {
             });
         }
 
-        const currentCountRes = await db.execute("SELECT COUNT(*) as count FROM quiz_pool");
-        const currentCount = currentCountRes.rows[0].count;
-        if (!force && currentCount >= 1000) {
-            console.log(`[QUIZ] Limit 1000 tercapai (${currentCount}). Skip penambahan.`);
+        const baseUrl = CONFIG.BASE_URL.replace(/\/$/, '');
+        recordPath('/3/2/explore/movie');
+        
+        // 1. Ambil List Anime terbaru (Cukup halaman 1 saja agar ringan)
+        let allRawMovies = [];
+        const res = await axios.get(`${baseUrl}/3/2/explore/movie`, { 
+            params: { sort: 'latest', page: 1 }, 
+            headers: ANIMEIN_HEADERS, 
+            timeout: 10000 
+        }).catch(() => null);
+
+        if (res?.data?.data?.movie) {
+            allRawMovies = res.data.data.movie;
+        }
+
+        if (allRawMovies.length === 0) return false;
+
+        // 2. Filter yang belum ada di DB
+        const existingIdsRes = await db.execute("SELECT anime_id FROM quiz_pool");
+        const existingIds = new Set(existingIdsRes.rows.map(r => r.anime_id));
+        const candidateMovies = allRawMovies.filter(m => !existingIds.has(String(m.id)));
+        
+        // Ambil maksimal 5 saja
+        const newMovies = candidateMovies.slice(0, 5);
+        if (newMovies.length === 0) {
+            console.log(`[ANIMEIN] Tidak ada data baru di halaman 1. Skip.`);
             return true;
         }
 
-        // 1. Ambil List Anime secara masif (100 halaman = ~2500 per kategori)
-        const categories = ['popular', 'stars', 'latest'];
-        let allRawMovies = [];
+        // 3. Jika DB Penuh (1000), hapus 5 data terlama untuk rotasi
+        const countRes = await db.execute("SELECT COUNT(*) as count FROM quiz_pool");
+        const currentCount = countRes.rows[0].count;
         
-        console.log(`[ANIMEIN] Megafetching start (50 pages per category)...`);
-        
-        const baseUrl = CONFIG.BASE_URL.replace(/\/$/, ''); // Pastikan tidak ada trailing slash
-        
-        for (const cat of categories) {
-            const pagePromises = [];
-            // Ambil 50 halaman secara langsung
-            for (let p = 1; p <= 50; p++) {
-                pagePromises.push(
-                    axios.get(`${baseUrl}/3/2/explore/movie`, { 
-                        params: { sort: cat, page: p }, 
-                        headers: ANIMEIN_HEADERS, 
-                        timeout: 10000 
-                    }).catch(() => null)
-                );
-            }
-            
-            const responses = await Promise.all(pagePromises);
-            responses.forEach(res => {
-                if (res?.data?.data?.movie) {
-                    allRawMovies = allRawMovies.concat(res.data.data.movie);
-                }
-            });
+        if (currentCount + newMovies.length > 200) {
+            console.log(`[QUIZ] DB Penuh (${currentCount}). Menghapus 5 data terlama untuk rotasi...`);
+            await db.execute("DELETE FROM quiz_pool WHERE anime_id IN (SELECT anime_id FROM quiz_pool ORDER BY id ASC LIMIT 5)");
         }
 
-        const uniqueRaw = [];
-        const seenId = new Set();
-        allRawMovies.forEach(m => {
-            if (m.id && !seenId.has(m.id)) {
-                seenId.add(m.id);
-                uniqueRaw.push(m);
-            }
-        });
-        
-        // Acak hasil pencarian mentah agar tidak bias ke kategori terakhir
-        uniqueRaw.sort(() => Math.random() - 0.5);
-
-        // 3. Filter yang sudah ada di DB
-        const existingIdsRes = await db.execute("SELECT anime_id FROM quiz_pool");
-        const existingIds = new Set(existingIdsRes.rows.map(r => r.anime_id));
-        const newMovies = uniqueRaw.filter(m => !existingIds.has(String(m.id)));
-
-        console.log(`[ANIMEIN] Found ${uniqueRaw.length} unique items. ${newMovies.length} are new.`);
-
-        // 4. Ambil detail untuk yang baru (Batasi 100 per run agar tidak kena limit/berat)
-        // Pastikan tidak melebihi limit 1000 total
-        const remainingSpace = 1000 - (await db.execute("SELECT COUNT(*) as count FROM quiz_pool")).rows[0].count;
-        if (remainingSpace <= 0) return true;
-
-        const batchToFetch = newMovies.slice(0, Math.min(100, remainingSpace));
-        console.log(`[ANIMEIN] Fetching detail for ${batchToFetch.length} items...`);
+        console.log(`[ANIMEIN] Microfetching 5 items...`);
         const detailed = [];
         
-        // Fetch detail in chunks of 20 to avoid overwhelm
-        for (let i = 0; i < batchToFetch.length; i += 20) {
-            const chunk = batchToFetch.slice(i, i + 20);
-            const chunkResults = await Promise.all(chunk.map(async (m) => {
-                try {
-                    // Gunakan auth dari bot AnimeinAI (idx 0) jika tersedia
-                    const authParams = (bots[0] && bots[0].auth.userId) ? {
-                        id_user: bots[0].auth.userId,
-                        key_client: bots[0].auth.userKey
-                    } : {};
+        // Fetch detail secara paralel (Max 5, sangat ringan)
+        const chunkResults = await Promise.all(newMovies.map(async (m) => {
+            try {
+                const authParams = (bots[0] && bots[0].auth.userId) ? {
+                    id_user: bots[0].auth.userId,
+                    key_client: bots[0].auth.userKey
+                } : {};
 
-                    const detailRes = await axios.get(`${CONFIG.BASE_URL}/3/2/movie/detail/${m.id}`, {
-                        params: authParams,
-                        headers: ANIMEIN_HEADERS,
-                        timeout: 7000 // Tingkatkan timeout sedikit
-                    });
+                const detailRes = await axios.get(`${baseUrl}/3/2/movie/detail/${m.id}`, {
+                    params: authParams,
+                    headers: ANIMEIN_HEADERS,
+                    timeout: 7000 
+                });
+                recordPath('/3/2/movie/detail');
 
-                    if (detailRes?.data?.data?.movie) {
-                        const d = detailRes.data.data.movie;
-                        return {
-                            ...m,
-                            synopsis: d.synopsis || '?',
-                            genre: d.genre || m.genre || '?',
-                            studio: d.studio || m.studio || '?',
-                            score: d.favorites || m.favorites || '?',
-                            year: (d.year && d.year !== 'UNKNOWN') ? d.year : (d.aired_start ? d.aired_start.split('-')[0] : (m.year || '?')),
-                            type: d.type || m.type || '?'
-                        };
-                    }
-                } catch (err) {
-                    console.warn(`[ANIMEIN] Gagal fetch detail ${m.id}: ${err.message}`);
+                if (detailRes?.data?.data?.movie) {
+                    const d = detailRes.data.data.movie;
+                    return {
+                        ...m,
+                        synopsis: d.synopsis || '?',
+                        genre: d.genre || m.genre || '?',
+                        studio: d.studio || m.studio || '?',
+                        score: d.favorites || m.favorites || '?',
+                        year: (d.year && d.year !== 'UNKNOWN') ? d.year : (d.aired_start ? d.aired_start.split('-')[0] : (m.year || '?')),
+                        type: d.type || m.type || '?'
+                    };
                 }
-                return null;
-            }));
-            detailed.push(...chunkResults.filter(Boolean));
-            if (i === 0) console.log(`[ANIMEIN] First chunk: ${chunkResults.filter(Boolean).length}/${chunk.length} items ok`);
-            // Small pause between chunks
-            await new Promise(r => setTimeout(r, 500));
-        }
+            } catch (err) {
+                console.warn(`[ANIMEIN] Gagal fetch detail ${m.id}: ${err.message}`);
+            }
+            return null;
+        }));
+        
+        detailed.push(...chunkResults.filter(Boolean));
 
-        console.log(`[ANIMEIN] Detail fetched: ${detailed.length} items ready to insert`);
         // 5. Insert ke Database
         let inserted = 0;
         for (const item of detailed) {
-            // Gunakan synopsis dari explore jika detail tidak ada
             const synopsis = item.synopsis && item.synopsis !== '?' ? item.synopsis : (item.synopsis_short || '');
             if (item.title && synopsis && synopsis.length > 10) {
                 try {
@@ -1301,6 +1280,7 @@ async function fetchHomeAnime(force = false) {
 
         // Update Cache untuk trending (ambil dari hot data home)
         const resHome = await axios.get(`${CONFIG.BASE_URL}/3/2/home/data`, { headers: ANIMEIN_HEADERS }).catch(() => null);
+        recordPath('/3/2/home/data');
         if (resHome?.data?.data?.hot) {
             const hot = resHome.data.data.hot.slice(0, 30);
             cache.trending.data = hot.map((a, i) => `${i+1}. ${a.title} [Rating: ${a.favorites||'?'}]`);
@@ -1308,10 +1288,11 @@ async function fetchHomeAnime(force = false) {
         }
 
         const totalDB = await db.execute("SELECT COUNT(*) as count FROM quiz_pool");
-        console.log(`[ANIMEIN] Megafetch Done. New: ${inserted}. Total Quiz Pool: ${totalDB.rows[0].count}`);
+        stats.lastMicrofetch = Date.now();
+        console.log(`[ANIMEIN] Microfetch Done. New: ${inserted}. Total Quiz Pool: ${totalDB.rows[0].count}`);
         return true;
     } catch (e) {
-        console.warn(`[ANIMEIN] Error during megafetch:`, e.message);
+        console.warn(`[ANIMEIN] Error during microfetch:`, e.message);
         return false;
     }
 }
@@ -1744,12 +1725,14 @@ async function sendChatWithImage(bot, imageData, caption, replyTo = '0') {
         form.append('key_client', bot.auth.userKey);
         form.append('image', buffer, { filename, contentType });
         
-        const res = await axios.post(`${CONFIG.BASE_URL}/3/2/chat/do`, form, {
+        const baseUrl = CONFIG.BASE_URL.replace(/\/$/, '');
+        recordPath('/3/2/chat/do');
+        const res = await axios.post(`${baseUrl}/3/2/chat/do`, form, {
             headers: {
                 ...form.getHeaders(),
                 'Accept': 'application/json, text/plain, */*',
-                'Origin': 'https://animeinweb.com',
-                'Referer': 'https://animeinweb.com/',
+                'Origin': 'https://japi.animein.net',
+                'Referer': 'https://japi.animein.net',
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             },
             timeout: 20000,
@@ -1818,7 +1801,11 @@ async function fetchMessages(bot) {
     try {
         const queryParams = { id_user: bot.auth.userId, key_client: bot.auth.userKey };
         if (bot.lastMessageId > 0) queryParams.highest_id = bot.lastMessageId;
-        const response = await axios.get(`${CONFIG.BASE_URL}/3/2/chat/data`, { 
+        
+        const baseUrl = CONFIG.BASE_URL.replace(/\/$/, '');
+        recordPath('/3/2/chat/data');
+        
+        const response = await axios.get(`${baseUrl}/3/2/chat/data`, { 
             params: queryParams,
             headers: {
                 'Accept': 'application/json, text/plain, */*',
@@ -1856,7 +1843,10 @@ async function sendChatMessage(bot, text, replyTo = '0') {
         params.append('id_chat_replay', replyTo);
         params.append('id_user', bot.auth.userId);
         params.append('key_client', bot.auth.userKey);
-        await axios.post(`${CONFIG.BASE_URL}/3/2/chat/do`, params, {
+        
+        const baseUrl = CONFIG.BASE_URL.replace(/\/$/, '');
+        recordPath('/3/2/chat/do');
+        await axios.post(`${baseUrl}/3/2/chat/do`, params, {
             headers: { 
                 'Accept': 'application/json, text/plain, */*',
                 'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
@@ -2154,17 +2144,22 @@ function levenshtein(a, b) {
 async function startBot() {
     await initDB();
     
-    // Login all bots
-    for (const bot of bots) {
-        const loggedIn = await login(bot);
-        if (!loggedIn) { 
-            console.error(`[FATAL] Gagal login untuk bot ${bot.username}`);
-        }
-    }
+    // Set credentials dari Env secara langsung (Tanpa panggil API Login)
+    bots.forEach(bot => {
+        const isAI = bot.username === CONFIG.USERNAME;
+        bot.auth.userId = isAI ? process.env.ANIMEIN_AI_USER_ID : process.env.ANIMEIN_KUIS_USER_ID;
+        bot.auth.userKey = isAI ? process.env.ANIMEIN_AI_KEY_CLIENT : process.env.ANIMEIN_KUIS_KEY_CLIENT;
+        console.log(`[AUTH] Bot ${bot.username} ready with fixed credentials.`);
+    });
     
     stats.botStatus = 'online';
     console.log(`Bot aktif! Info: ${bots[0].username}, Kuis: ${bots[1].username}`);
     console.log(`Dashboard: http://localhost:${CONFIG.DASHBOARD_PORT}`);
+
+    // Jadwal Microfetch: Setiap 1 jam (Agar sangat ringan)
+    setInterval(fetchHomeAnime, 60 * 60 * 1000);
+    // Jalankan sekali saat startup
+    fetchHomeAnime();
 
     // Main Polling Loop
     setInterval(async () => {
