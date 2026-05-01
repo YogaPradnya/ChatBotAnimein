@@ -467,55 +467,49 @@ function buildHintMessage(level, senderName = null, penalty = 0) {
     const timeStr = `${Math.floor(remaining/60)}m ${remaining%60}s`;
     const sentences = (c.synopsis || '').split('.').map(s => s.trim()).filter(s => s.length > 5);
 
-    // 2. Bangun Card
-    const lines = [
-        `╭━━━ 💡 *KUIS HINT* [${level}/5] ━━━╮`,
-    ];
-
+    // 2. Bangun Format Polos
+    const lines = [];
+    
     if (senderName) {
-        lines.push(`┃ 👤 Req by : @${senderName.substring(0, 15)}`);
-        lines.push(`┃ 💰 Cost   : -${penalty} XP`);
-        lines.push(`┣━━━━━━━━━━━━━━━━━━━━━━━┫`);
+        lines.push(`[ HINT ${level}/5 ]`);
+        lines.push(`User: @${senderName}`);
+        lines.push(`Biaya: -${penalty} XP`);
+        lines.push(`--------------------`);
     } else {
-        lines.push(`┃ 🕒 Sisa Waktu: ${timeStr}`);
-        lines.push(`┣━━━━━━━━━━━━━━━━━━━━━━━┫`);
+        lines.push(`[ KUIS ANIME ]`);
+        lines.push(`Sisa: ${timeStr}`);
+        lines.push(`--------------------`);
     }
 
-    lines.push(`┃ 🧩 Judul  : ${hiddenTitle} (${title.length} char)`);
-    lines.push(`┃ 📊 Score  : ⭐ ${c.score}`);
+    lines.push(`Judul: ${hiddenTitle} (${title.length} char)`);
+    lines.push(`Skor: ${c.score}`);
 
-    // Hint konten berdasarkan level
     if (level >= 1 || (level === 0 && !senderName)) {
-        lines.push(`┣━━━━━━━━━━━━━━━━━━━━━━━┫`);
-        lines.push(`┃ 📌 INFO HINT:`);
-        
         if (level === 0) {
             const words = (sentences[0] || '').split(' ').slice(0, 8).join(' ');
-            lines.push(`┃ 📖 Clue: "${censorSpoiler(words)}..."`);
+            lines.push(`Clue: "${censorSpoiler(words)}..."`);
         }
         if (level >= 1) {
-            lines.push(`┃ 🏢 Studio: ${c.studio}`);
-            lines.push(`┃ 📖 Desk 1: ${censorSpoiler(sentences[0]).substring(0, 80)}...`);
+            lines.push(`Studio: ${c.studio}`);
+            lines.push(`Desk 1: ${censorSpoiler(sentences[0]).substring(0, 80)}...`);
         }
         if (level >= 2) {
-            lines.push(`┃ 📅 Tahun : ${c.year} | 🎭 Genre: ${c.genre}`);
-            lines.push(`┃ 📖 Desk 2: ${censorSpoiler(sentences[1] || '').substring(0, 80)}...`);
+            lines.push(`Tahun: ${c.year} | Genre: ${c.genre}`);
+            lines.push(`Desk 2: ${censorSpoiler(sentences[1] || '').substring(0, 80)}...`);
         }
         if (level >= 3) {
-            lines.push(`┃ 📺 Tipe  : ${c.type}`);
-            lines.push(`┃ 📖 Desk 3: ${censorSpoiler(sentences[2] || '').substring(0, 80)}...`);
+            lines.push(`Tipe: ${c.type}`);
+            lines.push(`Desk 3: ${censorSpoiler(sentences[2] || '').substring(0, 80)}...`);
         }
         if (level >= 5) {
-            lines.push(`┃ 📖 Full  : ${censorSpoiler(c.synopsis).substring(0, 120)}...`);
+            lines.push(`Full: ${censorSpoiler(c.synopsis).substring(0, 120)}...`);
         }
     }
 
-    lines.push(`╰━━━━━━━━━━━━━━━━━━━━━━━╯`);
-    
     if (level === 0 && !senderName) {
-        lines.push(`\nKetik *.hint* untuk bantuan!`);
+        lines.push(`\nKetik .hint untuk bantuan!`);
     } else {
-        lines.push(`\nKetik *.tebak [jawaban]*`);
+        lines.push(`\nKetik .tebak [jawaban]`);
     }
 
     return lines.join('\n');
@@ -1994,17 +1988,17 @@ async function processMessages(bot, messages) {
                     const bar = '▰'.repeat(filledCount) + '▱'.repeat(barWidth - filledCount);
 
                     const profileMsg = [
-                        `╭━━━ 🔰 *PROFILE INFO* 🔰 ━━━╮`,
+                        `╭━ 🔰 *PROFILE INFO* 🔰 ━╮`,
                         `┃ User   : @${senderName.substring(0, 15)}`,
                         `┃ Rank   : ${gelar || '🐣 Wibu Baru'}`,
-                        `┣━━━━━━━━━━━━━━━━━━━━━━━┫`,
+                        `┣━━━━━━━━━━━━━━━━━━━┫`,
                         `┃ Level  : ${level.toString().padEnd(10)} 🏆`,
                         `┃ XP     : ${xp.toLocaleString('id-ID')} / ${req.toLocaleString('id-ID')}`,
                         `┃ Sisa   : ${toNext.toLocaleString('id-ID')} XP lagi`,
-                        `┣━━━━━━━━━━━━━━━━━━━━━━━┫`,
+                        `┣━━━━━━━━━━━━━━━━━━━┫`,
                         `┃ Progress: ${percentage}%`,
                         `┃ ${bar}`,
-                        `╰━━━━━━━━━━━━━━━━━━━━━━━╯`
+                        `╰━━━━━━━━━━━━━━━━━━━╯`
                     ].join('\n');
 
                     await sendChatMessage(bot, profileMsg, msg.id);
@@ -2016,7 +2010,7 @@ async function processMessages(bot, messages) {
                 if (bot.isCooldown) continue;
                 try {
                     const res = await db.execute("SELECT username, level, xp FROM user_stats ORDER BY xp DESC LIMIT 10");
-                    let rankMsg = `🏆 [LEADERBOARD RARA] 🏆\n${'='.repeat(25)}\n`;
+                    let rankMsg = `🏆 [LEADERBOARD RARA] 🏆\n${'='.repeat(23)}\n`;
                     const medals = ['🥇','🥈','🥉','🎖️','🎖️','🏅','🏅','🏅','🏅','🏅'];
                     res.rows.forEach((r, i) => {
                         const displayName = r.username.length > 10 ? r.username.substring(0, 10) : r.username;
@@ -2076,14 +2070,14 @@ async function processMessages(bot, messages) {
 
             if (lowerMsg === '.menu') {
                 const menu = [
-                    `╭━━━ 🔰 *DAFTAR MENU* 🔰 ━━━╮`,
+                    `╭━ 🔰 *DAFTAR MENU* 🔰 ━╮`,
                     `┃ 1️⃣ Panggil Rara: .ai / .rara`,
                     `┃ 2️⃣ Laporan: .lapor [pesan]`,
                     `┃ 3️⃣ Cek Profil: .profil`,
                     `┃ 4️⃣ Peringkat: .rank`,
-                    `┣━━━━━━━━━━━━━━━━━━━━━━━┫`,
+                    `┣━━━━━━━━━━━━━━━━━━━┫`,
                     `┃ ✨ Chatting = +EXP loh!`,
-                    `╰━━━━━━━━━━━━━━━━━━━━━━━╯`
+                    `╰━━━━━━━━━━━━━━━━━━━╯`
                 ].join('\n');
                 await sendChatMessage(bot, `@${senderName}\n${menu}`, msg.id);
                 continue;
