@@ -432,11 +432,11 @@ function clearQuizTimers() {
     if (activeQuiz.expireTimer) { clearTimeout(activeQuiz.expireTimer); activeQuiz.expireTimer = null; }
 }
 
-function buildHintMessage(level) {
+function buildHintMessage(level, senderName = null, penalty = 0) {
     const title = activeQuiz.original;
     const c = activeQuiz.clues;
     
-    // Level < 4: semua tersensor. Level 4+: buka huruf pertama tiap kata
+    // 1. Logika Sensor Judul
     let hiddenTitle = title.replace(/[a-zA-Z0-9]/g, '*');
     if (level >= 4) {
         hiddenTitle = title.split(' ').map(word => {
@@ -445,14 +445,13 @@ function buildHintMessage(level) {
         }).join(' ');
     }
     if (level >= 5) {
-        // Buka lebih banyak huruf jika level 5
         hiddenTitle = title.split(' ').map(word => {
             if (word.length <= 2) return word;
             return word.slice(0, 2) + word.slice(2).replace(/[a-zA-Z0-9]/g, '*');
         }).join(' ');
     }
 
-    // Fungsi pembantu untuk menyamarkan judul di dalam teks agar tidak spoiler
+    // Fungsi pembantu untuk menyamarkan judul
     const censorSpoiler = (text) => {
         if (!text) return '';
         const words = title.split(/\s+/).filter(w => w.length > 2);
@@ -466,41 +465,59 @@ function buildHintMessage(level) {
 
     const remaining = Math.floor((QUIZ_DURATION_MS - (Date.now() - activeQuiz.startedAt)) / 1000);
     const timeStr = `${Math.floor(remaining/60)}m ${remaining%60}s`;
-
-    // Ambil kalimat dari sinopsis
     const sentences = (c.synopsis || '').split('.').map(s => s.trim()).filter(s => s.length > 5);
-    
+
+    // 2. Bangun Card
     const lines = [
-        `🎮 [KUIS TEBAK ANIME] 🕒 Sisa: ${timeStr}`,
-        `🔹 Judul: ${hiddenTitle} (${title.length} char)`,
+        `╭━━━ 💡 *KUIS HINT* [${level}/5] ━━━╮`,
     ];
 
-    // Hint berdasarkan level (deskripsi sbg fokus utama)
-    if (level === 0) {
-        const words = (sentences[0] || '').split(' ').slice(0, 8).join(' ');
-        lines.push(`📖 Clue Awal: "${censorSpoiler(words)}..."`);
-    }
-    if (level >= 1) {
-        lines.push(`📖 Deskripsi P1: "${censorSpoiler(sentences[0]) || '?'}"`);
-        lines.push(`🏢 Studio: ${censorSpoiler(c.studio)}`);
-    }
-    if (level >= 2) {
-        lines.push(`📖 Deskripsi P2: "${censorSpoiler(sentences[1]) || '?'}"`);
-        lines.push(`📅 Tahun: ${c.year} | 🎭 Genre: ${c.genre}`);
-    }
-    if (level >= 3) {
-        lines.push(`📖 Deskripsi P3: "${censorSpoiler(sentences[2]) || (sentences[1] ? 'Cari anime dengan tema tersebut!' : '?')}"`);
-        lines.push(`⭐ Skor: ${c.score} | 📺 Tipe: ${c.type}`);
-    }
-    if (level >= 4) {
-        lines.push(`✨ [BONUS HINT] Huruf depan judul sudah terbuka!`);
-    }
-    if (level >= 5) {
-        lines.push(`📖 Full Sinopsis: "${censorSpoiler((c.synopsis || '').slice(0, 200))}..."`);
+    if (senderName) {
+        lines.push(`┃ 👤 Req by : @${senderName.substring(0, 15)}`);
+        lines.push(`┃ 💰 Cost   : -${penalty} XP`);
+        lines.push(`┣━━━━━━━━━━━━━━━━━━━━━━━┫`);
+    } else {
+        lines.push(`┃ 🕒 Sisa Waktu: ${timeStr}`);
+        lines.push(`┣━━━━━━━━━━━━━━━━━━━━━━━┫`);
     }
 
-    lines.push(``);
-    lines.push(`Ketik: .tebak [jawaban]  |  Minta hint: .hint`);
+    lines.push(`┃ 🧩 Judul  : ${hiddenTitle} (${title.length} char)`);
+    lines.push(`┃ 📊 Score  : ⭐ ${c.score}`);
+
+    // Hint konten berdasarkan level
+    if (level >= 1 || (level === 0 && !senderName)) {
+        lines.push(`┣━━━━━━━━━━━━━━━━━━━━━━━┫`);
+        lines.push(`┃ 📌 INFO HINT:`);
+        
+        if (level === 0) {
+            const words = (sentences[0] || '').split(' ').slice(0, 8).join(' ');
+            lines.push(`┃ 📖 Clue: "${censorSpoiler(words)}..."`);
+        }
+        if (level >= 1) {
+            lines.push(`┃ 🏢 Studio: ${c.studio}`);
+            lines.push(`┃ 📖 Desk 1: ${censorSpoiler(sentences[0]).substring(0, 80)}...`);
+        }
+        if (level >= 2) {
+            lines.push(`┃ 📅 Tahun : ${c.year} | 🎭 Genre: ${c.genre}`);
+            lines.push(`┃ 📖 Desk 2: ${censorSpoiler(sentences[1] || '').substring(0, 80)}...`);
+        }
+        if (level >= 3) {
+            lines.push(`┃ 📺 Tipe  : ${c.type}`);
+            lines.push(`┃ 📖 Desk 3: ${censorSpoiler(sentences[2] || '').substring(0, 80)}...`);
+        }
+        if (level >= 5) {
+            lines.push(`┃ 📖 Full  : ${censorSpoiler(c.synopsis).substring(0, 120)}...`);
+        }
+    }
+
+    lines.push(`╰━━━━━━━━━━━━━━━━━━━━━━━╯`);
+    
+    if (level === 0 && !senderName) {
+        lines.push(`\nKetik *.hint* untuk bantuan!`);
+    } else {
+        lines.push(`\nKetik *.tebak [jawaban]*`);
+    }
+
     return lines.join('\n');
 }
 
@@ -523,7 +540,7 @@ async function expireQuiz(bot, lastMsgId) {
     );
 }
 
-async function startQuiz(bot, senderName, msgId) {
+async function startQuiz(bot, senderName, msgId, forcedId = null) {
     if (activeQuiz.isRunning || activeQuiz.isStarting) {
         const remaining = Math.floor((QUIZ_DURATION_MS - (Date.now() - (activeQuiz.startedAt || Date.now()))) / 1000);
         const timeStr = remaining > 0 ? `${Math.floor(remaining/60)}m ${remaining%60}s` : 'menunggu...';
@@ -538,8 +555,13 @@ async function startQuiz(bot, senderName, msgId) {
         try {
             let sql = "SELECT * FROM quiz_pool";
             let where = [];
-            if (QUIZ_FILTER === 'high-rating') where.push("score >= '8.0'");
-            else if (QUIZ_FILTER.startsWith('genre:')) where.push(`genre LIKE '%${QUIZ_FILTER.split(':')[1]}%'`);
+            
+            if (forcedId) {
+                where.push(`id = ${parseInt(forcedId)}`);
+            } else {
+                if (QUIZ_FILTER === 'high-rating') where.push("score >= '8.0'");
+                else if (QUIZ_FILTER.startsWith('genre:')) where.push(`genre LIKE '%${QUIZ_FILTER.split(':')[1]}%'`);
+            }
             
             if (where.length > 0) sql += " WHERE " + where.join(" AND ");
             sql += " ORDER BY last_used_at ASC, RANDOM() LIMIT 1";
@@ -595,7 +617,7 @@ async function startQuiz(bot, senderName, msgId) {
             args: [String(stats.totalQuizzesStarted)] 
         }).catch(() => {});
 
-        const introMsg = `${buildHintMessage(0)}\n\nKetik .hint untuk mendapatkan hint baru (-1 s/d 5 XP).`;
+        const introMsg = buildHintMessage(0);
         await sendChatMessage(bot, introMsg, msgId);
         scheduleQuizExpiry(bot, msgId);
     } catch (err) {
@@ -1169,8 +1191,8 @@ async function fetchHomeAnime(force = false) {
 
         const currentCountRes = await db.execute("SELECT COUNT(*) as count FROM quiz_pool");
         const currentCount = currentCountRes.rows[0].count;
-        if (!force && currentCount >= 250) {
-            console.log(`[QUIZ] Limit 250 tercapai (${currentCount}). Skip penambahan.`);
+        if (!force && currentCount >= 1000) {
+            console.log(`[QUIZ] Limit 1000 tercapai (${currentCount}). Skip penambahan.`);
             return true;
         }
 
@@ -1182,10 +1204,17 @@ async function fetchHomeAnime(force = false) {
         
         for (const cat of categories) {
             const pagePromises = [];
-            for (let i = 1; i <= 100; i++) {
+            // Ambil 200 halaman, tapi di-shuffle urutannya agar tidak selalu halaman 1 dulu
+            const pages = Array.from({length: 200}, (_, i) => i + 1);
+            for (let i = pages.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [pages[i], pages[j]] = [pages[j], pages[i]];
+            }
+
+            for (const p of pages.slice(0, 100)) { // Ambil 100 halaman random per kategori agar lebih variatif & cepat
                 pagePromises.push(
                     axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, { 
-                        params: { sort: cat, page: i }, 
+                        params: { sort: cat, page: p }, 
                         headers: ANIMEIN_HEADERS, 
                         timeout: 10000 
                     }).catch(() => null)
@@ -1207,6 +1236,9 @@ async function fetchHomeAnime(force = false) {
                 uniqueRaw.push(m);
             }
         });
+        
+        // Acak hasil pencarian mentah agar tidak bias ke kategori terakhir
+        uniqueRaw.sort(() => Math.random() - 0.5);
 
         // 3. Filter yang sudah ada di DB
         const existingIdsRes = await db.execute("SELECT anime_id FROM quiz_pool");
@@ -1216,8 +1248,8 @@ async function fetchHomeAnime(force = false) {
         console.log(`[ANIMEIN] Found ${uniqueRaw.length} unique items. ${newMovies.length} are new.`);
 
         // 4. Ambil detail untuk yang baru (Batasi 100 per run agar tidak kena limit/berat)
-        // Pastikan tidak melebihi limit 250 total
-        const remainingSpace = 250 - (await db.execute("SELECT COUNT(*) as count FROM quiz_pool")).rows[0].count;
+        // Pastikan tidak melebihi limit 1000 total
+        const remainingSpace = 1000 - (await db.execute("SELECT COUNT(*) as count FROM quiz_pool")).rows[0].count;
         if (remainingSpace <= 0) return true;
 
         const batchToFetch = newMovies.slice(0, Math.min(100, remainingSpace));
@@ -1937,7 +1969,10 @@ async function processMessages(bot, messages) {
                     activeQuiz.hintsRevealed++;
                     const penalty = Math.floor(Math.random() * 5) + 1;
                     await addXP(senderName, -penalty);
-                    await sendChatMessage(bot, `💡 [HINT ${activeQuiz.hintsRevealed}/5 - Minta @${senderName}, -${penalty} XP]\n` + buildHintMessage(activeQuiz.hintsRevealed), msg.id);
+                    
+                    // Kirim pesan hint dengan format kartu yang rapi
+                    const hintMsg = buildHintMessage(activeQuiz.hintsRevealed, senderName, penalty);
+                    await sendChatMessage(bot, hintMsg, msg.id);
                 }
                 continue;
             }
@@ -1951,8 +1986,28 @@ async function processMessages(bot, messages) {
                     const {xp, level, custom_title} = res.rows[0] || {xp:0, level:1, custom_title: null};
                     const gelar = getGelar(level, custom_title);
                     const req = Math.floor(50 * Math.pow(level, 3));
-                    const bar = '🟩'.repeat(Math.floor((xp/req)*10)) + '⬜'.repeat(10-Math.floor((xp/req)*10));
-                    await sendChatMessage(bot, `🔰 [PROFIL] @${senderName} 🔰\n🎖️ Gelar: ${gelar || 'Wibu Baru'}\n🏆 Level: ${level}\n📈 XP: ${xp} / ${req}\n📊 Progress: ${bar}`, msg.id);
+                    const toNext = req - xp;
+                    const percentage = Math.min(100, Math.floor((xp / req) * 100));
+                    
+                    const barWidth = 10;
+                    const filledCount = Math.floor((percentage / 100) * barWidth);
+                    const bar = '▰'.repeat(filledCount) + '▱'.repeat(barWidth - filledCount);
+
+                    const profileMsg = [
+                        `╭━━━ 🔰 *PROFILE INFO* 🔰 ━━━╮`,
+                        `┃ User   : @${senderName.substring(0, 15)}`,
+                        `┃ Rank   : ${gelar || '🐣 Wibu Baru'}`,
+                        `┣━━━━━━━━━━━━━━━━━━━━━━━┫`,
+                        `┃ Level  : ${level.toString().padEnd(10)} 🏆`,
+                        `┃ XP     : ${xp.toLocaleString('id-ID')} / ${req.toLocaleString('id-ID')}`,
+                        `┃ Sisa   : ${toNext.toLocaleString('id-ID')} XP lagi`,
+                        `┣━━━━━━━━━━━━━━━━━━━━━━━┫`,
+                        `┃ Progress: ${percentage}%`,
+                        `┃ ${bar}`,
+                        `╰━━━━━━━━━━━━━━━━━━━━━━━╯`
+                    ].join('\n');
+
+                    await sendChatMessage(bot, profileMsg, msg.id);
                 } catch(e) {}
                 continue;
             }
@@ -1964,7 +2019,8 @@ async function processMessages(bot, messages) {
                     let rankMsg = `🏆 [LEADERBOARD RARA] 🏆\n${'='.repeat(25)}\n`;
                     const medals = ['🥇','🥈','🥉','🎖️','🎖️','🏅','🏅','🏅','🏅','🏅'];
                     res.rows.forEach((r, i) => {
-                        rankMsg += `${medals[i]} ${r.username.padEnd(14)} Lvl ${r.level} (${r.xp} XP)\n`;
+                        const displayName = r.username.length > 10 ? r.username.substring(0, 10) : r.username;
+                        rankMsg += `${medals[i]} ${displayName.padEnd(11)} Lvl ${r.level} (${r.xp} XP)\n`;
                     });
                     await sendChatMessage(bot, rankMsg, msg.id);
                 } catch(e) {}
@@ -2019,7 +2075,16 @@ async function processMessages(bot, messages) {
             }
 
             if (lowerMsg === '.menu') {
-                const menu = `🔰 DAFTAR MENU RARA 🔰\n\n1️⃣ Panggil Rara: .ai atau .rara\n2️⃣ Laporan: .lapor [pesan]\n3️⃣ Cek Profil: .profil\n4️⃣ Peringkat: .rank\n\n✨ Ngobrol bareng Rara juga nambah EXP loh!`;
+                const menu = [
+                    `╭━━━ 🔰 *DAFTAR MENU* 🔰 ━━━╮`,
+                    `┃ 1️⃣ Panggil Rara: .ai / .rara`,
+                    `┃ 2️⃣ Laporan: .lapor [pesan]`,
+                    `┃ 3️⃣ Cek Profil: .profil`,
+                    `┃ 4️⃣ Peringkat: .rank`,
+                    `┣━━━━━━━━━━━━━━━━━━━━━━━┫`,
+                    `┃ ✨ Chatting = +EXP loh!`,
+                    `╰━━━━━━━━━━━━━━━━━━━━━━━╯`
+                ].join('\n');
                 await sendChatMessage(bot, `@${senderName}\n${menu}`, msg.id);
                 continue;
             }
@@ -2128,7 +2193,16 @@ async function startBot() {
     }, 90 * 60 * 1000);
 
     // Otomatis Kuis setiap 1 jam
-    setInterval(async () => {
+    resetAutoQuizTimer();
+}
+
+let autoQuizInterval = null;
+function resetAutoQuizTimer() {
+    if (autoQuizInterval) clearInterval(autoQuizInterval);
+    
+    nextQuizTime = Date.now() + (60 * 60 * 1000);
+    
+    autoQuizInterval = setInterval(async () => {
         if (isBotKuisActive && bots[1] && bots[1].auth.userId) {
             console.log("[AUTO-QUIZ] Menjalankan kuis otomatis...");
             nextQuizTime = Date.now() + (60 * 60 * 1000);
@@ -2291,6 +2365,30 @@ function startDashboard() {
             res.json({ success: true, deleted: limit });
         } catch (e) {
             console.error("[QUIZ RESET ERROR]", e.message);
+            res.json({ success: false, message: e.message });
+        }
+    });
+
+    app.get('/api/quiz/pool', async (req, res) => {
+        try {
+            const rows = await db.execute("SELECT * FROM quiz_pool ORDER BY last_used_at DESC");
+            res.json({ success: true, data: rows.rows });
+        } catch(e) {
+            res.json({ success: false, message: e.message });
+        }
+    });
+
+    app.post('/api/quiz/trigger', async (req, res) => {
+        if (!isBotKuisActive || !bots[1] || !bots[1].auth.userId) {
+            return res.json({ success: false, message: 'Bot Kuis sedang tidak aktif!' });
+        }
+        try {
+            const { id } = req.body;
+            console.log(`[DASHBOARD] Manual Quiz Triggered! \${id ? '(ID: ' + id + ')' : ''}`);
+            await startQuiz(bots[1], 'Admin', '0', id);
+            resetAutoQuizTimer(); // Reset timer auto-kuis ke 1 jam lagi
+            res.json({ success: true, message: id ? 'Kuis spesifik berhasil dikirim!' : 'Kuis manual berhasil dikirim dan timer di-reset!' });
+        } catch (e) {
             res.json({ success: false, message: e.message });
         }
     });

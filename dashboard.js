@@ -819,16 +819,16 @@ function getDashboardHTML() {
       </div>
     </div>
     
-    <div class="page" id="page-kuis" style="padding-bottom: 0;">
-      <div class="adaptive-flex" style="display: flex; gap: 24px; height: 100%;">
+    <div class="page" id="page-kuis" style="padding-bottom: 0; height: 100%;">
+      <div class="adaptive-flex" style="display: flex; gap: 24px; height: 100%; overflow: hidden;">
         
-        <!-- Left: Quiz System -->
-        <div style="flex: 1.2; display: flex; flex-direction: column; gap: 20px; min-width: 0;">
+        <!-- Left: Quiz System (Scrollable Unit) -->
+        <div style="flex: 1.2; display: flex; flex-direction: column; gap: 20px; min-width: 0; height: 100%; overflow-y: auto; padding-right: 5px;">
           <div class="card" style="margin-bottom: 0; flex-shrink: 0;">
             <div class="card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
               <span style="display: flex; align-items: center; gap: 8px;">🎮 Monitoring Kuis</span>
               <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                <div style="position: relative; min-width: 140px; flex:1;">
+                <div style="position: relative; min-width: 140px;">
                   <select id="quizFilterSelect" onchange="saveQuizConfig()" style="padding:8px 30px 8px 12px; border-radius:10px; font-size:11px; width: 100%;">
                     <option value="all"> Semua Kategori</option>
                     <option value="high-rating"> Rating Tinggi</option>
@@ -840,7 +840,7 @@ function getDashboardHTML() {
                   </select>
                 </div>
                 <button class="btn-primary" onclick="refetchQuiz()" id="refetchBtn" style="padding: 8px 12px; font-size:11px;">Ambil Data</button>
-                <div style="display:flex; gap:5px; align-items:center; flex:1; min-width:140px;">
+                <div style="display:flex; gap:5px; align-items:center; min-width:140px;">
                   <select id="resetPercentSelect" style="padding:8px 10px; border-radius:10px; font-size:11px; flex:1;">
                     <option value="25">25%</option>
                     <option value="50">50%</option>
@@ -894,6 +894,35 @@ function getDashboardHTML() {
             </div>
             <div id="bannedList" style="display:flex; flex-direction:column; gap:8px; max-height:200px; overflow-y:auto;">
               <div style="color:var(--muted); font-size:12px; text-align:center; padding:12px;">Memuat daftar ban...</div>
+            </div>
+          </div>
+
+          <!-- Quiz Pool Database Card -->
+          <div class="card" style="margin-bottom: 0; flex: 1; display: flex; flex-direction: column; min-height: 500px; overflow: hidden; border: 1.5px solid var(--border);">
+            <div class="card-title" style="display:flex; justify-content:space-between; align-items:center; flex-shrink: 0; padding-bottom: 15px;">
+              <div style="display:flex; align-items:center; gap:10px;">
+                <span>📚 Database Kolam Kuis</span>
+                <span id="quizPoolCount" style="font-size:11px; background:var(--accent); color:#fff; padding:2px 8px; border-radius:10px;">0</span>
+              </div>
+              <div style="display:flex; gap:10px;">
+                <input type="text" id="quizPoolSearch" placeholder="Cari anime..." oninput="filterQuizPool()" style="padding:6px 12px; border-radius:8px; border:1px solid var(--border); font-size:12px; width:180px;">
+                <button class="btn-sm btn-sm-toggle" onclick="loadQuizPool()" title="Refresh Pool" style="background:var(--accent); border-color:var(--accent); color:#fff;">🔄</button>
+              </div>
+            </div>
+            <div style="flex: 1; overflow-y: auto; background: #fff; border-radius: 12px; border: 1px solid var(--border);">
+              <table style="width: 100%; border-collapse: collapse;">
+                <thead style="position: sticky; top: 0; z-index: 5; background: #f8fafc; box-shadow: 0 1px 0 var(--border);">
+                  <tr>
+                    <th style="padding: 12px; font-size: 10px; text-align: left; color: #64748b; text-transform: uppercase;">Judul Anime</th>
+                    <th style="padding: 12px; font-size: 10px; text-align: left; color: #64748b; text-transform: uppercase;">Genre</th>
+                    <th style="padding: 12px; font-size: 10px; text-align: center; color: #64748b; text-transform: uppercase;">Score</th>
+                    <th style="padding: 12px; font-size: 10px; text-align: right; color: #64748b; text-transform: uppercase;">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="quizPoolList">
+                  <tr><td colspan="4" style="text-align:center; padding:40px; color:var(--muted); font-size: 12px;">Memuat data kuis...</td></tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -1136,7 +1165,7 @@ function getDashboardHTML() {
     if (id === 'laporan') loadLaporan();
     if (id === 'filter') loadFilter();
     if (id === 'autoreply') loadAutoReply();
-    if (id === 'kuis') { loadTitles(); loadUsers(); loadBanned(); }
+    if (id === 'kuis') { loadTitles(); loadUsers(); loadBanned(); loadQuizPool(); }
     if (id === 'model') {
       loadStats();
     }
@@ -1750,6 +1779,77 @@ async function updateStats() {
     
     sel.innerHTML = html;
     sel.value = currentVal;
+  }
+
+  let cachedQuizPool = [];
+  async function loadQuizPool() {
+    const tbody = document.getElementById('quizPoolList');
+    if (!tbody) return;
+    try {
+      const res = await fetch('/api/quiz/pool');
+      const d = await res.json();
+      if (!d.success) return;
+      cachedQuizPool = d.data || [];
+      filterQuizPool();
+    } catch(e) { console.error(e); }
+  }
+
+  function filterQuizPool() {
+    const tbody = document.getElementById('quizPoolList');
+    const q = document.getElementById('quizPoolSearch')?.value.toLowerCase() || '';
+    const filtered = cachedQuizPool.filter(item => 
+      item.title.toLowerCase().includes(q) || 
+      (item.genre || '').toLowerCase().includes(q)
+    );
+    
+    document.getElementById('quizPoolCount').innerText = filtered.length;
+    
+    tbody.innerHTML = filtered.map(item => {
+      return \`<tr>
+        <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
+          <div style="font-weight:700; color:#1e293b; font-size:12px;">\${item.title}</div>
+          <div style="font-size:9px; color:var(--muted);">ID: \${item.id}</div>
+        </td>
+        <td style="padding:12px; border-bottom:1px solid #f1f5f9; color:#64748b; font-size:11px;">\${item.genre || '-'}</td>
+        <td style="padding:12px; border-bottom:1px solid #f1f5f9; text-align:center; font-weight:700; color:var(--accent); font-size:12px;">\${item.score || '0.0'}</td>
+        <td style="padding:12px; border-bottom:1px solid #f1f5f9; text-align:right;">
+          <button class="btn-primary" onclick="triggerSpecificQuiz(\${item.id}, '\${item.title.replace(/'/g, "\\\\'")}')" 
+            style="padding:6px 12px; font-size:10px; border-radius:6px; background:var(--accent); border:none; box-shadow:none;">
+            Kirim
+          </button>
+        </td>
+      </tr>\`;
+    }).join('');
+  }
+
+  async function triggerSpecificQuiz(id, title) {
+    const ok = await customConfirm('Kirim kuis spesifik: "' + title + '"?');
+    if (!ok) return;
+    try {
+      const res = await fetch('/api/quiz/trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
+      const d = await res.json();
+      if (d.success) {
+        alert('Berhasil: ' + d.message);
+        refresh();
+      } else {
+        alert('Gagal: ' + d.message);
+      }
+    } catch(e) { console.error(e); }
+  }
+
+  async function triggerManualQuiz() {
+    // This is now replaced by triggerSpecificQuiz, but we keep it for general trigger if needed
+    const ok = await customConfirm('Kirim kuis random sekarang?');
+    if (!ok) return;
+    try {
+      const res = await fetch('/api/quiz/trigger', { method: 'POST' });
+      const d = await res.json();
+      if (d.success) { alert('Sukses!'); refresh(); }
+    } catch(e) { console.error(e); }
   }
 
   async function refetchQuiz() {
