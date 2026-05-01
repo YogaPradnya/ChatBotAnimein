@@ -1141,9 +1141,6 @@ function detectIntent(text) {
     return null;
 }
 
-
-
-
 const cache = {
     trending: { data: [], lastFetch: 0 },
     popular: { data: [], lastFetch: 0 },
@@ -1155,10 +1152,8 @@ const cache = {
 };
 
 const ANIMEIN_HEADERS = {
-    'Accept': 'application/json, text/plain, */*',
-    'Accept-Language': 'id-ID,id;q=0.9',
-    'Referer': 'https://animeinweb.com/',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    'Accept': 'application/json',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
 };
 
 /** Ambil data anime dari Animein berdasarkan tipe (trending/hot atau popular) */
@@ -1194,26 +1189,23 @@ async function fetchHomeAnime(force = false) {
         const categories = ['popular', 'stars', 'latest'];
         let allRawMovies = [];
         
-        console.log(`[ANIMEIN] Megafetching start (150 pages per category)...`);
+        console.log(`[ANIMEIN] Megafetching start (50 pages per category)...`);
+        
+        const baseUrl = CONFIG.BASE_URL.replace(/\/$/, ''); // Pastikan tidak ada trailing slash
         
         for (const cat of categories) {
             const pagePromises = [];
-            // Ambil 200 halaman, tapi di-shuffle urutannya agar tidak selalu halaman 1 dulu
-            const pages = Array.from({length: 150}, (_, i) => i + 1);
-            for (let i = pages.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [pages[i], pages[j]] = [pages[j], pages[i]];
-            }
-
-            for (const p of pages.slice(0, 100)) { // Ambil 100 halaman random per kategori agar lebih variatif & cepat
+            // Ambil 50 halaman secara langsung
+            for (let p = 1; p <= 50; p++) {
                 pagePromises.push(
-                    axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, { 
+                    axios.get(`${baseUrl}/3/2/explore/movie`, { 
                         params: { sort: cat, page: p }, 
                         headers: ANIMEIN_HEADERS, 
                         timeout: 10000 
                     }).catch(() => null)
                 );
             }
+            
             const responses = await Promise.all(pagePromises);
             responses.forEach(res => {
                 if (res?.data?.data?.movie) {
@@ -1247,6 +1239,7 @@ async function fetchHomeAnime(force = false) {
         if (remainingSpace <= 0) return true;
 
         const batchToFetch = newMovies.slice(0, Math.min(100, remainingSpace));
+        console.log(`[ANIMEIN] Fetching detail for ${batchToFetch.length} items...`);
         const detailed = [];
         
         // Fetch detail in chunks of 20 to avoid overwhelm
@@ -1254,10 +1247,18 @@ async function fetchHomeAnime(force = false) {
             const chunk = batchToFetch.slice(i, i + 20);
             const chunkResults = await Promise.all(chunk.map(async (m) => {
                 try {
+                    // Gunakan auth dari bot AnimeinAI (idx 0) jika tersedia
+                    const authParams = (bots[0] && bots[0].auth.userId) ? {
+                        id_user: bots[0].auth.userId,
+                        key_client: bots[0].auth.userKey
+                    } : {};
+
                     const detailRes = await axios.get(`${CONFIG.BASE_URL}/3/2/movie/detail/${m.id}`, {
+                        params: authParams,
                         headers: ANIMEIN_HEADERS,
-                        timeout: 5000
-                    }).catch(() => null);
+                        timeout: 7000 // Tingkatkan timeout sedikit
+                    });
+
                     if (detailRes?.data?.data?.movie) {
                         const d = detailRes.data.data.movie;
                         return {
@@ -1270,25 +1271,31 @@ async function fetchHomeAnime(force = false) {
                             type: d.type || m.type || '?'
                         };
                     }
-                } catch {}
+                } catch (err) {
+                    console.warn(`[ANIMEIN] Gagal fetch detail ${m.id}: ${err.message}`);
+                }
                 return null;
             }));
             detailed.push(...chunkResults.filter(Boolean));
+            if (i === 0) console.log(`[ANIMEIN] First chunk: ${chunkResults.filter(Boolean).length}/${chunk.length} items ok`);
             // Small pause between chunks
             await new Promise(r => setTimeout(r, 500));
         }
 
+        console.log(`[ANIMEIN] Detail fetched: ${detailed.length} items ready to insert`);
         // 5. Insert ke Database
         let inserted = 0;
         for (const item of detailed) {
-            if (item.title && item.synopsis && item.synopsis !== '?' && item.synopsis.length > 20) {
+            // Gunakan synopsis dari explore jika detail tidak ada
+            const synopsis = item.synopsis && item.synopsis !== '?' ? item.synopsis : (item.synopsis_short || '');
+            if (item.title && synopsis && synopsis.length > 10) {
                 try {
                     await db.execute({
                         sql: "INSERT OR IGNORE INTO quiz_pool (anime_id, title, synopsis, studio, genre, year, score, type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                        args: [String(item.id), item.title, item.synopsis, item.studio, item.genre, item.year, item.score, item.type]
+                        args: [String(item.id), item.title, synopsis, item.studio || '?', item.genre || '?', item.year || '?', item.score || '?', item.type || '?']
                     });
                     inserted++;
-                } catch (e) {}
+                } catch (e) { console.warn('[ANIMEIN] Insert error:', e.message); }
             }
         }
 
@@ -1751,7 +1758,7 @@ async function sendChatWithImage(bot, imageData, caption, replyTo = '0') {
         if (res.data && (res.data.status === true || res.data.message)) {
             console.log('[CHAT/IMG] Berhasil kirim gambar via multipart!');
             return true;
-        }
+}
         console.warn('[CHAT/IMG] API tidak mengembalikan sukses, response:', JSON.stringify(res.data).slice(0,100));
         return false;
     } catch (err) {
@@ -1760,24 +1767,33 @@ async function sendChatWithImage(bot, imageData, caption, replyTo = '0') {
     }
 }
 
-
-
-
-
 async function login(bot) {
     try {
+        // Bypass jika sudah ada kredensial di .env (Paling Aman)
+        const isAI = bot.username === CONFIG.USERNAME;
+        const preUserId = isAI ? process.env.ANIMEIN_AI_USER_ID : process.env.ANIMEIN_KUIS_USER_ID;
+        const preKeyClient = isAI ? process.env.ANIMEIN_AI_KEY_CLIENT : process.env.ANIMEIN_KUIS_KEY_CLIENT;
+        
+        if (preUserId && preKeyClient) {
+            bot.auth.userId = preUserId;
+            bot.auth.userKey = preKeyClient;
+            console.log(`[AUTH] Using pre-configured credentials for [${bot.username}] User ID: ${bot.auth.userId}`);
+            return true;
+        }
+
         console.log(`Logging in to AnimeinWeb as ${bot.username}...`);
+        
         const params = new URLSearchParams();
         params.append('username_or_email', bot.username);
         params.append('password', bot.password);
         
-        const loginUrl = `${CONFIG.BASE_URL.replace(/"/g, '')}/auth/login`;
+        const baseUrl = CONFIG.BASE_URL.replace(/\/$/, '');
+        const loginUrl = `${baseUrl}/auth/login`;
         
         const response = await axios.post(loginUrl, params, {
             headers: { 
-                'Accept': 'application/json, text/plain, */*',
                 'Content-Type': 'application/x-www-form-urlencoded',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+                ...ANIMEIN_HEADERS
             },
             timeout: 15000
         });
@@ -1793,11 +1809,7 @@ async function login(bot) {
         console.error('[AUTH] Login Failed! Response:', JSON.stringify(resData));
         return false;
     } catch (error) {
-        if (error.response) {
-            console.error(`[AUTH] Login Error (${error.response.status}):`, JSON.stringify(error.response.data));
-        } else {
-            console.error('[AUTH] Login Error (No Response):', error.message);
-        }
+        console.error(`[AUTH] Login Error (${error.response?.status || 'Unknown'}):`, error.response?.data || error.message);
         return false;
     }
 }
