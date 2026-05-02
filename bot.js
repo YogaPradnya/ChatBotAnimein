@@ -1981,7 +1981,7 @@ async function processMessages(bot, messages) {
                         if (xpRes.leveledUp) {
                             const gelar = getGelar(xpRes.level, xpRes.custom_title);
                             resultCard.push(
-                                `╭━━ 🌟 *LEVEL UP!* 🌟 ━━╮`,
+                                `╭━━━ 🌟 *LEVEL UP!* 🌟 ━━━╮`,
                                 `┃ 📈 Level Baru: ${xpRes.level}`,
                                 `┃ 👑 Gelar     : ${gelar || '🐣 Wibu Baru'}`,
                                 `╰━━━━━━━━━━━━━━━━━━━╯`
@@ -2050,7 +2050,7 @@ async function processMessages(bot, messages) {
                     const bar = '▰'.repeat(filledCount) + '▱'.repeat(barWidth - filledCount);
 
                     const profileMsg = [
-                        `╭━🔰 *PROFILE INFO* 🔰━╮`,
+                        `╭━━🔰 *PROFILE INFO* 🔰━━╮`,
                         `┃ 👤 User   : @${senderName.substring(0, 15)}`,
                         `┃ 📈 Rank   : #${rank}`,
                         `┃ 🎖️ Gelar  : ${gelar || '🐣 Wibu Baru'}`,
@@ -2076,7 +2076,7 @@ async function processMessages(bot, messages) {
                 try {
                     const res = await db.execute("SELECT username, level, xp FROM user_stats ORDER BY xp DESC LIMIT 10");
                     let rankMsg = [
-                        `╭━ 🏆 *LEADERBOARD RARA* 🏆 ━╮`,
+                        `╭ 🏆 *LEADERBOARD RARA* 🏆 ╮`,
                         `┣━━━━━━━━━━━━━━━━━━━┫`
                     ];
                     const medals = ['🥇','🥈','🥉','🎖️','🎖️','🏅','🏅','🏅','🏅','🏅'];
