@@ -534,11 +534,17 @@ async function expireQuiz(bot, lastMsgId) {
     if (!activeQuiz.isRunning) return;
     activeQuiz.isRunning = false;
     clearQuizTimers();
-    await sendChatMessage(
-        bot,
-        `Waktu kuis habis! Tidak ada yang berhasil menebak.\nJawaban yang benar: ${activeQuiz.original}`,
-        lastMsgId
-    );
+
+    const timeoutMsg = [
+        `╭━⌛ *WAKTU HABIS* ⌛━╮`,
+        `┃ Maaf, waktu kuis sudah habis!`,
+        `┃ Tidak ada yang berhasil menebak.`,
+        `┣━━━━━━━━━━━━━━━━━━━┫`,
+        `┃ 💡 Jawaban: *${activeQuiz.original}*`,
+        `╰━━━━━━━━━━━━━━━━━━━╯`
+    ].join('\n');
+
+    await sendChatMessage(bot, timeoutMsg, lastMsgId);
 }
 
 async function startQuiz(bot, senderName, msgId, forcedId = null) {
@@ -1962,12 +1968,27 @@ async function processMessages(bot, messages) {
                         
                         const xpRes = await addXP(senderName, xpEarned);
                         const finalDisplayXP = (XP_MULTIPLIER > 1 && xpEarned > 0) ? xpEarned * XP_MULTIPLIER : xpEarned;
-                        let result = `🎉 BENAR! @${senderName} menebak: ${activeQuiz.original}\n💰 XP: +${finalDisplayXP} ${XP_MULTIPLIER > 1 ? '(Event x' + XP_MULTIPLIER + '!)' : ''} (Salah Tebak Total: ${activeQuiz.wrongGuessCount || 0})`;
+                        
+                        const resultCard = [
+                            `╭━━ 🎉 *KUIS SELESAI* 🎉 ━━╮`,
+                            `┃ 👤 Pemenang : @${senderName}`,
+                            `┃ 💡 Jawaban  : ${activeQuiz.original}`,
+                            `┃ 💰 Hadiah   : +${finalDisplayXP.toLocaleString('id-ID')} XP ${XP_MULTIPLIER > 1 ? `(x${XP_MULTIPLIER}!)` : ''}`,
+                            `┃ ❌ Salah    : ${activeQuiz.wrongGuessCount || 0} kali`,
+                            `╰━━━━━━━━━━━━━━━━━━━╯`
+                        ];
+
                         if (xpRes.leveledUp) {
                             const gelar = getGelar(xpRes.level, xpRes.custom_title);
-                            result += `\n🌟 SELAMAT! @${senderName} naik ke Level ${xpRes.level}! ${gelar ? `\n👑 Gelar Baru: *${gelar}*` : ''}`;
+                            resultCard.push(
+                                `╭━━ 🌟 *LEVEL UP!* 🌟 ━━╮`,
+                                `┃ 📈 Level Baru: ${xpRes.level}`,
+                                `┃ 👑 Gelar     : ${gelar || '🐣 Wibu Baru'}`,
+                                `╰━━━━━━━━━━━━━━━━━━━╯`
+                            );
                         }
-                        await sendChatMessage(bot, result, msg.id);
+                        
+                        await sendChatMessage(bot, resultCard.join('\n'), msg.id);
                     } else {
                         activeQuiz.wrongGuessCount = (activeQuiz.wrongGuessCount || 0) + 1;
                         activeQuiz.wrongGuessers.add(senderName);
@@ -2001,8 +2022,24 @@ async function processMessages(bot, messages) {
             if (lowerMsg === '.profil') {
                 if (bot.isCooldown) continue;
                 try {
-                    const res = await db.execute({ sql: "SELECT xp, level, custom_title FROM user_stats WHERE username = ?", args: [senderName] });
-                    const {xp, level, custom_title} = res.rows[0] || {xp:0, level:1, custom_title: null};
+                    // Ambil data user beserta peringkat (rank) berdasarkan XP
+                    const res = await db.execute({ 
+                        sql: `SELECT xp, level, custom_title,
+                              (SELECT COUNT(*) + 1 FROM user_stats u2 WHERE u2.xp > u1.xp) as rank
+                              FROM user_stats u1 WHERE username = ?`, 
+                        args: [senderName] 
+                    });
+
+                    let userData;
+                    if (res.rows.length > 0) {
+                        userData = res.rows[0];
+                    } else {
+                        // Fallback jika user belum tercatat di database
+                        const totalRes = await db.execute("SELECT COUNT(*) + 1 as total FROM user_stats");
+                        userData = { xp: 0, level: 1, custom_title: null, rank: totalRes.rows[0].total };
+                    }
+
+                    const {xp, level, custom_title, rank} = userData;
                     const gelar = getGelar(level, custom_title);
                     const req = Math.floor(50 * Math.pow(level, 3));
                     const toNext = req - xp;
@@ -2013,21 +2050,24 @@ async function processMessages(bot, messages) {
                     const bar = '▰'.repeat(filledCount) + '▱'.repeat(barWidth - filledCount);
 
                     const profileMsg = [
-                        `╭━ 🔰 *PROFILE INFO* 🔰 ━╮`,
-                        `┃ User   : @${senderName.substring(0, 15)}`,
-                        `┃ Rank   : ${gelar || '🐣 Wibu Baru'}`,
+                        `╭━🔰 *PROFILE INFO* 🔰━╮`,
+                        `┃ 👤 User   : @${senderName.substring(0, 15)}`,
+                        `┃ 📈 Rank   : #${rank}`,
+                        `┃ 🎖️ Gelar  : ${gelar || '🐣 Wibu Baru'}`,
                         `┣━━━━━━━━━━━━━━━━━━━┫`,
-                        `┃ Level  : ${level.toString().padEnd(10)} 🏆`,
-                        `┃ XP     : ${xp.toLocaleString('id-ID')} / ${req.toLocaleString('id-ID')}`,
-                        `┃ Sisa   : ${toNext.toLocaleString('id-ID')} XP lagi`,
+                        `┃ 📊 Level  : ${level.toString().padEnd(10)} 🏆`,
+                        `┃ ✨ XP     : ${xp.toLocaleString('id-ID')} / ${req.toLocaleString('id-ID')}`,
+                        `┃ ⏳ Sisa   : ${toNext.toLocaleString('id-ID')} XP lagi`,
                         `┣━━━━━━━━━━━━━━━━━━━┫`,
-                        `┃ Progress: ${percentage}%`,
+                        `┃ Progress : ${percentage}%`,
                         `┃ ${bar}`,
                         `╰━━━━━━━━━━━━━━━━━━━╯`
                     ].join('\n');
 
                     await sendChatMessage(bot, profileMsg, msg.id);
-                } catch(e) {}
+                } catch(e) {
+                    console.error("[PROFIL ERROR]", e);
+                }
                 continue;
             }
 
@@ -2035,13 +2075,17 @@ async function processMessages(bot, messages) {
                 if (bot.isCooldown) continue;
                 try {
                     const res = await db.execute("SELECT username, level, xp FROM user_stats ORDER BY xp DESC LIMIT 10");
-                    let rankMsg = `🏆 [LEADERBOARD RARA] 🏆\n${'='.repeat(23)}\n`;
+                    let rankMsg = [
+                        `╭━ 🏆 *LEADERBOARD RARA* 🏆 ━╮`,
+                        `┣━━━━━━━━━━━━━━━━━━━┫`
+                    ];
                     const medals = ['🥇','🥈','🥉','🎖️','🎖️','🏅','🏅','🏅','🏅','🏅'];
                     res.rows.forEach((r, i) => {
                         const displayName = r.username.length > 10 ? r.username.substring(0, 10) : r.username;
-                        rankMsg += `${medals[i]} ${displayName.padEnd(11)} Lvl ${r.level} (${r.xp} XP)\n`;
+                        rankMsg.push(`┃ ${medals[i]} ${displayName.padEnd(11)} Lvl ${r.level.toString().padEnd(2)} (${r.xp} XP)`);
                     });
-                    await sendChatMessage(bot, rankMsg, msg.id);
+                    rankMsg.push(`╰━━━━━━━━━━━━━━━━━━━╯`);
+                    await sendChatMessage(bot, rankMsg.join('\n'), msg.id);
                 } catch(e) {}
                 continue;
             }
@@ -2057,7 +2101,15 @@ async function processMessages(bot, messages) {
                     } else {
                         const minutes = Math.floor(diff / 60000);
                         const seconds = Math.floor((diff % 60000) / 1000);
-                        await sendChatMessage(bot, `⏳ @${senderName} Kuis selanjutnya akan muncul dalam: ${minutes} menit ${seconds} detik.`, msg.id);
+                        const kuisMsg = [
+                            `╭━━ ⏳ *INFO KUIS* ━━╮`,
+                            `┃ @${senderName.substring(0, 15)}`,
+                            `┃`,
+                            `┃ Kuis selanjutnya dalam:`,
+                            `┃ *${minutes}m ${seconds}s*`,
+                            `╰━━━━━━━━━━━━━━━╯`
+                        ].join('\n');
+                        await sendChatMessage(bot, kuisMsg, msg.id);
                     }
                 }
                 continue;
@@ -2298,7 +2350,17 @@ function startDashboard() {
 
         console.log(`[EVENT] XP x${XP_MULTIPLIER} ENABLED for ${durationMin} minutes. Ends at: ${new Date(doubleXPEndTime).toLocaleTimeString()}`);
         
-        const msg = `🚀 [EVENT] XP x${XP_MULTIPLIER} AKTIF!\n\nSemua kuis dan interaksi memberikan hadiah XP ${XP_MULTIPLIER}x lipat! Event berlaku selama ${durationMin} menit. Ayo kumpulin XP sekarang! 🔥`;
+        const msg = [
+            `╭━━ 🎊 *EVENT AKTIF* 🎊 ━━╮`,
+            `┃ 🚀 *BONUS XP x${XP_MULTIPLIER} AKTIF!*`,
+            `┃`,
+            `┃ Semua kuis & interaksi memberikan`,
+            `┃ hadiah XP *${XP_MULTIPLIER}x lipat*! 🔥`,
+            `┣━━━━━━━━━━━━━━━━━━━┫`,
+            `┃ ⏳ Durasi : ${durationMin} menit`,
+            `┃ ✨ Ayo kumpulin XP sebanyaknya!`,
+            `╰━━━━━━━━━━━━━━━━━━━╯`
+        ].join('\n');
         sendChatMessage(bots[1], msg).catch(e => console.error("[BROADCAST ERROR]:", e.message));
         
         res.json({ success: true, active: true, multiplier: XP_MULTIPLIER, endTime: doubleXPEndTime });
@@ -2311,7 +2373,16 @@ function startDashboard() {
         if (doubleXPTimeout) clearTimeout(doubleXPTimeout);
         doubleXPTimeout = null;
         console.log(`[EVENT] Event Bonus XP: DISABLED`);
-        const msg = "🏁 [EVENT] BONUS XP BERAKHIR!\n\nTerima kasih sudah berpartisipasi. Hadiah XP kembali normal. Sampai jumpa di event berikutnya! 👋";
+        const msg = [
+            `╭━━ 🏁 *EVENT SELESAI* 🏁 ━━╮`,
+            `┃ *BONUS XP TELAH BERAKHIR!*`,
+            `┃`,
+            `┃ Terima kasih sudah berpartisipasi.`,
+            `┃ Hadiah XP kini kembali normal.`,
+            `┣━━━━━━━━━━━━━━━━━━━┫`,
+            `┃ 👋 Sampai jumpa di event depan!`,
+            `╰━━━━━━━━━━━━━━━━━━━╯`
+        ].join('\n');
         sendChatMessage(bots[1], msg).catch(e => console.error("[BROADCAST ERROR]:", e.message));
     }
 
@@ -2704,10 +2775,19 @@ function startDashboard() {
     app.post('/api/users/update-xp', async (req, res) => {
         const { username, xp, level, custom_title } = req.body;
         try {
+            const finalTitle = custom_title === "" ? null : custom_title;
             await db.execute({ 
                 sql: "UPDATE user_stats SET xp = ?, level = ?, custom_title = ? WHERE username = ?", 
-                args: [xp, level, custom_title === "" ? null : custom_title, username] 
+                args: [xp, level, finalTitle, username] 
             });
+
+            // Update cache agar tidak ditimpa oleh Sync Interval (Bug Fix)
+            if (USER_STATS_CACHE[username]) {
+                USER_STATS_CACHE[username].xp = parseInt(xp);
+                USER_STATS_CACHE[username].level = parseInt(level);
+                USER_STATS_CACHE[username].custom_title = finalTitle;
+            }
+
             res.json({ success: true });
         } catch (e) { res.status(500).json({ success: false, error: e.message }); }
     });
