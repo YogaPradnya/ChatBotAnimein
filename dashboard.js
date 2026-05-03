@@ -503,8 +503,19 @@ function getDashboardHTML() {
     <div style="display:flex; align-items:center;">
         <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
         <h2 id="pageTitle">Dashboard</h2>
+        <div id="systemOffWarning" style="display:none; margin-left:20px; background:var(--red); color:#fff; padding:4px 12px; border-radius:8px; font-size:11px; font-weight:800; animation: pulse 2s infinite;">⚠️ MAINTENANCE MODE ACTIVE (BOT DISABLED)</div>
     </div>
+    <style>
+      @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+    </style>
     <div class="topbar-actions">
+      <div class="bot-toggle-wrap">
+        <span class="bot-toggle-lbl" style="color:var(--red); font-weight:800;">KILL SWITCH</span>
+        <div class="bot-toggle-pill" id="systemTogglePill" onclick="toggleSystem()" style="border-color:var(--red);">
+          <span class="btp-on" style="background:var(--red);">OFF</span>
+          <span class="btp-off" style="background:#e5e7eb; color:#9ca3af;">ON</span>
+        </div>
+      </div>
       <div class="bot-toggle-wrap" style="gap:10px; padding-right:5px; background: #fff; border-radius:14px; border: 1px solid var(--border);">
         <span class="bot-toggle-lbl" style="margin:0 0 0 12px;">XP Event <span id="xpTimer" style="font-size:10px; color:var(--accent); font-weight:800; margin-left:4px;"></span></span>
         <div style="display:flex; align-items:center; gap:8px;">
@@ -1093,6 +1104,7 @@ function getDashboardHTML() {
 <script>
   let stats = {};
   let isBotActive = false;
+  let isSystemOff = false;
   let isDoubleXP = false;
   let activityData = [];
   let availableTitles = [];
@@ -1117,7 +1129,22 @@ function getDashboardHTML() {
       body: JSON.stringify({ role: role || 'info' })
     });
     const d = await res.json();
-    render({ ...stats, isBotInfoActive: d.isBotInfoActive, isBotKuisActive: d.isBotKuisActive });
+    render({ ...stats, isBotInfoActive: d.isBotInfoActive, isBotKuisActive: d.isBotKuisActive, isSystemOff: d.isSystemOff });
+  }
+
+  async function toggleSystem() {
+    const ok = await customConfirm(
+        isSystemOff ? 'Aktifkan kembali seluruh sistem bot?' : 'MATIKAN seluruh sistem bot? Ini akan menghentikan polling pesan dan respon API.', 
+        isSystemOff ? 'Aktifkan Sistem' : 'Emergency Kill Switch',
+        isSystemOff ? 'Ya, Aktifkan' : 'Ya, Matikan',
+        !isSystemOff
+    );
+    if (!ok) return;
+
+    const res = await fetch('/api/system/toggle', { method: 'POST' });
+    const d = await res.json();
+    isSystemOff = d.isSystemOff;
+    refresh();
   }
   
   async function toggleXPEvent() {
@@ -1231,6 +1258,27 @@ async function updateStats() {
     if (kuisPill) {
       if (isBotKuisOn) kuisPill.classList.add('is-on'); else kuisPill.classList.remove('is-on');
     }
+
+    isSystemOff = d.isSystemOff || false;
+    const sysPill = document.getElementById('systemTogglePill');
+    const sysWarn = document.getElementById('systemOffWarning');
+    if (sysPill) {
+        // Toggle pill visual: On = System running, Off = System killed
+        if (isSystemOff) {
+            sysPill.classList.add('is-off'); // We need to define is-off or handle it
+            sysPill.querySelector('.btp-on').style.background = 'var(--red)';
+            sysPill.querySelector('.btp-on').style.color = '#fff';
+            sysPill.querySelector('.btp-off').style.background = '#e5e7eb';
+            sysPill.querySelector('.btp-off').style.color = '#9ca3af';
+        } else {
+            sysPill.classList.remove('is-off');
+            sysPill.querySelector('.btp-on').style.background = '#e5e7eb';
+            sysPill.querySelector('.btp-on').style.color = '#9ca3af';
+            sysPill.querySelector('.btp-off').style.background = 'var(--green)';
+            sysPill.querySelector('.btp-off').style.color = '#fff';
+        }
+    }
+    if (sysWarn) sysWarn.style.display = isSystemOff ? 'block' : 'none';
 
     const isXpOn = d.isDoubleXP;
     doubleXPEndTime = d.doubleXPEndTime || 0;

@@ -80,6 +80,12 @@ async function initDB() {
     }
     try {
         await db.execute(`
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        `);
+        await db.execute(`
             CREATE TABLE IF NOT EXISTS chat_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT,
@@ -250,6 +256,13 @@ async function initDB() {
         if (quizCountRes.rows.length > 0) {
             stats.totalQuizzesStarted = parseInt(quizCountRes.rows[0].value) || 0;
             console.log(`[QUIZ] Total quizzes started loaded: ${stats.totalQuizzesStarted}`);
+        }
+
+        // Load System Off State from DB
+        const sysOffRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'is_system_off'" });
+        if (sysOffRes.rows.length > 0) {
+            isSystemOff = sysOffRes.rows[0].value === 'true';
+            console.log(`[KILL SWITCH] Initial state from DB: ${isSystemOff ? 'OFF' : 'ON'}`);
         }
 
         // Load Banned Users from DB
@@ -846,6 +859,7 @@ setTimeout(updateDBStats, 5000);
 
 let isBotInfoActive = false;  // Bot AI (info)
 let isBotKuisActive = false;  // Bot Kuis (game)
+let isSystemOff = false;      // Global Kill Switch
 let XP_MULTIPLIER = 1;
 let doubleXPTimeout = null;
 let doubleXPEndTime = 0;
@@ -2238,6 +2252,7 @@ async function startBot() {
 
     // Main Polling Loop
     setInterval(async () => {
+        if (isSystemOff) return; // KILL SWITCH
         for (const bot of bots) {
             if (!bot.auth.userId) continue;
             
@@ -2279,7 +2294,7 @@ function resetAutoQuizTimer() {
     nextQuizTime = Date.now() + (60 * 60 * 1000);
     
     autoQuizInterval = setInterval(async () => {
-        if (isBotKuisActive && bots[1] && bots[1].auth.userId) {
+        if (isBotKuisActive && !isSystemOff && bots[1] && bots[1].auth.userId) {
             console.log("[AUTO-QUIZ] Menjalankan kuis otomatis...");
             nextQuizTime = Date.now() + (60 * 60 * 1000);
             await startQuiz(bots[1], 'System', '0');
@@ -2547,6 +2562,7 @@ function startDashboard() {
                 isBotActive: isBotInfoActive, // backward compat
                 isBotInfoActive,
                 isBotKuisActive,
+                isSystemOff,
                 isDoubleXP: XP_MULTIPLIER > 1,
                 xpMultiplier: XP_MULTIPLIER,
                 doubleXPEndTime: doubleXPEndTime,
@@ -2590,12 +2606,28 @@ function startDashboard() {
         if (role === 'kuis') {
             isBotKuisActive = !isBotKuisActive;
             console.log(`[DASHBOARD] Bot Kuis: ${isBotKuisActive ? 'ON' : 'OFF'}`);
-            res.json({ success: true, isBotInfoActive, isBotKuisActive });
+            res.json({ success: true, isBotInfoActive, isBotKuisActive, isSystemOff });
         } else {
             isBotInfoActive = !isBotInfoActive;
             console.log(`[DASHBOARD] Bot Info: ${isBotInfoActive ? 'ON' : 'OFF'}`);
-            res.json({ success: true, isBotInfoActive, isBotKuisActive });
+            res.json({ success: true, isBotInfoActive, isBotKuisActive, isSystemOff });
         }
+    });
+
+    app.post('/api/system/toggle', async (req, res) => {
+        isSystemOff = !isSystemOff;
+        console.log(`[KILL SWITCH] System: ${isSystemOff ? 'OFF (Maintenance)' : 'ON (Running)'}`);
+        
+        try {
+            await db.execute({ 
+                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('is_system_off', ?)", 
+                args: [String(isSystemOff)] 
+            });
+        } catch (e) {
+            console.error("[KILL SWITCH] Gagal simpan ke DB:", e.message);
+        }
+        
+        res.json({ success: true, isSystemOff });
     });
 
     app.post('/api/chat/send', async (req, res) => {
