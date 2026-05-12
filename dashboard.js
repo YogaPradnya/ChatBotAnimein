@@ -503,7 +503,7 @@ function getDashboardHTML() {
     <div style="display:flex; align-items:center;">
         <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
         <h2 id="pageTitle">Dashboard</h2>
-        <div id="systemOffWarning" style="display:none; margin-left:20px; background:var(--red); color:#fff; padding:4px 12px; border-radius:8px; font-size:11px; font-weight:800; animation: pulse 2s infinite;">⚠️ MAINTENANCE MODE ACTIVE (BOT DISABLED)</div>
+        <div id="systemOffWarning" style="display:none; margin-left:20px; background:var(--red); color:#fff; padding:4px 12px; border-radius:8px; font-size:11px; font-weight:800; animation: pulse 2s infinite;">⚠️ KILL SWITCH ON (SEMUA AKSI BOT DIBLOKIR)</div>
     </div>
     <style>
       @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
@@ -511,8 +511,8 @@ function getDashboardHTML() {
     <div class="topbar-actions">
       <div class="bot-toggle-wrap">
         <span class="bot-toggle-lbl" style="color:var(--red); font-weight:800;">KILL SWITCH</span>
-        <div class="bot-toggle-pill" id="systemTogglePill" onclick="toggleSystem()" style="border-color:var(--red);">
-          <span class="btp-on" style="background:var(--red);">OFF</span>
+        <div class="bot-toggle-pill" id="systemTogglePill" onclick="toggleSystem()" style="border-color:var(--green);">
+          <span class="btp-on" style="background:var(--green); color:#fff;">OFF</span>
           <span class="btp-off" style="background:#e5e7eb; color:#9ca3af;">ON</span>
         </div>
       </div>
@@ -1109,11 +1109,23 @@ function getDashboardHTML() {
   let activityData = [];
   let availableTitles = [];
   let doubleXPEndTime = 0;
+  let nextMicrofetchTime = 0; // Timestamp kapan microfetch berikutnya
   const DEFAULT_TITLES = [
     "🏷️ Ksatria Animein",
     "⚔️ Legenda Otaku",
     "🏆 Dewa Animein"
   ];
+
+  function escapeHTML(value) {
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+  }
+
+  function jsString(value) {
+    const jsonBody = JSON.stringify(String(value ?? '')).slice(1, -1);
+    return escapeHTML(jsonBody.replaceAll("'", "\\\\'"));
+  }
 
   function getUserTitle(level, customTitle = null) {
     if (customTitle) return customTitle;
@@ -1128,7 +1140,12 @@ function getDashboardHTML() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ role: role || 'info' })
     });
-    const d = await res.json();
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || d.success === false) {
+      alert(d.message || 'Gagal mengubah status bot.');
+      refresh();
+      return;
+    }
     render({ ...stats, isBotInfoActive: d.isBotInfoActive, isBotKuisActive: d.isBotKuisActive, isSystemOff: d.isSystemOff });
   }
 
@@ -1142,8 +1159,14 @@ function getDashboardHTML() {
     if (!ok) return;
 
     const res = await fetch('/api/system/toggle', { method: 'POST' });
-    const d = await res.json();
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || d.success === false) {
+      alert(d.message || 'Gagal mengubah Kill Switch.');
+      refresh();
+      return;
+    }
     isSystemOff = d.isSystemOff;
+    render({ ...stats, isSystemOff: d.isSystemOff, isBotInfoActive: d.isBotInfoActive, isBotKuisActive: d.isBotKuisActive });
     refresh();
   }
   
@@ -1177,6 +1200,26 @@ function getDashboardHTML() {
     el.textContent = '(' + m + ':' + s + ')';
   }
   setInterval(updateXPTimer, 1000);
+
+  function updateMicrofetchCountdown() {
+    const el = document.getElementById('quizCountdown');
+    if (!el) return;
+    if (!nextMicrofetchTime || nextMicrofetchTime <= 0) {
+      el.textContent = '--:--';
+      return;
+    }
+    const diff = nextMicrofetchTime - Date.now();
+    if (diff <= 0) {
+      el.textContent = 'Sebentar lagi...';
+      return;
+    }
+    const totalSec = Math.floor(diff / 1000);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60).toString().padStart(2, '0');
+    const s = (totalSec % 60).toString().padStart(2, '0');
+    el.textContent = h > 0 ? \`\${h}:\${m}:\${s}\` : \`\${m}:\${s}\`;
+  }
+  setInterval(updateMicrofetchCountdown, 1000);
 
   async function clearCache() {
     const ok = await customConfirm('Semua cache jawaban AI akan dihapus. Performa AI mungkin sedikit melambat sementara.', 'Hapus Cache', 'Hapus');
@@ -1242,7 +1285,7 @@ async function updateStats() {
 
   function render(d) {
     if (!d) return;
-    const online = d.botStatus === 'online';
+    const online = d.botStatus === 'online' && !d.isSystemOff;
     const dot = document.getElementById('statusDot');
     const lbl = document.getElementById('statusLabel');
     if (dot) dot.style.background = online ? 'var(--green)' : 'var(--red)';
@@ -1263,19 +1306,21 @@ async function updateStats() {
     const sysPill = document.getElementById('systemTogglePill');
     const sysWarn = document.getElementById('systemOffWarning');
     if (sysPill) {
-        // Toggle pill visual: On = System running, Off = System killed
+        const offSegment = sysPill.querySelector('.btp-on');
+        const onSegment = sysPill.querySelector('.btp-off');
+        sysPill.classList.remove('is-on', 'is-off');
         if (isSystemOff) {
-            sysPill.classList.add('is-off'); // We need to define is-off or handle it
-            sysPill.querySelector('.btp-on').style.background = 'var(--red)';
-            sysPill.querySelector('.btp-on').style.color = '#fff';
-            sysPill.querySelector('.btp-off').style.background = '#e5e7eb';
-            sysPill.querySelector('.btp-off').style.color = '#9ca3af';
+            sysPill.style.borderColor = 'var(--red)';
+            offSegment.style.background = '#e5e7eb';
+            offSegment.style.color = '#9ca3af';
+            onSegment.style.background = 'var(--red)';
+            onSegment.style.color = '#fff';
         } else {
-            sysPill.classList.remove('is-off');
-            sysPill.querySelector('.btp-on').style.background = '#e5e7eb';
-            sysPill.querySelector('.btp-on').style.color = '#9ca3af';
-            sysPill.querySelector('.btp-off').style.background = 'var(--green)';
-            sysPill.querySelector('.btp-off').style.color = '#fff';
+            sysPill.style.borderColor = 'var(--green)';
+            offSegment.style.background = 'var(--green)';
+            offSegment.style.color = '#fff';
+            onSegment.style.background = '#e5e7eb';
+            onSegment.style.color = '#9ca3af';
         }
     }
     if (sysWarn) sysWarn.style.display = isSystemOff ? 'block' : 'none';
@@ -1312,6 +1357,12 @@ async function updateStats() {
     setT('filterBlockedCount', (d.filter?.blocked||0).toLocaleString('id-ID'));
     setT('kuisDashboardTotal', (d.totalDBKuis||0).toLocaleString('id-ID'));
     setT('kuisPageTotalDB', (d.totalDBKuis||0).toLocaleString('id-ID'));
+
+    // Update nextMicrofetch countdown target
+    if (d.nextMicrofetch) {
+      nextMicrofetchTime = d.nextMicrofetch;
+      updateMicrofetchCountdown();
+    }
 
     const kPageStatus = document.getElementById('kuisPageStatus');
     const kPageCard = document.getElementById('kuisPageCurrentCard');
@@ -1370,13 +1421,13 @@ async function updateStats() {
           aList.innerHTML = activityData.map(a => \`
             <div class="activity-item">
               <div class="activity-meta">
-                <span class="activity-user">\${a.from || 'User'}</span>
-                <span class="activity-time">\${a.time}</span>
+                <span class="activity-user">\${escapeHTML(a.from || 'User')}</span>
+                <span class="activity-time">\${escapeHTML(a.time)}</span>
               </div>
-              <div class="activity-q">\${a.text || ''}</div>
-              <div class="activity-a">\${a.response || ''}</div>
+              <div class="activity-q">\${escapeHTML(a.text || '')}</div>
+              <div class="activity-a">\${escapeHTML(a.response || '')}</div>
               <div style="margin-top:5px; display:flex; gap:5px;">
-                <span class="prov-tag">\${a.provider}</span>
+                <span class="prov-tag">\${escapeHTML(a.provider)}</span>
                 \${a.tokens ? \`<span class="prov-tag" style="background:var(--blue); color:#fff; border:none;">\${a.tokens} tokens</span>\` : ''}
               </div>
             </div>
@@ -1449,19 +1500,29 @@ async function updateStats() {
     const inp = document.getElementById('manualText');
     const text = inp.value.trim();
     if (!text) return;
-    await fetch('/api/chat/send', {
+    const res = await fetch('/api/chat/send', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, botIndex: selectedBotIndex })
     });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || d.success === false) {
+      alert(d.message || 'Pesan gagal dikirim.');
+      return;
+    }
     inp.value = '';
     refresh();
   }
   async function sendTemplate(type) {
     const text = type === 'online' ? "Halo kawan-kawan! Rara is back ONLINE! Ayo sapa Rara sekarang atau ajak main kuis! 🚀" : "Rara izin istirahat dulu yaa, see you later kawan-kawan! Rara OFFLINE dulu 👋";
-    await fetch('/api/chat/send', {
+    const res = await fetch('/api/chat/send', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, botIndex: selectedBotIndex })
     });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || d.success === false) {
+      alert(d.message || 'Pesan template gagal dikirim.');
+      return;
+    }
     refresh();
   }
 
@@ -1477,8 +1538,8 @@ async function updateStats() {
     if (!tbody) return;
     tbody.innerHTML = data.map(c => \`
       <tr>
-        <td class="td-key">\${c.question_key}</td>
-        <td><span class="kw-domain">\${c.domain || 'general'}</span></td>
+        <td class="td-key">\${escapeHTML(c.question_key)}</td>
+        <td><span class="kw-domain">\${escapeHTML(c.domain || 'general')}</span></td>
         <td style="font-weight:700;">\${c.hits}</td>
         <td style="font-size:11px; color:var(--muted);">\${c.variations_count} vrs</td>
         <td class="td-actions">
@@ -1550,12 +1611,12 @@ async function updateStats() {
     const list = document.getElementById('domainTagList');
     list.innerHTML = d.domains.map(dom => \`
       <span style="background:var(--accent-light); color:var(--accent); border:1px solid #fed7aa; padding:4px 10px; border-radius:12px; font-size:11px; font-weight:700; display:flex; align-items:center; gap:5px;">
-        \${dom} <span onclick="deleteDomain('\${dom}')" style="cursor:pointer; opacity:0.6;">&times;</span>
+        \${escapeHTML(dom)} <span onclick="deleteDomain('\${jsString(dom)}')" style="cursor:pointer; opacity:0.6;">&times;</span>
       </span>
     \`).join('');
     
     const sel = document.getElementById('kwDomain');
-    sel.innerHTML = d.domains.map(dom => \`<option value="\${dom}">\${dom}</option>\`).join('');
+    sel.innerHTML = d.domains.map(dom => \`<option value="\${escapeHTML(dom)}">\${escapeHTML(dom)}</option>\`).join('');
   }
   async function addNewDomain() {
     const i = document.getElementById('newDomainInput');
@@ -1589,8 +1650,8 @@ async function updateStats() {
       <div class="kw-item">
         <div class="kw-header">
           <div class="kw-header-left" onclick="toggleKw(\${i})">
-            <span class="kw-domain">\${k.domain}</span>
-            <span style="font-weight:700; font-size:13px;">\${k.keywords[0]} \${k.keywords.length > 1 ? '<span style="color:#aaa;">+'+(k.keywords.length-1)+'</span>' : ''}</span>
+            <span class="kw-domain">\${escapeHTML(k.domain)}</span>
+            <span style="font-weight:700; font-size:13px;">\${escapeHTML(k.keywords[0])} \${k.keywords.length > 1 ? '<span style="color:#aaa;">+'+(k.keywords.length-1)+'</span>' : ''}</span>
           </div>
           <div style="display:flex; gap:6px;">
             <button class="btn-sm btn-sm-edit" onclick="editKwInner(\${i})">Edit</button>
@@ -1598,8 +1659,8 @@ async function updateStats() {
           </div>
         </div>
         <div class="kw-body" id="kw-body-\${i}">
-          <div class="kw-info">\${k.info}</div>
-          <div class="kw-keywords">Keywords: \${k.keywords.join(', ')}</div>
+          <div class="kw-info">\${escapeHTML(k.info)}</div>
+          <div class="kw-keywords">Keywords: \${escapeHTML(k.keywords.join(', '))}</div>
         </div>
       </div>
     \`).join('');
@@ -1659,9 +1720,9 @@ async function updateStats() {
     }
     tbody.innerHTML = d.autoreply.map(a => \`
       <tr>
-        <td style="font-weight:700; color:var(--accent);">\${a.keyword}</td>
-        <td style="font-size:13px; color:#555;">\${a.answer}</td>
-        <td><button class="btn-sm btn-sm-del" onclick="deleteAutoReply('\${a.keyword}')">Hapus</button></td>
+        <td style="font-weight:700; color:var(--accent);">\${escapeHTML(a.keyword)}</td>
+        <td style="font-size:13px; color:#555;">\${escapeHTML(a.answer)}</td>
+        <td><button class="btn-sm btn-sm-del" onclick="deleteAutoReply('\${jsString(a.keyword)}')">Hapus</button></td>
       </tr>
     \`).join('');
   }
@@ -1701,9 +1762,9 @@ async function updateStats() {
     tbody.innerHTML = data.map((l, i) => \`
       <tr>
         <td style="font-weight:700; color:var(--muted);">\${i+1}</td>
-        <td style="font-weight:700; color:var(--accent);">@\${l.username || '-'}</td>
-        <td style="max-width:300px;">\${l.pesan || '-'}</td>
-        <td><span style="background:\${statusColor[l.status]||'#ccc'};color:#fff;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;">\${l.status||'baru'}</span></td>
+        <td style="font-weight:700; color:var(--accent);">@\${escapeHTML(l.username || '-')}</td>
+        <td style="max-width:300px;">\${escapeHTML(l.pesan || '-')}</td>
+        <td><span style="background:\${statusColor[l.status]||'#ccc'};color:#fff;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;">\${escapeHTML(l.status||'baru')}</span></td>
         <td style="font-size:11px; color:var(--muted);">\${l.timestamp ? new Date(l.timestamp).toLocaleString('id-ID') : '-'}</td>
         <td class="td-actions">
           \${l.status !== 'selesai' ? \`<button class="btn-sm btn-sm-edit" onclick="updateLaporanStatus(\${l.id}, 'selesai')">Selesai</button>\` : ''}
@@ -1761,8 +1822,8 @@ async function updateStats() {
     }
     container.innerHTML = words.map(w => \`
       <span style="display:inline-flex;align-items:center;gap:4px;background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:500;">
-        \${w}
-        <span onclick="deleteFilterWord('\${w.replace(/'/g, "\\\\'")}')" style="cursor:pointer;font-size:15px;line-height:1;margin-left:2px;opacity:0.7;font-weight:700;" title="Hapus kata ini">&times;</span>
+        \${escapeHTML(w)}
+        <span onclick="deleteFilterWord('\${jsString(w)}')" style="cursor:pointer;font-size:15px;line-height:1;margin-left:2px;opacity:0.7;font-weight:700;" title="Hapus kata ini">&times;</span>
       </span>
     \`).join('');
   }
@@ -1817,14 +1878,14 @@ async function updateStats() {
     
     let html = DEFAULT_TITLES.map(t => \`
       <span style="display:inline-flex;align-items:center;gap:6px;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;">
-        \${t} <span style="font-size:10px; opacity:0.5; margin-left:4px;">(System)</span>
+        \${escapeHTML(t)} <span style="font-size:10px; opacity:0.5; margin-left:4px;">(System)</span>
       </span>
     \`).join('');
 
     html += availableTitles.map(t => \`
       <span style="display:inline-flex;align-items:center;gap:6px;background:var(--accent-light);color:var(--accent);border:1px solid #fed7aa;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;">
-        \${t}
-        <span onclick="deleteAvailableTitle('\${t.replace(/'/g, "\\\\'")}')" style="cursor:pointer;font-size:16px;opacity:0.7;font-weight:800;margin-left:4px;">&times;</span>
+        \${escapeHTML(t)}
+        <span onclick="deleteAvailableTitle('\${jsString(t)}')" style="cursor:pointer;font-size:16px;opacity:0.7;font-weight:800;margin-left:4px;">&times;</span>
       </span>
     \`).join('');
 
@@ -1857,12 +1918,12 @@ async function updateStats() {
     
     let html = '<option value="">(Tanpa Gelar Kustom)</option>';
     html += '<optgroup label="System Titles (Auto Fallback)">';
-    html += DEFAULT_TITLES.map(t => \`<option value="\${t}">\${t}</option>\`).join('');
+    html += DEFAULT_TITLES.map(t => \`<option value="\${escapeHTML(t)}">\${escapeHTML(t)}</option>\`).join('');
     html += '</optgroup>';
     
     if (availableTitles.length > 0) {
       html += '<optgroup label="Custom Titles">';
-      html += availableTitles.map(t => \`<option value="\${t}">\${t}</option>\`).join('');
+      html += availableTitles.map(t => \`<option value="\${escapeHTML(t)}">\${escapeHTML(t)}</option>\`).join('');
       html += '</optgroup>';
     }
     
@@ -1896,13 +1957,13 @@ async function updateStats() {
     tbody.innerHTML = filtered.map(item => {
       return \`<tr>
         <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
-          <div style="font-weight:700; color:#1e293b; font-size:12px;">\${item.title}</div>
-          <div style="font-size:9px; color:var(--muted);">ID: \${item.id}</div>
+          <div style="font-weight:700; color:#1e293b; font-size:12px;">\${escapeHTML(item.title)}</div>
+          <div style="font-size:9px; color:var(--muted);">ID: \${escapeHTML(item.id)}</div>
         </td>
-        <td style="padding:12px; border-bottom:1px solid #f1f5f9; color:#64748b; font-size:11px;">\${item.genre || '-'}</td>
-        <td style="padding:12px; border-bottom:1px solid #f1f5f9; text-align:center; font-weight:700; color:var(--accent); font-size:12px;">\${item.score || '0.0'}</td>
+        <td style="padding:12px; border-bottom:1px solid #f1f5f9; color:#64748b; font-size:11px;">\${escapeHTML(item.genre || '-')}</td>
+        <td style="padding:12px; border-bottom:1px solid #f1f5f9; text-align:center; font-weight:700; color:var(--accent); font-size:12px;">\${escapeHTML(item.score || '0.0')}</td>
         <td style="padding:12px; border-bottom:1px solid #f1f5f9; text-align:right;">
-          <button class="btn-primary" onclick="triggerSpecificQuiz(\${item.id}, '\${item.title.replace(/'/g, "\\\\'")}')" 
+          <button class="btn-primary" onclick="triggerSpecificQuiz(\${item.id}, '\${jsString(item.title)}')" 
             style="padding:6px 12px; font-size:10px; border-radius:6px; background:var(--accent); border:none; box-shadow:none;">
             Kirim
           </button>
@@ -1938,6 +1999,7 @@ async function updateStats() {
       const res = await fetch('/api/quiz/trigger', { method: 'POST' });
       const d = await res.json();
       if (d.success) { alert('Sukses!'); refresh(); }
+      else { alert('Gagal: ' + (d.message || 'Tidak diketahui')); }
     } catch(e) { console.error(e); }
   }
 
@@ -1946,8 +2008,8 @@ async function updateStats() {
     btn.disabled = true;
     btn.textContent = 'Proses...';
     const res = await fetch('/api/quiz/refetch', { method: 'POST' });
-    const d = await res.json();
-    alert(d.message);
+    const d = await res.json().catch(() => ({}));
+    alert(d.message || (res.ok ? 'Proses fetch dimulai.' : 'Refetch gagal.'));
     setTimeout(() => { btn.disabled = false; btn.textContent = 'Ambil Data Baru'; }, 5000);
   }
   async function resetQuizData() {
@@ -1995,13 +2057,14 @@ async function updateStats() {
       tbody.innerHTML = d.data.map((u, i) => {
         const req = Math.floor(50 * Math.pow(u.level, 3));
         const title = getUserTitle(u.level, u.custom_title);
-        const safeTitle = (u.custom_title || '').replace(/'/g, "\\'");
+        const safeTitle = jsString(u.custom_title || '');
+        const safeUsername = jsString(u.username);
         return \`<tr>
           <td style="font-weight:700; color:var(--muted); text-align:center;">\${i+1}</td>
-          <td style="font-weight:700; color:var(--accent); font-size:13px;">@\${u.username}<div style="font-size:10px; color:var(--muted); font-weight:500;">\${title}</div></td>
+          <td style="font-weight:700; color:var(--accent); font-size:13px;">@\${escapeHTML(u.username)}<div style="font-size:10px; color:var(--muted); font-weight:500;">\${escapeHTML(title)}</div></td>
           <td style="text-align:center;"><span class="prov-tag" style="background:var(--accent); color:#fff; border:none; padding:2px 6px;">Lv \${u.level}</span></td>
           <td style="font-weight:600; font-size:11px; white-space:nowrap;">\${(u.xp||0).toLocaleString('id-ID')}<br>\${req.toLocaleString('id-ID')}</td>
-          <td class="td-actions"><button class="btn-sm btn-sm-edit" onclick="editUserStats('\${u.username}', \${u.level}, \${u.xp}, '\${safeTitle}')">Edit</button></td>
+          <td class="td-actions"><button class="btn-sm btn-sm-edit" onclick="editUserStats('\${safeUsername}', \${u.level}, \${u.xp}, '\${safeTitle}')">Edit</button></td>
           </tr>\`;
       }).join('');
     } catch(e) {}
@@ -2070,11 +2133,11 @@ async function updateStats() {
       list.innerHTML = d.banned.map(b =>
         \`<div style="display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--bg); border-radius:10px; border:1px solid var(--border);">
           <div style="flex:1;">
-            <div style="font-weight:700; color:var(--text); font-size:13px;">@\${b.username}</div>
-            \${b.reason ? \`<div style="font-size:11px; color:var(--muted);">Alasan: \${b.reason}</div>\` : ''}
+            <div style="font-weight:700; color:var(--text); font-size:13px;">@\${escapeHTML(b.username)}</div>
+            \${b.reason ? \`<div style="font-size:11px; color:var(--muted);">Alasan: \${escapeHTML(b.reason)}</div>\` : ''}
             <div style="font-size:10px; color:var(--muted);">\${b.banned_at ? new Date(b.banned_at).toLocaleString('id-ID') : ''}</div>
           </div>
-          <button onclick="unbanUser('\${b.username}')" style="padding:5px 12px; font-size:11px; font-weight:700; background:var(--accent); color:#fff; border:none; border-radius:8px; cursor:pointer;">Unban</button>
+          <button onclick="unbanUser('\${jsString(b.username)}')" style="padding:5px 12px; font-size:11px; font-weight:700; background:var(--accent); color:#fff; border:none; border-radius:8px; cursor:pointer;">Unban</button>
         </div>\`
       ).join('');
     } catch(e) {}
