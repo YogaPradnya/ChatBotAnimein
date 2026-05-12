@@ -92,6 +92,130 @@ function getDashboardHTML() {
     --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
     --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
   }
+
+  /* TOAST NOTIFICATIONS */
+  #toastContainer {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    pointer-events: none;
+  }
+  .toast {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    border-radius: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-lg);
+    min-width: 300px;
+    max-width: 420px;
+    font-size: 13px;
+    font-weight: 600;
+    animation: slideInRight 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    pointer-events: auto;
+    backdrop-filter: blur(8px);
+  }
+  @keyframes slideInRight {
+    from {
+      transform: translateX(400px);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+  @keyframes slideOutRight {
+    from {
+      transform: translateX(0);
+      opacity: 1;
+    }
+    to {
+      transform: translateX(400px);
+      opacity: 0;
+    }
+  }
+  .toast.removing {
+    animation: slideOutRight 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+  .toast-icon {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .toast-content {
+    flex: 1;
+    line-height: 1.4;
+  }
+  .toast-close {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+    flex-shrink: 0;
+    font-size: 18px;
+    line-height: 1;
+  }
+  .toast-close:hover {
+    opacity: 1;
+  }
+  .toast.success {
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+    color: #166534;
+  }
+  .toast.success .toast-icon {
+    color: var(--green);
+  }
+  .toast.error {
+    background: #fef2f2;
+    border-color: #fecaca;
+    color: #991b1b;
+  }
+  .toast.error .toast-icon {
+    color: var(--red);
+  }
+  .toast.info {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+    color: #1e40af;
+  }
+  .toast.info .toast-icon {
+    color: var(--blue);
+  }
+  .toast.warning {
+    background: #fffbeb;
+    border-color: #fde68a;
+    color: #92400e;
+  }
+  .toast.warning .toast-icon {
+    color: #f59e0b;
+  }
+  @media (max-width: 480px) {
+    #toastContainer {
+      top: 10px;
+      right: 10px;
+      left: 10px;
+    }
+    .toast {
+      min-width: auto;
+      max-width: 100%;
+    }
+  }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; font-size: 14px; display: flex; height: 100vh; overflow: hidden; }
   input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
@@ -1101,6 +1225,8 @@ function getDashboardHTML() {
   </div>
 </div>
 
+<div id="toastContainer"></div>
+
 <script>
   let stats = {};
   let isBotActive = false;
@@ -1115,6 +1241,35 @@ function getDashboardHTML() {
     "⚔️ Legenda Otaku",
     "🏆 Dewa Animein"
   ];
+
+  // Toast Notification System
+  function showToast(message, type = 'info', duration = 3000) {
+    const container = document.getElementById('toastContainer');
+    const toast = document.createElement('div');
+    toast.className = 'toast ' + type;
+    
+    const icons = {
+      success: '✓',
+      error: '✕',
+      info: 'ℹ',
+      warning: '⚠'
+    };
+    
+    toast.innerHTML = '<div class="toast-icon">' + (icons[type] || '•') + '</div>' +
+      '<div class="toast-content">' + escapeHTML(message) + '</div>' +
+      '<div class="toast-close" onclick="this.parentElement.remove()">×</div>';
+    
+    container.appendChild(toast);
+    
+    if (duration > 0) {
+      setTimeout(() => {
+        if (toast.parentElement) {
+          toast.classList.add('removing');
+          setTimeout(() => toast.remove(), 300);
+        }
+      }, duration);
+    }
+  }
 
   function escapeHTML(value) {
     return String(value ?? '').replace(/[&<>"']/g, ch => ({
@@ -1142,7 +1297,7 @@ function getDashboardHTML() {
     });
     const d = await res.json().catch(() => ({}));
     if (!res.ok || d.success === false) {
-      alert(d.message || 'Gagal mengubah status bot.');
+      showToast(d.message || 'Gagal mengubah status bot.', 'error');
       refresh();
       return;
     }
@@ -1161,7 +1316,7 @@ function getDashboardHTML() {
     const res = await fetch('/api/system/toggle', { method: 'POST' });
     const d = await res.json().catch(() => ({}));
     if (!res.ok || d.success === false) {
-      alert(d.message || 'Gagal mengubah Kill Switch.');
+      showToast(d.message || 'Gagal mengubah Kill Switch.', 'error');
       refresh();
       return;
     }
@@ -1226,7 +1381,7 @@ function getDashboardHTML() {
     if (!ok) return;
     const res = await fetch('/api/cache/clear', { method: 'POST' });
     const d = await res.json();
-    alert('Cache dihapus: ' + d.deleted + ' entri.');
+    showToast('Cache dihapus: ' + d.deleted + ' entri.', 'success');
     refresh();
   }
 
@@ -1506,7 +1661,7 @@ async function updateStats() {
     });
     const d = await res.json().catch(() => ({}));
     if (!res.ok || d.success === false) {
-      alert(d.message || 'Pesan gagal dikirim.');
+      showToast(d.message || 'Pesan gagal dikirim.', 'error');
       return;
     }
     inp.value = '';
@@ -1520,7 +1675,7 @@ async function updateStats() {
     });
     const d = await res.json().catch(() => ({}));
     if (!res.ok || d.success === false) {
-      alert(d.message || 'Pesan template gagal dikirim.');
+      showToast(d.message || 'Pesan template gagal dikirim.', 'error');
       return;
     }
     refresh();
@@ -1603,7 +1758,7 @@ async function updateStats() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt: text })
     });
-    alert('Prompt berhasil disimpan!');
+    showToast('Prompt berhasil disimpan!', 'success');
   }
   async function loadDomains() {
     const res = await fetch('/api/domains');
@@ -1692,7 +1847,7 @@ async function updateStats() {
       keywords: document.getElementById('kwKeywords').value.split('\\n').map(s => s.trim()).filter(s => !!s),
       info: document.getElementById('kwInfo').value.trim()
     };
-    if (!data.info || data.keywords.length === 0) return alert('Data tidak lengkap!');
+    if (!data.info || data.keywords.length === 0) return showToast('Data tidak lengkap!', 'warning');
     await fetch('/api/knowledge/save', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -1841,7 +1996,7 @@ async function updateStats() {
       body: JSON.stringify({ word })
     });
     const d = await res.json();
-    if (!d.success) { alert(d.error || 'Gagal menambahkan kata.'); return; }
+    if (!d.success) { showToast(d.error || 'Gagal menambahkan kata.', 'error'); return; }
     inp.value = '';
     loadFilter();
   }
@@ -1858,7 +2013,7 @@ async function updateStats() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ response })
     });
-    alert('Pesan balasan disimpan!');
+    showToast('Pesan balasan disimpan!', 'success');
   }
 
   async function loadTitles() {
@@ -1895,7 +2050,7 @@ async function updateStats() {
     const inp = document.getElementById('newTitleInput');
     const title = inp.value.trim();
     if (!title) return;
-    if (DEFAULT_TITLES.includes(title)) return alert('Gelar ini sudah ada sebagai gelar sistem!');
+    if (DEFAULT_TITLES.includes(title)) return showToast('Gelar ini sudah ada sebagai gelar sistem!', 'warning');
     const res = await fetch('/api/titles/add', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title })
@@ -1983,10 +2138,10 @@ async function updateStats() {
       });
       const d = await res.json();
       if (d.success) {
-        alert('Berhasil: ' + d.message);
+        showToast('Berhasil: ' + d.message, 'success');
         refresh();
       } else {
-        alert('Gagal: ' + d.message);
+        showToast('Gagal: ' + d.message, 'error');
       }
     } catch(e) { console.error(e); }
   }
@@ -1998,8 +2153,8 @@ async function updateStats() {
     try {
       const res = await fetch('/api/quiz/trigger', { method: 'POST' });
       const d = await res.json();
-      if (d.success) { alert('Sukses!'); refresh(); }
-      else { alert('Gagal: ' + (d.message || 'Tidak diketahui')); }
+      if (d.success) { showToast('Sukses!', 'success'); refresh(); }
+      else { showToast('Gagal: ' + (d.message || 'Tidak diketahui'), 'error'); }
     } catch(e) { console.error(e); }
   }
 
@@ -2009,7 +2164,7 @@ async function updateStats() {
     btn.textContent = 'Proses...';
     const res = await fetch('/api/quiz/refetch', { method: 'POST' });
     const d = await res.json().catch(() => ({}));
-    alert(d.message || (res.ok ? 'Proses fetch dimulai.' : 'Refetch gagal.'));
+    showToast(d.message || (res.ok ? 'Proses fetch dimulai.' : 'Refetch gagal.'), res.ok ? 'info' : 'error');
     setTimeout(() => { btn.disabled = false; btn.textContent = 'Ambil Data Baru'; }, 5000);
   }
   async function resetQuizData() {
@@ -2025,10 +2180,10 @@ async function updateStats() {
     });
     const d = await res.json();
     if (d.success) {
-      alert(\`Berhasil mereset \${d.deleted} data kuis!\`);
+      showToast('Berhasil mereset ' + d.deleted + ' data kuis!', 'success');
       refresh();
     } else {
-      alert('Gagal: ' + d.message);
+      showToast('Gagal: ' + d.message, 'error');
     }
     btn.disabled = false;
   }
@@ -2093,7 +2248,7 @@ async function updateStats() {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
     });
     if (res.ok) { closeUserModal(); loadUsers(); }
-    else alert('Gagal memperbarui stats.');
+    else showToast('Gagal memperbarui stats.', 'error');
   }
 
   async function resetAllUsers() {
@@ -2107,13 +2262,13 @@ async function updateStats() {
       const res = await fetch('/api/users/reset-all', { method: 'POST' });
       const d = await res.json();
       if (d.success) {
-        alert(d.message);
+        showToast(d.message, 'success');
         loadUsers();
       } else {
-        alert('Gagal: ' + d.message);
+        showToast('Gagal: ' + d.message, 'error');
       }
     } catch (e) {
-      alert('Error: ' + e.message);
+      showToast('Error: ' + e.message, 'error');
     }
   }
 
@@ -2148,7 +2303,7 @@ async function updateStats() {
     const rInput = document.getElementById('banReasonInput');
     const username = (uInput?.value || '').trim();
     const reason = (rInput?.value || '').trim();
-    if (!username) return alert('Username tidak boleh kosong!');
+    if (!username) return showToast('Username tidak boleh kosong!', 'warning');
     const ok = await customConfirm('Ban @' + username + ' dari kuis? Mereka tidak bisa main kuis sampai di-unban.', 'Konfirmasi Ban', 'Ban');
     if (!ok) return;
     const res = await fetch('/api/quiz/ban', {
@@ -2157,7 +2312,7 @@ async function updateStats() {
     });
     const d = await res.json();
     if (d.success) { uInput.value = ''; rInput.value = ''; loadBanned(); }
-    else alert('Gagal: ' + (d.message || 'Error'));
+    else showToast('Gagal: ' + (d.message || 'Error'), 'error');
   }
 
   async function unbanUser(username) {
@@ -2169,7 +2324,7 @@ async function updateStats() {
     });
     const d = await res.json();
     if (d.success) loadBanned();
-    else alert('Gagal: ' + (d.message || 'Error'));
+    else showToast('Gagal: ' + (d.message || 'Error'), 'error');
   }
 
   function customConfirm(msg, title='Konfirmasi', btnOk='Ya', showIcon=true) {
