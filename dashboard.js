@@ -2563,8 +2563,8 @@ async function updateStats() {
           '<td><strong>' + limit + '</strong></td>' +
           '<td><span style="background:' + badgeColor + '; color:#fff; padding:4px 10px; border-radius:999px; font-size:11px; font-weight:800;">' + remaining + '</span></td>' +
           '<td class="td-actions">' +
-            '<button class="btn-sm btn-sm-edit" onclick="fillImageLimitForm(\'' + escapeAttr(row.username || '') + '\', ' + limit + ', ' + used + ')">Edit</button>' +
-            '<button class="btn-sm btn-sm-del" onclick="resetImageLimit(\'' + escapeAttr(row.username || '') + '\')">Reset</button>' +
+            '<button class="btn-sm btn-sm-edit" onclick="fillImageLimitForm(&quot;' + escapeAttr(row.username || '') + '&quot;, ' + limit + ', ' + used + ')">Edit</button>' +
+            '<button class="btn-sm btn-sm-del" onclick="resetImageLimit(&quot;' + escapeAttr(row.username || '') + '&quot;)">Reset</button>' +
           '</td>' +
         '</tr>';
       }).join('');
