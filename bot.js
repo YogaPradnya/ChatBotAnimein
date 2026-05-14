@@ -2269,7 +2269,6 @@ async function processMessages(bot, messages) {
                 setTimeout(() => { bot.isCooldown = false; }, 10000);
 
                 try {
-                    await sendChatMessage(bot, `🔎 @${senderName} Lagi nyari gambar "${imageQuery}"...`, msg.id);
                     const imageUrl = await fetchPinterestImage(imageQuery);
                     const imageData = await downloadImageAsBase64(imageUrl);
                     const caption = `🖼️ @${senderName} Ini gambar untuk: ${imageQuery}`;
