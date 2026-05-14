@@ -267,7 +267,7 @@ async function initDB() {
                 args: [String(isImageCommandActive)]
             });
         }
-        console.log(`[GAMBAR] Command .gambar: ${isImageCommandActive ? 'ON' : 'OFF'}`);
+        console.log(`[GAMBAR] Bot Gambar: ${isImageCommandActive ? 'ON' : 'OFF'}`);
 
         if (isSystemOff && (isBotInfoActive || isBotKuisActive)) {
             isBotInfoActive = false;
@@ -877,7 +877,7 @@ setTimeout(updateDBStats, 5000);
 let isBotInfoActive = false;  // Bot AI (info)
 let isBotKuisActive = false;  // Bot Kuis (game)
 let isSystemOff = false;      // Global Kill Switch
-let isImageCommandActive = true; // Switch command .gambar
+let isImageCommandActive = true; // Switch bot gambar (AnimeinIMG)
 const IMAGE_COMMAND_COOLDOWN_MS = 1 * 60 * 1000;
 let lastImageCommandAt = 0;
 let XP_MULTIPLIER = 1;
@@ -2458,12 +2458,8 @@ async function processMessages(bot, messages) {
 
         // AKUN GAMBAR (AnimeinIMG): Khusus memproses command .gambar
         if (bot.role === 'image') {
+            if (!isImageCommandActive) continue;
             if (!lowerMsg.startsWith('.gambar')) continue;
-
-            if (!isImageCommandActive) {
-                console.log(`[GAMBAR] Command .gambar sedang OFF, request dari ${senderName} diabaikan.`);
-                continue;
-            }
 
             const imageQuery = cleanMsg.replace(/^\.gambar\s*/i, '').trim();
             if (!imageQuery) {
@@ -2607,6 +2603,10 @@ async function startBot() {
     await initDB();
     
     for (const bot of bots) {
+        if (bot.role === 'image' && !isImageCommandActive) {
+            console.log(`[AUTH] Bot ${bot.username} dilewati karena switch Bot Gambar OFF.`);
+            continue;
+        }
         const ok = await login(bot);
         if (!ok) console.warn(`[AUTH] Bot ${bot.username} belum berhasil login.`);
     }
@@ -2630,6 +2630,7 @@ async function startBot() {
     setInterval(async () => {
         if (isSystemOff) return; // KILL SWITCH
         for (const bot of bots) {
+            if (bot.role === 'image' && !isImageCommandActive) continue;
             if (!bot.auth.userId) continue;
             
             const data = await fetchMessages(bot);
@@ -2731,5 +2732,6 @@ startDashboard({
     clearQuizTimers,
     getImageLimitStatus,
     IMAGE_DAILY_LIMIT_DEFAULT,
+    login,
 });
 startBot();

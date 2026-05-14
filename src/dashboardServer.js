@@ -50,6 +50,7 @@ function createRuntime(scope) {
         get logEmitter() { return state.logEmitter; },
         get getImageLimitStatus() { return scope.getImageLimitStatus; },
         get IMAGE_DAILY_LIMIT_DEFAULT() { return scope.IMAGE_DAILY_LIMIT_DEFAULT; },
+        get login() { return scope.login; },
     };
 }
 
@@ -430,14 +431,22 @@ function startDashboard(scope) {
     });
 
     app.post('/api/config/image-command', async (req, res) => {
-        if (blockWhenSystemOff(res, 'Toggle .gambar')) return;
+        if (blockWhenSystemOff(res, 'Toggle Bot Gambar')) return;
         try {
             isImageCommandActive = !isImageCommandActive;
             await db.execute({
                 sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('is_image_command_active', ?)",
                 args: [String(isImageCommandActive)]
             });
-            console.log(`[DASHBOARD] Command .gambar: ${isImageCommandActive ? 'ON' : 'OFF'}`);
+
+            if (isImageCommandActive) {
+                const imageBot = bots.find(b => b.role === 'image');
+                if (imageBot && !imageBot.auth.userId) {
+                    login(imageBot).catch(e => console.warn('[DASHBOARD] Gagal login Bot Gambar:', e.message));
+                }
+            }
+
+            console.log(`[DASHBOARD] Bot Gambar: ${isImageCommandActive ? 'ON' : 'OFF'}`);
             res.json({ success: true, isImageCommandActive, isSystemOff });
         } catch (e) {
             res.status(500).json({ success: false, message: e.message });

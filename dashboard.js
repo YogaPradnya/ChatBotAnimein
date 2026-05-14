@@ -680,7 +680,7 @@ function getDashboardHTML() {
         </div>
       </div>
       <div class="bot-toggle-wrap">
-        <span class="bot-toggle-lbl">.gambar</span>
+        <span class="bot-toggle-lbl">Bot Gambar</span>
         <div class="bot-toggle-pill" id="imageCommandTogglePill" onclick="toggleImageCommand()">
           <span class="btp-on">ON</span>
           <span class="btp-off">OFF</span>
@@ -1430,12 +1430,12 @@ function getDashboardHTML() {
     const res = await fetch('/api/config/image-command', { method: 'POST' });
     const d = await res.json().catch(() => ({}));
     if (!res.ok || d.success === false) {
-      showToast(d.message || 'Gagal mengubah switch .gambar.', 'error');
+      showToast(d.message || 'Gagal mengubah switch Bot Gambar.', 'error');
       refresh();
       return;
     }
     render({ ...stats, isImageCommandActive: d.isImageCommandActive, isSystemOff: d.isSystemOff });
-    showToast('.gambar sekarang ' + (d.isImageCommandActive ? 'ON' : 'OFF'), 'success');
+    showToast('Bot Gambar sekarang ' + (d.isImageCommandActive ? 'ON' : 'OFF'), 'success');
   }
   
   async function toggleXPEvent() {
