@@ -1985,10 +1985,17 @@ async function sendChatWithImage(bot, imageData, caption, replyTo = '0') {
             timeout: 20000,
         });
         
-        if (res.data && (res.data.status === true || res.data.message)) {
+        const apiSuccess = res.data && (
+            res.data.status === true ||
+            res.data.status === 200 ||
+            res.data.error === false ||
+            Boolean(res.data.message)
+        );
+
+        if (apiSuccess) {
             console.log('[CHAT/IMG] Berhasil kirim gambar via multipart!');
             return true;
-}
+        }
         console.warn('[CHAT/IMG] API tidak mengembalikan sukses, response:', JSON.stringify(res.data).slice(0,100));
         return false;
     } catch (err) {

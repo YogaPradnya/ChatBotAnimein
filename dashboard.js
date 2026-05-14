@@ -2428,13 +2428,14 @@ async function updateStats() {
         <span class="log-message">\${escapeHTML(log.message || '')}</span>
       </div>
     \`).join('');
+    list.scrollTop = list.scrollHeight;
   }
 
   function addRealtimeLog(log) {
     if (!log || !log.id) return;
     if (realtimeLogs.some(item => item.id === log.id)) return;
-    realtimeLogs.unshift(log);
-    if (realtimeLogs.length > 200) realtimeLogs.pop();
+    realtimeLogs.push(log);
+    if (realtimeLogs.length > 200) realtimeLogs.shift();
     renderRealtimeLogs();
   }
 
