@@ -879,7 +879,7 @@ let isBotInfoActive = false;  // Bot AI (info)
 let isBotKuisActive = false;  // Bot Kuis (game)
 let isSystemOff = false;      // Global Kill Switch
 let isImageCommandActive = true; // Switch bot gambar (AnimeinIMG)
-const IMAGE_COMMAND_COOLDOWN_MS = 1 * 60 * 1000;
+const IMAGE_COMMAND_COOLDOWN_MS = 0;
 let lastImageCommandAt = 0;
 let XP_MULTIPLIER = 1;
 let doubleXPTimeout = null;
@@ -1716,6 +1716,7 @@ const ANIMEIN_EXTRA_ENDPOINTS = {
     battleHistory: { method: 'get', path: '/3/2/user/battle/history', label: 'Riwayat battle user' },
     battleRank: { method: 'get', path: '/3/2/user/battle/rank_list', label: 'Peringkat battle point' },
     userProfile: { method: 'get', path: '/3/2/user/profile/data', label: 'Profil private akun login' },
+    userProfileMoney: { method: 'post', path: '/3/2/user/profile/money', label: 'Data coin/gems user target' },
     userPublicProfile: { method: 'get', path: '/3/2/profile/other', label: 'Profil publik user target' },
     userMedal: { method: 'get', path: '/3/2/user/profile/medal', label: 'Gelar/medal user' },
     profileMedal: { method: 'get', path: '/3/2/profile/medal', label: 'Gelar profil publik' },
@@ -1723,6 +1724,8 @@ const ANIMEIN_EXTRA_ENDPOINTS = {
     profilePokemon: { method: 'get', path: '/data/profile/pokemon', label: 'Pokemon di profil user' },
     profileWaifu: { method: 'get', path: '/data/profile/waifu', label: 'Waifu user' },
     userBagPokemon: { method: 'get', path: '/3/2/user/bag/pokemon_rev', label: 'Tas Pokemon user' },
+    userLoveLopers: { method: 'get', path: '/3/2/user/love/lopers', label: 'Data lopers user' },
+    userLoveLoping: { method: 'get', path: '/3/2/user/love/loping', label: 'Data loping user' },
     favoriteMovie: { method: 'get', path: '/3/2/user/favorite/movie', label: 'Favorit user' },
     historyMovie: { method: 'get', path: '/3/2/user/history/movie', label: 'Riwayat anime user' },
     historyEpisode: { method: 'get', path: '/3/2/user/history/episode', label: 'Riwayat episode user' },
@@ -1744,7 +1747,7 @@ function detectAnimeinExtraKeys(text) {
         ['battleInfo', 'battleBannedNow', 'battleBannedNext', 'battleBannedList', 'battlePokemon', 'battleHistory', 'battleRank'].forEach(k => keys.add(k));
     }
     if (has(/profil|profile|like|gelar|medal|view|kontrib|kontribusi|coin|coins|koin|gems?|favorit|favorite|riwayat|history/)) {
-        ['userPublicProfile', 'userMedal', 'profileMedal', 'favoriteMovie', 'historyMovie', 'historyEpisode'].forEach(k => keys.add(k));
+        ['userPublicProfile', 'userProfileMoney', 'userMedal', 'profileMedal', 'favoriteMovie', 'historyMovie', 'historyEpisode'].forEach(k => keys.add(k));
     }
     if (has(/tas|bag|pokemon.*(milik|punya|koleksi)|koleksi.*pokemon/)) {
         ['userBagPokemon', 'profilePokemon'].forEach(k => keys.add(k));
@@ -1754,6 +1757,9 @@ function detectAnimeinExtraKeys(text) {
     }
     if (has(/waifu|galer[iy]|gallery/)) {
         ['profileWaifu', 'profileGallery'].forEach(k => keys.add(k));
+    }
+    if (has(/lopers?|loping|love|lover|disukai|menyukai/)) {
+        ['userLoveLopers', 'userLoveLoping'].forEach(k => keys.add(k));
     }
     if (has(/npc|manra/)) {
         ['npcList', 'npcPose', 'exploreNpc', 'exploreNpcIdle'].forEach(k => keys.add(k));
@@ -1861,7 +1867,7 @@ async function fetchAnimeinExtraEndpoint(key, bot = bots[0], force = false, targ
         const targetParams = getTargetUserParams(targetUser);
         const authParams = getAuthParams(bot);
         const requestParams = targetUser
-            ? { ...targetParams, key_client: authParams.key_client, id_user_login: authParams.id_user, auth_id_user: authParams.id_user }
+            ? { ...targetParams, id_user: targetUser.id || targetParams.id_user_profile, key_client: authParams.key_client, id_user_login: authParams.id_user, auth_id_user: authParams.id_user }
             : authParams;
         recordPath(spec.path);
         const response = await axios({
@@ -1929,8 +1935,9 @@ async function buildAnimeinExtraContext(question, bot = bots[0], senderName = ''
         .map(({ key, data }) => `## ${ANIMEIN_EXTRA_ENDPOINTS[key].label}\n${summarizeAnimeinPayload(data)}`);
 
     if (!sections.length) return '';
-    const targetInfo = targetUser ? `\nTarget user valid: ${targetUser.username}${targetUser.id ? ` (id: ${targetUser.id})` : ''}. Data ini diambil berdasarkan username pengirim.` : '';
-    return `\n\n[DATA REAL-TIME ANIMEIN TAMBAHAN]${targetInfo}\n${sections.join('\n\n')}\nInstruksi AI: Jawab hanya berdasarkan data Animein di atas. User hanya boleh melihat data akun sendiri berdasarkan username pengirim. Jika field seperti coin/gems tidak muncul di data, jelaskan bahwa endpoint tidak menyediakan field tersebut untuk user ini.`;
+    const targetInfo = targetUser ? `\nTarget user valid: ${targetUser.username}${targetUser.id ? ` (id: ${targetUser.id})` : ''}. Data ini diambil berdasarkan username pengirim: ${senderUsername}.` : '';
+    const targetDebug = targetUser ? `\nParameter target yang dikirim: ${JSON.stringify(getTargetUserParams(targetUser)).slice(0, 400)}` : '';
+    return `\n\n[DATA REAL-TIME ANIMEIN TAMBAHAN]${targetInfo}${targetDebug}\n${sections.join('\n\n')}\nInstruksi AI: Jawab hanya berdasarkan data Animein di atas. User hanya boleh melihat data akun sendiri berdasarkan username pengirim. Termasuk untuk data lopers/loping/love. Jika field seperti coin/gems/lopers tidak muncul di data, jelaskan bahwa endpoint tidak menyediakan field tersebut untuk user ini.`;
 }
 
 /** Groq (Llama 3.1) - kualitas lebih baik */
@@ -2432,7 +2439,7 @@ async function processMessages(bot, messages) {
 
         if (String(msg.user_id) === String(bot.auth.userId)) continue;
 
-        const senderName = msg.user_name || 'User';
+        const senderName = msg.username || msg.user_username || msg.user_login || msg.user_name || 'User';
         let msgText = msg.text || '';
         
         // --- 1. NORMALISASI PESAN (Strip Mentions) ---
