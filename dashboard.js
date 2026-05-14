@@ -620,7 +620,7 @@ function getDashboardHTML() {
     <button class="nav-item" onclick="showPage('model', this); toggleSidebar(false)">Model AI</button>
     <button class="nav-item" onclick="showPage('database', this); toggleSidebar(false)">Database</button>
     <button class="nav-item" onclick="showPage('autoreply', this); toggleSidebar(false)">Auto Reply</button>
-    <button class="nav-item" onclick="showPage('gambar', this); toggleSidebar(false)">Dashboard Gambar</button>
+    <button class="nav-item" onclick="showPage('gambar', this); toggleSidebar(false)">Gambar</button>
     <button class="nav-item" onclick="showPage('laporan', this); toggleSidebar(false)">Laporan</button>
     <button class="nav-item" onclick="showPage('logs', this); toggleSidebar(false)">Realtime Logs</button>
     <button class="nav-item" onclick="showPage('api-traffic', this); toggleSidebar(false)">API Monitor</button>
