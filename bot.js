@@ -1896,7 +1896,7 @@ function summarizeAnimeinPayload(payload, maxItems = 12) {
         'name', 'nama', 'username', 'user_name', 'display_name', 'title', 'gelar', 'medal', 'badge', 'badges',
         'lopers', 'loper', 'loping', 'love', 'lover', 'like', 'likes', 'total_like', 'total_love',
         'pokemon_name', 'waifu_name', 'rank', 'point', 'battle_point', 'view', 'views', 'total_view',
-        'kontribusi', 'contribution', 'coin', 'coins', 'koin', 'gem', 'gems', 'price', 'harga', 'id', 'id_user'
+        'kontribusi', 'contribution', 'coin', 'coins', 'koin', 'gem', 'gems', 'price', 'harga'
     ];
 
     const formatScalar = (value) => {
@@ -1915,6 +1915,7 @@ function summarizeAnimeinPayload(payload, maxItems = 12) {
 
         if (!parts.length) {
             for (const [key, value] of Object.entries(obj).slice(0, 12)) {
+                if (/^(id|id_user|user_id|.*_id)$/i.test(key)) continue;
                 const formatted = formatScalar(value);
                 if (formatted) parts.push(`${key}: ${formatted}`);
             }
@@ -1958,6 +1959,19 @@ function summarizeAnimeinPayload(payload, maxItems = 12) {
     return JSON.stringify(payload).slice(0, 1200);
 }
 
+function sanitizeAnimeinPayloadForAI(payload) {
+    if (Array.isArray(payload)) return payload.map(sanitizeAnimeinPayloadForAI);
+    if (payload && typeof payload === 'object') {
+        const clean = {};
+        for (const [key, value] of Object.entries(payload)) {
+            if (/^(id|id_user|user_id|.*_id)$/i.test(key)) continue;
+            clean[key] = sanitizeAnimeinPayloadForAI(value);
+        }
+        return clean;
+    }
+    return payload;
+}
+
 async function buildAnimeinExtraContext(question, bot = bots[0], senderName = '') {
     const keys = detectAnimeinExtraKeys(question);
     if (!keys.length) return '';
@@ -1974,14 +1988,14 @@ async function buildAnimeinExtraContext(question, bot = bots[0], senderName = ''
         .filter(item => item.data)
         .map(({ key, data }) => {
             const summary = summarizeAnimeinPayload(data);
-            const raw = JSON.stringify(data).slice(0, 1200);
+            const raw = JSON.stringify(sanitizeAnimeinPayloadForAI(data)).slice(0, 1200);
             return `## ${ANIMEIN_EXTRA_ENDPOINTS[key].label}\nRingkasan:\n${summary}\nRAW_JSON_RINGKAS:\n${raw}`;
         });
 
     if (!sections.length) return '';
     const targetInfo = targetUser ? `\nTarget user valid: ${targetUser.username}${targetUser.id ? ` (id: ${targetUser.id})` : ''}. Data ini diambil berdasarkan username pengirim: ${senderUsername}.` : '';
     const targetDebug = targetUser ? `\nParameter target publik: ${JSON.stringify(getTargetUserParams(targetUser)).slice(0, 400)}. ID target user tidak dikirim; id_user tetap milik akun login untuk auth.` : '';
-    return `\n\n[DATA REAL-TIME ANIMEIN TAMBAHAN]${targetInfo}${targetDebug}\n${sections.join('\n\n')}\nInstruksi AI: Jawab hanya berdasarkan data Animein di atas. User hanya boleh melihat data akun sendiri berdasarkan username pengirim. Untuk pertanyaan love/lopers/loping/gelar/medal/coin/gems, ambil angka/nama persis dari Ringkasan atau RAW_JSON_RINGKAS. Jangan menebak dari prompt/pengetahuan umum. Jika field yang ditanya tidak ada di data endpoint, jawab: data tersebut tidak tersedia dari endpoint untuk user ini.`;
+    return `\n\n[DATA REAL-TIME ANIMEIN TAMBAHAN]${targetInfo}${targetDebug}\n${sections.join('\n\n')}\nInstruksi AI: Jawab hanya berdasarkan data Animein di atas. User hanya boleh melihat data akun sendiri berdasarkan username pengirim. Untuk pertanyaan love/lopers/loping/gelar/medal/coin/gems, ambil angka/nama persis dari Ringkasan atau RAW_JSON_RINGKAS. Jangan menebak dari prompt/pengetahuan umum. Jangan tampilkan id/id_user/user_id ke user. Jika field yang ditanya tidak ada di data endpoint, jawab: data tersebut tidak tersedia dari endpoint untuk user ini.`;
 }
 
 /** Groq (Llama 3.1) - kualitas lebih baik */
