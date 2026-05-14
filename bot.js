@@ -1837,17 +1837,6 @@ async function resolveAnimeinUser(username, bot = bots[0]) {
 function getTargetUserParams(targetUser) {
     if (!targetUser) return {};
     const params = {};
-    if (targetUser.id) {
-        params.id_user_profile = targetUser.id;
-        params.id_user_target = targetUser.id;
-        params.target_id_user = targetUser.id;
-        params.id_user_other = targetUser.id;
-        params.id_other = targetUser.id;
-        params.other_id_user = targetUser.id;
-        params.user_id = targetUser.id;
-        params.id_profile = targetUser.id;
-        params.id = targetUser.id;
-    }
     if (targetUser.username) {
         params.username = targetUser.username;
         params.user_name = targetUser.username;
@@ -1991,7 +1980,7 @@ async function buildAnimeinExtraContext(question, bot = bots[0], senderName = ''
 
     if (!sections.length) return '';
     const targetInfo = targetUser ? `\nTarget user valid: ${targetUser.username}${targetUser.id ? ` (id: ${targetUser.id})` : ''}. Data ini diambil berdasarkan username pengirim: ${senderUsername}.` : '';
-    const targetDebug = targetUser ? `\nParameter target publik: ${JSON.stringify(getTargetUserParams(targetUser)).slice(0, 400)}. Endpoint private memakai auth akun login asli tanpa target override.` : '';
+    const targetDebug = targetUser ? `\nParameter target publik: ${JSON.stringify(getTargetUserParams(targetUser)).slice(0, 400)}. ID target user tidak dikirim; id_user tetap milik akun login untuk auth.` : '';
     return `\n\n[DATA REAL-TIME ANIMEIN TAMBAHAN]${targetInfo}${targetDebug}\n${sections.join('\n\n')}\nInstruksi AI: Jawab hanya berdasarkan data Animein di atas. User hanya boleh melihat data akun sendiri berdasarkan username pengirim. Untuk pertanyaan love/lopers/loping/gelar/medal/coin/gems, ambil angka/nama persis dari Ringkasan atau RAW_JSON_RINGKAS. Jangan menebak dari prompt/pengetahuan umum. Jika field yang ditanya tidak ada di data endpoint, jawab: data tersebut tidak tersedia dari endpoint untuk user ini.`;
 }
 
