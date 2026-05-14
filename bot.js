@@ -899,6 +899,11 @@ const stats = {
 // Set banned users (loaded from DB on init)
 const bannedUsers = new Set();
 
+// Menyimpan riwayat URL gambar Pinterest yang sudah dikirim per keyword.
+// Tujuannya agar `.gambar yanami` berikutnya mengirim gambar berbeda jika API menyediakan opsi lain.
+const pinterestImageHistory = new Map();
+const PINTEREST_HISTORY_LIMIT = 100;
+
 function addActivity(type, from, text, response, provider, tokens = 0) {
     stats.recentActivity.unshift({
         time: new Date().toLocaleTimeString('id-ID'),
@@ -1714,6 +1719,111 @@ async function getAIResponse(userMessage, senderName, isReply = false) {
     return { text: 'Maaf kak, semua koneksi AI Rara lagi sibuk/limit. Coba lagi nanti ya! 🙏', provider: 'Error', tokens: 0 };
 }
 
+async function fetchPinterestImage(queryOrUrl) {
+    const apiUrl = process.env.PINTEREST_IMAGE_API_URL;
+    const trimmed = String(queryOrUrl || '').trim();
+    const isUrl = /^https?:\/\//i.test(trimmed);
+    const endpoint = new URL(apiUrl);
+    endpoint.searchParams.set(isUrl ? 'url' : 'query', trimmed);
+
+    const res = await axios.get(endpoint.toString(), {
+        headers: { 'Accept': 'application/json, text/plain, */*' },
+        timeout: 20000,
+    });
+
+    const data = res.data;
+    if (data?.status === 'error') {
+        throw new Error(data.message || 'Pinterest API error');
+    }
+
+    const imageUrls = [...new Set(collectImageUrls(data))];
+    if (!imageUrls.length) {
+        throw new Error('Tidak ada URL gambar ditemukan dari Pinterest API');
+    }
+
+    return pickUnusedPinterestImage(trimmed, imageUrls);
+}
+
+function getPinterestHistoryKey(queryOrUrl) {
+    return String(queryOrUrl || '').trim().toLowerCase();
+}
+
+function pickUnusedPinterestImage(queryOrUrl, imageUrls) {
+    const historyKey = getPinterestHistoryKey(queryOrUrl);
+    const usedUrls = pinterestImageHistory.get(historyKey) || new Set();
+    let candidates = imageUrls.filter(url => !usedUrls.has(url));
+
+    // Kalau semua gambar dari API sudah pernah dipakai, reset riwayat keyword ini
+    // agar command tetap bisa mengirim gambar, namun tetap memprioritaskan yang tidak sama.
+    if (!candidates.length) {
+        usedUrls.clear();
+        candidates = imageUrls;
+    }
+
+    const selectedUrl = candidates[Math.floor(Math.random() * candidates.length)];
+    rememberPinterestImage(historyKey, selectedUrl);
+    return selectedUrl;
+}
+
+function rememberPinterestImage(historyKey, imageUrl) {
+    if (!historyKey || !imageUrl) return;
+
+    const usedUrls = pinterestImageHistory.get(historyKey) || new Set();
+    usedUrls.add(imageUrl);
+
+    if (usedUrls.size > PINTEREST_HISTORY_LIMIT) {
+        const oldestUrl = usedUrls.values().next().value;
+        usedUrls.delete(oldestUrl);
+    }
+
+    pinterestImageHistory.set(historyKey, usedUrls);
+}
+
+function collectImageUrls(value, found = new Set()) {
+    if (!value) return found;
+
+    if (typeof value === 'string') {
+        if (/^https?:\/\/.+\.(jpg|jpeg|png|webp|gif)(\?.*)?$/i.test(value) || /pinimg\.com/i.test(value)) {
+            found.add(value);
+        }
+        return [...found];
+    }
+
+    if (Array.isArray(value)) {
+        value.forEach(item => collectImageUrls(item, found));
+        return [...found];
+    }
+
+    if (typeof value === 'object') {
+        Object.values(value).forEach(item => collectImageUrls(item, found));
+    }
+
+    return [...found];
+}
+
+async function downloadImageAsBase64(imageUrl) {
+    const res = await axios.get(imageUrl, {
+        responseType: 'arraybuffer',
+        headers: {
+            'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        },
+        timeout: 25000,
+        maxContentLength: 10 * 1024 * 1024,
+    });
+
+    const mimeType = String(res.headers['content-type'] || 'image/jpeg').split(';')[0];
+    if (!mimeType.startsWith('image/')) {
+        throw new Error(`Response bukan gambar: ${mimeType}`);
+    }
+
+    return {
+        data: Buffer.from(res.data).toString('base64'),
+        mimeType,
+        sourceUrl: imageUrl,
+    };
+}
+
 async function sendChatWithImage(bot, imageData, caption, replyTo = '0') {
     if (isAnimeinApiBlocked('Kirim gambar chat')) return false;
     try {
@@ -2144,6 +2254,37 @@ async function processMessages(bot, messages) {
             if (lowerMsg.startsWith('.tebak ') || lowerMsg === '.hint' || 
                 lowerMsg === '.kuis' || lowerMsg === '.game' || 
                 lowerMsg === '.profil' || lowerMsg === '.rank') {
+                continue;
+            }
+
+            if (lowerMsg.startsWith('.gambar')) {
+                const imageQuery = cleanMsg.replace(/^\.gambar\s*/i, '').trim();
+                if (!imageQuery) {
+                    await sendChatMessage(bot, `🖼️ @${senderName} Tulis kata kunci setelah .gambar\nContoh: .gambar yanami`, msg.id);
+                    continue;
+                }
+
+                if (bot.isCooldown) continue;
+                bot.isCooldown = true;
+                setTimeout(() => { bot.isCooldown = false; }, 10000);
+
+                try {
+                    await sendChatMessage(bot, `🔎 @${senderName} Lagi nyari gambar "${imageQuery}"...`, msg.id);
+                    const imageUrl = await fetchPinterestImage(imageQuery);
+                    const imageData = await downloadImageAsBase64(imageUrl);
+                    const caption = `🖼️ @${senderName} Ini gambar untuk: ${imageQuery}`;
+                    const sent = await sendChatWithImage(bot, imageData, caption, msg.id);
+
+                    if (!sent) {
+                        await sendChatMessage(bot, `❌ @${senderName} Gambarnya ketemu, tapi gagal dikirim ke chat. Coba lagi nanti ya.`, msg.id);
+                    } else {
+                        addActivity('image', senderName, imageQuery, imageUrl, 'PinterestAPI', 0);
+                        await addXP(senderName, 5);
+                    }
+                } catch (e) {
+                    console.warn('[GAMBAR] Gagal proses .gambar:', e.message.slice(0, 120));
+                    await sendChatMessage(bot, `❌ @${senderName} Maaf, gambar "${imageQuery}" belum bisa diambil. Coba keyword lain ya.`, msg.id);
+                }
                 continue;
             }
 
