@@ -1858,7 +1858,11 @@ async function fetchAnimeinExtraEndpoint(key, bot = bots[0], force = false, targ
 
     try {
         const baseUrl = CONFIG.BASE_URL.replace(/\/$/, '');
-        const requestParams = { ...getAuthParams(bot), ...getTargetUserParams(targetUser) };
+        const targetParams = getTargetUserParams(targetUser);
+        const authParams = getAuthParams(bot);
+        const requestParams = targetUser
+            ? { ...targetParams, key_client: authParams.key_client, id_user_login: authParams.id_user, auth_id_user: authParams.id_user }
+            : authParams;
         recordPath(spec.path);
         const response = await axios({
             method: spec.method,
@@ -1934,20 +1938,6 @@ async function askGroq(index, userMessage, senderName, contextData = '', chatHis
     const client = groqClients[index];
     const stat = stats.otak[index];
     
-    // SHALLOW SEMANTIC CACHE LOOKUP (Point 4)
-    // Filter out very short queries from cache
-    const queryKey = userMessage.trim().toLowerCase();
-    // Cache per user agar sapaan tidak nyasar ke user lain
-    const cacheKey = `${senderName.toLowerCase()}|${queryKey}`;
-    
-    if (queryKey.length >= 5) {
-        const cached = SHALLOW_AI_CACHE.find(c => c.key === cacheKey);
-        if (cached && (Date.now() - cached.timestamp < 10 * 60 * 1000)) { // 10 menit cache
-            console.log(`[CACHE HIT] Memoized answer for ${senderName}: "${userMessage}"`);
-            return { text: cached.answer, tokens: 0 };
-        }
-    }
-
     stat.requests++;
     
     // Inject CORE MEMORY (Solution 3)
@@ -1967,13 +1957,6 @@ async function askGroq(index, userMessage, senderName, contextData = '', chatHis
     }).withResponse();
 
     const answer = completion.choices[0].message.content;
-
-    // SAVE TO CACHE (Per User)
-    if (queryKey.length >= 5) {
-        const cacheKey = `${senderName.toLowerCase()}|${queryKey}`;
-        SHALLOW_AI_CACHE.push({ key: cacheKey, answer, timestamp: Date.now() });
-        if (SHALLOW_AI_CACHE.length > 50) SHALLOW_AI_CACHE.shift();
-    }
 
     if (response && response.headers) {
         stat.remainingReqs = response.headers.get('x-ratelimit-remaining-requests') || '?';
@@ -2012,25 +1995,7 @@ async function getAIResponse(userMessage, senderName, isReply = false) {
         console.log(`[CONTEXT] Intent: ${intent || 'none'}, Domain: ${knowledgeDomain || 'none'}, Knowledge: ${knowledgeContext ? 'Inject' : 'Empty'}, PokemonShop: ${pokemonShopContext ? 'Inject' : 'Empty'}, ExtraAnimein: ${animeinExtraContext ? 'Inject' : 'Empty'}`);
     }
 
-    // SEMANTIC CACHE CHECK: Cek apakah jawaban sudah ada di cache (0 Token!)
-    // Jangan gunakan cache jika ada intent dinamis (rekomendasi/search dll)
-    if (knowledgeContext && !intent) {
-        const cacheResult = await checkCache(userMessage);
-        if (cacheResult) {
-            const { id, variations } = cacheResult;
-            const chosenAnswer = variations[Math.floor(Math.random() * variations.length)];
-
-            // VALIDASI: Apakah jawaban ini dirasa kurang mantap?
-            if (!isWeakAnswer(userMessage, chosenAnswer, knowledgeContext)) {
-                // Update hit count secara async
-                db.execute({ sql: "UPDATE response_cache SET hit_count = hit_count + 1 WHERE id = ?", args: [id] });
-                stats.cacheHits++;
-                return { text: chosenAnswer, provider: 'Cache', tokens: 0 };
-            } else {
-                console.log(`[CACHE] Bypassing (Incomplete/Weak data detected) for: "${userMessage.slice(0, 30)}..."`);
-            }
-        }
-    }
+    // Cache jawaban AI dinonaktifkan agar data user/coin selalu real-time.
 
     // FULL DATABASE MEMORY MANAGEMENT
     const now = Date.now();
@@ -2074,10 +2039,7 @@ async function getAIResponse(userMessage, senderName, isReply = false) {
             if (text) {
                 stats.lastUsedGroq = i;
                 
-                // SEMANTIC CACHE SAVE: Simpan jawaban ke cache jika ada knowledge context (kecuali rekomendasi)
-                if (knowledgeContext && !intent) {
-                    addToCache(userMessage, text, knowledgeDomain);
-                }
+                // Cache jawaban AI dinonaktifkan: jangan simpan response dinamis ke response_cache.
                 
                 return { text, provider: `Otak #${i+1}`, tokens };
             }
