@@ -2473,7 +2473,6 @@ async function processMessages(bot, messages) {
                 console.log(`[GAMBAR] Cooldown aktif, request dari ${senderName} diabaikan.`);
                 continue;
             }
-            lastImageCommandAt = now;
 
             try {
                 const limitStatus = await getImageLimitStatus(senderName);
@@ -2496,6 +2495,7 @@ async function processMessages(bot, messages) {
                 if (!sent) {
                     await sendChatMessage(bot, `❌ @${senderName} Gambarnya ketemu, tapi gagal dikirim ke chat. Coba lagi nanti ya.`, msg.id);
                 } else {
+                    lastImageCommandAt = Date.now();
                     const usage = await incrementImageLimitUsage(senderName);
                     addActivity('image', senderName, `${imageQuery} (${usage.used}/${usage.limit})`, imageUrl, 'PinterestAPI', 0);
                     await addXP(senderName, 5);
