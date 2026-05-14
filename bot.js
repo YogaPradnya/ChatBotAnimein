@@ -1708,27 +1708,27 @@ function formatPokemonShopContext(items) {
 }
 
 const ANIMEIN_EXTRA_ENDPOINTS = {
-    battleInfo: { method: 'get', path: '/data/user/battle/data/info', label: 'Data battle user' },
-    battleBannedNow: { method: 'get', path: '/data/user/battle/banned/info/now', label: 'Pokemon yang sedang diban battle' },
-    battleBannedNext: { method: 'get', path: '/data/user/battle/banned/info/next', label: 'Pokemon ban battle berikutnya' },
-    battleBannedList: { method: 'get', path: '/data/user/battle/banned/list', label: 'Daftar ban Pokemon battle' },
-    battlePokemon: { method: 'get', path: '/data/user/battle/pokemon/list', label: 'Pokemon battle user' },
-    battleHistory: { method: 'get', path: '/3/2/user/battle/history', label: 'Riwayat battle user' },
-    battleRank: { method: 'get', path: '/3/2/user/battle/rank_list', label: 'Peringkat battle point' },
-    userProfile: { method: 'get', path: '/3/2/user/profile/data', label: 'Profil private akun login' },
-    userProfileMoney: { method: 'post', path: '/3/2/user/profile/money', label: 'Data coin/gems user target' },
-    userPublicProfile: { method: 'get', path: '/3/2/profile/other', label: 'Profil publik user target' },
-    userMedal: { method: 'get', path: '/3/2/user/profile/medal', label: 'Gelar/medal user' },
-    profileMedal: { method: 'get', path: '/3/2/profile/medal', label: 'Gelar profil publik' },
-    profileGallery: { method: 'get', path: '/3/2/profile/gallery', label: 'Galeri user' },
-    profilePokemon: { method: 'get', path: '/data/profile/pokemon', label: 'Pokemon di profil user' },
-    profileWaifu: { method: 'get', path: '/data/profile/waifu', label: 'Waifu user' },
-    userBagPokemon: { method: 'get', path: '/3/2/user/bag/pokemon_rev', label: 'Tas Pokemon user' },
-    userLoveLopers: { method: 'get', path: '/3/2/user/love/lopers', label: 'Data lopers user' },
-    userLoveLoping: { method: 'get', path: '/3/2/user/love/loping', label: 'Data loping user' },
-    favoriteMovie: { method: 'get', path: '/3/2/user/favorite/movie', label: 'Favorit user' },
-    historyMovie: { method: 'get', path: '/3/2/user/history/movie', label: 'Riwayat anime user' },
-    historyEpisode: { method: 'get', path: '/3/2/user/history/episode', label: 'Riwayat episode user' },
+    battleInfo: { method: 'get', path: '/data/user/battle/data/info', label: 'Data battle akun login', scope: 'private' },
+    battleBannedNow: { method: 'get', path: '/data/user/battle/banned/info/now', label: 'Pokemon yang sedang diban battle', scope: 'private' },
+    battleBannedNext: { method: 'get', path: '/data/user/battle/banned/info/next', label: 'Pokemon ban battle berikutnya', scope: 'private' },
+    battleBannedList: { method: 'get', path: '/data/user/battle/banned/list', label: 'Daftar ban Pokemon battle', scope: 'private' },
+    battlePokemon: { method: 'get', path: '/data/user/battle/pokemon/list', label: 'Pokemon battle akun login', scope: 'private' },
+    battleHistory: { method: 'get', path: '/3/2/user/battle/history', label: 'Riwayat battle akun login', scope: 'private' },
+    battleRank: { method: 'get', path: '/3/2/user/battle/rank_list', label: 'Peringkat battle point akun login', scope: 'private' },
+    userProfile: { method: 'get', path: '/3/2/user/profile/data', label: 'Profil private akun login', scope: 'private' },
+    userProfileMoney: { method: 'post', path: '/3/2/user/profile/money', label: 'Data coin/gems akun login', scope: 'private' },
+    userPublicProfile: { method: 'get', path: '/3/2/profile/other', label: 'Profil publik user target', scope: 'profile' },
+    profileMedal: { method: 'get', path: '/3/2/profile/medal', label: 'Gelar profil publik user target', scope: 'profile' },
+    profileGallery: { method: 'get', path: '/3/2/profile/gallery', label: 'Galeri user target', scope: 'profile' },
+    profileMovie: { method: 'get', path: '/3/2/profile/movie', label: 'Movie profil publik user target', scope: 'profile' },
+    profilePokemon: { method: 'get', path: '/data/profile/pokemon', label: 'Pokemon di profil user target', scope: 'profile' },
+    profileWaifu: { method: 'get', path: '/data/profile/waifu', label: 'Waifu user target', scope: 'profile' },
+    userBagPokemon: { method: 'get', path: '/3/2/user/bag/pokemon_rev', label: 'Tas Pokemon akun login', scope: 'private' },
+    userLoveLopers: { method: 'get', path: '/3/2/user/love/lopers', label: 'Data lopers akun login', scope: 'private' },
+    userLoveLoping: { method: 'get', path: '/3/2/user/love/loping', label: 'Data loping akun login', scope: 'private' },
+    favoriteMovie: { method: 'get', path: '/3/2/user/favorite/movie', label: 'Favorit akun login', scope: 'private' },
+    historyMovie: { method: 'get', path: '/3/2/user/history/movie', label: 'Riwayat anime akun login', scope: 'private' },
+    historyEpisode: { method: 'get', path: '/3/2/user/history/episode', label: 'Riwayat episode akun login', scope: 'private' },
     proList: { method: 'get', path: '/data/pro/list', label: 'Harga akun pro' },
     coinList: { method: 'get', path: '/data/coin/list', label: 'Harga coin' },
     pokemonShop: { method: 'get', path: '/3/2/user/shop/pokemon', label: 'Harga Pokemon' },
@@ -1747,10 +1747,10 @@ function detectAnimeinExtraKeys(text) {
         ['battleInfo', 'battleBannedNow', 'battleBannedNext', 'battleBannedList', 'battlePokemon', 'battleHistory', 'battleRank'].forEach(k => keys.add(k));
     }
     if (has(/profil|profile|like|gelar|medal|view|kontrib|kontribusi|coin|coins|koin|gems?|favorit|favorite|riwayat|history/)) {
-        ['userPublicProfile', 'userProfileMoney', 'userMedal', 'profileMedal', 'favoriteMovie', 'historyMovie', 'historyEpisode'].forEach(k => keys.add(k));
+        ['userPublicProfile', 'profileMedal', 'profileMovie'].forEach(k => keys.add(k));
     }
     if (has(/tas|bag|pokemon.*(milik|punya|koleksi)|koleksi.*pokemon/)) {
-        ['userBagPokemon', 'profilePokemon'].forEach(k => keys.add(k));
+        ['profilePokemon'].forEach(k => keys.add(k));
     }
     if (has(/harga|price|coin|pro|akun\s*pro|pokemon.*shop|shop.*pokemon/)) {
         ['coinList', 'proList', 'pokemonShop'].forEach(k => keys.add(k));
@@ -1759,7 +1759,7 @@ function detectAnimeinExtraKeys(text) {
         ['profileWaifu', 'profileGallery'].forEach(k => keys.add(k));
     }
     if (has(/lopers?|loping|love|lover|disukai|menyukai/)) {
-        ['userLoveLopers', 'userLoveLoping'].forEach(k => keys.add(k));
+        ['userPublicProfile', 'profileMovie'].forEach(k => keys.add(k));
     }
     if (has(/npc|manra/)) {
         ['npcList', 'npcPose', 'exploreNpc', 'exploreNpcIdle'].forEach(k => keys.add(k));
@@ -1858,17 +1858,32 @@ function getTargetUserParams(targetUser) {
     return params;
 }
 
+function buildAnimeinExtraRequestParams(spec, bot, targetUser) {
+    const authParams = getAuthParams(bot);
+    const targetParams = getTargetUserParams(targetUser);
+
+    if (spec.scope === 'private') {
+        return authParams;
+    }
+
+    if (spec.scope === 'profile') {
+        return targetUser ? { ...authParams, ...targetParams } : authParams;
+    }
+
+    if (spec.scope === 'global' || !targetUser) {
+        return authParams;
+    }
+
+    return targetUser ? { ...authParams, ...targetParams } : authParams;
+}
+
 async function fetchAnimeinExtraEndpoint(key, bot = bots[0], force = false, targetUser = null) {
     const spec = ANIMEIN_EXTRA_ENDPOINTS[key];
     if (!spec || isAnimeinApiBlocked(`Fetch ${key}`)) return null;
 
     try {
         const baseUrl = CONFIG.BASE_URL.replace(/\/$/, '');
-        const targetParams = getTargetUserParams(targetUser);
-        const authParams = getAuthParams(bot);
-        const requestParams = targetUser
-            ? { ...targetParams, id_user: targetUser.id || targetParams.id_user_profile, key_client: authParams.key_client, id_user_login: authParams.id_user, auth_id_user: authParams.id_user }
-            : authParams;
+        const requestParams = buildAnimeinExtraRequestParams(spec, bot, targetUser);
         recordPath(spec.path);
         const response = await axios({
             method: spec.method,
@@ -1976,7 +1991,7 @@ async function buildAnimeinExtraContext(question, bot = bots[0], senderName = ''
 
     if (!sections.length) return '';
     const targetInfo = targetUser ? `\nTarget user valid: ${targetUser.username}${targetUser.id ? ` (id: ${targetUser.id})` : ''}. Data ini diambil berdasarkan username pengirim: ${senderUsername}.` : '';
-    const targetDebug = targetUser ? `\nParameter target yang dikirim: ${JSON.stringify(getTargetUserParams(targetUser)).slice(0, 400)}` : '';
+    const targetDebug = targetUser ? `\nParameter target publik: ${JSON.stringify(getTargetUserParams(targetUser)).slice(0, 400)}. Endpoint private memakai auth akun login asli tanpa target override.` : '';
     return `\n\n[DATA REAL-TIME ANIMEIN TAMBAHAN]${targetInfo}${targetDebug}\n${sections.join('\n\n')}\nInstruksi AI: Jawab hanya berdasarkan data Animein di atas. User hanya boleh melihat data akun sendiri berdasarkan username pengirim. Untuk pertanyaan love/lopers/loping/gelar/medal/coin/gems, ambil angka/nama persis dari Ringkasan atau RAW_JSON_RINGKAS. Jangan menebak dari prompt/pengetahuan umum. Jika field yang ditanya tidak ada di data endpoint, jawab: data tersebut tidak tersedia dari endpoint untuk user ini.`;
 }
 
