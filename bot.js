@@ -869,7 +869,7 @@ let isBotInfoActive = false;  // Bot AI (info)
 let isBotKuisActive = false;  // Bot Kuis (game)
 let isSystemOff = false;      // Global Kill Switch
 let isImageCommandActive = true; // Switch command .gambar
-const IMAGE_COMMAND_COOLDOWN_MS = 5 * 60 * 1000;
+const IMAGE_COMMAND_COOLDOWN_MS = 1 * 60 * 1000;
 let lastImageCommandAt = 0;
 let XP_MULTIPLIER = 1;
 let doubleXPTimeout = null;
@@ -2582,6 +2582,7 @@ const runtimeState = {
     set CUSTOM_DOMAINS(value) { CUSTOM_DOMAINS = value; },
     get AUTO_REPLY() { return AUTO_REPLY; },
     set AUTO_REPLY(value) { AUTO_REPLY = value; },
+    get logEmitter() { return logEmitter; },
 };
 
 startDashboard({
