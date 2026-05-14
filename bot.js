@@ -1885,37 +1885,73 @@ async function fetchAnimeinExtraEndpoint(key, bot = bots[0], force = false, targ
     }
 }
 
-function summarizeAnimeinPayload(payload, maxItems = 8) {
+function summarizeAnimeinPayload(payload, maxItems = 12) {
     const rows = [];
     const seen = new Set();
+    const preferred = [
+        'name', 'nama', 'username', 'user_name', 'display_name', 'title', 'gelar', 'medal', 'badge', 'badges',
+        'lopers', 'loper', 'loping', 'love', 'lover', 'like', 'likes', 'total_like', 'total_love',
+        'pokemon_name', 'waifu_name', 'rank', 'point', 'battle_point', 'view', 'views', 'total_view',
+        'kontribusi', 'contribution', 'coin', 'coins', 'koin', 'gem', 'gems', 'price', 'harga', 'id', 'id_user'
+    ];
+
+    const formatScalar = (value) => {
+        if (value === null || value === undefined || value === '') return '';
+        if (typeof value === 'object') return JSON.stringify(value).slice(0, 180);
+        return String(value);
+    };
+
     const pick = (obj, idx) => {
-        const preferred = ['name', 'nama', 'username', 'user_name', 'title', 'pokemon_name', 'waifu_name', 'rank', 'point', 'battle_point', 'total_like', 'likes', 'view', 'views', 'kontribusi', 'contribution', 'coin', 'coins', 'gem', 'gems', 'price', 'harga', 'id'];
         const parts = [];
         for (const key of preferred) {
-            if (obj[key] !== undefined && obj[key] !== null && obj[key] !== '') parts.push(`${key}: ${obj[key]}`);
+            if (obj[key] !== undefined && obj[key] !== null && obj[key] !== '') {
+                parts.push(`${key}: ${formatScalar(obj[key])}`);
+            }
         }
-        const text = parts.length ? parts.join(' | ') : JSON.stringify(obj).slice(0, 220);
+
+        if (!parts.length) {
+            for (const [key, value] of Object.entries(obj).slice(0, 12)) {
+                const formatted = formatScalar(value);
+                if (formatted) parts.push(`${key}: ${formatted}`);
+            }
+        }
+
+        const text = parts.length ? parts.join(' | ') : JSON.stringify(obj).slice(0, 260);
         return `${idx + 1}. ${text}`;
     };
-    const visit = (value) => {
-        if (!value || rows.length >= maxItems) return;
-        if (Array.isArray(value)) return value.forEach(visit);
+
+    const visit = (value, keyHint = '') => {
+        if (value === null || value === undefined || rows.length >= maxItems) return;
+
+        if (Array.isArray(value)) {
+            if (!value.length && /love|loper|loping|gelar|medal|badge/i.test(keyHint)) {
+                rows.push(`${rows.length + 1}. ${keyHint}: []`);
+            }
+            return value.forEach(item => visit(item, keyHint));
+        }
+
         if (typeof value === 'object') {
             const keys = Object.keys(value);
-            const looksLikeRow = keys.some(k => /name|nama|title|rank|point|like|view|coin|gem|price|harga|pokemon|waifu|npc|medal|gelar/i.test(k));
-            if (looksLikeRow) {
-                const sig = JSON.stringify(value).slice(0, 120);
-                if (!seen.has(sig)) {
-                    seen.add(sig);
-                    rows.push(pick(value, rows.length));
-                }
+            const looksLikeRow = keys.some(k => /name|nama|title|rank|point|like|love|loper|loping|view|coin|koin|gem|price|harga|pokemon|waifu|npc|medal|gelar|badge|id_user/i.test(k));
+            const sig = JSON.stringify(value).slice(0, 180);
+            if ((looksLikeRow || /love|loper|loping|gelar|medal|badge/i.test(keyHint)) && !seen.has(sig)) {
+                seen.add(sig);
+                rows.push(pick(value, rows.length));
+                if (rows.length >= maxItems) return;
             }
-            Object.values(value).forEach(visit);
+            for (const [key, child] of Object.entries(value)) visit(child, key);
+            return;
+        }
+
+        if (/love|loper|loping|gelar|medal|badge|coin|koin|gem/i.test(keyHint)) {
+            const formatted = formatScalar(value);
+            if (formatted) rows.push(`${rows.length + 1}. ${keyHint}: ${formatted}`);
         }
     };
+
     visit(payload);
     if (rows.length) return rows.join('\n');
-    return JSON.stringify(payload).slice(0, 800);
+    return JSON.stringify(payload).slice(0, 1200);
 }
 
 async function buildAnimeinExtraContext(question, bot = bots[0], senderName = '') {
@@ -1932,12 +1968,16 @@ async function buildAnimeinExtraContext(question, bot = bots[0], senderName = ''
     const results = await Promise.all(keys.map(async key => ({ key, data: await fetchAnimeinExtraEndpoint(key, bot, false, targetUser) })));
     const sections = results
         .filter(item => item.data)
-        .map(({ key, data }) => `## ${ANIMEIN_EXTRA_ENDPOINTS[key].label}\n${summarizeAnimeinPayload(data)}`);
+        .map(({ key, data }) => {
+            const summary = summarizeAnimeinPayload(data);
+            const raw = JSON.stringify(data).slice(0, 1200);
+            return `## ${ANIMEIN_EXTRA_ENDPOINTS[key].label}\nRingkasan:\n${summary}\nRAW_JSON_RINGKAS:\n${raw}`;
+        });
 
     if (!sections.length) return '';
     const targetInfo = targetUser ? `\nTarget user valid: ${targetUser.username}${targetUser.id ? ` (id: ${targetUser.id})` : ''}. Data ini diambil berdasarkan username pengirim: ${senderUsername}.` : '';
     const targetDebug = targetUser ? `\nParameter target yang dikirim: ${JSON.stringify(getTargetUserParams(targetUser)).slice(0, 400)}` : '';
-    return `\n\n[DATA REAL-TIME ANIMEIN TAMBAHAN]${targetInfo}${targetDebug}\n${sections.join('\n\n')}\nInstruksi AI: Jawab hanya berdasarkan data Animein di atas. User hanya boleh melihat data akun sendiri berdasarkan username pengirim. Termasuk untuk data lopers/loping/love. Jika field seperti coin/gems/lopers tidak muncul di data, jelaskan bahwa endpoint tidak menyediakan field tersebut untuk user ini.`;
+    return `\n\n[DATA REAL-TIME ANIMEIN TAMBAHAN]${targetInfo}${targetDebug}\n${sections.join('\n\n')}\nInstruksi AI: Jawab hanya berdasarkan data Animein di atas. User hanya boleh melihat data akun sendiri berdasarkan username pengirim. Untuk pertanyaan love/lopers/loping/gelar/medal/coin/gems, ambil angka/nama persis dari Ringkasan atau RAW_JSON_RINGKAS. Jangan menebak dari prompt/pengetahuan umum. Jika field yang ditanya tidak ada di data endpoint, jawab: data tersebut tidak tersedia dari endpoint untuk user ini.`;
 }
 
 /** Groq (Llama 3.1) - kualitas lebih baik */
