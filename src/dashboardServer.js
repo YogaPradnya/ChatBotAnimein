@@ -27,6 +27,8 @@ function createRuntime(scope) {
         set isBotKuisActive(value) { state.isBotKuisActive = value; },
         get isSystemOff() { return state.isSystemOff; },
         set isSystemOff(value) { state.isSystemOff = value; },
+        get isImageCommandActive() { return state.isImageCommandActive; },
+        set isImageCommandActive(value) { state.isImageCommandActive = value; },
         get XP_MULTIPLIER() { return state.XP_MULTIPLIER; },
         set XP_MULTIPLIER(value) { state.XP_MULTIPLIER = value; },
         get doubleXPTimeout() { return state.doubleXPTimeout; },
@@ -45,6 +47,7 @@ function createRuntime(scope) {
         set CUSTOM_DOMAINS(value) { state.CUSTOM_DOMAINS = value; },
         get AUTO_REPLY() { return state.AUTO_REPLY; },
         set AUTO_REPLY(value) { state.AUTO_REPLY = value; },
+        get logEmitter() { return state.logEmitter; },
     };
 }
 
@@ -66,6 +69,7 @@ function startDashboard(scope) {
             isSystemOff,
             isBotInfoActive,
             isBotKuisActive,
+            isImageCommandActive,
             uptime: Math.floor((Date.now() - new Date(stats.startTime)) / 1000),
         });
     });
@@ -331,6 +335,7 @@ function startDashboard(scope) {
                 isBotActive: isBotInfoActive, // backward compat
                 isBotInfoActive,
                 isBotKuisActive,
+                isImageCommandActive,
                 isSystemOff,
                 isDoubleXP: XP_MULTIPLIER > 1,
                 xpMultiplier: XP_MULTIPLIER,
@@ -346,12 +351,38 @@ function startDashboard(scope) {
                     title: activeQuiz.original,
                     hints: activeQuiz.hintsRevealed,
                     start: activeQuiz.startedAt
-                } : null
+                } : null,
+                realtimeLogs: stats.realtimeLogs || []
             });
         } catch (e) {
             const botStatus = isSystemOff ? 'offline' : ((bots[0] && bots[0].auth && bots[0].auth.userId) ? 'online' : 'offline');
-            res.json({ ...stats, botStatus, isBotInfoActive, isBotKuisActive, isSystemOff, error: e.message });
+            res.json({ ...stats, botStatus, isBotInfoActive, isBotKuisActive, isImageCommandActive, isSystemOff, realtimeLogs: stats.realtimeLogs || [], error: e.message });
         }
+    });
+
+    app.get('/api/logs/stream', (req, res) => {
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache, no-transform');
+        res.setHeader('Connection', 'keep-alive');
+        res.flushHeaders?.();
+
+        const send = (entry) => res.write(`data: ${JSON.stringify(entry)}\n\n`);
+        (stats.realtimeLogs || []).slice().reverse().forEach(send);
+
+        const heartbeat = setInterval(() => res.write(': ping\n\n'), 25000);
+        logEmitter.on('log', send);
+
+        req.on('close', () => {
+            clearInterval(heartbeat);
+            logEmitter.off('log', send);
+            res.end();
+        });
+    });
+
+    app.post('/api/logs/purge', (req, res) => {
+        stats.realtimeLogs = [];
+        console.log('[DASHBOARD] Realtime logs cleared.');
+        res.json({ success: true });
     });
 
     app.post('/api/users/reset-all', async (req, res) => {
@@ -390,7 +421,22 @@ function startDashboard(scope) {
                 });
                 console.log(`[DASHBOARD] Bot Info: ${isBotInfoActive ? 'ON' : 'OFF'}`);
             }
-            res.json({ success: true, isBotInfoActive, isBotKuisActive, isSystemOff });
+            res.json({ success: true, isBotInfoActive, isBotKuisActive, isImageCommandActive, isSystemOff });
+        } catch (e) {
+            res.status(500).json({ success: false, message: e.message });
+        }
+    });
+
+    app.post('/api/config/image-command', async (req, res) => {
+        if (blockWhenSystemOff(res, 'Toggle .gambar')) return;
+        try {
+            isImageCommandActive = !isImageCommandActive;
+            await db.execute({
+                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('is_image_command_active', ?)",
+                args: [String(isImageCommandActive)]
+            });
+            console.log(`[DASHBOARD] Command .gambar: ${isImageCommandActive ? 'ON' : 'OFF'}`);
+            res.json({ success: true, isImageCommandActive, isSystemOff });
         } catch (e) {
             res.status(500).json({ success: false, message: e.message });
         }

@@ -3,6 +3,7 @@ const Groq = require('groq-sdk');
 const fs = require('fs');
 const path = require('path');
 const FormData = require('form-data');
+const EventEmitter = require('events');
 const { createClient } = require('@libsql/client');
 const { CONFIG, warnMissingConfig } = require('./src/config');
 const { startDashboard } = require('./src/dashboardServer');
@@ -248,6 +249,16 @@ async function initDB() {
                 args: [String(isBotKuisActive)]
             });
         }
+
+        const imageCommandRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'is_image_command_active'" });
+        isImageCommandActive = imageCommandRes.rows.length > 0 ? imageCommandRes.rows[0].value === 'true' : true;
+        if (imageCommandRes.rows.length === 0) {
+            await db.execute({
+                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('is_image_command_active', ?)",
+                args: [String(isImageCommandActive)]
+            });
+        }
+        console.log(`[GAMBAR] Command .gambar: ${isImageCommandActive ? 'ON' : 'OFF'}`);
 
         if (isSystemOff && (isBotInfoActive || isBotKuisActive)) {
             isBotInfoActive = false;
@@ -857,6 +868,9 @@ setTimeout(updateDBStats, 5000);
 let isBotInfoActive = false;  // Bot AI (info)
 let isBotKuisActive = false;  // Bot Kuis (game)
 let isSystemOff = false;      // Global Kill Switch
+let isImageCommandActive = true; // Switch command .gambar
+const IMAGE_COMMAND_COOLDOWN_MS = 5 * 60 * 1000;
+let lastImageCommandAt = 0;
 let XP_MULTIPLIER = 1;
 let doubleXPTimeout = null;
 let doubleXPEndTime = 0;
@@ -893,8 +907,45 @@ const stats = {
     totalDBKuis: 0,
     totalReports: 0,
     totalQuizzesStarted: 0,
-    recentActivity: []
+    recentActivity: [],
+    realtimeLogs: []
 };
+
+const logEmitter = new EventEmitter();
+const originalConsole = {
+    log: console.log.bind(console),
+    warn: console.warn.bind(console),
+    error: console.error.bind(console),
+};
+
+function serializeLogArg(arg) {
+    if (arg instanceof Error) return arg.stack || arg.message;
+    if (typeof arg === 'string') return arg;
+    try {
+        return JSON.stringify(arg);
+    } catch (_) {
+        return String(arg);
+    }
+}
+
+function pushRealtimeLog(level, args) {
+    const entry = {
+        id: Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+        time: new Date().toLocaleTimeString('id-ID'),
+        level,
+        message: args.map(serializeLogArg).join(' '),
+    };
+    stats.realtimeLogs.unshift(entry);
+    if (stats.realtimeLogs.length > 200) stats.realtimeLogs.pop();
+    logEmitter.emit('log', entry);
+}
+
+['log', 'warn', 'error'].forEach((level) => {
+    console[level] = (...args) => {
+        pushRealtimeLog(level, args);
+        originalConsole[level](...args);
+    };
+});
 
 // Set banned users (loaded from DB on init)
 const bannedUsers = new Set();
@@ -1120,8 +1171,10 @@ const cache = {
     topRated: { data: [], lastFetch: 0 },
     schedule: { data: null, lastFetch: 0 },
     genres: { data: null, lastFetch: 0 },
+    pokemonShop: { data: [], lastFetch: 0 },
     genreCache: {},
     TTL: 6 * 60 * 60 * 1000,
+    POKEMON_SHOP_TTL: 2 * 60 * 1000,
 };
 
 const ANIMEIN_HEADERS = {
@@ -1560,6 +1613,82 @@ async function buildAnimeContext(intent, question) {
     return contextData;
 }
 
+async function fetchPokemonShop(bot = bots[0], force = false) {
+    if (isAnimeinApiBlocked('Fetch Pokemon shop')) return [];
+    const now = Date.now();
+    if (!force && cache.pokemonShop.data.length > 0 && now - cache.pokemonShop.lastFetch < cache.POKEMON_SHOP_TTL) {
+        return cache.pokemonShop.data;
+    }
+
+    if (!bot?.auth?.userId || !bot?.auth?.userKey) return cache.pokemonShop.data || [];
+
+    try {
+        const baseUrl = CONFIG.BASE_URL.replace(/\/$/, '');
+        recordPath('/3/2/user/shop/pokemon');
+        const res = await axios.get(`${baseUrl}/3/2/user/shop/pokemon`, {
+            params: { id_user: bot.auth.userId, key_client: bot.auth.userKey },
+            headers: ANIMEIN_HEADERS,
+            timeout: 12000,
+        });
+
+        const items = normalizePokemonShopItems(res.data);
+        cache.pokemonShop = { data: items, lastFetch: now };
+        console.log(`[POKEMON SHOP] Loaded ${items.length} item dari shop.`);
+        return items;
+    } catch (e) {
+        console.warn('[POKEMON SHOP] Gagal ambil data shop:', e.message.slice(0, 120));
+        return cache.pokemonShop.data || [];
+    }
+}
+
+function normalizePokemonShopItems(payload) {
+    const arrays = [];
+    const visit = (value) => {
+        if (!value) return;
+        if (Array.isArray(value)) {
+            if (value.some(item => item && typeof item === 'object')) arrays.push(value);
+            value.forEach(visit);
+            return;
+        }
+        if (typeof value === 'object') Object.values(value).forEach(visit);
+    };
+    visit(payload);
+
+    const bestArray = arrays.sort((a, b) => b.length - a.length)[0] || [];
+    return bestArray
+        .filter(item => item && typeof item === 'object')
+        .map((item, index) => {
+            const name = item.name || item.nama || item.title || item.pokemon_name || item.monster || item.pokemon || `Pokemon #${index + 1}`;
+            const price = item.price ?? item.harga ?? item.coin ?? item.coins ?? item.gem ?? item.bp ?? item.cost ?? item.nominal ?? item.value;
+            const stock = item.stock ?? item.stok ?? item.qty ?? item.quantity ?? item.jumlah;
+            const rarity = item.rarity || item.grade || item.rank || item.tier || item.type;
+            const id = item.id || item.id_pokemon || item.pokemon_id || item.id_shop;
+            return {
+                id,
+                name: String(name),
+                price,
+                stock,
+                rarity,
+                raw: item,
+            };
+        });
+}
+
+function formatPokemonShopContext(items) {
+    if (!items.length) return '';
+
+    const lines = items.slice(0, 20).map((item, index) => {
+        const parts = [`${index + 1}. ${item.name}`];
+        if (item.price !== undefined && item.price !== null && item.price !== '') parts.push(`Harga: ${item.price}`);
+        if (item.stock !== undefined && item.stock !== null && item.stock !== '') parts.push(`Stok: ${item.stock}`);
+        if (item.rarity) parts.push(`Grade/Type: ${item.rarity}`);
+        if (item.id) parts.push(`ID: ${item.id}`);
+        return `- ${parts.join(' | ')}`;
+    });
+
+    return `\n\n[DATA REAL-TIME TOKO POKEMON ANIMEIN]:\n${lines.join('\n')}\nInstruksi AI: Jika user menanyakan Pokemon yang sedang dijual, harga Pokemon sekarang, stok, atau toko Pokemon, jawab berdasarkan data real-time ini. Jangan mengarang harga di luar data.`;
+}
+
 /** Groq (Llama 3.1) - kualitas lebih baik */
 async function askGroq(index, userMessage, senderName, contextData = '', chatHistory = []) {
     const client = groqClients[index];
@@ -1633,10 +1762,13 @@ async function getAIResponse(userMessage, senderName, isReply = false) {
     const knowledgeResult = getKnowledgeContext(userMessage);
     const knowledgeContext = knowledgeResult.context;
     const knowledgeDomain = knowledgeResult.domain;
-    const finalContext = animeContext + knowledgeContext;
+    const wantsPokemonShop = /pokemon|poke|pika|shop|toko|jual|dijual|jualan|harga|price|stok|stock/i.test(userMessage)
+        && /shop|toko|jual|dijual|jualan|harga|price|stok|stock|beli/i.test(userMessage);
+    const pokemonShopContext = wantsPokemonShop ? formatPokemonShopContext(await fetchPokemonShop(bots[0])) : '';
+    const finalContext = animeContext + knowledgeContext + pokemonShopContext;
 
-    if (intent || knowledgeContext) {
-        console.log(`[CONTEXT] Intent: ${intent || 'none'}, Domain: ${knowledgeDomain || 'none'}, Knowledge: ${knowledgeContext ? 'Inject' : 'Empty'}`);
+    if (intent || knowledgeContext || pokemonShopContext) {
+        console.log(`[CONTEXT] Intent: ${intent || 'none'}, Domain: ${knowledgeDomain || 'none'}, Knowledge: ${knowledgeContext ? 'Inject' : 'Empty'}, PokemonShop: ${pokemonShopContext ? 'Inject' : 'Empty'}`);
     }
 
     // SEMANTIC CACHE CHECK: Cek apakah jawaban sudah ada di cache (0 Token!)
@@ -2258,20 +2390,29 @@ async function processMessages(bot, messages) {
             }
 
             if (lowerMsg.startsWith('.gambar')) {
+                if (!isImageCommandActive) {
+                    console.log(`[GAMBAR] Command .gambar sedang OFF, request dari ${senderName} diabaikan.`);
+                    continue;
+                }
+
                 const imageQuery = cleanMsg.replace(/^\.gambar\s*/i, '').trim();
                 if (!imageQuery) {
                     await sendChatMessage(bot, `🖼️ @${senderName} Tulis kata kunci setelah .gambar\nContoh: .gambar yanami`, msg.id);
                     continue;
                 }
 
-                if (bot.isCooldown) continue;
-                bot.isCooldown = true;
-                setTimeout(() => { bot.isCooldown = false; }, 10000);
+                const now = Date.now();
+                const remainingMs = IMAGE_COMMAND_COOLDOWN_MS - (now - lastImageCommandAt);
+                if (remainingMs > 0) {
+                    console.log(`[GAMBAR] Cooldown aktif, request dari ${senderName} diabaikan.`);
+                    continue;
+                }
+                lastImageCommandAt = now;
 
                 try {
                     const imageUrl = await fetchPinterestImage(imageQuery);
                     const imageData = await downloadImageAsBase64(imageUrl);
-                    const caption = `🖼️ @${senderName} Ini gambar untuk: ${imageQuery}`;
+                    const caption = `@${senderName} Ini gambar untuk: ${imageQuery}`;
                     const sent = await sendChatWithImage(bot, imageData, caption, msg.id);
 
                     if (!sent) {
@@ -2420,6 +2561,8 @@ const runtimeState = {
     set isBotKuisActive(value) { isBotKuisActive = value; },
     get isSystemOff() { return isSystemOff; },
     set isSystemOff(value) { isSystemOff = value; },
+    get isImageCommandActive() { return isImageCommandActive; },
+    set isImageCommandActive(value) { isImageCommandActive = value; },
     get XP_MULTIPLIER() { return XP_MULTIPLIER; },
     set XP_MULTIPLIER(value) { XP_MULTIPLIER = value; },
     get doubleXPTimeout() { return doubleXPTimeout; },
@@ -2428,6 +2571,7 @@ const runtimeState = {
     set doubleXPEndTime(value) { doubleXPEndTime = value; },
     get QUIZ_FILTER() { return QUIZ_FILTER; },
     set QUIZ_FILTER(value) { QUIZ_FILTER = value; },
+    get logEmitter() { return logEmitter; },
     get activeQuiz() { return activeQuiz; },
     set activeQuiz(value) { activeQuiz = value; },
     get SYSTEM_PROMPT() { return SYSTEM_PROMPT; },

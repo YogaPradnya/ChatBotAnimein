@@ -337,6 +337,18 @@ function getDashboardHTML() {
   .activity-q { font-size: 13px; color: #555; margin-bottom: 3px; }
   .activity-a { font-size: 13px; color: var(--text); padding-left: 10px; border-left: 2px solid var(--accent); }
   .prov-tag { font-size: 10px; background: var(--border); padding: 2px 7px; border-radius: 4px; color: var(--muted); }
+  .log-card { background: linear-gradient(145deg, #0f172a, #020617); border: 1px solid rgba(148,163,184,0.18); color: #dbeafe; }
+  .log-card .card-title { color: #e2e8f0; border-color: rgba(148,163,184,0.14); }
+  .live-dot { width: 8px; height: 8px; border-radius: 999px; background: #22c55e; box-shadow: 0 0 0 6px rgba(34,197,94,0.12); display: inline-block; margin-right: 8px; }
+  .realtime-log-list { height: 340px; overflow-y: auto; font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace; font-size: 11px; display: flex; flex-direction: column; gap: 8px; padding-right: 6px; }
+  .log-row { display: grid; grid-template-columns: 74px 54px 1fr; gap: 10px; align-items: start; padding: 8px 10px; border: 1px solid rgba(148,163,184,0.10); border-radius: 10px; background: rgba(15,23,42,0.58); animation: logIn 0.22s ease-out; }
+  .log-time { color: #94a3b8; }
+  .log-level { font-weight: 900; text-transform: uppercase; font-size: 10px; }
+  .log-level.log { color: #22c55e; }
+  .log-level.warn { color: #facc15; }
+  .log-level.error { color: #fb7185; }
+  .log-message { color: #e5e7eb; word-break: break-word; line-height: 1.5; }
+  @keyframes logIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
 
   /* MODEL CARDS */
   .model-list { display: flex; flex-direction: column; gap: 10px; }
@@ -609,6 +621,7 @@ function getDashboardHTML() {
     <button class="nav-item" onclick="showPage('database', this); toggleSidebar(false)">Database</button>
     <button class="nav-item" onclick="showPage('autoreply', this); toggleSidebar(false)">Auto Reply</button>
     <button class="nav-item" onclick="showPage('laporan', this); toggleSidebar(false)">Laporan</button>
+    <button class="nav-item" onclick="showPage('logs', this); toggleSidebar(false)">Realtime Logs</button>
     <button class="nav-item" onclick="showPage('api-traffic', this); toggleSidebar(false)">API Monitor</button>
   </nav>
   <div class="sidebar-status">
@@ -661,6 +674,13 @@ function getDashboardHTML() {
       <div class="bot-toggle-wrap">
         <span class="bot-toggle-lbl">Bot AI</span>
         <div class="bot-toggle-pill" id="botInfoTogglePill" onclick="toggleBot('info')">
+          <span class="btp-on">ON</span>
+          <span class="btp-off">OFF</span>
+        </div>
+      </div>
+      <div class="bot-toggle-wrap">
+        <span class="bot-toggle-lbl">.gambar</span>
+        <div class="bot-toggle-pill" id="imageCommandTogglePill" onclick="toggleImageCommand()">
           <span class="btp-on">ON</span>
           <span class="btp-off">OFF</span>
         </div>
@@ -751,13 +771,27 @@ function getDashboardHTML() {
         </div>
 
         <!-- Recent Activity -->
-        <div class="card activity-card" style="margin-bottom:0; overflow:hidden; display:flex; flex-direction:column;">
-          <div class="card-title" style="flex-shrink:0;">Recent Activity</div>
-          <div class="activity-list" id="activityList" style="overflow-y:auto; flex:1;">
-            <div style="color:var(--muted); text-align:center; padding:20px;">Belum ada aktivitas</div>
+          <div class="card activity-card" style="margin-bottom:0; overflow:hidden; display:flex; flex-direction:column;">
+            <div class="card-title" style="flex-shrink:0;">Recent Activity</div>
+            <div class="activity-list" id="activityList" style="overflow-y:auto; flex:1;">
+              <div style="color:var(--muted); text-align:center; padding:20px;">Belum ada aktivitas</div>
+            </div>
           </div>
         </div>
-      </div>
+    </div>
+
+    <!-- PAGE: REALTIME LOGS -->
+    <div class="page" id="page-logs">
+       <div class="card log-card" style="height: 100%; min-height: 620px; display:flex; flex-direction:column; overflow:hidden;">
+          <div class="card-title" style="flex-shrink:0; gap:12px;">
+            <span><span class="live-dot"></span>Realtime System Logs</span>
+            <button class="btn-sm btn-sm-del" onclick="purgeRealtimeLogs()">Purge Logs</button>
+          </div>
+          <p style="font-size: 12px; color:#94a3b8; margin-top:-8px; margin-bottom:18px;">Memantau console.log, console.warn, dan console.error bot secara realtime.</p>
+          <div class="realtime-log-list" id="realtimeLogList" style="height:auto; flex:1; min-height:480px;">
+            <div style="color:#94a3b8; text-align:center; padding:20px;">Menunggu log...</div>
+          </div>
+       </div>
     </div>
 
     <!-- PAGE: API TRAFFIC -->
@@ -1236,6 +1270,8 @@ function getDashboardHTML() {
   let availableTitles = [];
   let doubleXPEndTime = 0;
   let nextMicrofetchTime = 0; // Timestamp kapan microfetch berikutnya
+  let realtimeLogs = [];
+  let logSource = null;
   const DEFAULT_TITLES = [
     "🏷️ Ksatria Animein",
     "⚔️ Legenda Otaku",
@@ -1321,8 +1357,20 @@ function getDashboardHTML() {
       return;
     }
     isSystemOff = d.isSystemOff;
-    render({ ...stats, isSystemOff: d.isSystemOff, isBotInfoActive: d.isBotInfoActive, isBotKuisActive: d.isBotKuisActive });
+    render({ ...stats, isSystemOff: d.isSystemOff, isBotInfoActive: d.isBotInfoActive, isBotKuisActive: d.isBotKuisActive, isImageCommandActive: d.isImageCommandActive });
     refresh();
+  }
+
+  async function toggleImageCommand() {
+    const res = await fetch('/api/config/image-command', { method: 'POST' });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || d.success === false) {
+      showToast(d.message || 'Gagal mengubah switch .gambar.', 'error');
+      refresh();
+      return;
+    }
+    render({ ...stats, isImageCommandActive: d.isImageCommandActive, isSystemOff: d.isSystemOff });
+    showToast('.gambar sekarang ' + (d.isImageCommandActive ? 'ON' : 'OFF'), 'success');
   }
   
   async function toggleXPEvent() {
@@ -1401,7 +1449,7 @@ function getDashboardHTML() {
       target.style.display = 'block';
     }
     el.classList.add('active');
-    const titles = { dashboard: 'Dashboard', model: 'Model AI', database: 'Database', prompt: 'Prompt & Knowledge', autoreply: 'Auto Reply', laporan: 'Laporan', filter: 'Filter Kata', kuis: 'Kuis & Leaderboard' };
+    const titles = { dashboard: 'Dashboard', model: 'Model AI', database: 'Database', prompt: 'Prompt & Knowledge', autoreply: 'Auto Reply', laporan: 'Laporan', filter: 'Filter Kata', kuis: 'Kuis & Leaderboard', logs: 'Realtime Logs', 'api-traffic': 'API Monitor' };
     document.getElementById('pageTitle').textContent = titles[id] || id;
     if (id === 'dashboard') refresh();
     if (id === 'database') loadCache();
@@ -1410,6 +1458,7 @@ function getDashboardHTML() {
     if (id === 'filter') loadFilter();
     if (id === 'autoreply') loadAutoReply();
     if (id === 'kuis') { loadTitles(); loadUsers(); loadBanned(); loadQuizPool(); }
+    if (id === 'logs') renderRealtimeLogs();
     if (id === 'model') {
       loadStats();
     }
@@ -1448,13 +1497,18 @@ async function updateStats() {
 
     const isBotInfoOn = d.isBotInfoActive !== undefined ? d.isBotInfoActive : d.isBotActive;
     const isBotKuisOn = d.isBotKuisActive !== undefined ? d.isBotKuisActive : false;
+    const isImageCommandOn = d.isImageCommandActive !== undefined ? d.isImageCommandActive : true;
     const infoPill = document.getElementById('botInfoTogglePill');
     const kuisPill = document.getElementById('botKuisTogglePill');
+    const imagePill = document.getElementById('imageCommandTogglePill');
     if (infoPill) {
       if (isBotInfoOn) infoPill.classList.add('is-on'); else infoPill.classList.remove('is-on');
     }
     if (kuisPill) {
       if (isBotKuisOn) kuisPill.classList.add('is-on'); else kuisPill.classList.remove('is-on');
+    }
+    if (imagePill) {
+      if (isImageCommandOn) imagePill.classList.add('is-on'); else imagePill.classList.remove('is-on');
     }
 
     isSystemOff = d.isSystemOff || false;
@@ -1589,6 +1643,11 @@ async function updateStats() {
           \`).join('');
         }
       }
+    }
+
+    if (d.realtimeLogs && realtimeLogs.length === 0) {
+      realtimeLogs = d.realtimeLogs.slice(0, 200);
+      renderRealtimeLogs();
     }
 
     // API Path Monitor
@@ -2355,8 +2414,60 @@ async function updateStats() {
     refresh();
   }
 
+  function renderRealtimeLogs() {
+    const list = document.getElementById('realtimeLogList');
+    if (!list) return;
+    if (!realtimeLogs.length) {
+      list.innerHTML = '<div style="color:#94a3b8; text-align:center; padding:20px;">Menunggu log...</div>';
+      return;
+    }
+    list.innerHTML = realtimeLogs.map(log => \`
+      <div class="log-row">
+        <span class="log-time">\${escapeHTML(log.time || '--:--:--')}</span>
+        <span class="log-level \${escapeHTML(log.level || 'log')}">\${escapeHTML(log.level || 'log')}</span>
+        <span class="log-message">\${escapeHTML(log.message || '')}</span>
+      </div>
+    \`).join('');
+  }
+
+  function addRealtimeLog(log) {
+    if (!log || !log.id) return;
+    if (realtimeLogs.some(item => item.id === log.id)) return;
+    realtimeLogs.unshift(log);
+    if (realtimeLogs.length > 200) realtimeLogs.pop();
+    renderRealtimeLogs();
+  }
+
+  function connectRealtimeLogs() {
+    if (!window.EventSource || logSource) return;
+    logSource = new EventSource('/api/logs/stream');
+    logSource.onmessage = (event) => {
+      try { addRealtimeLog(JSON.parse(event.data)); } catch (_) {}
+    };
+    logSource.onerror = () => {
+      if (logSource) logSource.close();
+      logSource = null;
+      setTimeout(connectRealtimeLogs, 3000);
+    };
+  }
+
+  async function purgeRealtimeLogs() {
+    const ok = await customConfirm('Hapus semua realtime log dari dashboard?', 'Purge Logs', 'Hapus');
+    if (!ok) return;
+    const res = await fetch('/api/logs/purge', { method: 'POST' });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || d.success === false) {
+      showToast(d.message || 'Gagal menghapus log.', 'error');
+      return;
+    }
+    realtimeLogs = [];
+    renderRealtimeLogs();
+    showToast('Realtime logs dihapus.', 'success');
+  }
+
   refresh();
   loadTitles();
+  connectRealtimeLogs();
   setInterval(refresh, 5000);
 </script>
 </body>
