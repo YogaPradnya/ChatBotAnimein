@@ -449,6 +449,7 @@ async function addXP(username, amount) {
 // --- QUIZ STATE ---
 const QUIZ_DURATION_MS = 5 * 60 * 1000; // 5 menit
 const QUIZ_HINT_INTERVAL = 60 * 1000;   // Hint baru tiap 60 detik
+const STARTUP_QUIZ_FETCH_DELAY_MS = 30 * 60 * 1000; // Ambil data kuis 30 menit setelah restart
 
 let activeQuiz = {
     isRunning: false,
@@ -1185,11 +1186,9 @@ const cache = {
     schedule: { data: null, lastFetch: 0 },
     genres: { data: null, lastFetch: 0 },
     pokemonShop: { data: [], lastFetch: 0 },
-    animeinExtra: {},
     genreCache: {},
     TTL: 6 * 60 * 60 * 1000,
     POKEMON_SHOP_TTL: 2 * 60 * 1000,
-    EXTRA_DATA_TTL: 2 * 60 * 1000,
 };
 
 const ANIMEIN_HEADERS = {
@@ -1716,7 +1715,8 @@ const ANIMEIN_EXTRA_ENDPOINTS = {
     battlePokemon: { method: 'get', path: '/data/user/battle/pokemon/list', label: 'Pokemon battle user' },
     battleHistory: { method: 'get', path: '/3/2/user/battle/history', label: 'Riwayat battle user' },
     battleRank: { method: 'get', path: '/3/2/user/battle/rank_list', label: 'Peringkat battle point' },
-    userProfile: { method: 'get', path: '/3/2/user/profile/data', label: 'Profil user' },
+    userProfile: { method: 'get', path: '/3/2/user/profile/data', label: 'Profil private akun login' },
+    userPublicProfile: { method: 'get', path: '/3/2/profile/other', label: 'Profil publik user target' },
     userMedal: { method: 'get', path: '/3/2/user/profile/medal', label: 'Gelar/medal user' },
     profileMedal: { method: 'get', path: '/3/2/profile/medal', label: 'Gelar profil publik' },
     profileGallery: { method: 'get', path: '/3/2/profile/gallery', label: 'Galeri user' },
@@ -1743,8 +1743,8 @@ function detectAnimeinExtraKeys(text) {
     if (has(/battle|battel|batle|rank|peringkat|battle\s*point|bp\b|pokemon.*ban|ban.*pokemon/)) {
         ['battleInfo', 'battleBannedNow', 'battleBannedNext', 'battleBannedList', 'battlePokemon', 'battleHistory', 'battleRank'].forEach(k => keys.add(k));
     }
-    if (has(/profil|profile|like|gelar|medal|view|kontrib|kontribusi|coin|coins|gems?|favorit|favorite|riwayat|history/)) {
-        ['userProfile', 'userMedal', 'profileMedal', 'favoriteMovie', 'historyMovie', 'historyEpisode'].forEach(k => keys.add(k));
+    if (has(/profil|profile|like|gelar|medal|view|kontrib|kontribusi|coin|coins|koin|gems?|favorit|favorite|riwayat|history/)) {
+        ['userPublicProfile', 'userMedal', 'profileMedal', 'favoriteMovie', 'historyMovie', 'historyEpisode'].forEach(k => keys.add(k));
     }
     if (has(/tas|bag|pokemon.*(milik|punya|koleksi)|koleksi.*pokemon/)) {
         ['userBagPokemon', 'profilePokemon'].forEach(k => keys.add(k));
@@ -1806,10 +1806,6 @@ async function resolveAnimeinUser(username, bot = bots[0]) {
     const cleanUsername = String(username || '').replace(/^@+/, '').trim();
     if (!cleanUsername) return null;
 
-    const cacheKey = `user:${cleanUsername.toLowerCase()}`;
-    const cached = cache.animeinExtra[cacheKey];
-    if (cached && Date.now() - cached.lastFetch < cache.EXTRA_DATA_TTL) return cached.data;
-
     try {
         const baseUrl = CONFIG.BASE_URL.replace(/\/$/, '');
         const params = { ...getAuthParams(bot), keyword: cleanUsername, username: cleanUsername, q: cleanUsername, search: cleanUsername };
@@ -1821,13 +1817,11 @@ async function resolveAnimeinUser(username, bot = bots[0]) {
         });
 
         const user = findFirstObjectByKeys(response.data, /^(id|id_user|user_id|username|user_name|name)$/i) || {};
-        const resolved = {
+        return {
             username: user.username || user.user_name || user.name || cleanUsername,
             id: user.id_user || user.user_id || user.id || null,
             raw: user,
         };
-        cache.animeinExtra[cacheKey] = { data: resolved, lastFetch: Date.now() };
-        return resolved;
     } catch (err) {
         console.warn(`[ANIMEIN USER] Gagal cari user ${cleanUsername}: ${err.message.slice(0, 100)}`);
         return { username: cleanUsername, id: null, raw: null };
@@ -1841,13 +1835,19 @@ function getTargetUserParams(targetUser) {
         params.id_user_profile = targetUser.id;
         params.id_user_target = targetUser.id;
         params.target_id_user = targetUser.id;
+        params.id_user_other = targetUser.id;
+        params.id_other = targetUser.id;
+        params.other_id_user = targetUser.id;
         params.user_id = targetUser.id;
         params.id_profile = targetUser.id;
+        params.id = targetUser.id;
     }
     if (targetUser.username) {
         params.username = targetUser.username;
         params.user_name = targetUser.username;
         params.target_username = targetUser.username;
+        params.username_other = targetUser.username;
+        params.other_username = targetUser.username;
     }
     return params;
 }
@@ -1855,10 +1855,6 @@ function getTargetUserParams(targetUser) {
 async function fetchAnimeinExtraEndpoint(key, bot = bots[0], force = false, targetUser = null) {
     const spec = ANIMEIN_EXTRA_ENDPOINTS[key];
     if (!spec || isAnimeinApiBlocked(`Fetch ${key}`)) return null;
-    const cacheKey = targetUser?.username || targetUser?.id ? `${key}:${targetUser.username || targetUser.id}` : key;
-    const now = Date.now();
-    const cached = cache.animeinExtra[cacheKey];
-    if (!force && cached && now - cached.lastFetch < cache.EXTRA_DATA_TTL) return cached.data;
 
     try {
         const baseUrl = CONFIG.BASE_URL.replace(/\/$/, '');
@@ -1872,11 +1868,10 @@ async function fetchAnimeinExtraEndpoint(key, bot = bots[0], force = false, targ
             headers: spec.method === 'get' ? ANIMEIN_HEADERS : { ...ANIMEIN_HEADERS, 'Content-Type': 'application/x-www-form-urlencoded' },
             timeout: 12000,
         });
-        cache.animeinExtra[cacheKey] = { data: response.data, lastFetch: now };
         return response.data;
     } catch (err) {
         console.warn(`[ANIMEIN EXTRA] ${key} gagal: ${err.message.slice(0, 100)}`);
-        return cached?.data || null;
+        return null;
     }
 }
 
@@ -2885,9 +2880,26 @@ async function startBot() {
 
     // Otomatis Kuis setiap 1 jam
     resetAutoQuizTimer();
+    scheduleStartupQuizDataFetch();
 }
 
 let autoQuizInterval = null;
+let startupQuizFetchTimer = null;
+
+function scheduleStartupQuizDataFetch() {
+    if (startupQuizFetchTimer) clearTimeout(startupQuizFetchTimer);
+    console.log(`[QUIZ] Data kuis akan diambil ${Math.round(STARTUP_QUIZ_FETCH_DELAY_MS / 60000)} menit setelah restart.`);
+
+    startupQuizFetchTimer = setTimeout(async () => {
+        if (isSystemOff) {
+            console.log('[QUIZ] Skip fetch data kuis setelah restart karena Kill Switch ON.');
+            return;
+        }
+        console.log('[QUIZ] Mengambil data kuis setelah 30 menit restart...');
+        await fetchHomeAnime(true);
+    }, STARTUP_QUIZ_FETCH_DELAY_MS);
+}
+
 function resetAutoQuizTimer() {
     if (autoQuizInterval) clearInterval(autoQuizInterval);
     
