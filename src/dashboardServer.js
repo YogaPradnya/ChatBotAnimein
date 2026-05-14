@@ -456,7 +456,23 @@ function startDashboard(scope) {
     app.get('/api/images/limits', async (req, res) => {
         try {
             const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).toISOString().slice(0, 10);
-            const rows = await db.execute("SELECT username, usage_date, used_count, daily_limit, updated_at FROM image_limits ORDER BY updated_at DESC, username ASC LIMIT 300");
+            const q = String(req.query.q || '').replace(/^@/, '').trim();
+            const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+            const limit = Math.min(35, Math.max(1, parseInt(req.query.limit, 10) || 35));
+            const offset = (page - 1) * limit;
+            const whereSql = q ? " WHERE username LIKE ?" : "";
+            const args = q ? [`%${q}%`] : [];
+
+            const countRes = await db.execute({
+                sql: `SELECT COUNT(*) as total FROM image_limits${whereSql}`,
+                args
+            });
+            const total = Number(countRes.rows[0]?.total || 0);
+
+            const rows = await db.execute({
+                sql: `SELECT username, usage_date, used_count, daily_limit, updated_at FROM image_limits${whereSql} ORDER BY updated_at DESC, username ASC LIMIT ? OFFSET ?`,
+                args: [...args, limit, offset]
+            });
             const data = [];
 
             for (const row of rows.rows) {
@@ -471,7 +487,7 @@ function startDashboard(scope) {
                 });
             }
 
-            res.json({ success: true, date: today, defaultLimit: IMAGE_DAILY_LIMIT_DEFAULT, data });
+            res.json({ success: true, date: today, defaultLimit: IMAGE_DAILY_LIMIT_DEFAULT, data, pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) }, q });
         } catch (e) {
             res.status(500).json({ success: false, message: e.message });
         }

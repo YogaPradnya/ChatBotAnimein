@@ -825,6 +825,11 @@ function getDashboardHTML() {
           <span>Limit Gambar User</span>
           <button class="btn-sm btn-sm-edit" onclick="loadImageLimits()">Refresh</button>
         </div>
+        <div class="control-row" style="align-items:center; flex-wrap:wrap; margin-bottom:16px;">
+          <input type="text" id="imageLimitSearch" placeholder="Cari username..." oninput="debouncedImageLimitSearch()" style="max-width:320px;">
+          <button class="btn-secondary" onclick="clearImageLimitSearch()">Clear</button>
+          <div id="imageLimitPageInfo" style="margin-left:auto; color:var(--muted); font-size:12px; font-weight:700;">Page 1 / 1</div>
+        </div>
         <div class="table-wrap">
           <table>
             <thead>
@@ -841,6 +846,13 @@ function getDashboardHTML() {
               <tr><td colspan="6" style="text-align:center; color:var(--muted);">Belum ada data limit gambar.</td></tr>
             </tbody>
           </table>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:14px; flex-wrap:wrap;">
+          <div id="imageLimitTotalInfo" style="font-size:12px; color:var(--muted); font-weight:700;">0 user</div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <button class="btn-sm btn-sm-edit" id="imageLimitPrevBtn" onclick="changeImageLimitPage(-1)">← Prev</button>
+            <button class="btn-sm btn-sm-edit" id="imageLimitNextBtn" onclick="changeImageLimitPage(1)">Next →</button>
+          </div>
         </div>
       </div>
     </div>
@@ -2536,17 +2548,27 @@ async function updateStats() {
   loadTitles();
   connectRealtimeLogs();
   setInterval(refresh, 5000);
-  async function loadImageLimits() {
+  let imageLimitPage = 1;
+  let imageLimitTotalPages = 1;
+  let imageLimitSearchTimer = null;
+
+  async function loadImageLimits(page = imageLimitPage) {
     const tbody = document.getElementById('imageLimitTable');
     if (!tbody) return;
+    const query = document.getElementById('imageLimitSearch')?.value.trim() || '';
+    imageLimitPage = Math.max(1, page || 1);
     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--muted);">Memuat data...</td></tr>';
     try {
-      const res = await fetch('/api/images/limits');
+      const params = new URLSearchParams({ page: String(imageLimitPage), limit: '35' });
+      if (query) params.set('q', query);
+      const res = await fetch('/api/images/limits?' + params.toString());
       const d = await res.json();
       if (!d.success) throw new Error(d.message || 'Gagal memuat limit gambar');
       document.getElementById('imageDefaultLimit').textContent = d.defaultLimit ?? 5;
       document.getElementById('imageLimitDate').textContent = d.date || '-';
-      document.getElementById('imageLimitUsers').textContent = (d.data || []).length.toLocaleString('id-ID');
+      document.getElementById('imageLimitUsers').textContent = (d.pagination?.total || 0).toLocaleString('id-ID');
+      imageLimitTotalPages = d.pagination?.totalPages || 1;
+      updateImageLimitPagination(d.pagination || { page: 1, totalPages: 1, total: 0, limit: 35 });
       if (!d.data || d.data.length === 0) {
         tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--muted);">Belum ada user yang berhasil request gambar hari ini.</td></tr>';
         return;
@@ -2571,6 +2593,41 @@ async function updateStats() {
     } catch (e) {
       tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--red);">' + escapeHtml(e.message) + '</td></tr>';
     }
+  }
+
+  function updateImageLimitPagination(pagination) {
+    const page = pagination.page || 1;
+    const totalPages = pagination.totalPages || 1;
+    const total = pagination.total || 0;
+    const limit = pagination.limit || 35;
+    const start = total === 0 ? 0 : ((page - 1) * limit) + 1;
+    const end = Math.min(total, page * limit);
+    imageLimitPage = page;
+    imageLimitTotalPages = totalPages;
+    const pageInfo = document.getElementById('imageLimitPageInfo');
+    const totalInfo = document.getElementById('imageLimitTotalInfo');
+    const prevBtn = document.getElementById('imageLimitPrevBtn');
+    const nextBtn = document.getElementById('imageLimitNextBtn');
+    if (pageInfo) pageInfo.textContent = 'Page ' + page + ' / ' + totalPages;
+    if (totalInfo) totalInfo.textContent = total ? ('Menampilkan ' + start + '-' + end + ' dari ' + total + ' user') : '0 user';
+    if (prevBtn) prevBtn.disabled = page <= 1;
+    if (nextBtn) nextBtn.disabled = page >= totalPages;
+  }
+
+  function changeImageLimitPage(delta) {
+    const nextPage = Math.min(imageLimitTotalPages, Math.max(1, imageLimitPage + delta));
+    if (nextPage !== imageLimitPage) loadImageLimits(nextPage);
+  }
+
+  function debouncedImageLimitSearch() {
+    clearTimeout(imageLimitSearchTimer);
+    imageLimitSearchTimer = setTimeout(() => loadImageLimits(1), 350);
+  }
+
+  function clearImageLimitSearch() {
+    const input = document.getElementById('imageLimitSearch');
+    if (input) input.value = '';
+    loadImageLimits(1);
   }
 
   function fillImageLimitForm(username, limit, used) {

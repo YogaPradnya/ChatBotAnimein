@@ -1185,9 +1185,11 @@ const cache = {
     schedule: { data: null, lastFetch: 0 },
     genres: { data: null, lastFetch: 0 },
     pokemonShop: { data: [], lastFetch: 0 },
+    animeinExtra: {},
     genreCache: {},
     TTL: 6 * 60 * 60 * 1000,
     POKEMON_SHOP_TTL: 2 * 60 * 1000,
+    EXTRA_DATA_TTL: 2 * 60 * 1000,
 };
 
 const ANIMEIN_HEADERS = {
@@ -1706,6 +1708,136 @@ function formatPokemonShopContext(items) {
     return `\n\n[DATA REAL-TIME TOKO POKEMON ANIMEIN]:\n${lines.join('\n')}\nInstruksi AI: Jika user menanyakan Pokemon yang sedang dijual, harga Pokemon sekarang, stok, atau toko Pokemon, jawab berdasarkan data real-time ini. Jangan mengarang harga di luar data.`;
 }
 
+const ANIMEIN_EXTRA_ENDPOINTS = {
+    battleInfo: { method: 'get', path: '/data/user/battle/data/info', label: 'Data battle user' },
+    battleBannedNow: { method: 'get', path: '/data/user/battle/banned/info/now', label: 'Pokemon yang sedang diban battle' },
+    battleBannedNext: { method: 'get', path: '/data/user/battle/banned/info/next', label: 'Pokemon ban battle berikutnya' },
+    battleBannedList: { method: 'get', path: '/data/user/battle/banned/list', label: 'Daftar ban Pokemon battle' },
+    battlePokemon: { method: 'get', path: '/data/user/battle/pokemon/list', label: 'Pokemon battle user' },
+    battleHistory: { method: 'get', path: '/3/2/user/battle/history', label: 'Riwayat battle user' },
+    battleRank: { method: 'get', path: '/3/2/user/battle/rank_list', label: 'Peringkat battle point' },
+    userProfile: { method: 'get', path: '/3/2/user/profile/data', label: 'Profil user' },
+    userMedal: { method: 'get', path: '/3/2/user/profile/medal', label: 'Gelar/medal user' },
+    profileMedal: { method: 'get', path: '/3/2/profile/medal', label: 'Gelar profil publik' },
+    profileGallery: { method: 'get', path: '/3/2/profile/gallery', label: 'Galeri user' },
+    profilePokemon: { method: 'get', path: '/data/profile/pokemon', label: 'Pokemon di profil user' },
+    profileWaifu: { method: 'get', path: '/data/profile/waifu', label: 'Waifu user' },
+    userBagPokemon: { method: 'get', path: '/3/2/user/bag/pokemon_rev', label: 'Tas Pokemon user' },
+    favoriteMovie: { method: 'get', path: '/3/2/user/favorite/movie', label: 'Favorit user' },
+    historyMovie: { method: 'get', path: '/3/2/user/history/movie', label: 'Riwayat anime user' },
+    historyEpisode: { method: 'get', path: '/3/2/user/history/episode', label: 'Riwayat episode user' },
+    proList: { method: 'get', path: '/data/pro/list', label: 'Harga akun pro' },
+    coinList: { method: 'get', path: '/data/coin/list', label: 'Harga coin' },
+    pokemonShop: { method: 'get', path: '/3/2/user/shop/pokemon', label: 'Harga Pokemon' },
+    npcList: { method: 'get', path: '/data/manra/npc/list', label: 'Data NPC' },
+    npcPose: { method: 'get', path: '/data/manra/npc/list_pose', label: 'Pose NPC' },
+    exploreNpc: { method: 'get', path: '/3/2/explore/manra_npc', label: 'NPC explore' },
+    exploreNpcIdle: { method: 'get', path: '/3/2/explore/manra_npc_idle', label: 'NPC idle explore' },
+};
+
+function detectAnimeinExtraKeys(text) {
+    const lower = String(text || '').toLowerCase();
+    const keys = new Set();
+    const has = (re) => re.test(lower);
+
+    if (has(/battle|battel|batle|rank|peringkat|battle\s*point|bp\b|pokemon.*ban|ban.*pokemon/)) {
+        ['battleInfo', 'battleBannedNow', 'battleBannedNext', 'battleBannedList', 'battlePokemon', 'battleHistory', 'battleRank'].forEach(k => keys.add(k));
+    }
+    if (has(/profil|profile|like|gelar|medal|view|kontrib|kontribusi|coin|gems?|favorit|favorite|riwayat|history/)) {
+        ['userProfile', 'userMedal', 'profileMedal', 'favoriteMovie', 'historyMovie', 'historyEpisode'].forEach(k => keys.add(k));
+    }
+    if (has(/tas|bag|pokemon.*(milik|punya|koleksi)|koleksi.*pokemon/)) {
+        ['userBagPokemon', 'profilePokemon'].forEach(k => keys.add(k));
+    }
+    if (has(/harga|price|coin|pro|akun\s*pro|pokemon.*shop|shop.*pokemon/)) {
+        ['coinList', 'proList', 'pokemonShop'].forEach(k => keys.add(k));
+    }
+    if (has(/waifu|galer[iy]|gallery/)) {
+        ['profileWaifu', 'profileGallery'].forEach(k => keys.add(k));
+    }
+    if (has(/npc|manra/)) {
+        ['npcList', 'npcPose', 'exploreNpc', 'exploreNpcIdle'].forEach(k => keys.add(k));
+    }
+
+    return [...keys];
+}
+
+function getAuthParams(bot = bots[0]) {
+    return bot?.auth?.userId && bot?.auth?.userKey ? { id_user: bot.auth.userId, key_client: bot.auth.userKey } : {};
+}
+
+async function fetchAnimeinExtraEndpoint(key, bot = bots[0], force = false) {
+    const spec = ANIMEIN_EXTRA_ENDPOINTS[key];
+    if (!spec || isAnimeinApiBlocked(`Fetch ${key}`)) return null;
+    const now = Date.now();
+    const cached = cache.animeinExtra[key];
+    if (!force && cached && now - cached.lastFetch < cache.EXTRA_DATA_TTL) return cached.data;
+
+    try {
+        const baseUrl = CONFIG.BASE_URL.replace(/\/$/, '');
+        recordPath(spec.path);
+        const response = await axios({
+            method: spec.method,
+            url: `${baseUrl}${spec.path}`,
+            params: spec.method === 'get' ? getAuthParams(bot) : undefined,
+            data: spec.method !== 'get' ? new URLSearchParams(getAuthParams(bot)) : undefined,
+            headers: spec.method === 'get' ? ANIMEIN_HEADERS : { ...ANIMEIN_HEADERS, 'Content-Type': 'application/x-www-form-urlencoded' },
+            timeout: 12000,
+        });
+        cache.animeinExtra[key] = { data: response.data, lastFetch: now };
+        return response.data;
+    } catch (err) {
+        console.warn(`[ANIMEIN EXTRA] ${key} gagal: ${err.message.slice(0, 100)}`);
+        return cached?.data || null;
+    }
+}
+
+function summarizeAnimeinPayload(payload, maxItems = 8) {
+    const rows = [];
+    const seen = new Set();
+    const pick = (obj, idx) => {
+        const preferred = ['name', 'nama', 'username', 'user_name', 'title', 'pokemon_name', 'waifu_name', 'rank', 'point', 'battle_point', 'total_like', 'likes', 'view', 'views', 'kontribusi', 'contribution', 'coin', 'coins', 'gem', 'gems', 'price', 'harga', 'id'];
+        const parts = [];
+        for (const key of preferred) {
+            if (obj[key] !== undefined && obj[key] !== null && obj[key] !== '') parts.push(`${key}: ${obj[key]}`);
+        }
+        const text = parts.length ? parts.join(' | ') : JSON.stringify(obj).slice(0, 220);
+        return `${idx + 1}. ${text}`;
+    };
+    const visit = (value) => {
+        if (!value || rows.length >= maxItems) return;
+        if (Array.isArray(value)) return value.forEach(visit);
+        if (typeof value === 'object') {
+            const keys = Object.keys(value);
+            const looksLikeRow = keys.some(k => /name|nama|title|rank|point|like|view|coin|gem|price|harga|pokemon|waifu|npc|medal|gelar/i.test(k));
+            if (looksLikeRow) {
+                const sig = JSON.stringify(value).slice(0, 120);
+                if (!seen.has(sig)) {
+                    seen.add(sig);
+                    rows.push(pick(value, rows.length));
+                }
+            }
+            Object.values(value).forEach(visit);
+        }
+    };
+    visit(payload);
+    if (rows.length) return rows.join('\n');
+    return JSON.stringify(payload).slice(0, 800);
+}
+
+async function buildAnimeinExtraContext(question, bot = bots[0]) {
+    const keys = detectAnimeinExtraKeys(question);
+    if (!keys.length) return '';
+
+    const results = await Promise.all(keys.map(async key => ({ key, data: await fetchAnimeinExtraEndpoint(key, bot) })));
+    const sections = results
+        .filter(item => item.data)
+        .map(({ key, data }) => `## ${ANIMEIN_EXTRA_ENDPOINTS[key].label}\n${summarizeAnimeinPayload(data)}`);
+
+    if (!sections.length) return '';
+    return `\n\n[DATA REAL-TIME ANIMEIN TAMBAHAN]:\n${sections.join('\n\n')}\nInstruksi AI: Jawab hanya berdasarkan data Animein di atas untuk topik battle, banned Pokemon, Pokemon battle, ranking battle point, profil user (like/gelar/view/kontribusi/coin/gems/favorit/riwayat), tas Pokemon, harga coin/pro/Pokemon, waifu, galeri, dan NPC. Jika field tidak muncul di data, bilang datanya belum tersedia dari endpoint.`;
+}
+
 /** Groq (Llama 3.1) - kualitas lebih baik */
 async function askGroq(index, userMessage, senderName, contextData = '', chatHistory = []) {
     const client = groqClients[index];
@@ -1782,10 +1914,11 @@ async function getAIResponse(userMessage, senderName, isReply = false) {
     const wantsPokemonShop = /pokemon|poke|pika|shop|toko|jual|dijual|jualan|harga|price|stok|stock/i.test(userMessage)
         && /shop|toko|jual|dijual|jualan|harga|price|stok|stock|beli/i.test(userMessage);
     const pokemonShopContext = wantsPokemonShop ? formatPokemonShopContext(await fetchPokemonShop(bots[0])) : '';
-    const finalContext = animeContext + knowledgeContext + pokemonShopContext;
+    const animeinExtraContext = await buildAnimeinExtraContext(userMessage, bots[0]);
+    const finalContext = animeContext + knowledgeContext + pokemonShopContext + animeinExtraContext;
 
-    if (intent || knowledgeContext || pokemonShopContext) {
-        console.log(`[CONTEXT] Intent: ${intent || 'none'}, Domain: ${knowledgeDomain || 'none'}, Knowledge: ${knowledgeContext ? 'Inject' : 'Empty'}, PokemonShop: ${pokemonShopContext ? 'Inject' : 'Empty'}`);
+    if (intent || knowledgeContext || pokemonShopContext || animeinExtraContext) {
+        console.log(`[CONTEXT] Intent: ${intent || 'none'}, Domain: ${knowledgeDomain || 'none'}, Knowledge: ${knowledgeContext ? 'Inject' : 'Empty'}, PokemonShop: ${pokemonShopContext ? 'Inject' : 'Empty'}, ExtraAnimein: ${animeinExtraContext ? 'Inject' : 'Empty'}`);
     }
 
     // SEMANTIC CACHE CHECK: Cek apakah jawaban sudah ada di cache (0 Token!)
