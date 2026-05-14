@@ -479,24 +479,30 @@ function startDashboard(scope) {
 
     app.post('/api/images/limits/update', async (req, res) => {
         const username = String(req.body.username || '').replace(/^@/, '').trim();
-        const dailyLimit = Math.max(0, parseInt(req.body.dailyLimit, 10));
+        const dailyLimit = parseInt(req.body.dailyLimit, 10);
         const usedCountRaw = req.body.usedCount;
-        if (!username || Number.isNaN(dailyLimit)) {
+        if (!username || Number.isNaN(dailyLimit) || dailyLimit < 0) {
             return res.status(400).json({ success: false, message: 'Username dan limit wajib valid.' });
         }
 
         try {
             const status = await getImageLimitStatus(username);
-            const usedCount = usedCountRaw === undefined || usedCountRaw === ''
-                ? status.used
-                : Math.max(0, parseInt(usedCountRaw, 10));
+            let usedCount = status.used;
+            if (usedCountRaw !== undefined && usedCountRaw !== '') {
+                const parsedUsed = parseInt(usedCountRaw, 10);
+                if (Number.isNaN(parsedUsed) || parsedUsed < 0) {
+                    return res.status(400).json({ success: false, message: 'Jumlah terpakai wajib angka valid.' });
+                }
+                usedCount = parsedUsed;
+            }
 
             await db.execute({
-                sql: "INSERT INTO image_limits (username, usage_date, used_count, daily_limit, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(username) DO UPDATE SET usage_date = ?, used_count = ?, daily_limit = ?, updated_at = CURRENT_TIMESTAMP",
-                args: [username, status.usageDate, usedCount, dailyLimit, status.usageDate, usedCount, dailyLimit]
+                sql: "INSERT INTO image_limits (username, usage_date, used_count, daily_limit, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(username) DO UPDATE SET usage_date = excluded.usage_date, used_count = excluded.used_count, daily_limit = excluded.daily_limit, updated_at = CURRENT_TIMESTAMP",
+                args: [status.username, status.usageDate, usedCount, dailyLimit]
             });
-            console.log(`[DASHBOARD] Limit gambar @${username}: ${usedCount}/${dailyLimit}`);
-            res.json({ success: true });
+            const remaining = Math.max(0, dailyLimit - usedCount);
+            console.log(`[DASHBOARD] Limit gambar @${status.username}: ${usedCount}/${dailyLimit} (sisa ${remaining})`);
+            res.json({ success: true, data: { username: status.username, usage_date: status.usageDate, used_count: usedCount, daily_limit: dailyLimit, remaining } });
         } catch (e) {
             res.status(500).json({ success: false, message: e.message });
         }

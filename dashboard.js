@@ -2563,8 +2563,8 @@ async function updateStats() {
           '<td><strong>' + limit + '</strong></td>' +
           '<td><span style="background:' + badgeColor + '; color:#fff; padding:4px 10px; border-radius:999px; font-size:11px; font-weight:800;">' + remaining + '</span></td>' +
           '<td class="td-actions">' +
-            '<button class="btn-sm btn-sm-edit" onclick="fillImageLimitForm(&quot;' + escapeAttr(row.username || '') + '&quot;, ' + limit + ', ' + used + ')">Edit</button>' +
-            '<button class="btn-sm btn-sm-del" onclick="resetImageLimit(&quot;' + escapeAttr(row.username || '') + '&quot;)">Reset</button>' +
+            '<button class="btn-sm btn-sm-edit image-limit-edit" data-username="' + escapeAttr(row.username || '') + '" data-limit="' + limit + '" data-used="' + used + '">Edit</button>' +
+            '<button class="btn-sm btn-sm-del image-limit-reset" data-username="' + escapeAttr(row.username || '') + '">Reset</button>' +
           '</td>' +
         '</tr>';
       }).join('');
@@ -2584,6 +2584,8 @@ async function updateStats() {
     const dailyLimit = document.getElementById('imageLimitDaily').value;
     const usedCount = document.getElementById('imageLimitUsed').value;
     if (!username) return showToast('Username wajib diisi.', 'warning');
+    if (dailyLimit === '' || Number.isNaN(Number(dailyLimit)) || Number(dailyLimit) < 0) return showToast('Limit wajib angka valid.', 'warning');
+    if (usedCount !== '' && (Number.isNaN(Number(usedCount)) || Number(usedCount) < 0)) return showToast('Terpakai wajib angka valid.', 'warning');
     const res = await fetch('/api/images/limits/update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2614,8 +2616,21 @@ async function updateStats() {
   }
 
   function escapeAttr(value) {
-    return escapeHtml(value);
+    return escapeHtml(value).replace(/&quot;/g, '&quot;');
   }
+
+  document.addEventListener('click', function(event) {
+    const editBtn = event.target.closest('.image-limit-edit');
+    if (editBtn) {
+      fillImageLimitForm(editBtn.dataset.username || '', Number(editBtn.dataset.limit || 0), Number(editBtn.dataset.used || 0));
+      return;
+    }
+
+    const resetBtn = event.target.closest('.image-limit-reset');
+    if (resetBtn) {
+      resetImageLimit(resetBtn.dataset.username || '');
+    }
+  });
 </script>
 </body>
 </html>`;
