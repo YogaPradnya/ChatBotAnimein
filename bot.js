@@ -1210,8 +1210,12 @@ async function fetchHomeAnime(force = false) {
         
         // 6 jam = 6 * 60 * 60 * 1000 = 21600000 ms
         if (!force && nowMs - lastReset > 21600000) {
-            console.log("[QUIZ] Rotasi Berkala: Menghapus database kuis lama...");
-            await db.execute("DELETE FROM quiz_pool");
+            const resetLimit = 50;
+            console.log(`[QUIZ] Rotasi Berkala: Menghapus ${resetLimit} data kuis lama...`);
+            await db.execute({
+                sql: "DELETE FROM quiz_pool WHERE id IN (SELECT id FROM quiz_pool ORDER BY last_used_at ASC LIMIT ?)",
+                args: [resetLimit]
+            });
             await db.execute({ 
                 sql: "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                 args: ['last_quiz_reset', String(nowMs)] 
