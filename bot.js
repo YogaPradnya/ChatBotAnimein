@@ -1743,7 +1743,7 @@ function detectAnimeinExtraKeys(text) {
     if (has(/battle|battel|batle|rank|peringkat|battle\s*point|bp\b|pokemon.*ban|ban.*pokemon/)) {
         ['battleInfo', 'battleBannedNow', 'battleBannedNext', 'battleBannedList', 'battlePokemon', 'battleHistory', 'battleRank'].forEach(k => keys.add(k));
     }
-    if (has(/profil|profile|like|gelar|medal|view|kontrib|kontribusi|coin|gems?|favorit|favorite|riwayat|history/)) {
+    if (has(/profil|profile|like|gelar|medal|view|kontrib|kontribusi|coin|coins|gems?|favorit|favorite|riwayat|history/)) {
         ['userProfile', 'userMedal', 'profileMedal', 'favoriteMovie', 'historyMovie', 'historyEpisode'].forEach(k => keys.add(k));
     }
     if (has(/tas|bag|pokemon.*(milik|punya|koleksi)|koleksi.*pokemon/)) {
@@ -1766,25 +1766,113 @@ function getAuthParams(bot = bots[0]) {
     return bot?.auth?.userId && bot?.auth?.userKey ? { id_user: bot.auth.userId, key_client: bot.auth.userKey } : {};
 }
 
-async function fetchAnimeinExtraEndpoint(key, bot = bots[0], force = false) {
+function normalizeAnimeinUsername(username) {
+    return String(username || '').replace(/^@+/, '').trim().toLowerCase();
+}
+
+function extractTargetUsername(question) {
+    const text = String(question || '')
+        .replace(/^\s*\.ai\s*/i, '')
+        .replace(/@?animein(ai|bot|kuis|img)\b/gi, ' ')
+        .trim();
+
+    const mention = text.match(/@([a-zA-Z0-9_.-]{3,32})/);
+    const explicit = text.match(/(?:user(?:name)?|profil|profile|akun|punya|milik|coin|coins|koin|gem|gems|waifu|tas|pokemon|favorit|riwayat)\s+(?:dari|milik|punya|si|user)?\s*@?([a-zA-Z0-9_.-]{3,32})/i);
+    const candidate = (mention?.[1] || explicit?.[1] || '').trim();
+
+    const banned = new Set(['berapa', 'coin', 'coins', 'koin', 'gem', 'gems', 'user', 'username', 'profil', 'profile', 'akun', 'punya', 'milik', 'data', 'lihat', 'cek', 'tas', 'pokemon', 'waifu', 'favorit', 'riwayat', 'saya', 'aku', 'gua', 'gw']);
+    if (!candidate || banned.has(candidate.toLowerCase())) return '';
+    return candidate;
+}
+
+function findFirstObjectByKeys(payload, keyRegex) {
+    let found = null;
+    const visit = (value) => {
+        if (found || !value) return;
+        if (Array.isArray(value)) return value.forEach(visit);
+        if (typeof value === 'object') {
+            if (Object.keys(value).some(k => keyRegex.test(k))) {
+                found = value;
+                return;
+            }
+            Object.values(value).forEach(visit);
+        }
+    };
+    visit(payload);
+    return found;
+}
+
+async function resolveAnimeinUser(username, bot = bots[0]) {
+    const cleanUsername = String(username || '').replace(/^@+/, '').trim();
+    if (!cleanUsername) return null;
+
+    const cacheKey = `user:${cleanUsername.toLowerCase()}`;
+    const cached = cache.animeinExtra[cacheKey];
+    if (cached && Date.now() - cached.lastFetch < cache.EXTRA_DATA_TTL) return cached.data;
+
+    try {
+        const baseUrl = CONFIG.BASE_URL.replace(/\/$/, '');
+        const params = { ...getAuthParams(bot), keyword: cleanUsername, username: cleanUsername, q: cleanUsername, search: cleanUsername };
+        recordPath('/data/user/find');
+        const response = await axios.get(`${baseUrl}/data/user/find`, {
+            params,
+            headers: ANIMEIN_HEADERS,
+            timeout: 12000,
+        });
+
+        const user = findFirstObjectByKeys(response.data, /^(id|id_user|user_id|username|user_name|name)$/i) || {};
+        const resolved = {
+            username: user.username || user.user_name || user.name || cleanUsername,
+            id: user.id_user || user.user_id || user.id || null,
+            raw: user,
+        };
+        cache.animeinExtra[cacheKey] = { data: resolved, lastFetch: Date.now() };
+        return resolved;
+    } catch (err) {
+        console.warn(`[ANIMEIN USER] Gagal cari user ${cleanUsername}: ${err.message.slice(0, 100)}`);
+        return { username: cleanUsername, id: null, raw: null };
+    }
+}
+
+function getTargetUserParams(targetUser) {
+    if (!targetUser) return {};
+    const params = {};
+    if (targetUser.id) {
+        params.id_user_profile = targetUser.id;
+        params.id_user_target = targetUser.id;
+        params.target_id_user = targetUser.id;
+        params.user_id = targetUser.id;
+        params.id_profile = targetUser.id;
+    }
+    if (targetUser.username) {
+        params.username = targetUser.username;
+        params.user_name = targetUser.username;
+        params.target_username = targetUser.username;
+    }
+    return params;
+}
+
+async function fetchAnimeinExtraEndpoint(key, bot = bots[0], force = false, targetUser = null) {
     const spec = ANIMEIN_EXTRA_ENDPOINTS[key];
     if (!spec || isAnimeinApiBlocked(`Fetch ${key}`)) return null;
+    const cacheKey = targetUser?.username || targetUser?.id ? `${key}:${targetUser.username || targetUser.id}` : key;
     const now = Date.now();
-    const cached = cache.animeinExtra[key];
+    const cached = cache.animeinExtra[cacheKey];
     if (!force && cached && now - cached.lastFetch < cache.EXTRA_DATA_TTL) return cached.data;
 
     try {
         const baseUrl = CONFIG.BASE_URL.replace(/\/$/, '');
+        const requestParams = { ...getAuthParams(bot), ...getTargetUserParams(targetUser) };
         recordPath(spec.path);
         const response = await axios({
             method: spec.method,
             url: `${baseUrl}${spec.path}`,
-            params: spec.method === 'get' ? getAuthParams(bot) : undefined,
-            data: spec.method !== 'get' ? new URLSearchParams(getAuthParams(bot)) : undefined,
+            params: spec.method === 'get' ? requestParams : undefined,
+            data: spec.method !== 'get' ? new URLSearchParams(requestParams) : undefined,
             headers: spec.method === 'get' ? ANIMEIN_HEADERS : { ...ANIMEIN_HEADERS, 'Content-Type': 'application/x-www-form-urlencoded' },
             timeout: 12000,
         });
-        cache.animeinExtra[key] = { data: response.data, lastFetch: now };
+        cache.animeinExtra[cacheKey] = { data: response.data, lastFetch: now };
         return response.data;
     } catch (err) {
         console.warn(`[ANIMEIN EXTRA] ${key} gagal: ${err.message.slice(0, 100)}`);
@@ -1825,17 +1913,25 @@ function summarizeAnimeinPayload(payload, maxItems = 8) {
     return JSON.stringify(payload).slice(0, 800);
 }
 
-async function buildAnimeinExtraContext(question, bot = bots[0]) {
+async function buildAnimeinExtraContext(question, bot = bots[0], senderName = '') {
     const keys = detectAnimeinExtraKeys(question);
     if (!keys.length) return '';
 
-    const results = await Promise.all(keys.map(async key => ({ key, data: await fetchAnimeinExtraEndpoint(key, bot) })));
+    const senderUsername = String(senderName || '').replace(/^@+/, '').trim();
+    const requestedUsername = extractTargetUsername(question);
+    if (requestedUsername && normalizeAnimeinUsername(requestedUsername) !== normalizeAnimeinUsername(senderUsername)) {
+        return `\n\n[ATURAN PRIVASI USER ANIMEIN]:\nPengirim pesan adalah ${senderUsername || 'user tidak diketahui'}, tetapi meminta data milik ${requestedUsername}. Tolak permintaan ini dengan sopan. Jelaskan bahwa user hanya boleh melihat data akun sendiri, dan simbol @ pada username diabaikan saat pengecekan.`;
+    }
+
+    const targetUser = senderUsername ? await resolveAnimeinUser(senderUsername, bot) : null;
+    const results = await Promise.all(keys.map(async key => ({ key, data: await fetchAnimeinExtraEndpoint(key, bot, false, targetUser) })));
     const sections = results
         .filter(item => item.data)
         .map(({ key, data }) => `## ${ANIMEIN_EXTRA_ENDPOINTS[key].label}\n${summarizeAnimeinPayload(data)}`);
 
     if (!sections.length) return '';
-    return `\n\n[DATA REAL-TIME ANIMEIN TAMBAHAN]:\n${sections.join('\n\n')}\nInstruksi AI: Jawab hanya berdasarkan data Animein di atas untuk topik battle, banned Pokemon, Pokemon battle, ranking battle point, profil user (like/gelar/view/kontribusi/coin/gems/favorit/riwayat), tas Pokemon, harga coin/pro/Pokemon, waifu, galeri, dan NPC. Jika field tidak muncul di data, bilang datanya belum tersedia dari endpoint.`;
+    const targetInfo = targetUser ? `\nTarget user valid: ${targetUser.username}${targetUser.id ? ` (id: ${targetUser.id})` : ''}. Data ini diambil berdasarkan username pengirim.` : '';
+    return `\n\n[DATA REAL-TIME ANIMEIN TAMBAHAN]${targetInfo}\n${sections.join('\n\n')}\nInstruksi AI: Jawab hanya berdasarkan data Animein di atas. User hanya boleh melihat data akun sendiri berdasarkan username pengirim. Jika field seperti coin/gems tidak muncul di data, jelaskan bahwa endpoint tidak menyediakan field tersebut untuk user ini.`;
 }
 
 /** Groq (Llama 3.1) - kualitas lebih baik */
@@ -1914,7 +2010,7 @@ async function getAIResponse(userMessage, senderName, isReply = false) {
     const wantsPokemonShop = /pokemon|poke|pika|shop|toko|jual|dijual|jualan|harga|price|stok|stock/i.test(userMessage)
         && /shop|toko|jual|dijual|jualan|harga|price|stok|stock|beli/i.test(userMessage);
     const pokemonShopContext = wantsPokemonShop ? formatPokemonShopContext(await fetchPokemonShop(bots[0])) : '';
-    const animeinExtraContext = await buildAnimeinExtraContext(userMessage, bots[0]);
+    const animeinExtraContext = await buildAnimeinExtraContext(userMessage, bots[0], senderName);
     const finalContext = animeContext + knowledgeContext + pokemonShopContext + animeinExtraContext;
 
     if (intent || knowledgeContext || pokemonShopContext || animeinExtraContext) {
