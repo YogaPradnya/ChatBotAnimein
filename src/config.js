@@ -4,6 +4,7 @@ const CONFIG = {
     BASE_URL: process.env.ANIMEIN_API_URL,
     USERNAME: process.env.ANIMEIN_USERNAME,
     KUIS_USERNAME: process.env.ANIMEIN_KUIS_USERNAME,
+    IMG_USERNAME: process.env.ANIMEIN_IMG_USERNAME,
     PASSWORD: process.env.ANIMEIN_PASSWORD,
 
     GROQ_KEYS: [
@@ -35,6 +36,7 @@ function warnMissingConfig() {
     if (!CONFIG.BASE_URL) missing.push('ANIMEIN_API_URL');
     if (!CONFIG.USERNAME) missing.push('ANIMEIN_USERNAME');
     if (!CONFIG.KUIS_USERNAME) missing.push('ANIMEIN_KUIS_USERNAME');
+    if (!CONFIG.IMG_USERNAME) missing.push('ANIMEIN_IMG_USERNAME');
     if (!CONFIG.GROQ_KEYS.length) missing.push('GROQ_API_KEY');
 
     if (missing.length > 0) {

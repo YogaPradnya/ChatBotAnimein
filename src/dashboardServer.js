@@ -48,6 +48,8 @@ function createRuntime(scope) {
         get AUTO_REPLY() { return state.AUTO_REPLY; },
         set AUTO_REPLY(value) { state.AUTO_REPLY = value; },
         get logEmitter() { return state.logEmitter; },
+        get getImageLimitStatus() { return scope.getImageLimitStatus; },
+        get IMAGE_DAILY_LIMIT_DEFAULT() { return scope.IMAGE_DAILY_LIMIT_DEFAULT; },
     };
 }
 
@@ -442,6 +444,72 @@ function startDashboard(scope) {
         }
     });
 
+    app.get('/api/images/limits', async (req, res) => {
+        try {
+            const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).toISOString().slice(0, 10);
+            const rows = await db.execute("SELECT username, usage_date, used_count, daily_limit, updated_at FROM image_limits ORDER BY updated_at DESC, username ASC LIMIT 300");
+            const data = [];
+
+            for (const row of rows.rows) {
+                const status = await getImageLimitStatus(row.username);
+                data.push({
+                    username: status.username,
+                    usage_date: status.usageDate,
+                    used_count: status.used,
+                    daily_limit: status.limit,
+                    remaining: status.remaining,
+                    updated_at: row.updated_at,
+                });
+            }
+
+            res.json({ success: true, date: today, defaultLimit: IMAGE_DAILY_LIMIT_DEFAULT, data });
+        } catch (e) {
+            res.status(500).json({ success: false, message: e.message });
+        }
+    });
+
+    app.post('/api/images/limits/update', async (req, res) => {
+        const username = String(req.body.username || '').replace(/^@/, '').trim();
+        const dailyLimit = Math.max(0, parseInt(req.body.dailyLimit, 10));
+        const usedCountRaw = req.body.usedCount;
+        if (!username || Number.isNaN(dailyLimit)) {
+            return res.status(400).json({ success: false, message: 'Username dan limit wajib valid.' });
+        }
+
+        try {
+            const status = await getImageLimitStatus(username);
+            const usedCount = usedCountRaw === undefined || usedCountRaw === ''
+                ? status.used
+                : Math.max(0, parseInt(usedCountRaw, 10));
+
+            await db.execute({
+                sql: "INSERT INTO image_limits (username, usage_date, used_count, daily_limit, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(username) DO UPDATE SET usage_date = ?, used_count = ?, daily_limit = ?, updated_at = CURRENT_TIMESTAMP",
+                args: [username, status.usageDate, usedCount, dailyLimit, status.usageDate, usedCount, dailyLimit]
+            });
+            console.log(`[DASHBOARD] Limit gambar @${username}: ${usedCount}/${dailyLimit}`);
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ success: false, message: e.message });
+        }
+    });
+
+    app.post('/api/images/limits/reset', async (req, res) => {
+        const username = String(req.body.username || '').replace(/^@/, '').trim();
+        if (!username) return res.status(400).json({ success: false, message: 'Username wajib diisi.' });
+
+        try {
+            const status = await getImageLimitStatus(username);
+            await db.execute({
+                sql: "UPDATE image_limits SET usage_date = ?, used_count = 0, updated_at = CURRENT_TIMESTAMP WHERE username = ?",
+                args: [status.usageDate, username]
+            });
+            console.log(`[DASHBOARD] Pemakaian gambar @${username} direset.`);
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ success: false, message: e.message });
+        }
+    });
+
     app.post('/api/system/toggle', async (req, res) => {
         isSystemOff = !isSystemOff;
         stats.botStatus = isSystemOff ? 'offline' : 'online';
@@ -497,8 +565,8 @@ function startDashboard(scope) {
         if (!image) return res.status(400).json({ success: false, message: 'Image required' });
         
         console.log(`[DASHBOARD] Manual Image: ${text || '(no caption)'}`);
-        // Fix: Added bots[0] as first argument to match function signature
-        const success = await sendChatWithImage(bots[0], { data: image, mimeType: mimeType || 'image/jpeg' }, text || '');
+        const imageBot = bots.find(b => b.role === 'image') || bots[0];
+        const success = await sendChatWithImage(imageBot, { data: image, mimeType: mimeType || 'image/jpeg' }, text || '');
         if (success) {
             addActivity('image', 'Admin', text || '(image)', 'Image sent', 'Dashboard');
             res.json({ success: true });

@@ -91,6 +91,15 @@ async function initDB() {
                 last_used_at INTEGER DEFAULT 0
             )
         `);
+        await db.execute(`
+            CREATE TABLE IF NOT EXISTS image_limits (
+                username TEXT PRIMARY KEY,
+                usage_date TEXT NOT NULL,
+                used_count INTEGER DEFAULT 0,
+                daily_limit INTEGER DEFAULT 5,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
         // Pastikan kolom last_used_at ada (jika tabel sudah terlanjur dibuat)
         await db.execute(`ALTER TABLE quiz_pool ADD COLUMN last_used_at INTEGER DEFAULT 0`).catch(() => {});
         await db.execute(`
@@ -952,8 +961,11 @@ const bannedUsers = new Set();
 
 // Menyimpan riwayat URL gambar Pinterest yang sudah dikirim per keyword.
 // Tujuannya agar `.gambar yanami` berikutnya mengirim gambar berbeda jika API menyediakan opsi lain.
+// URL yang sama boleh dikirim ulang setelah lewat 24 jam.
 const pinterestImageHistory = new Map();
 const PINTEREST_HISTORY_LIMIT = 100;
+const PINTEREST_HISTORY_TTL_MS = 24 * 60 * 60 * 1000;
+const IMAGE_DAILY_LIMIT_DEFAULT = 5;
 
 function addActivity(type, from, text, response, provider, tokens = 0) {
     stats.recentActivity.unshift({
@@ -1063,7 +1075,8 @@ Instruksi AI: Jika user nanya "siapa pokemon terkuat, dewa, paling OP, terhebat"
 
 let bots = [
     { username: CONFIG.USERNAME, password: CONFIG.PASSWORD, role: 'info', auth: { userId: null, userKey: null }, lastMessageId: 0, isFirstRun: true, isCooldown: false, reauthCooldownUntil: 0, lastFetchError: null },
-    { username: CONFIG.KUIS_USERNAME, password: CONFIG.PASSWORD, role: 'kuis', auth: { userId: null, userKey: null }, lastMessageId: 0, isFirstRun: true, isCooldown: false, reauthCooldownUntil: 0, lastFetchError: null }
+    { username: CONFIG.KUIS_USERNAME, password: CONFIG.PASSWORD, role: 'kuis', auth: { userId: null, userKey: null }, lastMessageId: 0, isFirstRun: true, isCooldown: false, reauthCooldownUntil: 0, lastFetchError: null },
+    { username: CONFIG.IMG_USERNAME, password: CONFIG.PASSWORD, role: 'image', auth: { userId: null, userKey: null }, lastMessageId: 0, isFirstRun: true, isCooldown: false, reauthCooldownUntil: 0, lastFetchError: null }
 ];
 
 // isGlobalCooldown dihapus, diganti per-bot property
@@ -1855,6 +1868,53 @@ async function getAIResponse(userMessage, senderName, isReply = false) {
     return { text: 'Maaf kak, semua koneksi AI Rara lagi sibuk/limit. Coba lagi nanti ya! 🙏', provider: 'Error', tokens: 0 };
 }
 
+async function getImageLimitStatus(username) {
+    const cleanUsername = String(username || '').replace(/^@/, '').trim();
+    const today = getJakartaDate().toISOString().slice(0, 10);
+    if (!cleanUsername || !CONFIG.TURSO_URL) {
+        return { username: cleanUsername, usageDate: today, used: 0, limit: IMAGE_DAILY_LIMIT_DEFAULT, remaining: IMAGE_DAILY_LIMIT_DEFAULT };
+    }
+
+    const result = await db.execute({
+        sql: "SELECT username, usage_date, used_count, daily_limit FROM image_limits WHERE username = ?",
+        args: [cleanUsername]
+    });
+
+    if (result.rows.length === 0) {
+        await db.execute({
+            sql: "INSERT INTO image_limits (username, usage_date, used_count, daily_limit) VALUES (?, ?, 0, ?)",
+            args: [cleanUsername, today, IMAGE_DAILY_LIMIT_DEFAULT]
+        });
+        return { username: cleanUsername, usageDate: today, used: 0, limit: IMAGE_DAILY_LIMIT_DEFAULT, remaining: IMAGE_DAILY_LIMIT_DEFAULT };
+    }
+
+    const row = result.rows[0];
+    const limit = Number(row.daily_limit ?? IMAGE_DAILY_LIMIT_DEFAULT);
+    let used = Number(row.used_count || 0);
+    let usageDate = row.usage_date || today;
+
+    if (usageDate !== today) {
+        used = 0;
+        usageDate = today;
+        await db.execute({
+            sql: "UPDATE image_limits SET usage_date = ?, used_count = 0, updated_at = CURRENT_TIMESTAMP WHERE username = ?",
+            args: [today, cleanUsername]
+        });
+    }
+
+    return { username: cleanUsername, usageDate, used, limit, remaining: Math.max(0, limit - used) };
+}
+
+async function incrementImageLimitUsage(username) {
+    const status = await getImageLimitStatus(username);
+    const nextUsed = status.used + 1;
+    await db.execute({
+        sql: "INSERT INTO image_limits (username, usage_date, used_count, daily_limit, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(username) DO UPDATE SET usage_date = ?, used_count = ?, daily_limit = ?, updated_at = CURRENT_TIMESTAMP",
+        args: [status.username, status.usageDate, nextUsed, status.limit, status.usageDate, nextUsed, status.limit]
+    });
+    return { ...status, used: nextUsed, remaining: Math.max(0, status.limit - nextUsed) };
+}
+
 async function fetchPinterestImage(queryOrUrl) {
     const apiUrl = process.env.PINTEREST_IMAGE_API_URL;
     const trimmed = String(queryOrUrl || '').trim();
@@ -1886,29 +1946,49 @@ function getPinterestHistoryKey(queryOrUrl) {
 
 function pickUnusedPinterestImage(queryOrUrl, imageUrls) {
     const historyKey = getPinterestHistoryKey(queryOrUrl);
-    const usedUrls = pinterestImageHistory.get(historyKey) || new Set();
+    const now = Date.now();
+    const usedUrls = pruneExpiredPinterestHistory(historyKey, now);
     let candidates = imageUrls.filter(url => !usedUrls.has(url));
 
-    // Kalau semua gambar dari API sudah pernah dipakai, reset riwayat keyword ini
-    // agar command tetap bisa mengirim gambar, namun tetap memprioritaskan yang tidak sama.
+    // Kalau semua gambar dari API masih berada dalam riwayat 24 jam,
+    // reset riwayat keyword ini agar command tetap bisa mengirim gambar.
+    // Setelah 24 jam, URL lama otomatis keluar dari riwayat dan bisa dipakai lagi.
     if (!candidates.length) {
         usedUrls.clear();
         candidates = imageUrls;
     }
 
     const selectedUrl = candidates[Math.floor(Math.random() * candidates.length)];
-    rememberPinterestImage(historyKey, selectedUrl);
+    rememberPinterestImage(historyKey, selectedUrl, now);
     return selectedUrl;
 }
 
-function rememberPinterestImage(historyKey, imageUrl) {
+function pruneExpiredPinterestHistory(historyKey, now = Date.now()) {
+    const usedUrls = pinterestImageHistory.get(historyKey) || new Map();
+
+    for (const [url, sentAt] of usedUrls.entries()) {
+        if (now - sentAt >= PINTEREST_HISTORY_TTL_MS) {
+            usedUrls.delete(url);
+        }
+    }
+
+    if (usedUrls.size) {
+        pinterestImageHistory.set(historyKey, usedUrls);
+    } else {
+        pinterestImageHistory.delete(historyKey);
+    }
+
+    return usedUrls;
+}
+
+function rememberPinterestImage(historyKey, imageUrl, sentAt = Date.now()) {
     if (!historyKey || !imageUrl) return;
 
-    const usedUrls = pinterestImageHistory.get(historyKey) || new Set();
-    usedUrls.add(imageUrl);
+    const usedUrls = pinterestImageHistory.get(historyKey) || new Map();
+    usedUrls.set(imageUrl, sentAt);
 
-    if (usedUrls.size > PINTEREST_HISTORY_LIMIT) {
-        const oldestUrl = usedUrls.values().next().value;
+    while (usedUrls.size > PINTEREST_HISTORY_LIMIT) {
+        const oldestUrl = usedUrls.keys().next().value;
         usedUrls.delete(oldestUrl);
     }
 
@@ -2012,8 +2092,10 @@ async function login(bot, forceApiLogin = false) {
     try {
         // Bypass jika sudah ada kredensial di .env (Paling Aman)
         const isAI = bot.username === CONFIG.USERNAME;
-        const preUserId = isAI ? process.env.ANIMEIN_AI_USER_ID : process.env.ANIMEIN_KUIS_USER_ID;
-        const preKeyClient = isAI ? process.env.ANIMEIN_AI_KEY_CLIENT : process.env.ANIMEIN_KUIS_KEY_CLIENT;
+        const isKuis = bot.username === CONFIG.KUIS_USERNAME;
+        const isImage = bot.username === CONFIG.IMG_USERNAME;
+        const preUserId = isAI ? process.env.ANIMEIN_AI_USER_ID : (isKuis ? process.env.ANIMEIN_KUIS_USER_ID : (isImage ? process.env.ANIMEIN_IMG_USER_ID : null));
+        const preKeyClient = isAI ? process.env.ANIMEIN_AI_KEY_CLIENT : (isKuis ? process.env.ANIMEIN_KUIS_KEY_CLIENT : (isImage ? process.env.ANIMEIN_IMG_KEY_CLIENT : null));
         
         if (!forceApiLogin && preUserId && preKeyClient) {
             bot.auth.userId = preUserId;
@@ -2373,6 +2455,61 @@ async function processMessages(bot, messages) {
             // Bot kuis mengabaikan semua pesan lain agar tidak berisik
             continue;
         } 
+
+        // AKUN GAMBAR (AnimeinIMG): Khusus memproses command .gambar
+        if (bot.role === 'image') {
+            if (!lowerMsg.startsWith('.gambar')) continue;
+
+            if (!isImageCommandActive) {
+                console.log(`[GAMBAR] Command .gambar sedang OFF, request dari ${senderName} diabaikan.`);
+                continue;
+            }
+
+            const imageQuery = cleanMsg.replace(/^\.gambar\s*/i, '').trim();
+            if (!imageQuery) {
+                await sendChatMessage(bot, `@${senderName} Tulis kata kunci setelah .gambar\nContoh: .gambar yanami`, msg.id);
+                continue;
+            }
+
+            const now = Date.now();
+            const remainingMs = IMAGE_COMMAND_COOLDOWN_MS - (now - lastImageCommandAt);
+            if (remainingMs > 0) {
+                console.log(`[GAMBAR] Cooldown aktif, request dari ${senderName} diabaikan.`);
+                continue;
+            }
+            lastImageCommandAt = now;
+
+            try {
+                const limitStatus = await getImageLimitStatus(senderName);
+                if (limitStatus.remaining <= 0) {
+                    await sendChatMessage(bot, `@${senderName} Limit gambar harian kamu sudah habis (${limitStatus.used}/${limitStatus.limit}). Coba lagi besok ya.`, msg.id);
+                    continue;
+                }
+            } catch (e) {
+                console.warn('[GAMBAR] Gagal cek limit harian:', e.message.slice(0, 120));
+                await sendChatMessage(bot, `❌ @${senderName} Rara gagal cek limit gambar kamu. Coba lagi nanti ya.`, msg.id);
+                continue;
+            }
+
+            try {
+                const imageUrl = await fetchPinterestImage(imageQuery);
+                const imageData = await downloadImageAsBase64(imageUrl);
+                const caption = `@${senderName} Ini gambar untuk: ${imageQuery}`;
+                const sent = await sendChatWithImage(bot, imageData, caption, msg.id);
+
+                if (!sent) {
+                    await sendChatMessage(bot, `❌ @${senderName} Gambarnya ketemu, tapi gagal dikirim ke chat. Coba lagi nanti ya.`, msg.id);
+                } else {
+                    const usage = await incrementImageLimitUsage(senderName);
+                    addActivity('image', senderName, `${imageQuery} (${usage.used}/${usage.limit})`, imageUrl, 'PinterestAPI', 0);
+                    await addXP(senderName, 5);
+                }
+            } catch (e) {
+                console.warn('[GAMBAR] Gagal proses .gambar:', e.message.slice(0, 120));
+                await sendChatMessage(bot, `❌ @${senderName} Maaf, gambar "${imageQuery}" belum bisa diambil. Coba keyword lain ya.`, msg.id);
+            }
+            continue;
+        }
         
         // AKUN INFO (AnimeinAI): Memproses AI, AutoReply, dan Lapor
         if (bot.role === 'info') {
@@ -2396,46 +2533,23 @@ async function processMessages(bot, messages) {
             // Abaikan command kuis agar tidak dobel respons
             if (lowerMsg.startsWith('.tebak ') || lowerMsg === '.hint' || 
                 lowerMsg === '.kuis' || lowerMsg === '.game' || 
-                lowerMsg === '.profil' || lowerMsg === '.rank') {
+                lowerMsg === '.profil' || lowerMsg === '.rank' ||
+                lowerMsg.startsWith('.gambar')) {
                 continue;
             }
 
-            if (lowerMsg.startsWith('.gambar')) {
-                if (!isImageCommandActive) {
-                    console.log(`[GAMBAR] Command .gambar sedang OFF, request dari ${senderName} diabaikan.`);
-                    continue;
-                }
-
-                const imageQuery = cleanMsg.replace(/^\.gambar\s*/i, '').trim();
-                if (!imageQuery) {
-                    await sendChatMessage(bot, `🖼️ @${senderName} Tulis kata kunci setelah .gambar\nContoh: .gambar yanami`, msg.id);
-                    continue;
-                }
-
-                const now = Date.now();
-                const remainingMs = IMAGE_COMMAND_COOLDOWN_MS - (now - lastImageCommandAt);
-                if (remainingMs > 0) {
-                    console.log(`[GAMBAR] Cooldown aktif, request dari ${senderName} diabaikan.`);
-                    continue;
-                }
-                lastImageCommandAt = now;
-
-                try {
-                    const imageUrl = await fetchPinterestImage(imageQuery);
-                    const imageData = await downloadImageAsBase64(imageUrl);
-                    const caption = `@${senderName} Ini gambar untuk: ${imageQuery}`;
-                    const sent = await sendChatWithImage(bot, imageData, caption, msg.id);
-
-                    if (!sent) {
-                        await sendChatMessage(bot, `❌ @${senderName} Gambarnya ketemu, tapi gagal dikirim ke chat. Coba lagi nanti ya.`, msg.id);
-                    } else {
-                        addActivity('image', senderName, imageQuery, imageUrl, 'PinterestAPI', 0);
-                        await addXP(senderName, 5);
-                    }
-                } catch (e) {
-                    console.warn('[GAMBAR] Gagal proses .gambar:', e.message.slice(0, 120));
-                    await sendChatMessage(bot, `❌ @${senderName} Maaf, gambar "${imageQuery}" belum bisa diambil. Coba keyword lain ya.`, msg.id);
-                }
+            if (lowerMsg === '.menu') {
+                const menu = [
+                    `╭━ 🔰 *DAFTAR MENU* 🔰 ━╮`,
+                    `┃ 1️⃣ Panggil Rara: .ai / .rara`,
+                    `┃ 2️⃣ Laporan: .lapor [pesan]`,
+                    `┃ 3️⃣ Cek Profil: .profil`,
+                    `┃ 4️⃣ Peringkat: .rank`,
+                    `┣━━━━━━━━━━━━━━━━━━━┫`,
+                    `┃ ✨ Chatting = +EXP loh!`,
+                    `╰━━━━━━━━━━━━━━━━━━━╯`
+                ].join('\n');
+                await sendChatMessage(bot, `@${senderName}\n${menu}`, msg.id);
                 continue;
             }
 
@@ -2615,5 +2729,7 @@ startDashboard({
     resetAutoQuizTimer,
     fetchHomeAnime,
     clearQuizTimers,
+    getImageLimitStatus,
+    IMAGE_DAILY_LIMIT_DEFAULT,
 });
 startBot();

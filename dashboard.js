@@ -620,6 +620,7 @@ function getDashboardHTML() {
     <button class="nav-item" onclick="showPage('model', this); toggleSidebar(false)">Model AI</button>
     <button class="nav-item" onclick="showPage('database', this); toggleSidebar(false)">Database</button>
     <button class="nav-item" onclick="showPage('autoreply', this); toggleSidebar(false)">Auto Reply</button>
+    <button class="nav-item" onclick="showPage('gambar', this); toggleSidebar(false)">Dashboard Gambar</button>
     <button class="nav-item" onclick="showPage('laporan', this); toggleSidebar(false)">Laporan</button>
     <button class="nav-item" onclick="showPage('logs', this); toggleSidebar(false)">Realtime Logs</button>
     <button class="nav-item" onclick="showPage('api-traffic', this); toggleSidebar(false)">API Monitor</button>
@@ -778,6 +779,70 @@ function getDashboardHTML() {
             </div>
           </div>
         </div>
+    </div>
+
+    <!-- PAGE: DASHBOARD GAMBAR -->
+    <div class="page" id="page-gambar">
+      <div class="card" style="background:linear-gradient(135deg,#fff7ed 0%,#ffffff 50%,#eff6ff 100%); border-color:#fed7aa;">
+        <div class="card-title">Dashboard Gambar</div>
+        <div class="three-col">
+          <div class="stat-card accent">
+            <div class="label">Default Limit / Hari</div>
+            <div class="value" id="imageDefaultLimit">5</div>
+          </div>
+          <div class="stat-card blue">
+            <div class="label">Tanggal Reset</div>
+            <div class="value" id="imageLimitDate" style="font-size:20px;">-</div>
+          </div>
+          <div class="stat-card green">
+            <div class="label">User Terdaftar</div>
+            <div class="value" id="imageLimitUsers">0</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Edit Limit User</div>
+        <div class="control-row" style="align-items:flex-end; flex-wrap:wrap;">
+          <div style="flex:1; min-width:180px;">
+            <label class="form-label">Username</label>
+            <input type="text" id="imageLimitUsername" placeholder="contoh: YogaPradnya">
+          </div>
+          <div style="width:150px;">
+            <label class="form-label">Limit / Hari</label>
+            <input type="number" id="imageLimitDaily" value="5" min="0">
+          </div>
+          <div style="width:150px;">
+            <label class="form-label">Terpakai Hari Ini</label>
+            <input type="number" id="imageLimitUsed" placeholder="auto" min="0">
+          </div>
+          <button class="btn-primary" onclick="saveImageLimit()">Simpan Limit</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">
+          <span>Limit Gambar User</span>
+          <button class="btn-sm btn-sm-edit" onclick="loadImageLimits()">Refresh</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Tanggal</th>
+                <th>Terpakai</th>
+                <th>Limit</th>
+                <th>Sisa</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="imageLimitTable">
+              <tr><td colspan="6" style="text-align:center; color:var(--muted);">Belum ada data limit gambar.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <!-- PAGE: REALTIME LOGS -->
@@ -1449,7 +1514,7 @@ function getDashboardHTML() {
       target.style.display = 'block';
     }
     el.classList.add('active');
-    const titles = { dashboard: 'Dashboard', model: 'Model AI', database: 'Database', prompt: 'Prompt & Knowledge', autoreply: 'Auto Reply', laporan: 'Laporan', filter: 'Filter Kata', kuis: 'Kuis & Leaderboard', logs: 'Realtime Logs', 'api-traffic': 'API Monitor' };
+    const titles = { dashboard: 'Dashboard', model: 'Model AI', database: 'Database', prompt: 'Prompt & Knowledge', autoreply: 'Auto Reply', gambar: 'Dashboard Gambar', laporan: 'Laporan', filter: 'Filter Kata', kuis: 'Kuis & Leaderboard', logs: 'Realtime Logs', 'api-traffic': 'API Monitor' };
     document.getElementById('pageTitle').textContent = titles[id] || id;
     if (id === 'dashboard') refresh();
     if (id === 'database') loadCache();
@@ -1457,6 +1522,7 @@ function getDashboardHTML() {
     if (id === 'laporan') loadLaporan();
     if (id === 'filter') loadFilter();
     if (id === 'autoreply') loadAutoReply();
+    if (id === 'gambar') loadImageLimits();
     if (id === 'kuis') { loadTitles(); loadUsers(); loadBanned(); loadQuizPool(); }
     if (id === 'logs') renderRealtimeLogs();
     if (id === 'model') {
@@ -2470,6 +2536,86 @@ async function updateStats() {
   loadTitles();
   connectRealtimeLogs();
   setInterval(refresh, 5000);
+  async function loadImageLimits() {
+    const tbody = document.getElementById('imageLimitTable');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--muted);">Memuat data...</td></tr>';
+    try {
+      const res = await fetch('/api/images/limits');
+      const d = await res.json();
+      if (!d.success) throw new Error(d.message || 'Gagal memuat limit gambar');
+      document.getElementById('imageDefaultLimit').textContent = d.defaultLimit ?? 5;
+      document.getElementById('imageLimitDate').textContent = d.date || '-';
+      document.getElementById('imageLimitUsers').textContent = (d.data || []).length.toLocaleString('id-ID');
+      if (!d.data || d.data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--muted);">Belum ada user yang berhasil request gambar hari ini.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = d.data.map(row => {
+        const used = Number(row.used_count || 0);
+        const limit = Number(row.daily_limit || 0);
+        const remaining = Number(row.remaining || 0);
+        const badgeColor = remaining <= 0 ? 'var(--red)' : remaining <= 2 ? '#f59e0b' : 'var(--green)';
+        return '<tr>' +
+          '<td class="td-key">@' + escapeHtml(row.username || '-') + '</td>' +
+          '<td>' + escapeHtml(row.usage_date || '-') + '</td>' +
+          '<td><strong>' + used + '</strong></td>' +
+          '<td><strong>' + limit + '</strong></td>' +
+          '<td><span style="background:' + badgeColor + '; color:#fff; padding:4px 10px; border-radius:999px; font-size:11px; font-weight:800;">' + remaining + '</span></td>' +
+          '<td class="td-actions">' +
+            '<button class="btn-sm btn-sm-edit" onclick="fillImageLimitForm(\'' + escapeAttr(row.username || '') + '\', ' + limit + ', ' + used + ')">Edit</button>' +
+            '<button class="btn-sm btn-sm-del" onclick="resetImageLimit(\'' + escapeAttr(row.username || '') + '\')">Reset</button>' +
+          '</td>' +
+        '</tr>';
+      }).join('');
+    } catch (e) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--red);">' + escapeHtml(e.message) + '</td></tr>';
+    }
+  }
+
+  function fillImageLimitForm(username, limit, used) {
+    document.getElementById('imageLimitUsername').value = username || '';
+    document.getElementById('imageLimitDaily').value = limit ?? 5;
+    document.getElementById('imageLimitUsed').value = used ?? 0;
+  }
+
+  async function saveImageLimit() {
+    const username = document.getElementById('imageLimitUsername').value.trim();
+    const dailyLimit = document.getElementById('imageLimitDaily').value;
+    const usedCount = document.getElementById('imageLimitUsed').value;
+    if (!username) return showToast('Username wajib diisi.', 'warning');
+    const res = await fetch('/api/images/limits/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, dailyLimit, usedCount })
+    });
+    const d = await res.json();
+    if (!d.success) return showToast(d.message || 'Gagal simpan limit.', 'error');
+    showToast('Limit gambar berhasil disimpan.', 'success');
+    loadImageLimits();
+  }
+
+  async function resetImageLimit(username) {
+    const ok = await customConfirm('Reset pemakaian gambar @' + username + ' menjadi 0 untuk hari ini?', 'Reset Limit Gambar', 'Reset');
+    if (!ok) return;
+    const res = await fetch('/api/images/limits/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username })
+    });
+    const d = await res.json();
+    if (!d.success) return showToast(d.message || 'Gagal reset limit.', 'error');
+    showToast('Pemakaian gambar berhasil direset.', 'success');
+    loadImageLimits();
+  }
+
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
+  }
+
+  function escapeAttr(value) {
+    return escapeHtml(value);
+  }
 </script>
 </body>
 </html>`;
