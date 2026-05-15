@@ -2173,6 +2173,7 @@ async function fetchPinterestImage(queryOrUrl) {
     const isUrl = /^https?:\/\//i.test(trimmed);
     const endpoint = new URL(apiUrl);
     endpoint.searchParams.set(isUrl ? 'url' : 'query', trimmed);
+    endpoint.searchParams.set('limit', '25'); // Ambil 25 gambar untuk lebih banyak variasi
 
     const res = await axios.get(endpoint.toString(), {
         headers: { 'Accept': 'application/json, text/plain, */*' },
