@@ -969,6 +969,37 @@ const PINTEREST_HISTORY_LIMIT = 100;
 const PINTEREST_HISTORY_TTL_MS = 24 * 60 * 60 * 1000;
 const IMAGE_DAILY_LIMIT_DEFAULT = 5;
 
+function getJakartaDateKey(date = new Date()) {
+    return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Jakarta',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).format(date);
+}
+
+function getAnimeinDayName(offsetDays = 0) {
+    const days = ['AHAD', 'SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT', 'SABTU'];
+    const base = getJakartaDate();
+    base.setDate(base.getDate() + offsetDays);
+    return days[base.getDay()];
+}
+
+function detectScheduleDayOffset(text) {
+    const lower = String(text || '').toLowerCase();
+    if (/besok|tomorrow/.test(lower)) return 1;
+    if (/lusa/.test(lower)) return 2;
+    if (/kemarin/.test(lower)) return -1;
+    return 0;
+}
+
+function formatAnimeinTime(rawTime) {
+    if (!rawTime) return '';
+    const str = String(rawTime);
+    const timeMatch = str.match(/(?:\d{4}-\d{2}-\d{2}\s+)?(\d{1,2}:\d{2})(?::\d{2})?/);
+    return timeMatch ? `${timeMatch[1]} WIB` : str;
+}
+
 function addActivity(type, from, text, response, provider, tokens = 0) {
     stats.recentActivity.unshift({
         time: new Date().toLocaleTimeString('id-ID'),
@@ -1016,7 +1047,7 @@ function getKnowledgeContext(query) {
         : ANIMEIN_KNOWLEDGE;
 
     // Step 3: Keyword matching dalam domain yang sudah difilter
-    const scored = pool
+    let scored = pool
         .map(k => {
             const matches = k.keywords.filter(key => {
                 if (key.length <= 3) return lowerQ.split(/\s+/).includes(key);
@@ -1026,7 +1057,13 @@ function getKnowledgeContext(query) {
         })
         .filter(k => k.score > 0)
         .sort((a, b) => b.score - a.score)
-        .slice(0, 2); // Max 2 entries per domain untuk hemat token
+        .slice(0, 3);
+
+    // Jika domain Animein terdeteksi tapi keyword tidak exact, tetap inject knowledge domain.
+    // Ini mencegah AI menjawab "tidak paham/tidak tahu" untuk pertanyaan Animein yang wording-nya beda.
+    if (scored.length === 0 && detectedDomain) {
+        scored = pool.slice(0, 3).map(k => ({ info: k.info, domain: k.domain, score: 0 }));
+    }
 
     let extraStats = "";
     
@@ -1171,7 +1208,7 @@ function detectIntent(text) {
     
     if (/rekomendasi hari ini|sedang hangat|hangat|trending|tranding|viral|rame|lagi rame|lagi hits|hits|update hari ini|seru/.test(lower)) return 'trending';
     
-    if (/jadwal|tayang|hari ini|schedule|kapan rilis|jam berapa|hari apa|update eps|episode baru|rilis kapan|kapan tayang/.test(lower)) return 'schedule';
+    if (/jadwal|tayang|hari ini|besok|lusa|schedule|kapan rilis|jam berapa|hari apa|update eps|episode baru|rilis kapan|kapan tayang|kapan update|update kapan|jam update|besok update/.test(lower)) return 'schedule';
     
     if (/populer|popular|terpopuler|rekomendasi|rekomen|recommend|paling bagus|rating tinggi|top anime|apa yang bagus|saran anime|saranin|kasih tau anime/.test(lower)) return 'popular';
     
@@ -1374,43 +1411,37 @@ async function fetchHomeAnime(force = false) {
     }
 }
 
-/** Ambil jadwal anime rilis hari ini dari Animein */
-async function fetchSchedule() {
-    if (isAnimeinApiBlocked('Fetch jadwal')) return cache.schedule.data || [];
+/** Ambil jadwal anime rilis dari Animein berdasarkan hari WIB */
+async function fetchSchedule(dayOffset = 0) {
+    const targetDay = getAnimeinDayName(dayOffset);
+    if (isAnimeinApiBlocked('Fetch jadwal')) return cache.schedule[targetDay]?.data || [];
     const now = Date.now();
-    if (cache.schedule.data && now - cache.schedule.lastFetch < cache.TTL) {
-        return cache.schedule.data;
+    if (cache.schedule[targetDay]?.data && now - cache.schedule[targetDay].lastFetch < cache.TTL) {
+        return cache.schedule[targetDay].data;
     }
-    const days = ['AHAD', 'SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT', 'SABTU'];
-    const today = days[getJakartaDate().getDay()];
     try {
         const res = await axios.get(`${CONFIG.BASE_URL}/3/2/home/data`, {
-            params: { day: today },
+            params: { day: targetDay },
             headers: ANIMEIN_HEADERS,
             timeout: 10000,
         });
 
-        const raw = res.data?.data?.today || res.data?.data?.new || [];
+        const raw = res.data?.data?.today || res.data?.data?.new || res.data?.data?.movie || [];
         const list = raw.map(a => {
             let desc = `- ${a.title}`;
-            if (a.key_time) {
-                const parts = a.key_time.split(' ');
-                if (parts.length > 1) {
-                    desc += ` (Jam: ${parts[1].slice(0, 5)})`;
-                }
-            }
-            desc += ` [Update: ${a.day || today}, Studio: ${a.studio || '?'}]`;
+            const jam = formatAnimeinTime(a.key_time || a.time || a.release_time || a.updated_at);
+            if (jam) desc += ` (Jam update: ${jam})`;
+            desc += ` [Hari: ${a.day || targetDay}, Studio: ${a.studio || '?'}, Views: ${a.views || '?'}]`;
             return desc;
         });
         if (list.length > 0) {
-            cache.schedule.data = list;
-            cache.schedule.lastFetch = now;
-            console.log(`[ANIMEIN] Schedule cache updated: ${list.length} anime`);
+            cache.schedule[targetDay] = { data: list, lastFetch: now };
+            console.log(`[ANIMEIN] Schedule cache updated ${targetDay}: ${list.length} anime`);
         }
         return list;
     } catch (e) {
         console.warn('[ANIMEIN] Gagal ambil jadwal:', e.message.slice(0, 60));
-        return cache.schedule.data || [];
+        return cache.schedule[targetDay]?.data || [];
     }
 }
 
@@ -1427,7 +1458,8 @@ async function searchAnime(query) {
         return raw.map(a => {
             let info = `- ${a.title}`;
             if (a.synonyms) info += ` (Alt: ${a.synonyms})`;
-            info += ` [Update: ${a.day || '?'}, Views: ${a.views || '?'}, Studio: ${a.studio || '?'}, Tahun: ${a.year || '?'}]`;
+            const jam = formatAnimeinTime(a.key_time || a.time || a.release_time || a.updated_at);
+            info += ` [Update: ${a.day || '?'}, Jam: ${jam || '?'}, Views: ${a.views || '?'}, Studio: ${a.studio || '?'}, Tahun: ${a.year || '?'}]`;
             if (a.synopsis) {
                 const syn = a.synopsis.slice(0, 150) + '...';
                 info += `\n  Konteks Internal: ${syn}`;
@@ -1595,18 +1627,20 @@ async function buildAnimeContext(intent, question) {
         contextData += `\n\nInstruksi AI: Di atas adalah 3 kategori data global. Gunakan data tersebut secara pintar untuk menjawab pertanyaan user. Jika user mencari yang sedang tren/hangat, gunakan [TRENDING HARI INI]. Jika mencari yang paling populer secara umum/terbanyak view, gunakan [GLOBAL TERPOPULER]. Jika mencari rating tertinggi/bintang, gunakan [RATING TERTINGGI]. Berikan rekomendasi yang sesuai.`;
         return contextData;
     } else if (intent === 'schedule') {
-        const list = await fetchSchedule();
-        const keywords = lowerQ.replace(/jadwal|tayang|hari ini|schedule|kapan rilis|jam berapa|hari apa|update eps|episode baru|rilis kapan|kapan tayang/gi, '').trim();
+        const dayOffset = detectScheduleDayOffset(lowerQ);
+        const targetDay = getAnimeinDayName(dayOffset);
+        const list = await fetchSchedule(dayOffset);
+        const keywords = lowerQ.replace(/jadwal|tayang|hari ini|besok|lusa|tomorrow|schedule|kapan rilis|jam berapa|hari apa|update eps|episode baru|rilis kapan|kapan tayang|kapan update|update kapan|jam update|besok update/gi, '').trim();
         
         if (keywords.length > 2) {
              const searchResults = await searchAnime(keywords);
              if (searchResults.length > 0) {
-                 contextData += `\n\n[INFO UPDATE DARI SEARCH]:\n${searchResults.slice(0, 3).join('\n')}\nInstruksi AI: User nanya jadwal spesifik buat "${keywords}". Info di atas ada kolom [Update: ...] yang nunjukin hari rilisnya. Jawab sesuai hari itu ya!`;
+                 contextData += `\n\n[INFO UPDATE DARI SEARCH]:\n${searchResults.slice(0, 5).join('\n')}\nInstruksi AI: User nanya jadwal spesifik buat "${keywords}". Info [Update] adalah hari rilis dan [Jam] adalah jam update Asia/Jakarta/WIB jika tersedia. Jawab sesuai data itu. Jika jam masih ?, sebutkan harinya saja dan bilang jam tidak tersedia di data Animein.`;
              }
         }
         
         if (list.length > 0) {
-            contextData += `\n\n[DATA ANIMEIN - Jadwal Tayang Hari Ini]:\n${list.join('\n')}\nInstruksi AI: Jika user bertanya jadwal rilis secara umum hari ini, gunakan list ini. Jawab dengan ramah.`;
+            contextData += `\n\n[DATA ANIMEIN - Jadwal Tayang ${dayOffset === 1 ? 'Besok' : dayOffset === 2 ? 'Lusa' : 'Hari Ini'} (${targetDay}) - Zona Asia/Jakarta/WIB]:\n${list.join('\n')}\nInstruksi AI: Gunakan list ini untuk menjawab anime apa saja yang update ${dayOffset === 1 ? 'besok' : dayOffset === 2 ? 'lusa' : 'hari ini'}. Semua jam adalah WIB/Asia Jakarta. Sebutkan jam update jika ada.`;
         }
     } else if (intent === 'search') {
         const keywords = question.replace(/cari|search|ada ga|ada gak|ada tidak/gi, '').trim();
@@ -1721,9 +1755,10 @@ const ANIMEIN_EXTRA_ENDPOINTS = {
     userPublicProfile: { method: 'get', path: '/3/2/profile/other', label: 'Profil publik user target', scope: 'profile' },
     profileMedal: { method: 'get', path: '/3/2/profile/medal', label: 'Gelar profil publik user target', scope: 'profile' },
     profileGallery: { method: 'get', path: '/3/2/profile/gallery', label: 'Galeri user target', scope: 'profile' },
-    profileMovie: { method: 'get', path: '/3/2/profile/movie', label: 'Movie profil publik user target', scope: 'profile' },
+    profileMovie: { method: 'get', path: '/3/2/profile/movie', label: 'Anime/movie profil publik user target', scope: 'profile' },
     profilePokemon: { method: 'get', path: '/data/profile/pokemon', label: 'Pokemon di profil user target', scope: 'profile' },
     profileWaifu: { method: 'get', path: '/data/profile/waifu', label: 'Waifu user target', scope: 'profile' },
+    profileCuplix: { method: 'get', path: '/data/fyp2/list_scroll', label: 'Cuplix/FYP user target', scope: 'cuplixProfile' },
     userBagPokemon: { method: 'get', path: '/3/2/user/bag/pokemon_rev', label: 'Tas Pokemon akun login', scope: 'private' },
     userLoveLopers: { method: 'get', path: '/3/2/user/love/lopers', label: 'Data lopers akun login', scope: 'private' },
     userLoveLoping: { method: 'get', path: '/3/2/user/love/loping', label: 'Data loping akun login', scope: 'private' },
@@ -1747,8 +1782,8 @@ function detectAnimeinExtraKeys(text) {
     if (has(/battle|battel|batle|rank|peringkat|battle\s*point|bp\b|pokemon.*ban|ban.*pokemon/)) {
         ['battleInfo', 'battleBannedNow', 'battleBannedNext', 'battleBannedList', 'battlePokemon', 'battleHistory', 'battleRank'].forEach(k => keys.add(k));
     }
-    if (has(/profil|profile|like|gelar|medal|view|kontrib|kontribusi|coin|coins|koin|gems?|favorit|favorite|riwayat|history/)) {
-        ['userPublicProfile', 'profileMedal', 'profileMovie'].forEach(k => keys.add(k));
+    if (has(/profil|profile|like|gelar|medal|view|kontrib|kontribusi|coin|coins|koin|gems?|favorit|favorite|riwayat|history|berapa.*(like|love|view|kontrib)/)) {
+        ['userPublicProfile', 'profileMedal', 'profileMovie', 'profilePokemon', 'profileWaifu', 'profileCuplix'].forEach(k => keys.add(k));
     }
     if (has(/tas|bag|pokemon.*(milik|punya|koleksi)|koleksi.*pokemon/)) {
         ['profilePokemon'].forEach(k => keys.add(k));
@@ -1758,6 +1793,9 @@ function detectAnimeinExtraKeys(text) {
     }
     if (has(/waifu|galer[iy]|gallery/)) {
         ['profileWaifu', 'profileGallery'].forEach(k => keys.add(k));
+    }
+    if (has(/cuplix|fyp|klip|clip|video pendek/)) {
+        ['profileCuplix'].forEach(k => keys.add(k));
     }
     if (has(/lopers?|loping|love|lover|disukai|menyukai/)) {
         ['userPublicProfile', 'profileMovie'].forEach(k => keys.add(k));
@@ -1824,8 +1862,12 @@ async function resolveAnimeinUser(username, bot = bots[0]) {
         });
 
         const user = findFirstObjectByKeys(response.data, /^(id|id_user|user_id|username|user_name|name)$/i) || {};
+        const resolvedUsername = user.username || user.user_name || user.name || '';
+        if (!resolvedUsername || normalizeAnimeinUsername(resolvedUsername) !== normalizeAnimeinUsername(cleanUsername)) {
+            return { username: cleanUsername, id: null, raw: null, notExact: true };
+        }
         return {
-            username: user.username || user.user_name || user.name || cleanUsername,
+            username: resolvedUsername,
             id: user.id_user || user.user_id || user.id || null,
             raw: user,
         };
@@ -1840,10 +1882,10 @@ function getTargetUserParams(targetUser) {
     const params = {};
     if (targetUser.username) {
         params.username = targetUser.username;
-        params.user_name = targetUser.username;
-        params.target_username = targetUser.username;
-        params.username_other = targetUser.username;
-        params.other_username = targetUser.username;
+    }
+    if (targetUser.id) {
+        params.id_other = targetUser.id;
+        params.id_me = getAuthParams(bots[0]).id_user;
     }
     return params;
 }
@@ -1858,6 +1900,16 @@ function buildAnimeinExtraRequestParams(spec, bot, targetUser) {
 
     if (spec.scope === 'profile') {
         return targetUser ? { ...authParams, ...targetParams } : authParams;
+    }
+
+    if (spec.scope === 'cuplixProfile') {
+        return targetUser ? {
+            ...authParams,
+            limit: '30',
+            sort: 'user_create',
+            key_id_fyp: '',
+            id_user_fyp: targetUser.id,
+        } : authParams;
     }
 
     if (spec.scope === 'global' || !targetUser) {
@@ -1993,10 +2045,13 @@ async function buildAnimeinExtraContext(question, bot = bots[0], senderName = ''
             return `## ${ANIMEIN_EXTRA_ENDPOINTS[key].label}\nRingkasan:\n${summary}\nRAW_JSON_RINGKAS:\n${raw}`;
         });
 
-    if (!sections.length) return '';
-    const targetInfo = targetUser ? `\nTarget user valid: ${targetUser.username}${targetUser.id ? ` (id: ${targetUser.id})` : ''}. Data ini diambil berdasarkan username pengirim: ${senderUsername}.` : '';
-    const targetDebug = targetUser ? `\nParameter target publik: ${JSON.stringify(getTargetUserParams(targetUser)).slice(0, 400)}. ID target user tidak dikirim; id_user tetap milik akun login untuk auth.` : '';
-    return `\n\n[DATA REAL-TIME ANIMEIN TAMBAHAN]${targetInfo}${targetDebug}\n${sections.join('\n\n')}\nInstruksi AI: Jawab hanya berdasarkan data Animein di atas. User hanya boleh melihat data akun sendiri berdasarkan username pengirim. Untuk pertanyaan love/lopers/loping/gelar/medal/coin/gems, ambil angka/nama persis dari Ringkasan atau RAW_JSON_RINGKAS. Jangan menebak dari prompt/pengetahuan umum. Jangan tampilkan id/id_user/user_id ke user. Jika field yang ditanya tidak ada di data endpoint, jawab: data tersebut tidak tersedia dari endpoint untuk user ini.`;
+    if (!sections.length) {
+        const fallback = getKnowledgeContext(question).context;
+        return fallback ? `\n\n[DATA REAL-TIME ANIMEIN]: Endpoint Animein tidak mengembalikan data yang bisa dipakai saat ini. Gunakan knowledge berikut sebagai fallback, dan jelaskan bahwa data real-time belum tersedia.\n${fallback}` : '';
+    }
+    const targetInfo = targetUser ? `\nTarget user valid: ${targetUser.username}${targetUser.id ? ` (id internal tersedia)` : ''}. Data ini diambil berdasarkan username pengirim: ${senderUsername}.` : '';
+    const targetDebug = targetUser ? `\nParameter target publik memakai id_other/id_user_fyp sesuai endpoint app Animein. Jangan tampilkan ID internal ke user.` : '';
+    return `\n\n[DATA REAL-TIME ANIMEIN TAMBAHAN]${targetInfo}${targetDebug}\n${sections.join('\n\n')}\nInstruksi AI: WAJIB jawab berdasarkan data Animein di atas. Jangan jawab "tidak paham", "tidak tahu", atau jawaban ngambang jika ada angka/field di Ringkasan/RAW_JSON_RINGKAS. Untuk pertanyaan "berapa like/love/view/kontrib/coin/gems saya", baca field likes/love/views/contribs/coin/gems dari data. Jika data real-time endpoint tidak memiliki field yang ditanya, baru gunakan knowledge yang tersedia sebagai fallback dan jelaskan field real-time tersebut tidak tersedia. Jangan menebak. Jangan tampilkan id/id_user/user_id ke user.`;
 }
 
 /** Groq (Llama 3.1) - kualitas lebih baik */
@@ -2010,7 +2065,7 @@ async function askGroq(index, userMessage, senderName, contextData = '', chatHis
     const userStats = USER_STATS_CACHE[senderName];
     const coreMemory = (userStats && userStats.core_memory) ? `\n[CORE MEMORY @${senderName}]: ${userStats.core_memory}` : '';
     
-    const systemContent = SYSTEM_PROMPT + `\n\nInfo: Kamu sedang mengobrol dengan ${senderName}.` + coreMemory + contextData;
+    const systemContent = SYSTEM_PROMPT + `\n\nInfo: Kamu sedang mengobrol dengan ${senderName}.\nAturan jawaban data Animein: jika konteks berisi DATA REAL-TIME ANIMEIN atau INFO ANIMEIN, jawab dengan data itu secara langsung dan jelas. Jangan memakai frasa "saya tidak paham" / "saya tidak tahu" kecuali benar-benar tidak ada data real-time maupun knowledge. Jika data API tidak ada tetapi knowledge ada, gunakan knowledge sebagai fallback dan sebutkan bahwa data real-time belum tersedia.` + coreMemory + contextData;
     const { data: completion, response } = await client.chat.completions.create({
         model: 'llama-3.1-8b-instant',
         messages: [
@@ -2122,7 +2177,7 @@ async function getAIResponse(userMessage, senderName, isReply = false) {
 
 async function getImageLimitStatus(username) {
     const cleanUsername = String(username || '').replace(/^@/, '').trim();
-    const today = getJakartaDate().toISOString().slice(0, 10);
+    const today = getJakartaDateKey();
     if (!cleanUsername || !CONFIG.TURSO_URL) {
         return { username: cleanUsername, usageDate: today, used: 0, limit: IMAGE_DAILY_LIMIT_DEFAULT, remaining: IMAGE_DAILY_LIMIT_DEFAULT };
     }
