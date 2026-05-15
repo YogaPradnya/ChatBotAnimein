@@ -1419,24 +1419,76 @@ async function fetchSchedule(dayOffset = 0) {
     if (cache.schedule[targetDay]?.data && now - cache.schedule[targetDay].lastFetch < cache.TTL) {
         return cache.schedule[targetDay].data;
     }
+
+    const extractScheduleItems = (payload) => {
+        const data = payload?.data || payload || {};
+        const arrays = [];
+        const visit = (value) => {
+            if (!value) return;
+            if (Array.isArray(value)) {
+                if (value.some(item => item && typeof item === 'object' && (item.title || item.name || item.movie || item.day || item.key_time || item.time))) {
+                    arrays.push(value);
+                }
+                value.forEach(visit);
+            } else if (typeof value === 'object') {
+                Object.values(value).forEach(visit);
+            }
+        };
+        visit(data);
+        return (arrays.sort((a, b) => b.length - a.length)[0] || []);
+    };
+
+    const toLine = (a) => {
+        const title = a.title || a.name || a.movie_title || a.movie || a.anime || 'Tanpa judul';
+        let desc = `- ${title}`;
+        const jam = formatAnimeinTime(a.key_time || a.time || a.release_time || a.update_time || a.jam || a.hour || a.updated_at);
+        if (jam) desc += ` (Jam update: ${jam})`;
+        const day = a.day || a.hari || a.day_name || targetDay;
+        const eps = a.episode || a.eps || a.episode_now || a.last_episode;
+        const studio = a.studio || a.studio_name;
+        const extra = [];
+        if (eps) extra.push(`Episode: ${eps}`);
+        extra.push(`Hari: ${day}`);
+        if (studio) extra.push(`Studio: ${studio}`);
+        if (a.views) extra.push(`Views: ${a.views}`);
+        desc += ` [${extra.join(', ')}]`;
+        return desc;
+    };
+
     try {
+        recordPath('/3/2/schedule/data');
+        const res = await axios.get(`${CONFIG.BASE_URL}/3/2/schedule/data`, {
+            params: { day: targetDay, hari: targetDay },
+            headers: ANIMEIN_HEADERS,
+            timeout: 12000,
+        });
+        const raw = extractScheduleItems(res.data);
+        const filtered = raw.filter(a => {
+            const day = String(a.day || a.hari || a.day_name || '').toUpperCase();
+            return !day || day === targetDay;
+        });
+        const list = (filtered.length ? filtered : raw).map(toLine);
+        if (list.length > 0) {
+            cache.schedule[targetDay] = { data: list, lastFetch: now };
+            console.log(`[ANIMEIN] Schedule endpoint cache updated ${targetDay}: ${list.length} anime`);
+            return list;
+        }
+    } catch (e) {
+        console.warn('[ANIMEIN] Gagal ambil jadwal dari /3/2/schedule/data:', e.message.slice(0, 80));
+    }
+
+    try {
+        recordPath('/3/2/home/data');
         const res = await axios.get(`${CONFIG.BASE_URL}/3/2/home/data`, {
             params: { day: targetDay },
             headers: ANIMEIN_HEADERS,
             timeout: 10000,
         });
-
         const raw = res.data?.data?.today || res.data?.data?.new || res.data?.data?.movie || [];
-        const list = raw.map(a => {
-            let desc = `- ${a.title}`;
-            const jam = formatAnimeinTime(a.key_time || a.time || a.release_time || a.updated_at);
-            if (jam) desc += ` (Jam update: ${jam})`;
-            desc += ` [Hari: ${a.day || targetDay}, Studio: ${a.studio || '?'}, Views: ${a.views || '?'}]`;
-            return desc;
-        });
+        const list = raw.map(toLine);
         if (list.length > 0) {
             cache.schedule[targetDay] = { data: list, lastFetch: now };
-            console.log(`[ANIMEIN] Schedule cache updated ${targetDay}: ${list.length} anime`);
+            console.log(`[ANIMEIN] Schedule fallback cache updated ${targetDay}: ${list.length} anime`);
         }
         return list;
     } catch (e) {
@@ -2150,44 +2202,117 @@ function detectOwnProfileStatQuestion(text) {
         { key: 'medal_count', label: 'Total medal', re: /\b(medal|gelar)\b/ },
         { key: 'pokemon_count', label: 'Total Pokemon', re: /\b(pokemon|poke)\b/ },
         { key: 'waifu_count', label: 'Total Waifu', re: /\b(waifu)\b/ },
+        { key: 'created_at', label: 'Tanggal join', re: /\b(join|bergabung|daftar|dibuat|tanggal akun|umur akun)\b/ },
+        { key: 'is_pro', label: 'Status PRO', re: /\b(pro|premium)\b/ },
+        { key: 'is_support', label: 'Status SUPPORT', re: /\b(support|supporter)\b/ },
     ];
 
     const wantsNumber = /berapa|jumlah|total|ada berapa|punya berapa/.test(lower);
-    return checks.find(item => item.re.test(lower) && (wantsNumber || item.key === 'rank')) || null;
+    const directKeys = new Set(['rank', 'created_at', 'is_pro', 'is_support']);
+    return checks.find(item => item.re.test(lower) && (wantsNumber || directKeys.has(item.key))) || null;
 }
 
-async function answerOwnProfileStatQuestion(userMessage, senderName) {
+async function answerOwnProfileStatQuestion(userMessage, senderName, senderUserId = null) {
     const stat = detectOwnProfileStatQuestion(userMessage);
     if (!stat || !senderName) return null;
 
-    const profile = await fetchOtherUserProfile(
-        senderName,
+    const lookupUsername = `@${String(senderName).replace(/^@+/, '').trim()}`;
+    let profile = await fetchOtherUserProfile(
+        lookupUsername,
         bots[0],
         CONFIG,
         recordPath,
         isAnimeinApiBlocked
     );
 
-    if (profile?.error) {
-        return `Maaf, data profil @${senderName} belum bisa diambil: ${profile.error}`;
+    if (profile?.error && senderUserId) {
+        try {
+            const baseUrl = CONFIG.BASE_URL.replace(/\/$/, '');
+            const authParams = getAuthParams(bots[0]);
+            recordPath('/3/2/profile/other');
+            const byIdRes = await axios.get(`${baseUrl}/3/2/profile/other`, {
+                params: {
+                    ...authParams,
+                    id_other: senderUserId,
+                    id_me: authParams.id_user,
+                    username: String(senderName).replace(/^@+/, '').trim(),
+                },
+                headers: ANIMEIN_HEADERS,
+                timeout: 15000,
+            });
+            const envelopeData = byIdRes.data?.data || byIdRes.data || {};
+            const data = envelopeData?.user || findFirstObjectByKeys(envelopeData, /^(id|id_user|username|views|likes|pokemon)$/i) || envelopeData;
+            profile = {
+                username: data?.username || data?.user_name || data?.name || senderName,
+                total_view: data?.views ?? data?.total_view ?? data?.profile_view ?? data?.view,
+                total_love: data?.likes ?? data?.total_love ?? data?.total_like ?? data?.love ?? data?.like ?? data?.lopers,
+                kontribusi: data?.contribs ?? data?.kontribusi ?? data?.contribution ?? data?.contrib,
+                created_at: data?.date_join ?? data?.created_at ?? data?.join_date ?? data?.register_date ?? data?.tanggal_daftar,
+                is_pro: envelopeData?.pro ?? data?.is_pro ?? data?.pro ?? (data?.data_pro === '1' ? true : undefined) ?? (data?.status_pro === true || data?.status_pro === 1 ? true : undefined),
+                is_support: data?.is_support ?? data?.support ?? (data?.status_support === true || data?.status_support === 1 ? true : undefined),
+                battle_point: data?.battle_point ?? data?.bp ?? data?.point,
+                rank: data?.data_rank_battle ?? data?.rank ?? data?.battle_rank,
+                medal_count: Array.isArray(envelopeData?.medal || data?.medal || data?.medals) ? (envelopeData?.medal || data?.medal || data?.medals).length : (data?.medal_count ?? data?.total_medal),
+                pokemon_count: envelopeData?.count_pokemon ?? data?.count_pokemon ?? data?.total_pokemon ?? (Array.isArray(data?.pokemon) ? data.pokemon.length : undefined),
+                waifu_count: envelopeData?.count_waifu ?? data?.count_waifu ?? data?.total_waifu,
+            };
+
+            const countSenderCollection = async (endpoint, arrayKey) => {
+                let page = 1;
+                let total = 0;
+                while (page <= 10) {
+                    recordPath(endpoint);
+                    const collectionRes = await axios.get(`${baseUrl}${endpoint}`, {
+                        params: { ...authParams, id_other: senderUserId, page: String(page) },
+                        headers: ANIMEIN_HEADERS,
+                        timeout: 12000,
+                    });
+                    const payload = collectionRes.data?.data || collectionRes.data || {};
+                    const items = payload?.[arrayKey] || payload?.list || payload?.data || payload?.items;
+                    if (!Array.isArray(items) || items.length === 0) break;
+                    total += items.length;
+                    if (items.length < 30) break;
+                    page += 1;
+                }
+                return total;
+            };
+
+            if (stat.key === 'pokemon_count' && profile.pokemon_count === undefined) {
+                profile.pokemon_count = await countSenderCollection('/data/profile/pokemon', 'pokemon');
+            }
+            if (stat.key === 'waifu_count' && profile.waifu_count === undefined) {
+                profile.waifu_count = await countSenderCollection('/data/profile/waifu', 'character');
+            }
+            console.log(`[PROFILE DIRECT] Sender user_id fallback used for ${senderName}. Field ${stat.key}: ${profile?.[stat.key] ?? 'empty'}`);
+        } catch (fallbackErr) {
+            console.warn(`[PROFILE DIRECT] Sender user_id fallback gagal: ${fallbackErr.message.slice(0, 100)}`);
+        }
     }
 
     const value = profile?.[stat.key];
     if (value === undefined || value === null || value === '') {
-        return `${stat.label} @${senderName} belum tersedia dari data Animein.`;
+        return profile?.error
+            ? `Maaf, data profil @${senderName} belum bisa diambil: ${profile.error}`
+            : `${stat.label} @${senderName} belum tersedia dari data Animein.`;
     }
 
-    const formatted = typeof value === 'number' || /^\d+$/.test(String(value))
-        ? Number(value).toLocaleString('id-ID')
-        : String(value);
+    let formatted;
+    if (stat.key === 'is_pro' || stat.key === 'is_support') {
+        const active = value === true || value === 1 || value === '1' || /^true|aktif|active|yes$/i.test(String(value));
+        formatted = active ? 'Aktif' : 'Tidak aktif';
+    } else {
+        formatted = typeof value === 'number' || /^\d+$/.test(String(value))
+            ? Number(value).toLocaleString('id-ID')
+            : String(value);
+    }
     return stat.key === 'rank'
         ? `${stat.label} @${senderName}: #${formatted}`
         : `${stat.label} @${senderName}: ${formatted}`;
 }
 
 /** Main AI handler: Groq only */
-async function getAIResponse(userMessage, senderName, isReply = false) {
-    const directProfileAnswer = await answerOwnProfileStatQuestion(userMessage, senderName);
+async function getAIResponse(userMessage, senderName, isReply = false, senderUserId = null) {
+    const directProfileAnswer = await answerOwnProfileStatQuestion(userMessage, senderName, senderUserId);
     if (directProfileAnswer) {
         return { text: directProfileAnswer, provider: 'Animein Profile', tokens: 0 };
     }
@@ -2642,6 +2767,7 @@ async function processMessages(bot, messages) {
         if (String(msg.user_id) === String(bot.auth.userId)) continue;
 
         const senderName = msg.username || msg.user_username || msg.user_login || msg.user_name || 'User';
+        const senderUserId = msg.user_id || msg.id_user || msg.userId || msg.user?.id || msg.user?.id_user || null;
         let msgText = msg.text || '';
         
         // --- 1. NORMALISASI PESAN (Strip Mentions) ---
@@ -3022,7 +3148,7 @@ async function processMessages(bot, messages) {
                 console.log(`[TRIGGER-AI] ${senderName}: ${msgText}`);
                 stats.totalTriggers++;
                 const question = cleanText || 'panggil rara?';
-                const { text: aiText, provider, tokens } = await getAIResponse(question, senderName, !!msg.replay_text);
+                const { text: aiText, provider, tokens } = await getAIResponse(question, senderName, !!msg.replay_text, senderUserId);
                 await sendChatMessage(bot, `@${senderName} ${aiText}`, msg.id);
                 addActivity('text', senderName, question, aiText, provider, tokens);
                 await addXP(senderName, 10);
