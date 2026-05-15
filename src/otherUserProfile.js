@@ -56,7 +56,7 @@ async function fetchOtherUserProfile(username, bot, CONFIG, recordPath, isAnimei
         
         // Extract profile information
         const profile = {
-            username: data.username || data.user_name || foundUsername,
+            username: data.username || data.user_name || cleanUsername,
             total_view: data.total_view || data.view || data.views || 0,
             total_love: data.total_love || data.love || data.lopers || 0,
             kontribusi: data.kontribusi || data.contribution || 0,
