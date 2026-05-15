@@ -73,15 +73,53 @@ async function fetchOtherUserProfile(username, bot, CONFIG, recordPath, isAnimei
             key_client: bot.auth.userKey,
         };
 
+        let targetUser = null;
+        try {
+            recordPath('/data/user/find');
+            const findResponse = await axios.get(`${baseUrl}/data/user/find`, {
+                params: {
+                    ...authParams,
+                    keyword: cleanUsername,
+                    username: cleanUsername,
+                    q: cleanUsername,
+                    search: cleanUsername,
+                },
+                headers: {
+                    'Accept': 'application/json, text/plain, */*',
+                    'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+                    'Referer': 'https://animeinweb.com/',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+                },
+                timeout: 12000,
+            });
+            targetUser = findProfilePayload(findResponse.data);
+            console.log('[OTHER PROFILE] Resolved user keys:', Object.keys(targetUser || {}).join(', ') || 'not found');
+        } catch (findErr) {
+            console.warn(`[OTHER PROFILE] Gagal resolve user ${cleanUsername}: ${findErr.message.slice(0, 100)}`);
+        }
+
+        const targetId = firstDefined(
+            targetUser?.id_user,
+            targetUser?.user_id,
+            targetUser?.id,
+            targetUser?.idUser
+        );
+        const targetName = firstDefined(targetUser?.username, targetUser?.user_name, targetUser?.name, cleanUsername);
+
         recordPath('/3/2/profile/other');
         const profileResponse = await axios.get(`${baseUrl}/3/2/profile/other`, {
             params: {
                 ...authParams,
-                username: cleanUsername,
-                user_name: cleanUsername,
-                target_username: cleanUsername,
-                username_other: cleanUsername,
-                other_username: cleanUsername,
+                username: targetName,
+                user_name: targetName,
+                target_username: targetName,
+                username_other: targetName,
+                other_username: targetName,
+                id_user_other: targetId,
+                other_id_user: targetId,
+                id_user_target: targetId,
+                target_id: targetId,
+                user_id_other: targetId,
             },
             headers: {
                 'Accept': 'application/json, text/plain, */*',
