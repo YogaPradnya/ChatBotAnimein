@@ -1712,16 +1712,23 @@ function normalizePokemonShopItems(payload) {
         .filter(item => item && typeof item === 'object')
         .map((item, index) => {
             const name = item.name || item.nama || item.title || item.pokemon_name || item.monster || item.pokemon || `Pokemon #${index + 1}`;
-            const price = item.price ?? item.harga ?? item.coin ?? item.coins ?? item.gem ?? item.bp ?? item.cost ?? item.nominal ?? item.value;
+            const priceCoin = item.price_coin ?? item.coin_price ?? item.priceCoin ?? item.coin ?? item.coins;
+            const priceGem = item.price_gem ?? item.gem_price ?? item.priceGem ?? item.gem ?? item.gems;
+            const price = item.price ?? item.harga ?? item.bp ?? item.cost ?? item.nominal ?? item.value;
             const stock = item.stock ?? item.stok ?? item.qty ?? item.quantity ?? item.jumlah;
             const rarity = item.rarity || item.grade || item.rank || item.tier || item.type;
             const id = item.id || item.id_pokemon || item.pokemon_id || item.id_shop;
             return {
                 id,
+                no: item.no || item.no_pokemon,
                 name: String(name),
                 price,
+                priceCoin,
+                priceGem,
                 stock,
                 rarity,
+                isOwn: item.is_own ?? item.own ?? item.isOwn,
+                evo: item.no_pokemon_evo,
                 raw: item,
             };
         });
@@ -1732,14 +1739,17 @@ function formatPokemonShopContext(items) {
 
     const lines = items.slice(0, 20).map((item, index) => {
         const parts = [`${index + 1}. ${item.name}`];
-        if (item.price !== undefined && item.price !== null && item.price !== '') parts.push(`Harga: ${item.price}`);
+        if (item.no) parts.push(`No: ${item.no}`);
+        if (item.priceCoin !== undefined && item.priceCoin !== null && item.priceCoin !== '') parts.push(`Harga Coin: ${item.priceCoin}C`);
+        if (item.priceGem !== undefined && item.priceGem !== null && item.priceGem !== '') parts.push(`Harga Gem: ${item.priceGem}G`);
+        if (item.price !== undefined && item.price !== null && item.price !== '') parts.push(`Harga lain: ${item.price}`);
         if (item.stock !== undefined && item.stock !== null && item.stock !== '') parts.push(`Stok: ${item.stock}`);
         if (item.rarity) parts.push(`Grade/Type: ${item.rarity}`);
-        if (item.id) parts.push(`ID: ${item.id}`);
+        if (item.evo) parts.push(`Evolusi ke No: ${item.evo}`);
         return `- ${parts.join(' | ')}`;
     });
 
-    return `\n\n[DATA REAL-TIME TOKO POKEMON ANIMEIN]:\n${lines.join('\n')}\nInstruksi AI: Jika user menanyakan Pokemon yang sedang dijual, harga Pokemon sekarang, stok, atau toko Pokemon, jawab berdasarkan data real-time ini. Jangan mengarang harga di luar data.`;
+    return `\n\n[DATA REAL-TIME TOKO POKEMON ANIMEIN]:\n${lines.join('\n')}\nInstruksi AI: Endpoint ini sama seperti APK Animein: /3/2/user/shop/pokemon. Field harga resmi Pokemon adalah price_coin (Coin/C) dan price_gem (Gem/G). Jika user menanyakan harga Pokemon, jawab berdasarkan Harga Coin dan Harga Gem di atas. Jangan mengarang harga di luar data.`;
 }
 
 const ANIMEIN_EXTRA_ENDPOINTS = {
@@ -1759,7 +1769,12 @@ const ANIMEIN_EXTRA_ENDPOINTS = {
     profilePokemon: { method: 'get', path: '/data/profile/pokemon', label: 'Pokemon di profil user target', scope: 'profile' },
     profileWaifu: { method: 'get', path: '/data/profile/waifu', label: 'Waifu user target', scope: 'profile' },
     profileCuplix: { method: 'get', path: '/data/fyp2/list_scroll', label: 'Cuplix/FYP user target', scope: 'cuplixProfile' },
-    userBagPokemon: { method: 'get', path: '/3/2/user/bag/pokemon_rev', label: 'Tas Pokemon akun login', scope: 'private' },
+    userBagPokemon: { method: 'get', path: '/3/2/user/bag/pokemon_rev', label: 'Tas Pokemon akun login termasuk data evolusi', scope: 'private' },
+    userProfileMedal: { method: 'get', path: '/3/2/user/profile/medal', label: 'Medal akun login', scope: 'private' },
+    userProData: { method: 'get', path: '/data/user/pro/data', label: 'Status Pro akun login', scope: 'private' },
+    userNotifications: { method: 'get', path: '/data/user/notification/list', label: 'Notifikasi akun login', scope: 'private' },
+    userTaskData: { method: 'get', path: '/data/user/task/data', label: 'Task/misi akun login', scope: 'private' },
+    userFypBooked: { method: 'get', path: '/data/user/fyp/booked', label: 'Cuplix tersimpan akun login', scope: 'private' },
     userLoveLopers: { method: 'get', path: '/3/2/user/love/lopers', label: 'Data lopers akun login', scope: 'private' },
     userLoveLoping: { method: 'get', path: '/3/2/user/love/loping', label: 'Data loping akun login', scope: 'private' },
     favoriteMovie: { method: 'get', path: '/3/2/user/favorite/movie', label: 'Favorit akun login', scope: 'private' },
@@ -1767,7 +1782,22 @@ const ANIMEIN_EXTRA_ENDPOINTS = {
     historyEpisode: { method: 'get', path: '/3/2/user/history/episode', label: 'Riwayat episode akun login', scope: 'private' },
     proList: { method: 'get', path: '/data/pro/list', label: 'Harga akun pro' },
     coinList: { method: 'get', path: '/data/coin/list', label: 'Harga coin' },
-    pokemonShop: { method: 'get', path: '/3/2/user/shop/pokemon', label: 'Harga Pokemon' },
+    pokemonShop: { method: 'get', path: '/3/2/user/shop/pokemon', label: 'Harga Pokemon shop' },
+    homeList: { method: 'get', path: '/data/home/list', label: 'Home Animein list' },
+    homeFyp: { method: 'get', path: '/data/home/fyp', label: 'Home FYP Animein' },
+    homeHot: { method: 'get', path: '/3/2/home/hot', label: 'Anime hot' },
+    homeNew: { method: 'get', path: '/3/2/home/new', label: 'Anime baru' },
+    homePopular: { method: 'get', path: '/3/2/home/popular', label: 'Anime populer' },
+    homeRandom: { method: 'get', path: '/3/2/home/random', label: 'Anime random' },
+    homeNewEpisode: { method: 'get', path: '/data/home/list_new_episode', label: 'Episode terbaru' },
+    trailerList: { method: 'get', path: '/data/trailer/list', label: 'Trailer Animein' },
+    scheduleData: { method: 'get', path: '/3/2/schedule/data', label: 'Jadwal update anime' },
+    exploreData: { method: 'get', path: '/3/2/explore/data', label: 'Explore Animein' },
+    exploreMovieGenre: { method: 'get', path: '/3/2/explore/movie_genre', label: 'Explore genre movie' },
+    exploreMovieStudio: { method: 'get', path: '/3/2/explore/movie_studio', label: 'Explore studio movie' },
+    exploreMovieType: { method: 'get', path: '/3/2/explore/movie_type', label: 'Explore tipe movie' },
+    exploreMovieYear: { method: 'get', path: '/3/2/explore/movie_year', label: 'Explore tahun movie' },
+    apkUpdate: { method: 'get', path: '/data/apk/update', label: 'Info update APK Animein' },
     npcList: { method: 'get', path: '/data/manra/npc/list', label: 'Data NPC' },
     npcPose: { method: 'get', path: '/data/manra/npc/list_pose', label: 'Pose NPC' },
     exploreNpc: { method: 'get', path: '/3/2/explore/manra_npc', label: 'NPC explore' },
@@ -1782,14 +1812,20 @@ function detectAnimeinExtraKeys(text) {
     if (has(/battle|battel|batle|rank|peringkat|battle\s*point|bp\b|pokemon.*ban|ban.*pokemon/)) {
         ['battleInfo', 'battleBannedNow', 'battleBannedNext', 'battleBannedList', 'battlePokemon', 'battleHistory', 'battleRank'].forEach(k => keys.add(k));
     }
-    if (has(/profil|profile|like|gelar|medal|view|kontrib|kontribusi|coin|coins|koin|gems?|favorit|favorite|riwayat|history|berapa.*(like|love|view|kontrib)/)) {
-        ['userPublicProfile', 'profileMedal', 'profileMovie', 'profilePokemon', 'profileWaifu', 'profileCuplix'].forEach(k => keys.add(k));
+    if (has(/profil|profile|like|gelar|medal|view|kontrib|kontribusi|coin|coins|koin|gems?|favorit|favorite|riwayat|history|notifikasi|notification|task|misi|pro\b|berapa.*(like|love|view|kontrib)/)) {
+        ['userPublicProfile', 'userProfile', 'userProfileMoney', 'userProfileMedal', 'userProData', 'userNotifications', 'userTaskData', 'profileMedal', 'profileMovie', 'profilePokemon', 'profileWaifu', 'profileCuplix'].forEach(k => keys.add(k));
     }
-    if (has(/tas|bag|pokemon.*(milik|punya|koleksi)|koleksi.*pokemon/)) {
-        ['profilePokemon'].forEach(k => keys.add(k));
+    if (has(/tas|bag|pokemon.*(milik|punya|koleksi|evo|evolusi)|koleksi.*pokemon|evo|evolusi|evolve|level pokemon|pokemon.*harga|harga.*pokemon/)) {
+        ['userBagPokemon', 'profilePokemon', 'pokemonShop'].forEach(k => keys.add(k));
     }
-    if (has(/harga|price|coin|pro|akun\s*pro|pokemon.*shop|shop.*pokemon/)) {
+    if (has(/harga|price|coin|pro|akun\s*pro|pokemon.*shop|shop.*pokemon|toko pokemon|jual pokemon|beli pokemon/)) {
         ['coinList', 'proList', 'pokemonShop'].forEach(k => keys.add(k));
+    }
+    if (has(/jadwal|schedule|update anime|anime.*update|episode terbaru|rilis|tayang/)) {
+        ['scheduleData', 'homeNewEpisode', 'homeNew'].forEach(k => keys.add(k));
+    }
+    if (has(/home|hot|populer|popular|trending|anime baru|random|trailer|explore|genre|studio|tahun|tipe|type|apk|update apk/)) {
+        ['homeList', 'homeFyp', 'homeHot', 'homePopular', 'homeRandom', 'trailerList', 'exploreData', 'exploreMovieGenre', 'exploreMovieStudio', 'exploreMovieType', 'exploreMovieYear', 'apkUpdate'].forEach(k => keys.add(k));
     }
     if (has(/waifu|galer[iy]|gallery/)) {
         ['profileWaifu', 'profileGallery'].forEach(k => keys.add(k));
@@ -1949,7 +1985,8 @@ function summarizeAnimeinPayload(payload, maxItems = 12) {
         'name', 'nama', 'username', 'user_name', 'display_name', 'title', 'gelar', 'medal', 'badge', 'badges',
         'lopers', 'loper', 'loping', 'love', 'lover', 'like', 'likes', 'total_like', 'total_love',
         'pokemon_name', 'waifu_name', 'rank', 'point', 'battle_point', 'view', 'views', 'total_view',
-        'kontribusi', 'contribution', 'coin', 'coins', 'koin', 'gem', 'gems', 'price', 'harga'
+        'kontribusi', 'contribution', 'coin', 'coins', 'koin', 'gem', 'gems', 'money_coin', 'money_gem',
+        'price', 'harga', 'price_coin', 'price_gem', 'no', 'no_pokemon_evo', 'is_own', 'level', 'exp', 'hp', 'atk', 'def', 'spd', 'speed'
     ];
 
     const formatScalar = (value) => {
@@ -2099,8 +2136,62 @@ async function askGroq(index, userMessage, senderName, contextData = '', chatHis
 }
 
 
+function detectOwnProfileStatQuestion(text) {
+    const lower = String(text || '').toLowerCase();
+    const isOwn = /\b(saya|aku|gw|gue|gua|punyaku|milikku)\b/.test(lower) || !/@[a-zA-Z0-9_.-]{3,32}/.test(lower);
+    if (!isOwn) return null;
+
+    const checks = [
+        { key: 'total_love', label: 'Love', re: /\b(love|like|likes|lopers?|disukai)\b/ },
+        { key: 'total_view', label: 'View profil', re: /\b(view|views|dilihat|pengunjung)\b/ },
+        { key: 'kontribusi', label: 'Kontribusi', re: /\b(kontribusi|kontrib|contribs?|upload)\b/ },
+        { key: 'battle_point', label: 'Battle point', re: /\b(bp|battle point|point battle)\b/ },
+        { key: 'rank', label: 'Rank battle', re: /\b(rank|peringkat)\b/ },
+        { key: 'medal_count', label: 'Total medal', re: /\b(medal|gelar)\b/ },
+        { key: 'pokemon_count', label: 'Total Pokemon', re: /\b(pokemon|poke)\b/ },
+        { key: 'waifu_count', label: 'Total Waifu', re: /\b(waifu)\b/ },
+    ];
+
+    const wantsNumber = /berapa|jumlah|total|ada berapa|punya berapa/.test(lower);
+    return checks.find(item => item.re.test(lower) && (wantsNumber || item.key === 'rank')) || null;
+}
+
+async function answerOwnProfileStatQuestion(userMessage, senderName) {
+    const stat = detectOwnProfileStatQuestion(userMessage);
+    if (!stat || !senderName) return null;
+
+    const profile = await fetchOtherUserProfile(
+        senderName,
+        bots[0],
+        CONFIG,
+        recordPath,
+        isAnimeinApiBlocked
+    );
+
+    if (profile?.error) {
+        return `Maaf, data profil @${senderName} belum bisa diambil: ${profile.error}`;
+    }
+
+    const value = profile?.[stat.key];
+    if (value === undefined || value === null || value === '') {
+        return `${stat.label} @${senderName} belum tersedia dari data Animein.`;
+    }
+
+    const formatted = typeof value === 'number' || /^\d+$/.test(String(value))
+        ? Number(value).toLocaleString('id-ID')
+        : String(value);
+    return stat.key === 'rank'
+        ? `${stat.label} @${senderName}: #${formatted}`
+        : `${stat.label} @${senderName}: ${formatted}`;
+}
+
 /** Main AI handler: Groq only */
 async function getAIResponse(userMessage, senderName, isReply = false) {
+    const directProfileAnswer = await answerOwnProfileStatQuestion(userMessage, senderName);
+    if (directProfileAnswer) {
+        return { text: directProfileAnswer, provider: 'Animein Profile', tokens: 0 };
+    }
+
     const intent = detectIntent(userMessage);
     const animeContext = await buildAnimeContext(intent, userMessage);
     const knowledgeResult = getKnowledgeContext(userMessage);
