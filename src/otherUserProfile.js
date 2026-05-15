@@ -64,7 +64,7 @@ function findUserPayload(payload, targetUsername) {
     };
 
     visit(payload);
-    return exactUser || firstUser;
+    return exactUser;
 }
 
 function hasRealProfileData(profile) {
@@ -75,11 +75,46 @@ function hasRealProfileData(profile) {
         profile.created_at,
         profile.battle_point,
         profile.rank,
-        profile.medals.length,
-        profile.pokemon.length,
+        profile.medal_count,
+        profile.pokemon_count,
+        profile.waifu_count,
         profile.is_pro,
         profile.is_support,
     ].some(value => value !== undefined && value !== null && value !== '' && value !== false && value !== 0);
+}
+
+async function countProfileCollection(baseUrl, authParams, targetId, endpoint, arrayKey, recordPath) {
+    let page = 1;
+    let total = 0;
+    const maxPages = 10;
+
+    while (page <= maxPages) {
+        recordPath(endpoint);
+        const response = await axios.get(`${baseUrl}${endpoint}`, {
+            params: {
+                ...authParams,
+                id_other: targetId,
+                page: String(page),
+            },
+            headers: {
+                'Accept': 'application/json, text/plain, */*',
+                'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+                'Referer': 'https://animeinweb.com/',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+            },
+            timeout: 12000,
+        });
+
+        const payload = response.data?.data || response.data;
+        const items = payload?.[arrayKey];
+        if (!Array.isArray(items) || items.length === 0) break;
+
+        total += items.length;
+        if (items.length < 30) break;
+        page += 1;
+    }
+
+    return total;
 }
 
 /**
@@ -137,7 +172,7 @@ async function fetchOtherUserProfile(username, bot, CONFIG, recordPath, isAnimei
         const targetName = firstDefined(targetUser?.username, targetUser?.user_name, targetUser?.name, cleanUsername);
 
         if (!targetId) {
-            return { error: 'User tidak ditemukan', username: cleanUsername };
+            return { error: `User @${cleanUsername} tidak ditemukan persis`, username: cleanUsername };
         }
 
         recordPath('/3/2/profile/other');
@@ -178,19 +213,31 @@ async function fetchOtherUserProfile(username, bot, CONFIG, recordPath, isAnimei
             is_support: firstDefined(data?.is_support, data?.support, data?.status_support === true || data?.status_support === 1 ? true : undefined),
             battle_point: firstDefined(data?.battle_point, data?.bp, data?.point),
             rank: firstDefined(data?.data_rank_battle, data?.rank, data?.battle_rank),
-            medals: [],
-            pokemon: [],
+            medal_count: undefined,
+            pokemon_count: firstDefined(envelopeData?.count_pokemon, data?.count_pokemon, data?.total_pokemon),
+            waifu_count: firstDefined(envelopeData?.count_waifu, data?.count_waifu, data?.total_waifu),
             raw: data,
         };
 
         const medals = firstDefined(envelopeData?.medal, data?.medals, data?.medal);
         if (Array.isArray(medals)) {
-            profile.medals = medals.slice(0, 5).map(m => m.name || m.title || m.medal_name).filter(Boolean);
+            profile.medal_count = medals.length;
         }
 
-        const pokemon = firstDefined(data?.pokemon, data?.pokemons);
-        if (Array.isArray(pokemon)) {
-            profile.pokemon = pokemon.slice(0, 5).map(p => p.name || p.pokemon_name).filter(Boolean);
+        if (profile.pokemon_count === undefined) {
+            try {
+                profile.pokemon_count = await countProfileCollection(baseUrl, authParams, targetId, '/data/profile/pokemon', 'pokemon', recordPath);
+            } catch (countErr) {
+                console.warn(`[OTHER PROFILE] Gagal hitung pokemon ${cleanUsername}: ${countErr.message.slice(0, 100)}`);
+            }
+        }
+
+        if (profile.waifu_count === undefined) {
+            try {
+                profile.waifu_count = await countProfileCollection(baseUrl, authParams, targetId, '/data/profile/waifu', 'character', recordPath);
+            } catch (countErr) {
+                console.warn(`[OTHER PROFILE] Gagal hitung waifu ${cleanUsername}: ${countErr.message.slice(0, 100)}`);
+            }
         }
 
         if (!hasRealProfileData(profile)) {
@@ -257,24 +304,15 @@ function formatOtherUserProfile(profile) {
 
     if (profile.battle_point !== undefined || profile.rank !== undefined) {
         lines.push(`┣━━━━━━━━━━━━━━━━━━━┫`);
-        if (profile.rank !== undefined) lines.push(`┃ 🏆 Rank    : #${profile.rank}`);
-        if (profile.battle_point !== undefined) lines.push(`┃ ⚔️ BP      : ${Number(profile.battle_point).toLocaleString('id-ID')}`);
+        if (profile.rank !== undefined) lines.push(`┃ 🏆 Rank Battle : #${profile.rank}`);
+        if (profile.battle_point !== undefined) lines.push(`┃ ⚔️ BP          : ${Number(profile.battle_point).toLocaleString('id-ID')}`);
     }
 
-    if (profile.medals.length > 0) {
+    if (profile.medal_count !== undefined || profile.pokemon_count !== undefined || profile.waifu_count !== undefined) {
         lines.push(`┣━━━━━━━━━━━━━━━━━━━┫`);
-        lines.push(`┃ 🏅 Medal (${profile.medals.length}):`);
-        profile.medals.forEach(medal => {
-            lines.push(`┃   • ${medal}`);
-        });
-    }
-
-    if (profile.pokemon.length > 0) {
-        lines.push(`┣━━━━━━━━━━━━━━━━━━━┫`);
-        lines.push(`┃ 🎮 Pokemon (${profile.pokemon.length}):`);
-        profile.pokemon.forEach(poke => {
-            lines.push(`┃   • ${poke}`);
-        });
+        if (profile.medal_count !== undefined) lines.push(`┃ 🏅 Total Medal  : ${Number(profile.medal_count).toLocaleString('id-ID')}`);
+        if (profile.pokemon_count !== undefined) lines.push(`┃ 🎮 Total Pokemon: ${Number(profile.pokemon_count).toLocaleString('id-ID')}`);
+        if (profile.waifu_count !== undefined) lines.push(`┃ 💞 Total Waifu  : ${Number(profile.waifu_count).toLocaleString('id-ID')}`);
     }
 
     if (profile.created_at !== undefined) {
