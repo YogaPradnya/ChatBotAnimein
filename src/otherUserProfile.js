@@ -37,6 +37,36 @@ function findProfilePayload(payload) {
     return best;
 }
 
+function findUserPayload(payload, targetUsername) {
+    const expected = String(targetUsername || '').toLowerCase();
+    let firstUser = null;
+    let exactUser = null;
+
+    const visit = (value) => {
+        if (!value || typeof value !== 'object' || exactUser) return;
+
+        if (Array.isArray(value)) {
+            value.forEach(visit);
+            return;
+        }
+
+        const id = firstDefined(value.id, value.id_user, value.user_id, value.idUser);
+        const username = firstDefined(value.username, value.user_name, value.name);
+        if (id && username) {
+            if (!firstUser) firstUser = value;
+            if (String(username).toLowerCase() === expected) {
+                exactUser = value;
+                return;
+            }
+        }
+
+        Object.values(value).forEach(visit);
+    };
+
+    visit(payload);
+    return exactUser || firstUser;
+}
+
 function hasRealProfileData(profile) {
     return [
         profile.total_view,
@@ -92,34 +122,31 @@ async function fetchOtherUserProfile(username, bot, CONFIG, recordPath, isAnimei
                 },
                 timeout: 12000,
             });
-            targetUser = findProfilePayload(findResponse.data);
+            targetUser = findUserPayload(findResponse.data, cleanUsername);
             console.log('[OTHER PROFILE] Resolved user keys:', Object.keys(targetUser || {}).join(', ') || 'not found');
         } catch (findErr) {
             console.warn(`[OTHER PROFILE] Gagal resolve user ${cleanUsername}: ${findErr.message.slice(0, 100)}`);
         }
 
         const targetId = firstDefined(
+            targetUser?.id,
             targetUser?.id_user,
             targetUser?.user_id,
-            targetUser?.id,
             targetUser?.idUser
         );
         const targetName = firstDefined(targetUser?.username, targetUser?.user_name, targetUser?.name, cleanUsername);
+
+        if (!targetId) {
+            return { error: 'User tidak ditemukan', username: cleanUsername };
+        }
 
         recordPath('/3/2/profile/other');
         const profileResponse = await axios.get(`${baseUrl}/3/2/profile/other`, {
             params: {
                 ...authParams,
+                id_other: targetId,
+                id_me: bot.auth.userId,
                 username: targetName,
-                user_name: targetName,
-                target_username: targetName,
-                username_other: targetName,
-                other_username: targetName,
-                id_user_other: targetId,
-                other_id_user: targetId,
-                id_user_target: targetId,
-                target_id: targetId,
-                user_id_other: targetId,
             },
             headers: {
                 'Accept': 'application/json, text/plain, */*',
@@ -137,25 +164,26 @@ async function fetchOtherUserProfile(username, bot, CONFIG, recordPath, isAnimei
         });
 
         const raw = profileResponse.data;
-        const data = findProfilePayload(raw) || raw?.data || raw;
+        const envelopeData = raw?.data || raw;
+        const data = envelopeData?.user || findProfilePayload(envelopeData) || envelopeData;
         console.log('[OTHER PROFILE] Raw keys:', Object.keys(data || {}).join(', ') || 'empty');
 
         const profile = {
-            username: firstDefined(data?.username, data?.user_name, data?.name, cleanUsername),
-            total_view: firstDefined(data?.total_view, data?.profile_view, data?.view, data?.views),
-            total_love: firstDefined(data?.total_love, data?.total_like, data?.love, data?.like, data?.likes, data?.lopers),
-            kontribusi: firstDefined(data?.kontribusi, data?.contribution, data?.contrib),
-            created_at: firstDefined(data?.created_at, data?.join_date, data?.register_date, data?.tanggal_daftar),
-            is_pro: firstDefined(data?.is_pro, data?.pro, data?.status_pro === true || data?.status_pro === 1 ? true : undefined),
+            username: firstDefined(data?.username, data?.user_name, data?.name, targetName, cleanUsername),
+            total_view: firstDefined(data?.views, data?.total_view, data?.profile_view, data?.view),
+            total_love: firstDefined(data?.likes, data?.total_love, data?.total_like, data?.love, data?.like, data?.lopers),
+            kontribusi: firstDefined(data?.contribs, data?.kontribusi, data?.contribution, data?.contrib),
+            created_at: firstDefined(data?.date_join, data?.created_at, data?.join_date, data?.register_date, data?.tanggal_daftar),
+            is_pro: firstDefined(envelopeData?.pro, data?.is_pro, data?.pro, data?.data_pro === '1' ? true : undefined, data?.status_pro === true || data?.status_pro === 1 ? true : undefined),
             is_support: firstDefined(data?.is_support, data?.support, data?.status_support === true || data?.status_support === 1 ? true : undefined),
             battle_point: firstDefined(data?.battle_point, data?.bp, data?.point),
-            rank: firstDefined(data?.rank, data?.battle_rank),
+            rank: firstDefined(data?.data_rank_battle, data?.rank, data?.battle_rank),
             medals: [],
             pokemon: [],
             raw: data,
         };
 
-        const medals = firstDefined(data?.medals, data?.medal);
+        const medals = firstDefined(envelopeData?.medal, data?.medals, data?.medal);
         if (Array.isArray(medals)) {
             profile.medals = medals.slice(0, 5).map(m => m.name || m.title || m.medal_name).filter(Boolean);
         }
