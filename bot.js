@@ -2201,14 +2201,10 @@ function pickUnusedPinterestImage(queryOrUrl, imageUrls) {
     const historyKey = getPinterestHistoryKey(queryOrUrl);
     const now = Date.now();
     const usedUrls = pruneExpiredPinterestHistory(historyKey, now);
-    let candidates = imageUrls.filter(url => !usedUrls.has(url));
+    const candidates = imageUrls.filter(url => !usedUrls.has(url));
 
-    // Kalau semua gambar dari API masih berada dalam riwayat 24 jam,
-    // reset riwayat keyword ini agar command tetap bisa mengirim gambar.
-    // Setelah 24 jam, URL lama otomatis keluar dari riwayat dan bisa dipakai lagi.
     if (!candidates.length) {
-        usedUrls.clear();
-        candidates = imageUrls;
+        throw new Error('Semua gambar untuk keyword ini sudah pernah dikirim dalam 24 jam terakhir');
     }
 
     const selectedUrl = candidates[Math.floor(Math.random() * candidates.length)];
