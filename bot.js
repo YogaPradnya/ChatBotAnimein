@@ -1249,10 +1249,10 @@ async function fetchHomeAnime(force = false) {
         ];
         let allRawMovies = [];
         
-        // Pilih 50 kombinasi acak untuk mendapatkan cukup kandidat (target 100 item)
-        const fetchTasks = Array.from({ length: 50 }, (_, i) => i + 1).map(async () => {
+        // Pilih 15 kombinasi acak untuk mendapatkan cukup kandidat
+        const fetchTasks = Array.from({ length: 15 }, (_, i) => i + 1).map(async () => {
             const randomGenre = genres[Math.floor(Math.random() * genres.length)];
-            const randomPage = Math.floor(Math.random() * 50) + 1; // Page 1 - 100
+            const randomPage = Math.floor(Math.random() * 15) + 1; // Page 1 - 15
             
             try {
                 const res = await axios.get(`${baseUrl}/3/2/explore/movie`, { 
@@ -2904,16 +2904,22 @@ async function startBot() {
     console.log(`Bot aktif! Info: ${bots[0].username}, Kuis: ${bots[1].username}`);
     console.log(`Dashboard: http://localhost:${CONFIG.DASHBOARD_PORT}`);
 
-    // Jadwal Microfetch: jalankan sekali saat startup, lalu refresh berkala.
+    // Jadwal Microfetch: tunggu 30 menit setelah startup, lalu refresh setiap 1 jam
     if (!isSystemOff) {
-        fetchHomeAnime().catch(e => console.error("[STARTUP] Fetch anime failed:", e.message));
+        console.log("[STARTUP] Fetch anime akan dimulai dalam 30 menit...");
+        setTimeout(() => {
+            console.log("[DELAYED FETCH] Memulai fetch anime pertama kali...");
+            fetchHomeAnime().catch(e => console.error("[DELAYED FETCH] Fetch anime failed:", e.message));
+            
+            // Setelah fetch pertama, lanjutkan dengan interval 1 jam
+            setInterval(() => {
+                if (isSystemOff) return;
+                fetchHomeAnime().catch(e => console.error("[INTERVAL] Fetch anime failed:", e.message));
+            }, 60 * 60 * 1000); // Setiap 1 jam setelah fetch pertama
+        }, 30 * 60 * 1000); // Tunggu 30 menit
     } else {
         console.log("[KILL SWITCH] Startup fetch anime dilewati.");
     }
-    setInterval(() => {
-        if (isSystemOff) return;
-        fetchHomeAnime().catch(e => console.error("[INTERVAL] Fetch anime failed:", e.message));
-    }, 60 * 60 * 1000);
 
     // Main Polling Loop
     setInterval(async () => {
