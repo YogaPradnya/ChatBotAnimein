@@ -16,6 +16,7 @@ const {
     levenshtein,
     recordPath: recordApiPath,
 } = require('./src/utils');
+const { fetchOtherUserProfile, formatOtherUserProfile } = require('./src/otherUserProfile');
 
 warnMissingConfig();
 
@@ -2659,6 +2660,41 @@ async function processMessages(bot, messages) {
                 continue;
             }
 
+            if (lowerMsg.startsWith('.cek ')) {
+                if (bot.isCooldown) continue;
+                try {
+                    // Extract username dari command
+                    const targetUsername = cleanMsg.substring(5).trim().replace(/^@+/, '');
+                    
+                    if (!targetUsername) {
+                        await sendChatMessage(bot, `@${senderName} Tulis username yang ingin dicek!\nContoh: .cek @username`, msg.id);
+                        continue;
+                    }
+
+                    // Fetch profil user lain
+                    const profile = await fetchOtherUserProfile(
+                        targetUsername, 
+                        bots[0], // Gunakan bot info untuk auth
+                        CONFIG, 
+                        recordPath, 
+                        isAnimeinApiBlocked
+                    );
+
+                    // Format dan kirim hasil
+                    const profileMsg = formatOtherUserProfile(profile);
+                    await sendChatMessage(bot, `@${senderName}\n${profileMsg}`, msg.id);
+                    
+                    // Tambah XP jika berhasil
+                    if (!profile.error) {
+                        await addXP(senderName, 5);
+                    }
+                } catch(e) {
+                    console.error("[CEK PROFIL ERROR]", e);
+                    await sendChatMessage(bot, `@${senderName} Gagal mengecek profil user. Coba lagi nanti ya.`, msg.id);
+                }
+                continue;
+            }
+
             if (lowerMsg === '.rank' || lowerMsg === '.leaderboard') {
                 if (bot.isCooldown) continue;
                 try {
@@ -2791,7 +2827,8 @@ async function processMessages(bot, messages) {
                     `┃ 1️⃣ Panggil Rara: .ai / .rara`,
                     `┃ 2️⃣ Laporan: .lapor [pesan]`,
                     `┃ 3️⃣ Cek Profil: .profil`,
-                    `┃ 4️⃣ Peringkat: .rank`,
+                    `┃ 4️⃣ Cek User: .cek @username`,
+                    `┃ 5️⃣ Peringkat: .rank`,
                     `┣━━━━━━━━━━━━━━━━━━━┫`,
                     `┃ ✨ Chatting = +EXP loh!`,
                     `╰━━━━━━━━━━━━━━━━━━━╯`
@@ -2806,7 +2843,8 @@ async function processMessages(bot, messages) {
                     `┃ 1️⃣ Panggil Rara: .ai / .rara`,
                     `┃ 2️⃣ Laporan: .lapor [pesan]`,
                     `┃ 3️⃣ Cek Profil: .profil`,
-                    `┃ 4️⃣ Peringkat: .rank`,
+                    `┃ 4️⃣ Cek User: .cek @username`,
+                    `┃ 5️⃣ Peringkat: .rank`,
                     `┣━━━━━━━━━━━━━━━━━━━┫`,
                     `┃ ✨ Chatting = +EXP loh!`,
                     `╰━━━━━━━━━━━━━━━━━━━╯`
