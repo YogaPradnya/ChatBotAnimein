@@ -31,6 +31,24 @@ const CONFIG = {
     TURSO_AUTH_TOKEN: process.env.TURSO_AUTH_TOKEN,
 };
 
+const ANIMEIN_HEADERS = {
+    'Accept': 'application/json',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+};
+
+const ANIMEIN_HEADERS_FULL = {
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Referer': 'https://animeinweb.com/',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+    'sec-ch-ua': '"Google Chrome";v="123", "Not:A-Brand";v="8", "Chromium";v="123"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"Windows"',
+    'Sec-Fetch-Dest': 'empty',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Site': 'same-origin',
+};
+
 function warnMissingConfig() {
     const missing = [];
     if (!CONFIG.BASE_URL) missing.push('ANIMEIN_API_URL');
@@ -44,4 +62,4 @@ function warnMissingConfig() {
     }
 }
 
-module.exports = { CONFIG, warnMissingConfig };
+module.exports = { CONFIG, ANIMEIN_HEADERS, ANIMEIN_HEADERS_FULL, warnMissingConfig };

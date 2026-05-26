@@ -4,7 +4,46 @@ const crypto = require('crypto');
 const axios = require('axios');
 const { getDashboardHTML, getLoginHTML } = require('../dashboard.js');
 
-const SESSIONS = new Set();
+// Session storage dengan TTL (24 jam)
+const SESSIONS = new Map(); // token -> { createdAt: number }
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 jam
+
+// Rate limiting sederhana (60 req/menit per IP)
+const RATE_LIMITS = new Map(); // ip -> { count, resetAt }
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX_REQUESTS = 60;
+
+function isSessionValid(token) {
+    if (!SESSIONS.has(token)) return false;
+    const session = SESSIONS.get(token);
+    if (Date.now() - session.createdAt > SESSION_TTL_MS) {
+        SESSIONS.delete(token);
+        return false;
+    }
+    return true;
+}
+
+function checkRateLimit(ip) {
+    const now = Date.now();
+    let entry = RATE_LIMITS.get(ip);
+    if (!entry || now > entry.resetAt) {
+        entry = { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS };
+        RATE_LIMITS.set(ip, entry);
+    }
+    entry.count++;
+    return entry.count <= RATE_LIMIT_MAX_REQUESTS;
+}
+
+// Cleanup expired sessions dan rate limits setiap 10 menit
+setInterval(() => {
+    const now = Date.now();
+    for (const [token, session] of SESSIONS.entries()) {
+        if (now - session.createdAt > SESSION_TTL_MS) SESSIONS.delete(token);
+    }
+    for (const [ip, entry] of RATE_LIMITS.entries()) {
+        if (now > entry.resetAt) RATE_LIMITS.delete(ip);
+    }
+}, 10 * 60 * 1000);
 
 function createRuntime(scope) {
     const { state } = scope;
@@ -81,7 +120,16 @@ function startDashboard(scope) {
         if (req.path === '/login' || req.path === '/logout') return next();
         const cookies = req.headers.cookie || '';
         const token = cookies.split(';').find(c => c.trim().startsWith('dashboard_session='))?.split('=')[1];
-        if (token && SESSIONS.has(token)) return next();
+        if (token && isSessionValid(token)) {
+            // Rate limiting untuk API endpoints
+            if (req.path.startsWith('/api/')) {
+                const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+                if (!checkRateLimit(ip)) {
+                    return res.status(429).json({ error: 'Too many requests. Coba lagi dalam 1 menit.' });
+                }
+            }
+            return next();
+        }
         if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'Unauthorized' });
         res.redirect('/login');
     }
@@ -91,7 +139,7 @@ function startDashboard(scope) {
         const { username, password } = req.body;
         if (username === process.env.DASHBOARD_USER && password === process.env.DASHBOARD_PASS) {
             const token = crypto.randomBytes(32).toString('hex');
-            SESSIONS.add(token);
+            SESSIONS.set(token, { createdAt: Date.now() });
             const secureCookie = process.env.NODE_ENV === 'production' ? '; Secure' : '';
             res.setHeader('Set-Cookie', `dashboard_session=${token}; HttpOnly; Path=/; Max-Age=86400; SameSite=Lax${secureCookie}`);
             res.redirect('/');

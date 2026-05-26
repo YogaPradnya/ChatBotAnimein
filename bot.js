@@ -5,7 +5,7 @@ const path = require('path');
 const FormData = require('form-data');
 const EventEmitter = require('events');
 const { createClient } = require('@libsql/client');
-const { CONFIG, warnMissingConfig } = require('./src/config');
+const { CONFIG, ANIMEIN_HEADERS, ANIMEIN_HEADERS_FULL, warnMissingConfig } = require('./src/config');
 const { startDashboard } = require('./src/dashboardServer');
 const { loadPokemonData } = require('./src/pokemon');
 const {
@@ -13,9 +13,14 @@ const {
     normalizeQuestion,
     stripEmoji,
     getJakartaDate,
+    getJakartaDateKey,
+    getAnimeinDayName,
+    detectScheduleDayOffset,
+    formatAnimeinTime,
     levenshtein,
     recordPath: recordApiPath,
 } = require('./src/utils');
+const { initShopTables, getShopMessage, buyItem, getItemCount, useItem } = require('./src/shop');
 const { fetchOtherUserProfile, formatOtherUserProfile } = require('./src/otherUserProfile');
 
 warnMissingConfig();
@@ -113,7 +118,6 @@ async function initDB() {
         `);
         // Pastikan kolom baru ada
         await db.execute(`ALTER TABLE user_stats ADD COLUMN custom_title TEXT DEFAULT NULL`).catch(() => {});
-        await db.execute(`ALTER TABLE user_stats ADD COLUMN custom_title TEXT DEFAULT NULL`).catch(() => {});
         
         await db.execute(`
             CREATE TABLE IF NOT EXISTS user_memories (
@@ -148,6 +152,31 @@ async function initDB() {
                 banned_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         `);
+
+        // Tabel statistik kuis per user
+        await db.execute(`
+            CREATE TABLE IF NOT EXISTS user_quiz_stats (
+                username TEXT PRIMARY KEY,
+                wins INTEGER DEFAULT 0,
+                participations INTEGER DEFAULT 0,
+                total_hints_used INTEGER DEFAULT 0,
+                total_images INTEGER DEFAULT 0,
+                current_streak INTEGER DEFAULT 0,
+                best_streak INTEGER DEFAULT 0,
+                last_active_date TEXT DEFAULT NULL
+            )
+        `);
+
+        // Inisialisasi tabel shop/inventory
+        await initShopTables(db);
+
+        // Database Indexes untuk performa query
+        await db.execute(`CREATE INDEX IF NOT EXISTS idx_chat_logs_username ON chat_logs (username)`).catch(() => {});
+        await db.execute(`CREATE INDEX IF NOT EXISTS idx_chat_logs_timestamp ON chat_logs (timestamp)`).catch(() => {});
+        await db.execute(`CREATE INDEX IF NOT EXISTS idx_response_cache_key ON response_cache (question_key)`).catch(() => {});
+        await db.execute(`CREATE INDEX IF NOT EXISTS idx_quiz_pool_last_used ON quiz_pool (last_used_at)`).catch(() => {});
+        await db.execute(`CREATE INDEX IF NOT EXISTS idx_laporan_status ON laporan (status)`).catch(() => {});
+        await db.execute(`CREATE INDEX IF NOT EXISTS idx_image_limits_date ON image_limits (usage_date)`).catch(() => {});
         
         // Load Filters from DB
         const filterRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'filter_data'" });
@@ -395,9 +424,9 @@ async function addXP(username, amount) {
     if (!CONFIG.TURSO_URL) return { leveledUp: false, level: 1, xp: 0 };
     try {
         // 1. Check Cache First
-        let stats = USER_STATS_CACHE[username];
+        let userStat = USER_STATS_CACHE[username];
         
-        if (!stats) {
+        if (!userStat) {
             // Load stats and join with memories
             const res = await db.execute({ 
                 sql: `SELECT s.xp, s.level, s.custom_title, m.content as core_memory 
@@ -408,39 +437,39 @@ async function addXP(username, amount) {
             });
 
             if (res.rows.length > 0) {
-                stats = { 
+                userStat = { 
                     xp: res.rows[0].xp, 
                     level: res.rows[0].level, 
                     custom_title: res.rows[0].custom_title, 
                     core_memory: res.rows[0].core_memory || '' 
                 };
             } else {
-                stats = { xp: 0, level: 1, custom_title: null, core_memory: '' };
+                userStat = { xp: 0, level: 1, custom_title: null, core_memory: '' };
             }
-            USER_STATS_CACHE[username] = stats;
+            USER_STATS_CACHE[username] = userStat;
         }
 
         // 2. Calculate New Stats (Memory Only)
         const multiplier = (XP_MULTIPLIER > 1 && amount > 0) ? XP_MULTIPLIER : 1;
         const finalAmount = amount * multiplier;
         
-        const oldLevel = stats.level;
-        stats.xp = Math.max(0, stats.xp + finalAmount);
+        const oldLevel = userStat.level;
+        userStat.xp = Math.max(0, userStat.xp + finalAmount);
         
-        let reqXP = Math.floor(50 * Math.pow(stats.level, 3));
-        while(stats.xp >= reqXP) {
-            stats.level++;
-            reqXP = Math.floor(50 * Math.pow(stats.level, 3));
+        let reqXP = Math.floor(50 * Math.pow(userStat.level, 3));
+        while(userStat.xp >= reqXP) {
+            userStat.level++;
+            reqXP = Math.floor(50 * Math.pow(userStat.level, 3));
         }
         
-        const leveledUp = stats.level > oldLevel;
+        const leveledUp = userStat.level > oldLevel;
 
         // 3. Buffer for DB Sync (Point 2)
         XP_PENDING_UPDATES[username] = (XP_PENDING_UPDATES[username] || 0) + finalAmount;
         
-        console.log(`[XP Buffer] ${username} +${finalAmount} -> Total: ${stats.xp} (Lvl: ${stats.level})`);
+        console.log(`[XP Buffer] ${username} +${finalAmount} -> Total: ${userStat.xp} (Lvl: ${userStat.level})`);
         
-        return { leveledUp, level: stats.level, xp: stats.xp, custom_title: stats.custom_title };
+        return { leveledUp, level: userStat.level, xp: userStat.xp, custom_title: userStat.custom_title };
     } catch (e) {
         console.error("[GAMIFICATION] Add XP error:", e.message);
         return { leveledUp: false, level: 1, xp: 0 };
@@ -455,6 +484,7 @@ const STARTUP_QUIZ_FETCH_DELAY_MS = 30 * 60 * 1000; // Ambil data kuis 30 menit 
 let activeQuiz = {
     isRunning: false,
     isStarting: false,
+    isProcessingAnswer: false,
     original: '',
     titleLower: '',
     startedAt: 0,
@@ -465,7 +495,7 @@ let activeQuiz = {
     expireTimer: null,
 };
 
-let nextQuizTime = Date.now() + (60 * 60 * 1000);
+let nextQuizTime = Date.now() + (3 * 60 * 60 * 1000);
 
 function clearQuizTimers() {
     if (activeQuiz.hintTimer) { clearTimeout(activeQuiz.hintTimer); activeQuiz.hintTimer = null; }
@@ -969,35 +999,70 @@ const PINTEREST_HISTORY_LIMIT = 100;
 const PINTEREST_HISTORY_TTL_MS = 24 * 60 * 60 * 1000;
 const IMAGE_DAILY_LIMIT_DEFAULT = 5;
 
-function getJakartaDateKey(date = new Date()) {
-    return new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Jakarta',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-    }).format(date);
+// Timezone functions sudah dipindah ke src/utils.js (getJakartaDateKey, getAnimeinDayName, etc.)
+
+/** Track daily streak user (dipanggil setiap kali user berinteraksi) */
+async function trackStreak(username) {
+    if (!CONFIG.TURSO_URL) return;
+    const today = getJakartaDateKey();
+    try {
+        const res = await db.execute({
+            sql: "SELECT current_streak, best_streak, last_active_date FROM user_quiz_stats WHERE username = ?",
+            args: [username]
+        });
+        if (res.rows.length === 0) {
+            await db.execute({
+                sql: "INSERT INTO user_quiz_stats (username, current_streak, best_streak, last_active_date) VALUES (?, 1, 1, ?)",
+                args: [username, today]
+            });
+            return;
+        }
+        const row = res.rows[0];
+        if (row.last_active_date === today) return; // Sudah tercatat hari ini
+
+        // Hitung selisih hari
+        const lastDate = new Date(row.last_active_date + 'T00:00:00+07:00');
+        const todayDate = new Date(today + 'T00:00:00+07:00');
+        const diffDays = Math.floor((todayDate - lastDate) / (24 * 60 * 60 * 1000));
+
+        let newStreak = diffDays === 1 ? (Number(row.current_streak) + 1) : 1;
+        const newBest = Math.max(newStreak, Number(row.best_streak));
+
+        await db.execute({
+            sql: "UPDATE user_quiz_stats SET current_streak = ?, best_streak = ?, last_active_date = ? WHERE username = ?",
+            args: [newStreak, newBest, today, username]
+        });
+    } catch (e) {
+        console.warn(`[STREAK] Gagal track streak ${username}:`, e.message);
+    }
 }
 
-function getAnimeinDayName(offsetDays = 0) {
-    const days = ['AHAD', 'SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT', 'SABTU'];
-    const base = getJakartaDate();
-    base.setDate(base.getDate() + offsetDays);
-    return days[base.getDay()];
+/** Track quiz participation dan win */
+async function trackQuizStat(username, field, amount = 1) {
+    if (!CONFIG.TURSO_URL) return;
+    try {
+        await db.execute({
+            sql: `INSERT INTO user_quiz_stats (username, ${field}) VALUES (?, ?)
+                  ON CONFLICT(username) DO UPDATE SET ${field} = ${field} + ?`,
+            args: [username, amount, amount]
+        });
+    } catch (e) {
+        console.warn(`[QUIZ STATS] Gagal track ${field} ${username}:`, e.message);
+    }
 }
 
-function detectScheduleDayOffset(text) {
-    const lower = String(text || '').toLowerCase();
-    if (/besok|tomorrow/.test(lower)) return 1;
-    if (/lusa/.test(lower)) return 2;
-    if (/kemarin/.test(lower)) return -1;
-    return 0;
-}
-
-function formatAnimeinTime(rawTime) {
-    if (!rawTime) return '';
-    const str = String(rawTime);
-    const timeMatch = str.match(/(?:\d{4}-\d{2}-\d{2}\s+)?(\d{1,2}:\d{2})(?::\d{2})?/);
-    return timeMatch ? `${timeMatch[1]} WIB` : str;
+/** Track image request count */
+async function trackImageRequest(username) {
+    if (!CONFIG.TURSO_URL) return;
+    try {
+        await db.execute({
+            sql: `INSERT INTO user_quiz_stats (username, total_images) VALUES (?, 1)
+                  ON CONFLICT(username) DO UPDATE SET total_images = total_images + 1`,
+            args: [username]
+        });
+    } catch (e) {
+        console.warn(`[IMAGE STATS] Gagal track gambar ${username}:`, e.message);
+    }
 }
 
 function addActivity(type, from, text, response, provider, tokens = 0) {
@@ -1229,10 +1294,7 @@ const cache = {
     POKEMON_SHOP_TTL: 2 * 60 * 1000,
 };
 
-const ANIMEIN_HEADERS = {
-    'Accept': 'application/json',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-};
+// ANIMEIN_HEADERS sudah diimpor dari src/config.js
 
 function isAnimeinApiBlocked(action) {
     if (!isSystemOff) return false;
@@ -1559,7 +1621,7 @@ async function fetchByGenre(genreId, isSpecific = false, maxLimit = 10) {
         
         if (isSpecific) {
             const promises = [];
-            for (let i = 1; i <= 50; i++) {
+            for (let i = 1; i <= 10; i++) {
                 promises.push(
                     axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, {
                         params: { sort: 'popular', page: i, genre_in: genreId },
@@ -2184,7 +2246,7 @@ async function askGroq(index, userMessage, senderName, contextData = '', chatHis
     }
 
     stat.success++;
-    return { text: completion.choices[0]?.message?.content || '', tokens };
+    return { text: answer || '', tokens };
 }
 
 
@@ -2674,18 +2736,7 @@ async function fetchMessages(bot) {
         
         const response = await axios.get(`${baseUrl}/3/2/chat/data`, { 
             params: queryParams,
-            headers: {
-                'Accept': 'application/json, text/plain, */*',
-                'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
-                'Referer': 'https://animeinweb.com/',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-                'sec-ch-ua': '"Google Chrome";v="123", "Not:A-Brand";v="8", "Chromium";v="123"',
-                'sec-ch-ua-mobile': '?0',
-                'sec-ch-ua-platform': '"Windows"',
-                'Sec-Fetch-Dest': 'empty',
-                'Sec-Fetch-Mode': 'cors',
-                'Sec-Fetch-Site': 'same-origin'
-            }
+            headers: ANIMEIN_HEADERS_FULL
         });
         return response.data;
     } catch (error) {
@@ -2732,18 +2783,9 @@ async function sendChatMessage(bot, text, replyTo = '0') {
         recordPath('/3/2/chat/do');
         await axios.post(`${baseUrl}/3/2/chat/do`, params, {
             headers: { 
-                'Accept': 'application/json, text/plain, */*',
-                'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+                ...ANIMEIN_HEADERS_FULL,
                 'Content-Type': 'application/x-www-form-urlencoded',
                 'Origin': 'https://animeinweb.com',
-                'Referer': 'https://animeinweb.com/',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-                'sec-ch-ua': '"Google Chrome";v="123", "Not:A-Brand";v="8", "Chromium";v="123"',
-                'sec-ch-ua-mobile': '?0',
-                'sec-ch-ua-platform': '"Windows"',
-                'Sec-Fetch-Dest': 'empty',
-                'Sec-Fetch-Mode': 'cors',
-                'Sec-Fetch-Site': 'same-origin'
             }
         });
         return true;
@@ -2790,12 +2832,17 @@ async function processMessages(bot, messages) {
             // Game Logic
             if (lowerMsg.startsWith('.tebak ')) {
                 if (bot.isCooldown) continue;
+                if (activeQuiz.isProcessingAnswer) continue;
                 const answer = lowerMsg.substring(7).trim();
                 if (!activeQuiz.isRunning) {
-                    await sendChatMessage(bot, `🛑 @${senderName} Tidak ada kuis aktif. Kuis akan muncul otomatis setiap jam!`, msg.id);
+                    await sendChatMessage(bot, `@${senderName} Tidak ada kuis aktif. Kuis akan muncul otomatis setiap 3 jam!`, msg.id);
                 } else if (Date.now() - activeQuiz.startedAt > QUIZ_DURATION_MS) {
                     await expireQuiz(bot, msg.id);
                 } else {
+                    activeQuiz.isProcessingAnswer = true;
+                    try {
+                    trackQuizStat(senderName, 'participations');
+                    trackStreak(senderName);
                     const norm = (s) => (s || '').normalize('NFKC').normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
                     const normTitle = norm(activeQuiz.original);
                     const normAnswer = norm(answer);
@@ -2826,23 +2873,24 @@ async function processMessages(bot, messages) {
                         
                         const xpRes = await addXP(senderName, xpEarned);
                         const finalDisplayXP = (XP_MULTIPLIER > 1 && xpEarned > 0) ? xpEarned * XP_MULTIPLIER : xpEarned;
+                        trackQuizStat(senderName, 'wins');
                         
                         const resultCard = [
-                            `╭━━ 🎉 *KUIS SELESAI* 🎉 ━━╮`,
-                            `┃ 👤 Pemenang : @${senderName}`,
-                            `┃ 💡 Jawaban  : ${activeQuiz.original}`,
-                            `┃ 💰 Hadiah   : +${finalDisplayXP.toLocaleString('id-ID')} XP ${XP_MULTIPLIER > 1 ? `(x${XP_MULTIPLIER}!)` : ''}`,
-                            `┃ ❌ Salah    : ${activeQuiz.wrongGuessCount || 0} kali`,
-                            `╰━━━━━━━━━━━━━━━━━━━╯`
+                            `-- KUIS SELESAI --`,
+                            `Pemenang : @${senderName}`,
+                            `Jawaban  : ${activeQuiz.original}`,
+                            `Hadiah   : +${finalDisplayXP.toLocaleString('id-ID')} XP ${XP_MULTIPLIER > 1 ? `(x${XP_MULTIPLIER}!)` : ''}`,
+                            `Salah    : ${activeQuiz.wrongGuessCount || 0} kali`,
+                            `--------------------`
                         ];
 
                         if (xpRes.leveledUp) {
                             const gelar = getGelar(xpRes.level, xpRes.custom_title);
                             resultCard.push(
-                                `╭━━━ 🌟 *LEVEL UP!* 🌟 ━━━╮`,
-                                `┃ 📈 Level Baru: ${xpRes.level}`,
-                                `┃ 👑 Gelar     : ${gelar || '🐣 Wibu Baru'}`,
-                                `╰━━━━━━━━━━━━━━━━━━━╯`
+                                `-- LEVEL UP! --`,
+                                `Level Baru: ${xpRes.level}`,
+                                `Gelar     : ${gelar || 'Wibu Baru'}`,
+                                `--------------------`
                             );
                         }
                         
@@ -2852,6 +2900,9 @@ async function processMessages(bot, messages) {
                         activeQuiz.wrongGuessers.add(senderName);
                         await sendChatMessage(bot, `❌ @${senderName} Salah! XP Hadiah berkurang -5.\nCoba lagi. (Panjang: ${activeQuiz.original.length} char)`, msg.id);
                         await addXP(senderName, -3);
+                    }
+                    } finally {
+                        activeQuiz.isProcessingAnswer = false;
                     }
                 }
                 continue;
@@ -2864,9 +2915,18 @@ async function processMessages(bot, messages) {
                 } else if (activeQuiz.hintsRevealed >= 5) {
                     await sendChatMessage(bot, `📌 @${senderName} Semua hint sudah terbuka. Cek pesan lama ya.`, msg.id);
                 } else {
+                    // Cek apakah user punya free hint dari shop
+                    const freeHints = await getItemCount(db, senderName, 'free_hint');
+                    let penalty = 0;
+                    if (freeHints > 0) {
+                        await useItem(db, senderName, 'free_hint', 1);
+                        console.log(`[SHOP] ${senderName} menggunakan free hint (sisa: ${freeHints - 1})`);
+                    } else {
+                        penalty = Math.floor(Math.random() * 5) + 1;
+                        await addXP(senderName, -penalty);
+                    }
                     activeQuiz.hintsRevealed++;
-                    const penalty = Math.floor(Math.random() * 5) + 1;
-                    await addXP(senderName, -penalty);
+                    trackQuizStat(senderName, 'total_hints_used');
                     
                     // Kirim pesan hint dengan format kartu yang rapi
                     const hintMsg = buildHintMessage(activeQuiz.hintsRevealed, senderName, penalty);
@@ -2892,10 +2952,19 @@ async function processMessages(bot, messages) {
                     if (res.rows.length > 0) {
                         userData = res.rows[0];
                     } else {
-                        // Fallback jika user belum tercatat di database
                         const totalRes = await db.execute("SELECT COUNT(*) + 1 as total FROM user_stats");
                         userData = { xp: 0, level: 1, custom_title: null, rank: totalRes.rows[0].total };
                     }
+
+                    // Ambil quiz stats
+                    let quizData = { wins: 0, participations: 0, total_hints_used: 0, total_images: 0, current_streak: 0, best_streak: 0 };
+                    try {
+                        const qRes = await db.execute({
+                            sql: "SELECT wins, participations, total_hints_used, total_images, current_streak, best_streak FROM user_quiz_stats WHERE username = ?",
+                            args: [senderName]
+                        });
+                        if (qRes.rows.length > 0) quizData = qRes.rows[0];
+                    } catch (e) { console.warn("[PROFIL] Quiz stats query failed:", e.message); }
 
                     const {xp, level, custom_title, rank} = userData;
                     const gelar = getGelar(level, custom_title);
@@ -2905,26 +2974,177 @@ async function processMessages(bot, messages) {
                     
                     const barWidth = 10;
                     const filledCount = Math.floor((percentage / 100) * barWidth);
-                    const bar = '▰'.repeat(filledCount) + '▱'.repeat(barWidth - filledCount);
+                    const bar = '='.repeat(filledCount) + '-'.repeat(barWidth - filledCount);
+
+                    const winRate = quizData.participations > 0 
+                        ? Math.floor((quizData.wins / quizData.participations) * 100) 
+                        : 0;
 
                     const profileMsg = [
-                        `╭━━🔰 *PROFILE INFO* 🔰━━╮`,
-                        `┃ 👤 User   : @${senderName.substring(0, 15)}`,
-                        `┃ 📈 Rank   : #${rank}`,
-                        `┃ 🎖️ Gelar  : ${gelar || '🐣 Wibu Baru'}`,
-                        `┣━━━━━━━━━━━━━━━━━━━┫`,
-                        `┃ 📊 Level  : ${level.toString().padEnd(10)} 🏆`,
-                        `┃ ✨ XP     : ${xp.toLocaleString('id-ID')} / ${req.toLocaleString('id-ID')}`,
-                        `┃ ⏳ Sisa   : ${toNext.toLocaleString('id-ID')} XP lagi`,
-                        `┣━━━━━━━━━━━━━━━━━━━┫`,
-                        `┃ Progress : ${percentage}%`,
-                        `┃ ${bar}`,
-                        `╰━━━━━━━━━━━━━━━━━━━╯`
+                        `-- PROFILE INFO --`,
+                        `User   : @${senderName.substring(0, 15)}`,
+                        `Rank   : #${rank}`,
+                        `Gelar  : ${gelar || 'Wibu Baru'}`,
+                        `--------------------`,
+                        `Level  : ${level}`,
+                        `XP     : ${xp.toLocaleString('id-ID')} / ${req.toLocaleString('id-ID')}`,
+                        `Sisa   : ${toNext.toLocaleString('id-ID')} XP lagi`,
+                        `[${bar}] ${percentage}%`,
+                        `--------------------`,
+                        `Kuis Menang : ${quizData.wins}`,
+                        `Partisipasi : ${quizData.participations}`,
+                        `Win Rate    : ${winRate}%`,
+                        `Hint Dipakai: ${quizData.total_hints_used}`,
+                        `Gambar      : ${quizData.total_images}`,
+                        `--------------------`,
+                        `Streak : ${quizData.current_streak} hari`,
+                        `Best   : ${quizData.best_streak} hari`,
                     ].join('\n');
 
                     await sendChatMessage(bot, profileMsg, msg.id);
                 } catch(e) {
                     console.error("[PROFIL ERROR]", e);
+                }
+                continue;
+            }
+
+            if (lowerMsg === '.help' || lowerMsg.startsWith('.help ')) {
+                if (bot.isCooldown) continue;
+                const helpArg = lowerMsg.replace('.help', '').trim();
+                let helpMsg;
+
+                if (helpArg === 'kuis') {
+                    helpMsg = [
+                        `-- PANDUAN KUIS --`,
+                        `Kuis muncul otomatis setiap 3 jam.`,
+                        ``,
+                        `Command:`,
+                        `.tebak [jawaban] - Jawab kuis aktif`,
+                        `.hint - Minta petunjuk (potong XP)`,
+                        `.kuis - Lihat waktu kuis berikutnya`,
+                        ``,
+                        `Scoring:`,
+                        `Jawaban benar = +250 XP (maks)`,
+                        `Setiap hint = -20 XP hadiah`,
+                        `Setiap jawaban salah = -10 XP hadiah`,
+                        `Minimal hadiah = 50 XP`,
+                        ``,
+                        `Tips: Beli Hint Pack di .shop supaya`,
+                        `hint tidak potong XP kamu.`,
+                    ].join('\n');
+                } else if (helpArg === 'gambar') {
+                    helpMsg = [
+                        `-- PANDUAN GAMBAR --`,
+                        `Kirim gambar dari Pinterest ke chat.`,
+                        ``,
+                        `Command:`,
+                        `.gambar [keyword] - Cari & kirim gambar`,
+                        ``,
+                        `Limit: ${IMAGE_DAILY_LIMIT_DEFAULT} gambar/hari`,
+                        `Bonus: +5 XP per gambar terkirim`,
+                        ``,
+                        `Tips: Beli Extra Gambar di .shop`,
+                        `untuk tambah limit harian.`,
+                    ].join('\n');
+                } else if (helpArg === 'xp') {
+                    helpMsg = [
+                        `-- PANDUAN XP & LEVEL --`,
+                        `XP didapat dari aktivitas:`,
+                        ``,
+                        `Chat dengan AI  : +10 XP`,
+                        `Auto Reply      : +5 XP`,
+                        `Menang Kuis     : +50~250 XP`,
+                        `Kirim Gambar    : +500 XP`,
+                        `Cek Profil User : +5 XP`,
+                        ``,
+                        `Formula Level Up:`,
+                        `XP dibutuhkan = 50 * Level^3`,
+                        ``,
+                        `Gelar otomatis berubah di level`,
+                        `10, 50, dan 100.`,
+                        `Atau beli Custom Title di .shop`,
+                    ].join('\n');
+                } else if (helpArg === 'shop' || helpArg === 'toko') {
+                    helpMsg = [
+                        `-- PANDUAN TOKO --`,
+                        `.shop - Lihat daftar item`,
+                        `.beli [nomor] - Beli item`,
+                        `.beli 1 [nama] - Beli custom title`,
+                        ``,
+                        `XP akan dipotong saat pembelian.`,
+                        `Item consumable bisa dipakai berkali-kali`,
+                        `selama stok masih ada.`,
+                    ].join('\n');
+                } else {
+                    helpMsg = [
+                        `-- DAFTAR HELP --`,
+                        `.help kuis   - Panduan kuis`,
+                        `.help gambar - Panduan gambar`,
+                        `.help xp     - Panduan XP & level`,
+                        `.help shop   - Panduan toko`,
+                        ``,
+                        `.menu - Lihat semua command`,
+                    ].join('\n');
+                }
+
+                await sendChatMessage(bot, `@${senderName}\n${helpMsg}`, msg.id);
+                continue;
+            }
+
+            if (lowerMsg === '.shop' || lowerMsg === '.toko') {
+                if (bot.isCooldown) continue;
+                const shopMsg = getShopMessage();
+                await sendChatMessage(bot, `@${senderName}\n${shopMsg}`, msg.id);
+                continue;
+            }
+
+            if (lowerMsg.startsWith('.beli ')) {
+                if (bot.isCooldown) continue;
+                try {
+                    const beliArgs = cleanMsg.substring(6).trim();
+                    const beliParts = beliArgs.split(/\s+/);
+                    const itemId = parseInt(beliParts[0]);
+                    
+                    if (isNaN(itemId)) {
+                        await sendChatMessage(bot, `@${senderName} Format: .beli [nomor item]\nKetik .shop untuk lihat daftar.`, msg.id);
+                        continue;
+                    }
+
+                    // Ambil XP user saat ini
+                    const xpRes = await db.execute({
+                        sql: "SELECT xp FROM user_stats WHERE username = ?",
+                        args: [senderName]
+                    });
+                    const currentXP = xpRes.rows.length > 0 ? Number(xpRes.rows[0].xp) : 0;
+
+                    const titleName = beliParts.length > 1 ? beliParts.slice(1).join(' ') : undefined;
+                    const result = await buyItem(db, senderName, itemId, currentXP, { titleName });
+
+                    if (result.success) {
+                        await addXP(senderName, -result.xpDeducted);
+                        
+                        // Jika beli extra image, tambahkan ke image limits
+                        if (itemId === 3) {
+                            const today = getJakartaDateKey();
+                            try {
+                                await db.execute({
+                                    sql: `INSERT INTO image_limits (username, usage_date, used_count, daily_limit)
+                                          VALUES (?, ?, 0, ?)
+                                          ON CONFLICT(username) DO UPDATE SET daily_limit = daily_limit + 3`,
+                                    args: [senderName, today, IMAGE_DAILY_LIMIT_DEFAULT + 3]
+                                });
+                            } catch (e) {
+                                console.warn("[SHOP] Gagal update image limit:", e.message);
+                            }
+                        }
+
+                        await sendChatMessage(bot, `@${senderName}\n-- PEMBELIAN BERHASIL --\n${result.message}\nXP dipotong: -${result.xpDeducted.toLocaleString('id-ID')}`, msg.id);
+                    } else {
+                        await sendChatMessage(bot, `@${senderName} ${result.message}`, msg.id);
+                    }
+                } catch (e) {
+                    console.error("[SHOP ERROR]", e);
+                    await sendChatMessage(bot, `@${senderName} Gagal memproses pembelian. Coba lagi nanti.`, msg.id);
                 }
                 continue;
             }
@@ -3054,7 +3274,9 @@ async function processMessages(bot, messages) {
                     lastImageCommandAt = Date.now();
                     const usage = await incrementImageLimitUsage(senderName);
                     addActivity('image', senderName, `${imageQuery} (${usage.used}/${usage.limit})`, imageUrl, 'PinterestAPI', 0);
-                    await addXP(senderName, 5);
+                    await addXP(senderName, 500);
+                    trackImageRequest(senderName);
+                    trackStreak(senderName);
                 }
             } catch (e) {
                 console.warn('[GAMBAR] Gagal proses .gambar:', e.message.slice(0, 120));
@@ -3086,37 +3308,25 @@ async function processMessages(bot, messages) {
             if (lowerMsg.startsWith('.tebak ') || lowerMsg === '.hint' || 
                 lowerMsg === '.kuis' || lowerMsg === '.game' || 
                 lowerMsg === '.profil' || lowerMsg === '.rank' ||
-                lowerMsg.startsWith('.gambar')) {
+                lowerMsg.startsWith('.gambar') || lowerMsg === '.shop' ||
+                lowerMsg === '.toko' || lowerMsg.startsWith('.beli ') ||
+                lowerMsg.startsWith('.help') || lowerMsg === '.leaderboard') {
                 continue;
             }
 
             if (lowerMsg === '.menu') {
                 const menu = [
-                    `╭━ 🔰 *DAFTAR MENU* 🔰 ━╮`,
-                    `┃ 1️⃣ Panggil Rara: .ai / .rara`,
-                    `┃ 2️⃣ Laporan: .lapor [pesan]`,
-                    `┃ 3️⃣ Cek Profil: .profil`,
-                    `┃ 4️⃣ Cek User: .cek @username`,
-                    `┃ 5️⃣ Peringkat: .rank`,
-                    `┣━━━━━━━━━━━━━━━━━━━┫`,
-                    `┃ ✨ Chatting = +EXP loh!`,
-                    `╰━━━━━━━━━━━━━━━━━━━╯`
-                ].join('\n');
-                await sendChatMessage(bot, `@${senderName}\n${menu}`, msg.id);
-                continue;
-            }
-
-            if (lowerMsg === '.menu') {
-                const menu = [
-                    `╭━ 🔰 *DAFTAR MENU* 🔰 ━╮`,
-                    `┃ 1️⃣ Panggil Rara: .ai / .rara`,
-                    `┃ 2️⃣ Laporan: .lapor [pesan]`,
-                    `┃ 3️⃣ Cek Profil: .profil`,
-                    `┃ 4️⃣ Cek User: .cek @username`,
-                    `┃ 5️⃣ Peringkat: .rank`,
-                    `┣━━━━━━━━━━━━━━━━━━━┫`,
-                    `┃ ✨ Chatting = +EXP loh!`,
-                    `╰━━━━━━━━━━━━━━━━━━━╯`
+                    `-- DAFTAR MENU --`,
+                    `1. Panggil Rara : .ai / .rara`,
+                    `2. Laporan      : .lapor [pesan]`,
+                    `3. Cek Profil   : .profil`,
+                    `4. Cek User     : .cek @username`,
+                    `5. Peringkat    : .rank`,
+                    `6. Bantuan      : .help [topik]`,
+                    `7. Toko         : .shop`,
+                    `8. Beli Item    : .beli [nomor]`,
+                    `--------------------`,
+                    `Chatting = +XP`,
                 ].join('\n');
                 await sendChatMessage(bot, `@${senderName}\n${menu}`, msg.id);
                 continue;
@@ -3152,6 +3362,7 @@ async function processMessages(bot, messages) {
                 await sendChatMessage(bot, `@${senderName} ${aiText}`, msg.id);
                 addActivity('text', senderName, question, aiText, provider, tokens);
                 await addXP(senderName, 10);
+                trackStreak(senderName);
                 saveChatLog(senderName, question, aiText, provider, tokens);
             }
         }
@@ -3243,17 +3454,17 @@ function scheduleStartupQuizDataFetch() {
 function resetAutoQuizTimer() {
     if (autoQuizInterval) clearInterval(autoQuizInterval);
     
-    nextQuizTime = Date.now() + (60 * 60 * 1000);
+    nextQuizTime = Date.now() + (3 * 60 * 60 * 1000);
     
     autoQuizInterval = setInterval(async () => {
         if (isBotKuisActive && !isSystemOff && bots[1] && bots[1].auth.userId) {
             console.log("[AUTO-QUIZ] Menjalankan kuis otomatis...");
-            nextQuizTime = Date.now() + (60 * 60 * 1000);
+            nextQuizTime = Date.now() + (3 * 60 * 60 * 1000);
             await startQuiz(bots[1], 'System', '0');
         } else {
-             nextQuizTime = Date.now() + (60 * 60 * 1000);
+             nextQuizTime = Date.now() + (3 * 60 * 60 * 1000);
         }
-    }, 60 * 60 * 1000);
+    }, 3 * 60 * 60 * 1000);
 }
 
 
@@ -3289,7 +3500,6 @@ const runtimeState = {
     set CUSTOM_DOMAINS(value) { CUSTOM_DOMAINS = value; },
     get AUTO_REPLY() { return AUTO_REPLY; },
     set AUTO_REPLY(value) { AUTO_REPLY = value; },
-    get logEmitter() { return logEmitter; },
 };
 
 startDashboard({
