@@ -22,6 +22,7 @@ const {
 } = require('./src/utils');
 const { initShopTables, getShopMessage, buyItem, getItemCount, useItem } = require('./src/shop');
 const { fetchOtherUserProfile, formatOtherUserProfile } = require('./src/otherUserProfile');
+const { getPokemonComboMessage } = require('./src/pokemonCombo');
 
 warnMissingConfig();
 
@@ -3075,6 +3076,22 @@ async function processMessages(bot, messages) {
                         `Item consumable bisa dipakai berkali-kali`,
                         `selama stok masih ada.`,
                     ].join('\n');
+                } else if (helpArg === 'kombo' || helpArg === 'combo') {
+                    helpMsg = [
+                        `-- PANDUAN KOMBO --`,
+                        `Mencari 3 Pokemon terbaik di tas kamu`,
+                        `untuk battle (1 DEF, 1 ATK, 1 SPD).`,
+                        ``,
+                        `Command:`,
+                        `.kombo / .combo - Rekomendasi tim`,
+                        ``,
+                        `Aturan:`,
+                        `- Pokemon disaring berdasarkan Grade`,
+                        `  battle yang aktif minggu ini.`,
+                        `- Pokemon yang sedang kena Ban akan`,
+                        `  diabaikan secara otomatis.`,
+                        `- Menggunakan Level (LV) tertinggi.`,
+                    ].join('\n');
                 } else {
                     helpMsg = [
                         `-- DAFTAR HELP --`,
@@ -3082,6 +3099,7 @@ async function processMessages(bot, messages) {
                         `.help gambar - Panduan gambar`,
                         `.help xp     - Panduan XP & level`,
                         `.help shop   - Panduan toko`,
+                        `.help kombo  - Panduan kombo`,
                         ``,
                         `.menu - Lihat semua command`,
                     ].join('\n');
@@ -3227,6 +3245,29 @@ async function processMessages(bot, messages) {
                 }
                 continue;
             }
+
+            if (lowerMsg === '.kombo' || lowerMsg === '.combo') {
+                if (bot.isCooldown) continue;
+                try {
+                    let targetId = senderUserId;
+                    if (!targetId) {
+                        const targetProfile = await fetchOtherUserProfile(senderName, bot, CONFIG, recordPath, isAnimeinApiBlocked);
+                        targetId = targetProfile?.raw?.id_user || targetProfile?.raw?.user_id || targetProfile?.raw?.id;
+                    }
+                    
+                    if (!targetId) {
+                        await sendChatMessage(bot, `@${senderName} Gagal mendeteksi User ID kamu. Pastikan akun kamu terdaftar di Animein.`, msg.id);
+                        continue;
+                    }
+                    
+                    const comboMsg = await getPokemonComboMessage(bot, senderName, targetId, CONFIG, recordPath, pokemonData);
+                    await sendChatMessage(bot, comboMsg, msg.id);
+                } catch (e) {
+                    console.error("[KOMBO ERROR]", e);
+                    await sendChatMessage(bot, `@${senderName} Gagal memproses kombo Pokemon kamu. Coba lagi nanti ya.`, msg.id);
+                }
+                continue;
+            }
             
             // Bot kuis mengabaikan semua pesan lain agar tidak berisik
             continue;
@@ -3310,7 +3351,8 @@ async function processMessages(bot, messages) {
                 lowerMsg === '.profil' || lowerMsg === '.rank' ||
                 lowerMsg.startsWith('.gambar') || lowerMsg === '.shop' ||
                 lowerMsg === '.toko' || lowerMsg.startsWith('.beli ') ||
-                lowerMsg.startsWith('.help') || lowerMsg === '.leaderboard') {
+                lowerMsg.startsWith('.help') || lowerMsg === '.leaderboard' ||
+                lowerMsg === '.kombo' || lowerMsg === '.combo') {
                 continue;
             }
 
@@ -3325,6 +3367,7 @@ async function processMessages(bot, messages) {
                     `6. Bantuan      : .help [topik]`,
                     `7. Toko         : .shop`,
                     `8. Beli Item    : .beli [nomor]`,
+                    `9. Kombo Team  : .kombo`,
                     `--------------------`,
                     `Chatting = +XP`,
                 ].join('\n');
