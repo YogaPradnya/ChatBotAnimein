@@ -1266,8 +1266,26 @@ function getDashboardHTML() {
       <textarea id="kwKeywords" class="modal-textarea" style="min-height:120px;"></textarea>
     </div>
     <div class="form-group">
-      <label class="form-label">Info Teks</label>
+      <label class="form-label">Info Teks <span style="font-size:11px; color:var(--muted); font-weight:400;">(dipakai oleh .ai sebagai konteks AI)</span></label>
       <textarea id="kwInfo" class="modal-textarea" style="min-height:200px;"></textarea>
+    </div>
+    <div style="border-top:1px dashed var(--border); margin:16px 0 12px; padding-top:14px;">
+      <div style="font-size:12px; font-weight:700; color:#10b981; margin-bottom:10px;">Pengaturan .help (Opsional)</div>
+      <div style="font-size:11px; color:var(--muted); margin-bottom:12px;">Jika diisi, knowledge ini bisa dipanggil via .help [topik]. Teks dikirim utuh tanpa proses AI.</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Help Topic <span style="font-size:10px; color:var(--muted); font-weight:400;">(.help [ini])</span></label>
+          <input type="text" id="kwHelpTopic" placeholder="contoh: battle" style="font-size:12px;">
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Help Label <span style="font-size:10px; color:var(--muted); font-weight:400;">(deskripsi singkat)</span></label>
+          <input type="text" id="kwHelpLabel" placeholder="contoh: Panduan battle" style="font-size:12px;">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Help Text <span style="font-size:11px; color:var(--muted); font-weight:400;">(teks utuh yang dikirim saat .help [topik])</span></label>
+        <textarea id="kwHelpText" class="modal-textarea" style="min-height:150px; font-family:monospace; font-size:12px;" placeholder="-- PANDUAN BATTLE --\nBattle di Animein adalah...\n\nCara Battle:\n1. Buka menu Pokemon\n2. Pilih 3 Pokemon"></textarea>
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn-secondary" onclick="closeKwModal()">Batal</button>
@@ -1944,6 +1962,7 @@ async function updateStats() {
           <div class="kw-header-left" onclick="toggleKw(\${i})">
             <span class="kw-domain">\${escapeHTML(k.domain)}</span>
             <span style="font-weight:700; font-size:13px;">\${escapeHTML(k.keywords[0])} \${k.keywords.length > 1 ? '<span style="color:#aaa;">+'+(k.keywords.length-1)+'</span>' : ''}</span>
+            \${k.help_topic ? '<span style="background:#10b981; color:#fff; font-size:9px; padding:2px 6px; border-radius:4px; font-weight:700; margin-left:6px;">HELP</span>' : ''}
           </div>
           <div style="display:flex; gap:6px;">
             <button class="btn-sm btn-sm-edit" onclick="editKwInner(\${i})">Edit</button>
@@ -1953,6 +1972,7 @@ async function updateStats() {
         <div class="kw-body" id="kw-body-\${i}">
           <div class="kw-info">\${escapeHTML(k.info)}</div>
           <div class="kw-keywords">Keywords: \${escapeHTML(k.keywords.join(', '))}</div>
+          \${k.help_topic ? '<div style="margin-top:6px; font-size:11px; color:#10b981; font-weight:600;">.help ' + escapeHTML(k.help_topic) + (k.help_label ? ' - ' + escapeHTML(k.help_label) : '') + '</div>' : ''}
         </div>
       </div>
     \`).join('');
@@ -1963,6 +1983,9 @@ async function updateStats() {
     document.getElementById('kwIndex').value = -1;
     document.getElementById('kwKeywords').value = '';
     document.getElementById('kwInfo').value = '';
+    document.getElementById('kwHelpTopic').value = '';
+    document.getElementById('kwHelpLabel').value = '';
+    document.getElementById('kwHelpText').value = '';
     document.getElementById('kwModal').classList.add('open');
   }
   async function editKwInner(i) {
@@ -1974,6 +1997,9 @@ async function updateStats() {
     document.getElementById('kwDomain').value = k.domain;
     document.getElementById('kwKeywords').value = k.keywords.join('\\n');
     document.getElementById('kwInfo').value = k.info;
+    document.getElementById('kwHelpTopic').value = k.help_topic || '';
+    document.getElementById('kwHelpLabel').value = k.help_label || '';
+    document.getElementById('kwHelpText').value = k.help_text || '';
     document.getElementById('kwModal').classList.add('open');
   }
   function closeKwModal() { document.getElementById('kwModal').classList.remove('open'); }
@@ -1982,7 +2008,10 @@ async function updateStats() {
       index: parseInt(document.getElementById('kwIndex').value),
       domain: document.getElementById('kwDomain').value,
       keywords: document.getElementById('kwKeywords').value.split('\\n').map(s => s.trim()).filter(s => !!s),
-      info: document.getElementById('kwInfo').value.trim()
+      info: document.getElementById('kwInfo').value.trim(),
+      help_topic: document.getElementById('kwHelpTopic').value.trim().toLowerCase().replace(/\\s+/g, '-'),
+      help_label: document.getElementById('kwHelpLabel').value.trim(),
+      help_text: document.getElementById('kwHelpText').value.trim()
     };
     if (!data.info || data.keywords.length === 0) return showToast('Data tidak lengkap!', 'warning');
     await fetch('/api/knowledge/save', {

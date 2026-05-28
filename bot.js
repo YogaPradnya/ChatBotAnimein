@@ -23,6 +23,7 @@ const {
 const { initShopTables, getShopMessage, buyItem, getItemCount, useItem } = require('./src/shop');
 const { fetchOtherUserProfile, formatOtherUserProfile } = require('./src/otherUserProfile');
 const { getPokemonComboMessage } = require('./src/pokemonCombo');
+const { fetchBattleMeta, formatMetaMessage } = require('./src/pokemonMeta');
 
 warnMissingConfig();
 
@@ -3014,6 +3015,7 @@ async function processMessages(bot, messages) {
                 const helpArg = lowerMsg.replace('.help', '').trim();
                 let helpMsg;
 
+                // --- Topik Statis (backward compatible) ---
                 if (helpArg === 'kuis') {
                     helpMsg = [
                         `-- PANDUAN KUIS --`,
@@ -3092,17 +3094,68 @@ async function processMessages(bot, messages) {
                         `  diabaikan secara otomatis.`,
                         `- Menggunakan Level (LV) tertinggi.`,
                     ].join('\n');
+                } else if (helpArg) {
+                    // --- Topik Dinamis: Cari di ANIMEIN_KNOWLEDGE berdasarkan keywords ---
+                    // Prioritas 1: help_topic exact match (override custom)
+                    let knowledgeMatch = ANIMEIN_KNOWLEDGE.find(k => 
+                        k.help_topic && k.help_topic.toLowerCase() === helpArg
+                    );
+                    // Prioritas 2: Cari di keywords yang sudah ada
+                    if (!knowledgeMatch) {
+                        // Scoring: hitung berapa keyword yang cocok
+                        let bestScore = 0;
+                        ANIMEIN_KNOWLEDGE.forEach(k => {
+                            const score = k.keywords.filter(kw => {
+                                const lk = kw.toLowerCase();
+                                if (lk.length <= 3) return helpArg.split(/\s+/).includes(lk);
+                                return helpArg.includes(lk) || lk.includes(helpArg);
+                            }).length;
+                            if (score > bestScore) {
+                                bestScore = score;
+                                knowledgeMatch = k;
+                            }
+                        });
+                    }
+
+                    if (knowledgeMatch) {
+                        // Jika ada help_text custom, pakai itu. Kalau tidak, kirim info utuh.
+                        helpMsg = knowledgeMatch.help_text || knowledgeMatch.info;
+                    } else {
+                        helpMsg = `Topik "${helpArg}" tidak ditemukan.\nKetik .help untuk lihat daftar topik.`;
+                    }
                 } else {
-                    helpMsg = [
+                    // --- Daftar Semua Topik (statis + dinamis dari knowledge) ---
+                    const lines = [
                         `-- DAFTAR HELP --`,
                         `.help kuis   - Panduan kuis`,
                         `.help gambar - Panduan gambar`,
                         `.help xp     - Panduan XP & level`,
                         `.help shop   - Panduan toko`,
                         `.help kombo  - Panduan kombo`,
-                        ``,
-                        `.menu - Lihat semua command`,
-                    ].join('\n');
+                    ];
+
+                    // Auto-generate dari semua knowledge, grouped by domain
+                    const domainMap = {};
+                    ANIMEIN_KNOWLEDGE.forEach(k => {
+                        const domain = k.domain || 'umum';
+                        if (!domainMap[domain]) domainMap[domain] = [];
+                        const topic = k.help_topic || k.keywords[0];
+                        const label = k.help_label || k.keywords[0];
+                        domainMap[domain].push({ topic, label });
+                    });
+
+                    if (Object.keys(domainMap).length > 0) {
+                        lines.push(`--- TOPIK ANIMEIN ---`);
+                        for (const [domain, topics] of Object.entries(domainMap)) {
+                            topics.forEach(t => {
+                                lines.push(`.help ${t.topic} - ${t.label}`);
+                            });
+                        }
+                    }
+
+                    lines.push(``);
+                    lines.push(`.menu - Lihat semua command`);
+                    helpMsg = lines.join('\n');
                 }
 
                 await sendChatMessage(bot, `@${senderName}\n${helpMsg}`, msg.id);
@@ -3246,6 +3299,19 @@ async function processMessages(bot, messages) {
                 continue;
             }
 
+            if (lowerMsg === '.meta') {
+                if (bot.isCooldown) continue;
+                try {
+                    const meta = await fetchBattleMeta(bot, CONFIG, recordPath);
+                    const metaMsg = formatMetaMessage(meta);
+                    await sendChatMessage(bot, `@${senderName}\n${metaMsg}`, msg.id);
+                } catch (e) {
+                    console.error("[META ERROR]", e);
+                    await sendChatMessage(bot, `@${senderName} Gagal mengambil data meta battle. Coba lagi nanti.`, msg.id);
+                }
+                continue;
+            }
+
             if (lowerMsg === '.kombo' || lowerMsg === '.combo') {
                 if (bot.isCooldown) continue;
                 try {
@@ -3352,7 +3418,8 @@ async function processMessages(bot, messages) {
                 lowerMsg.startsWith('.gambar') || lowerMsg === '.shop' ||
                 lowerMsg === '.toko' || lowerMsg.startsWith('.beli ') ||
                 lowerMsg.startsWith('.help') || lowerMsg === '.leaderboard' ||
-                lowerMsg === '.kombo' || lowerMsg === '.combo') {
+                lowerMsg === '.kombo' || lowerMsg === '.combo' ||
+                lowerMsg === '.meta') {
                 continue;
             }
 
@@ -3368,6 +3435,7 @@ async function processMessages(bot, messages) {
                     `7. Toko         : .shop`,
                     `8. Beli Item    : .beli [nomor]`,
                     `9. Kombo Team  : .kombo`,
+                    `10. Meta Battle : .meta`,
                     `--------------------`,
                     `Chatting = +XP`,
                 ].join('\n');

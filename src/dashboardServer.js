@@ -952,11 +952,17 @@ function startDashboard(scope) {
     });
 
     app.post('/api/knowledge/save', async (req, res) => {
-        const { index, domain, keywords, info } = req.body;
+        const { index, domain, keywords, info, help_topic, help_label, help_text } = req.body;
+        const entry = { 
+            domain, keywords, info,
+            help_topic: help_topic || '',
+            help_label: help_label || '',
+            help_text: help_text || ''
+        };
         if (index === -1) {
-            ANIMEIN_KNOWLEDGE.push({ domain, keywords, info });
+            ANIMEIN_KNOWLEDGE.push(entry);
         } else {
-            ANIMEIN_KNOWLEDGE[index] = { domain, keywords, info };
+            ANIMEIN_KNOWLEDGE[index] = entry;
         }
         try {
             await db.execute({ 
