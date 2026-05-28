@@ -601,12 +601,11 @@ async function expireQuiz(bot, lastMsgId) {
     clearQuizTimers();
 
     const timeoutMsg = [
-        `╭━⌛ *WAKTU HABIS* ⌛━╮`,
-        `┃ Maaf, waktu kuis sudah habis!`,
-        `┃ Tidak ada yang berhasil menebak.`,
-        `┣━━━━━━━━━━━━━━━━━━━┫`,
-        `┃ 💡 Jawaban: *${activeQuiz.original}*`,
-        `╰━━━━━━━━━━━━━━━━━━━╯`
+        `-- WAKTU HABIS --`,
+        `Maaf, waktu kuis sudah habis!`,
+        `Tidak ada yang berhasil menebak.`,
+        `--------------------`,
+        `Jawaban: ${activeQuiz.original}`
     ].join('\n');
 
     await sendChatMessage(bot, timeoutMsg, lastMsgId);
@@ -999,7 +998,7 @@ const bannedUsers = new Set();
 const pinterestImageHistory = new Map();
 const PINTEREST_HISTORY_LIMIT = 100;
 const PINTEREST_HISTORY_TTL_MS = 24 * 60 * 60 * 1000;
-const IMAGE_DAILY_LIMIT_DEFAULT = 5;
+const IMAGE_DAILY_LIMIT_DEFAULT = 3;
 
 // Timezone functions sudah dipindah ke src/utils.js (getJakartaDateKey, getAnimeinDayName, etc.)
 
@@ -2868,10 +2867,10 @@ async function processMessages(bot, messages) {
                         activeQuiz.isRunning = false;
                         clearQuizTimers();
                         
-                        const baseXP = 250; 
-                        const penaltyHint = activeQuiz.hintsRevealed * 20;
-                        const penaltyWrong = (activeQuiz.wrongGuessCount || 0) * 10;
-                        const xpEarned = Math.max(50, baseXP - penaltyHint - penaltyWrong);
+                        const baseXP = 500; 
+                        const penaltyHint = activeQuiz.hintsRevealed * 40;
+                        const penaltyWrong = (activeQuiz.wrongGuessCount || 0) * 20;
+                        const xpEarned = Math.max(100, baseXP - penaltyHint - penaltyWrong);
                         
                         const xpRes = await addXP(senderName, xpEarned);
                         const finalDisplayXP = (XP_MULTIPLIER > 1 && xpEarned > 0) ? xpEarned * XP_MULTIPLIER : xpEarned;
@@ -3027,10 +3026,10 @@ async function processMessages(bot, messages) {
                         `.kuis - Lihat waktu kuis berikutnya`,
                         ``,
                         `Scoring:`,
-                        `Jawaban benar = +250 XP (maks)`,
-                        `Setiap hint = -20 XP hadiah`,
-                        `Setiap jawaban salah = -10 XP hadiah`,
-                        `Minimal hadiah = 50 XP`,
+                        `Jawaban benar = +500 XP (maks)`,
+                        `Setiap hint = -40 XP hadiah`,
+                        `Setiap jawaban salah = -20 XP hadiah`,
+                        `Minimal hadiah = 100 XP`,
                         ``,
                         `Tips: Beli Hint Pack di .shop supaya`,
                         `hint tidak potong XP kamu.`,
@@ -3056,7 +3055,7 @@ async function processMessages(bot, messages) {
                         ``,
                         `Chat dengan AI  : +10 XP`,
                         `Auto Reply      : +5 XP`,
-                        `Menang Kuis     : +50~250 XP`,
+                        `Menang Kuis     : +100~500 XP`,
                         `Kirim Gambar    : +500 XP`,
                         `Cek Profil User : +5 XP`,
                         ``,
@@ -3094,6 +3093,147 @@ async function processMessages(bot, messages) {
                         `  diabaikan secara otomatis.`,
                         `- Menggunakan Level (LV) tertinggi.`,
                     ].join('\n');
+                } else if (helpArg === 'profil') {
+                    helpMsg = [
+                        `-- PANDUAN PROFIL --`,
+                        `Cek statistik akun kamu di bot.`,
+                        ``,
+                        `Command:`,
+                        `.profil - Lihat profil kamu`,
+                        ``,
+                        `Info yang ditampilkan:`,
+                        `- Rank, Gelar, Level, XP`,
+                        `- Progress bar ke level berikutnya`,
+                        `- Statistik kuis (menang, partisipasi)`,
+                        `- Win Rate dan total hint dipakai`,
+                        `- Streak harian (aktif dan terbaik)`,
+                    ].join('\n');
+                } else if (helpArg === 'cek') {
+                    helpMsg = [
+                        `-- PANDUAN CEK USER --`,
+                        `Intip profil Animein user lain.`,
+                        ``,
+                        `Command:`,
+                        `.cek [username] - Cek profil user`,
+                        ``,
+                        `Contoh:`,
+                        `.cek @sashaww`,
+                        `.cek username123`,
+                        ``,
+                        `Bonus: +5 XP setiap cek berhasil.`,
+                    ].join('\n');
+                } else if (helpArg === 'rank' || helpArg === 'leaderboard') {
+                    helpMsg = [
+                        `-- PANDUAN LEADERBOARD --`,
+                        `Lihat 10 pemain dengan XP tertinggi.`,
+                        ``,
+                        `Command:`,
+                        `.rank / .leaderboard`,
+                        ``,
+                        `Peringkat dihitung berdasarkan`,
+                        `total XP yang dimiliki.`,
+                        `Kumpulkan XP dari kuis, chat,`,
+                        `dan aktivitas lain untuk naik rank.`,
+                    ].join('\n');
+                } else if (helpArg === 'lapor') {
+                    helpMsg = [
+                        `-- PANDUAN LAPOR --`,
+                        `Laporkan bug atau masalah ke admin.`,
+                        ``,
+                        `Command:`,
+                        `.lapor [isi laporan]`,
+                        ``,
+                        `Contoh:`,
+                        `.lapor link rusak episode 5`,
+                        `.lapor gambar tidak muncul`,
+                        ``,
+                        `Semua laporan tersimpan di database`,
+                        `dan akan ditinjau oleh admin.`,
+                    ].join('\n');
+                } else if (helpArg === 'meta') {
+                    helpMsg = [
+                        `-- PANDUAN META BATTLE --`,
+                        `Lihat Pokemon paling populer minggu ini.`,
+                        ``,
+                        `Command:`,
+                        `.meta - Lihat top 10 meta battle`,
+                        ``,
+                        `Data diambil dari leaderboard battle`,
+                        `mingguan Animein secara real-time.`,
+                        `Gunakan info ini untuk menyusun`,
+                        `strategi team kamu di .kombo`,
+                    ].join('\n');
+                } else if (helpArg === 'streak') {
+                    helpMsg = [
+                        `-- PANDUAN STREAK --`,
+                        `Streak = berapa hari berturut-turut`,
+                        `kamu aktif di bot.`,
+                        ``,
+                        `Cara mendapat streak:`,
+                        `- Chat dengan AI (.ai / .rara)`,
+                        `- Ikut kuis (.tebak)`,
+                        `- Kirim gambar (.gambar)`,
+                        ``,
+                        `Streak reset jika kamu tidak aktif`,
+                        `selama 1 hari penuh.`,
+                        `Cek streak kamu di .profil`,
+                    ].join('\n');
+                } else if (helpArg === 'level' || helpArg === 'gelar') {
+                    helpMsg = [
+                        `-- PANDUAN LEVEL & GELAR --`,
+                        `Formula naik level:`,
+                        `XP dibutuhkan = 50 x Level^3`,
+                        ``,
+                        `Daftar Gelar Otomatis:`,
+                        `Lvl 1-9   : (belum ada gelar)`,
+                        `Lvl 10-49 : Ksatria Animein`,
+                        `Lvl 50-99 : Legenda Otaku`,
+                        `Lvl 100+  : Dewa Animein`,
+                        ``,
+                        `Atau beli Custom Title di .shop`,
+                        `untuk gelar pilihan kamu sendiri.`,
+                    ].join('\n');
+                } else if (helpArg === 'ai' || helpArg === 'rara') {
+                    helpMsg = [
+                        `-- PANDUAN AI / RARA --`,
+                        `Chat dengan AI asisten Rara.`,
+                        ``,
+                        `Command:`,
+                        `.ai [pertanyaan]`,
+                        `.rara [pertanyaan]`,
+                        `Atau mention @AnimeinAi di chat.`,
+                        ``,
+                        `Rara bisa diajak ngobrol, tanya`,
+                        `info anime, atau sekedar curhat.`,
+                        `Bonus: +10 XP setiap chat.`,
+                    ].join('\n');
+                } else if (helpArg === 'ban') {
+                    helpMsg = [
+                        `-- INFO BAN --`,
+                        `User yang melanggar aturan bisa`,
+                        `di-ban oleh admin.`,
+                        ``,
+                        `Larangan:`,
+                        `- Spam chat atau command`,
+                        `- Kata-kata kasar / toxic`,
+                        `- Exploit / abuse sistem XP`,
+                        ``,
+                        `User yang di-ban tidak bisa`,
+                        `menggunakan semua fitur bot.`,
+                    ].join('\n');
+                } else if (helpArg === 'event') {
+                    helpMsg = [
+                        `-- INFO EVENT --`,
+                        `Kadang admin mengaktifkan event`,
+                        `khusus untuk semua pemain.`,
+                        ``,
+                        `Event yang tersedia:`,
+                        `- Double XP : Semua XP x2`,
+                        `- Event Kuis : Kuis spesial`,
+                        ``,
+                        `Event diumumkan langsung di chat.`,
+                        `Pantau terus supaya tidak ketinggalan.`,
+                    ].join('\n');
                 } else if (helpArg) {
                     // --- Topik Dinamis: Cari di ANIMEIN_KNOWLEDGE berdasarkan keywords ---
                     // Prioritas 1: help_topic exact match (override custom)
@@ -3127,11 +3267,27 @@ async function processMessages(bot, messages) {
                     // --- Daftar Semua Topik (statis + dinamis dari knowledge) ---
                     const lines = [
                         `-- DAFTAR HELP --`,
+                        ``,
+                        `--- FITUR UTAMA ---`,
+                        `.help ai     - Panduan AI Rara`,
                         `.help kuis   - Panduan kuis`,
                         `.help gambar - Panduan gambar`,
-                        `.help xp     - Panduan XP & level`,
-                        `.help shop   - Panduan toko`,
                         `.help kombo  - Panduan kombo`,
+                        `.help meta   - Panduan meta battle`,
+                        ``,
+                        `--- PROFIL & RANK ---`,
+                        `.help profil - Panduan profil`,
+                        `.help cek    - Cek profil user lain`,
+                        `.help rank   - Panduan leaderboard`,
+                        `.help streak - Panduan streak`,
+                        ``,
+                        `--- SISTEM ---`,
+                        `.help xp     - Panduan XP & level`,
+                        `.help level  - Panduan level & gelar`,
+                        `.help shop   - Panduan toko`,
+                        `.help lapor  - Panduan lapor bug`,
+                        `.help ban    - Info aturan ban`,
+                        `.help event  - Info event`,
                     ];
 
                     // Auto-generate dari semua knowledge, grouped by domain
@@ -3260,15 +3416,15 @@ async function processMessages(bot, messages) {
                 try {
                     const res = await db.execute("SELECT username, level, xp FROM user_stats ORDER BY xp DESC LIMIT 10");
                     let rankMsg = [
-                        `╭ 🏆 *LEADERBOARD RARA* 🏆 ╮`,
-                        `┣━━━━━━━━━━━━━━━━━━━┫`
+                        `-- LEADERBOARD --`,
+                        `Top 10 Pemain Animein`,
+                        `--------------------`
                     ];
-                    const medals = ['🥇','🥈','🥉','🎖️','🎖️','🏅','🏅','🏅','🏅','🏅'];
                     res.rows.forEach((r, i) => {
+                        const rankNum = i + 1;
                         const displayName = r.username.length > 10 ? r.username.substring(0, 10) : r.username;
-                        rankMsg.push(`┃ ${medals[i]} ${displayName.padEnd(11)} Lvl ${r.level.toString().padEnd(2)} (${r.xp} XP)`);
+                        rankMsg.push(`#${rankNum} ${displayName.padEnd(11)} Lvl ${r.level.toString().padEnd(2)} (${r.xp.toLocaleString('id-ID')} XP)`);
                     });
-                    rankMsg.push(`╰━━━━━━━━━━━━━━━━━━━╯`);
                     await sendChatMessage(bot, rankMsg.join('\n'), msg.id);
                 } catch(e) {}
                 continue;
@@ -3283,15 +3439,15 @@ async function processMessages(bot, messages) {
                     if (diff <= 0) {
                          await sendChatMessage(bot, `🔄 @${senderName} Kuis sedang disiapkan, tunggu sebentar ya!`, msg.id);
                     } else {
-                        const minutes = Math.floor(diff / 60000);
+                        const hours = Math.floor(diff / 3600000);
+                        const minutes = Math.floor((diff % 3600000) / 60000);
                         const seconds = Math.floor((diff % 60000) / 1000);
                         const kuisMsg = [
-                            `╭━━ ⏳ *INFO KUIS* ━━╮`,
-                            `┃ @${senderName.substring(0, 15)}`,
-                            `┃`,
-                            `┃ Kuis selanjutnya dalam:`,
-                            `┃ *${minutes}m ${seconds}s*`,
-                            `╰━━━━━━━━━━━━━━━╯`
+                            `-- INFO KUIS --`,
+                            `User : @${senderName.substring(0, 15)}`,
+                            `--------------------`,
+                            `Kuis selanjutnya dalam:`,
+                            `${hours}j ${minutes}m ${seconds}s`
                         ].join('\n');
                         await sendChatMessage(bot, kuisMsg, msg.id);
                     }

@@ -25,7 +25,7 @@ const SHOP_ITEMS = [
         id: 3,
         name: 'Extra Gambar (+3)',
         description: '+3 limit gambar tambahan hari ini',
-        price: 500,
+        price: 1500,
         type: 'extra_image',
         consumable: true,
         quantity: 3,
