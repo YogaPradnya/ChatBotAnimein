@@ -1,4 +1,4 @@
-const axios = require('axios');
+const axios = require('./src/httpClient');
 const Groq = require('groq-sdk');
 const fs = require('fs');
 const path = require('path');
@@ -24,6 +24,30 @@ const { initShopTables, getShopMessage, buyItem, getItemCount, useItem } = requi
 const { fetchOtherUserProfile, formatOtherUserProfile } = require('./src/otherUserProfile');
 const { getPokemonComboMessage } = require('./src/pokemonCombo');
 const { fetchBattleMeta, formatMetaMessage } = require('./src/pokemonMeta');
+const { isAnimeDataQuestion, handleAnimeDataQuestion } = require('./src/animeIntentHandler');
+const { LIMITS, QUIZ, COMMANDS, SETTINGS_KEYS } = require('./src/config/constants');
+const { handleError, ignoreExpectedError, safeMessage } = require('./src/services/errorHandler');
+const { createCommandRouter } = require('./src/services/commandRouter');
+const { createLimitService } = require('./src/services/limitService');
+const { createInitialQuizState, createQuizService } = require('./src/services/quizService');
+const { createImageService } = require('./src/services/imageService');
+const { createAnimeinClient } = require('./src/animein/client');
+const { createAiService } = require('./src/services/aiService');
+const { createSettingsRepo } = require('./src/database/settingsRepo');
+const { createUserRepo } = require('./src/database/userRepo');
+const { createLimitRepo } = require('./src/database/limitRepo');
+const { createShopRepo } = require('./src/database/shopRepo');
+const { createBanRepo } = require('./src/database/banRepo');
+const { createQuizRepo } = require('./src/database/quizRepo');
+const { createReportRepo } = require('./src/database/reportRepo');
+const { createCacheRepo } = require('./src/database/cacheRepo');
+const { createChatRepo } = require('./src/database/chatRepo');
+const { createStatsRepo } = require('./src/database/statsRepo');
+const { createRuntimeRepo } = require('./src/database/runtimeRepo');
+const { createStreakRepo } = require('./src/database/streakRepo');
+const { createMemoryRepo } = require('./src/database/memoryRepo');
+const { createKnowledgeRepo, normalizeKnowledgeList, findKnowledgeByHelpTopic, buildKnowledgeContext } = require('./src/database/knowledgeRepo');
+const commands = require('./src/commands');
 
 warnMissingConfig();
 
@@ -36,11 +60,51 @@ function recordPath(routePath) {
     recordApiPath(stats, routePath);
 }
 
-// Inisialisasi Turso Client
+const animeinClient = createAnimeinClient({
+    axios,
+    baseUrl: () => CONFIG.BASE_URL,
+    defaultHeaders: ANIMEIN_HEADERS_FULL,
+    recordPath,
+});
+
+let aiService;
+
 const db = createClient({
     url: CONFIG.TURSO_URL || '',
     authToken: CONFIG.TURSO_AUTH_TOKEN || '',
 });
+
+const settingsRepo = createSettingsRepo(db);
+const userRepo = createUserRepo(db);
+const limitRepo = createLimitRepo(db);
+const shopRepo = createShopRepo(db);
+let limitService;
+const banRepo = createBanRepo(db);
+const quizRepo = createQuizRepo(db);
+const reportRepo = createReportRepo(db);
+const cacheRepo = createCacheRepo(db);
+const chatRepo = createChatRepo(db);
+const statsRepo = createStatsRepo(db);
+const runtimeRepo = createRuntimeRepo(db);
+const streakRepo = createStreakRepo(db);
+const memoryRepo = createMemoryRepo(db);
+const knowledgeRepo = createKnowledgeRepo(settingsRepo, SETTINGS_KEYS);
+const commandRouter = createCommandRouter();
+commandRouter
+    .register([COMMANDS.TEBAK, COMMANDS.GAMBAR, COMMANDS.BELI, COMMANDS.CEK], () => {}, { prefix: true })
+    .register([
+        COMMANDS.HINT,
+        COMMANDS.KUIS,
+        '.game',
+        COMMANDS.PROFIL,
+        COMMANDS.RANK,
+        COMMANDS.TOKO,
+        COMMANDS.SHOP,
+        COMMANDS.LEADERBOARD,
+        COMMANDS.KOMBO,
+        COMMANDS.COMBO,
+        COMMANDS.META,
+    ], () => {});
 
 async function initDB() {
     if (!CONFIG.TURSO_URL) {
@@ -108,8 +172,17 @@ async function initDB() {
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         `);
+        await db.execute(`
+            CREATE TABLE IF NOT EXISTS command_limits (
+                username TEXT PRIMARY KEY,
+                usage_date TEXT NOT NULL,
+                used_count INTEGER DEFAULT 0,
+                extra_limit INTEGER DEFAULT 0,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
         // Pastikan kolom last_used_at ada (jika tabel sudah terlanjur dibuat)
-        await db.execute(`ALTER TABLE quiz_pool ADD COLUMN last_used_at INTEGER DEFAULT 0`).catch(() => {});
+        await db.execute(`ALTER TABLE quiz_pool ADD COLUMN last_used_at INTEGER DEFAULT 0`).catch(e => ignoreExpectedError(e, { scope: 'DB MIGRATION', detail: 'quiz_pool.last_used_at' }));
         await db.execute(`
             CREATE TABLE IF NOT EXISTS user_stats (
                 username TEXT PRIMARY KEY,
@@ -119,7 +192,7 @@ async function initDB() {
             )
         `);
         // Pastikan kolom baru ada
-        await db.execute(`ALTER TABLE user_stats ADD COLUMN custom_title TEXT DEFAULT NULL`).catch(() => {});
+        await db.execute(`ALTER TABLE user_stats ADD COLUMN custom_title TEXT DEFAULT NULL`).catch(e => ignoreExpectedError(e, { scope: 'DB MIGRATION', detail: 'user_stats.custom_title' }));
         
         await db.execute(`
             CREATE TABLE IF NOT EXISTS user_memories (
@@ -145,6 +218,7 @@ async function initDB() {
             }
         } catch(e) {
             // Kolom core_memory mungkin sudah tidak ada atau error lain, aman diabaikan
+            ignoreExpectedError(e, { scope: 'DB MIGRATION', detail: 'legacy core_memory' });
         }
 
         await db.execute(`
@@ -170,20 +244,19 @@ async function initDB() {
         `);
 
         // Inisialisasi tabel shop/inventory
-        await initShopTables(db);
+        await initShopTables(shopRepo);
 
         // Database Indexes untuk performa query
-        await db.execute(`CREATE INDEX IF NOT EXISTS idx_chat_logs_username ON chat_logs (username)`).catch(() => {});
-        await db.execute(`CREATE INDEX IF NOT EXISTS idx_chat_logs_timestamp ON chat_logs (timestamp)`).catch(() => {});
-        await db.execute(`CREATE INDEX IF NOT EXISTS idx_response_cache_key ON response_cache (question_key)`).catch(() => {});
-        await db.execute(`CREATE INDEX IF NOT EXISTS idx_quiz_pool_last_used ON quiz_pool (last_used_at)`).catch(() => {});
-        await db.execute(`CREATE INDEX IF NOT EXISTS idx_laporan_status ON laporan (status)`).catch(() => {});
-        await db.execute(`CREATE INDEX IF NOT EXISTS idx_image_limits_date ON image_limits (usage_date)`).catch(() => {});
+        await db.execute(`CREATE INDEX IF NOT EXISTS idx_chat_logs_username ON chat_logs (username)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_chat_logs_username' }));
+        await db.execute(`CREATE INDEX IF NOT EXISTS idx_chat_logs_timestamp ON chat_logs (timestamp)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_chat_logs_timestamp' }));
+        await db.execute(`CREATE INDEX IF NOT EXISTS idx_response_cache_key ON response_cache (question_key)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_response_cache_key' }));
+        await db.execute(`CREATE INDEX IF NOT EXISTS idx_quiz_pool_last_used ON quiz_pool (last_used_at)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_quiz_pool_last_used' }));
+        await db.execute(`CREATE INDEX IF NOT EXISTS idx_laporan_status ON laporan (status)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_laporan_status' }));
+        await db.execute(`CREATE INDEX IF NOT EXISTS idx_image_limits_date ON image_limits (usage_date)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_image_limits_date' }));
         
-        // Load Filters from DB
-        const filterRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'filter_data'" });
-        if (filterRes.rows.length > 0) {
-            FILTER_DATA = JSON.parse(filterRes.rows[0].value);
+        const filterValue = await settingsRepo.get(SETTINGS_KEYS.FILTER_DATA);
+        if (filterValue) {
+            FILTER_DATA = JSON.parse(filterValue);
             console.log(`[FILTER] Loaded from DB: ${FILTER_DATA.profanities.length} kata.`);
         } else {
             // Try migrate from file if exists
@@ -192,131 +265,105 @@ async function initDB() {
                 try {
                     const fileData = JSON.parse(fs.readFileSync(filterPath, 'utf-8'));
                     FILTER_DATA = fileData;
-                    await db.execute({ 
-                        sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('filter_data', ?)", 
-                        args: [JSON.stringify(FILTER_DATA)] 
-                    });
+                    await settingsRepo.setJSON(SETTINGS_KEYS.FILTER_DATA, FILTER_DATA);
                     console.log(`[FILTER] Migrated from file to DB: ${FILTER_DATA.profanities.length} kata.`);
-                } catch(e) {}
+                } catch(e) {
+                    handleError(e, { scope: 'FILTER', detail: 'migrate filters.json', stats, logEmitter });
+                }
             }
         }
 
         // Load Prompt from DB
-        const promptRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'system_prompt'" });
-        if (promptRes.rows.length > 0) {
-            SYSTEM_PROMPT = promptRes.rows[0].value;
+        const promptValue = await settingsRepo.get(SETTINGS_KEYS.SYSTEM_PROMPT);
+        if (promptValue) {
+            SYSTEM_PROMPT = promptValue;
             console.log(`[PROMPT] Loaded from DB.`);
         } else if (SYSTEM_PROMPT) {
-            await db.execute({ 
-                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('system_prompt', ?)", 
-                args: [SYSTEM_PROMPT] 
-            });
+            await settingsRepo.set(SETTINGS_KEYS.SYSTEM_PROMPT, SYSTEM_PROMPT);
             console.log(`[PROMPT] Initialized/Migrated to DB.`);
         }
 
         // Load Knowledge from DB
-        const kwRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'animein_knowledge'" });
-        if (kwRes.rows.length > 0) {
-            ANIMEIN_KNOWLEDGE = JSON.parse(kwRes.rows[0].value);
-            console.log(`[KNOWLEDGE] Loaded from DB: ${ANIMEIN_KNOWLEDGE.length} items.`);
-        } else if (ANIMEIN_KNOWLEDGE.length > 0) {
-            await db.execute({ 
-                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('animein_knowledge', ?)", 
-                args: [JSON.stringify(ANIMEIN_KNOWLEDGE)] 
-            });
-            console.log(`[KNOWLEDGE] Migrated to DB.`);
-        }
+        ANIMEIN_KNOWLEDGE = await knowledgeRepo.loadAnimeinKnowledge(ANIMEIN_KNOWLEDGE);
+        console.log(`[KNOWLEDGE] Loaded/normalized: ${ANIMEIN_KNOWLEDGE.length} items.`);
 
         // Load Domains from DB
-        const domRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'custom_domains'" });
-        if (domRes.rows.length > 0) {
-            CUSTOM_DOMAINS = JSON.parse(domRes.rows[0].value);
+        const domainsValue = await settingsRepo.get(SETTINGS_KEYS.CUSTOM_DOMAINS);
+        if (domainsValue) {
+            CUSTOM_DOMAINS = JSON.parse(domainsValue);
             console.log(`[DOMAINS] Loaded from DB: ${CUSTOM_DOMAINS.length} items.`);
         } else if (CUSTOM_DOMAINS.length > 0) {
-            await db.execute({ 
-                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('custom_domains', ?)", 
-                args: [JSON.stringify(CUSTOM_DOMAINS)] 
-            });
+            await settingsRepo.setJSON(SETTINGS_KEYS.CUSTOM_DOMAINS, CUSTOM_DOMAINS);
             console.log(`[DOMAINS] Migrated to DB.`);
         }
 
         // Load AutoReply from DB
-        const arRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'auto_reply'" });
-        if (arRes.rows.length > 0) {
-            AUTO_REPLY = JSON.parse(arRes.rows[0].value);
+        const autoReplyValue = await settingsRepo.get(SETTINGS_KEYS.AUTO_REPLY);
+        if (autoReplyValue) {
+            AUTO_REPLY = JSON.parse(autoReplyValue);
             console.log(`[AUTOREPLY] Loaded from DB: ${AUTO_REPLY.length} items.`);
         } else if (AUTO_REPLY.length > 0) {
-            await db.execute({ 
-                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('auto_reply', ?)", 
-                args: [JSON.stringify(AUTO_REPLY)] 
-            });
+            await settingsRepo.setJSON(SETTINGS_KEYS.AUTO_REPLY, AUTO_REPLY);
             console.log(`[AUTOREPLY] Migrated to DB.`);
         }
 
         // Load Total Quizzes Started from DB
-        const quizCountRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'total_quizzes_started'" });
-        if (quizCountRes.rows.length > 0) {
-            stats.totalQuizzesStarted = parseInt(quizCountRes.rows[0].value) || 0;
+        const quizCountValue = await settingsRepo.get(SETTINGS_KEYS.TOTAL_QUIZZES_STARTED);
+        if (quizCountValue !== null) {
+            stats.totalQuizzesStarted = parseInt(quizCountValue) || 0;
             console.log(`[QUIZ] Total quizzes started loaded: ${stats.totalQuizzesStarted}`);
         }
 
         // Load System Off State from DB
-        const sysOffRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'is_system_off'" });
-        if (sysOffRes.rows.length > 0) {
-            isSystemOff = sysOffRes.rows[0].value === 'true';
+        const sysOffValue = await settingsRepo.get(SETTINGS_KEYS.IS_SYSTEM_OFF);
+        if (sysOffValue !== null) {
+            isSystemOff = sysOffValue === 'true';
         } else {
             isSystemOff = false;
-            await db.execute({
-                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('is_system_off', ?)",
-                args: [String(isSystemOff)]
-            });
+            await settingsRepo.set(SETTINGS_KEYS.IS_SYSTEM_OFF, isSystemOff);
         }
         console.log(`[KILL SWITCH] Initial state: ${isSystemOff ? 'ON (system disabled)' : 'OFF (system running)'}`);
 
-        const botInfoRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'is_bot_info_active'" });
-        isBotInfoActive = botInfoRes.rows.length > 0 ? botInfoRes.rows[0].value === 'true' : false;
-        if (botInfoRes.rows.length === 0) {
-            await db.execute({
-                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('is_bot_info_active', ?)",
-                args: [String(isBotInfoActive)]
-            });
+        const botInfoValue = await settingsRepo.get(SETTINGS_KEYS.IS_BOT_INFO_ACTIVE);
+        isBotInfoActive = botInfoValue !== null ? botInfoValue === 'true' : false;
+        if (botInfoValue === null) {
+            await settingsRepo.set(SETTINGS_KEYS.IS_BOT_INFO_ACTIVE, isBotInfoActive);
         }
 
-        const botKuisRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'is_bot_kuis_active'" });
-        isBotKuisActive = botKuisRes.rows.length > 0 ? botKuisRes.rows[0].value === 'true' : false;
-        if (botKuisRes.rows.length === 0) {
-            await db.execute({
-                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('is_bot_kuis_active', ?)",
-                args: [String(isBotKuisActive)]
-            });
+        const botKuisValue = await settingsRepo.get(SETTINGS_KEYS.IS_BOT_KUIS_ACTIVE);
+        isBotKuisActive = botKuisValue !== null ? botKuisValue === 'true' : false;
+        if (botKuisValue === null) {
+            await settingsRepo.set(SETTINGS_KEYS.IS_BOT_KUIS_ACTIVE, isBotKuisActive);
         }
 
-        const imageCommandRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'is_image_command_active'" });
-        isImageCommandActive = imageCommandRes.rows.length > 0 ? imageCommandRes.rows[0].value === 'true' : true;
-        if (imageCommandRes.rows.length === 0) {
-            await db.execute({
-                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('is_image_command_active', ?)",
-                args: [String(isImageCommandActive)]
-            });
+        const imageCommandValue = await settingsRepo.get(SETTINGS_KEYS.IS_IMAGE_COMMAND_ACTIVE);
+        isImageCommandActive = imageCommandValue !== null ? imageCommandValue === 'true' : true;
+        if (imageCommandValue === null) {
+            await settingsRepo.set(SETTINGS_KEYS.IS_IMAGE_COMMAND_ACTIVE, isImageCommandActive);
         }
         console.log(`[GAMBAR] Bot Gambar: ${isImageCommandActive ? 'ON' : 'OFF'}`);
 
         if (isSystemOff && (isBotInfoActive || isBotKuisActive)) {
             isBotInfoActive = false;
             isBotKuisActive = false;
-            await db.execute({
-                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('is_bot_info_active', ?)",
-                args: [String(isBotInfoActive)]
-            });
-            await db.execute({
-                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('is_bot_kuis_active', ?)",
-                args: [String(isBotKuisActive)]
-            });
+            await settingsRepo.set(SETTINGS_KEYS.IS_BOT_INFO_ACTIVE, isBotInfoActive);
+            await settingsRepo.set(SETTINGS_KEYS.IS_BOT_KUIS_ACTIVE, isBotKuisActive);
         }
         console.log(`[BOT STATE] Info: ${isBotInfoActive ? 'ON' : 'OFF'}, Kuis: ${isBotKuisActive ? 'ON' : 'OFF'}`);
 
+        // Load Global Limit Defaults from DB
+        const cmdLimitValue = await settingsRepo.get(SETTINGS_KEYS.CMD_DAILY_LIMIT_DEFAULT);
+        if (cmdLimitValue !== null) {
+            CMD_DAILY_LIMIT_DEFAULT = parseInt(cmdLimitValue) || LIMITS.DEFAULT_COMMAND_DAILY_LIMIT;
+        }
+        const imgLimitValue = await settingsRepo.get(SETTINGS_KEYS.IMAGE_DAILY_LIMIT_DEFAULT);
+        if (imgLimitValue !== null) {
+            IMAGE_DAILY_LIMIT_DEFAULT = parseInt(imgLimitValue) || LIMITS.DEFAULT_IMAGE_DAILY_LIMIT;
+        }
+        console.log(`[LIMITS] CMD Default: ${CMD_DAILY_LIMIT_DEFAULT}/hari, IMG Default: ${IMAGE_DAILY_LIMIT_DEFAULT}/hari`);
+
         // Load Banned Users from DB
-        const bannedRes = await db.execute("SELECT username FROM quiz_banned");
+        const bannedRes = await banRepo.listBannedUsers();
         bannedRes.rows.forEach(r => bannedUsers.add(r.username.toLowerCase()));
         console.log(`[BAN] Loaded ${bannedUsers.size} banned users.`);
 
@@ -345,14 +392,11 @@ setInterval(async () => {
         for (const [user, amount] of Object.entries(XP_PENDING_UPDATES)) {
             const stats = USER_STATS_CACHE[user];
             if (stats) {
-                batch.push({
-                    sql: "INSERT INTO user_stats (username, xp, level, custom_title) VALUES (?, ?, ?, ?) ON CONFLICT(username) DO UPDATE SET xp = ?, level = ?, custom_title = ?",
-                    args: [user, stats.xp, stats.level, stats.custom_title, stats.xp, stats.level, stats.custom_title]
-                });
+                batch.push(runtimeRepo.buildUserStatsUpsert(user, stats));
             }
         }
         if (batch.length > 0) {
-            await db.batch(batch, "write");
+            await runtimeRepo.batchWrite(batch);
         }
 
         // Sync Memory separately to dedicated table
@@ -360,14 +404,11 @@ setInterval(async () => {
         for (const [user, amount] of Object.entries(XP_PENDING_UPDATES)) {
             const stats = USER_STATS_CACHE[user];
             if (stats && stats.core_memory) {
-                memoryBatch.push({
-                    sql: "INSERT INTO user_memories (username, content, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(username) DO UPDATE SET content = ?, updated_at = CURRENT_TIMESTAMP",
-                    args: [user, stats.core_memory, stats.core_memory]
-                });
+                memoryBatch.push(memoryRepo.buildUpsertBatch(user, stats.core_memory));
             }
         }
         if (memoryBatch.length > 0) {
-            await db.batch(memoryBatch, "write");
+            await runtimeRepo.batchWrite(memoryBatch);
         }
 
         // Clear pending but keep cache
@@ -430,13 +471,7 @@ async function addXP(username, amount) {
         
         if (!userStat) {
             // Load stats and join with memories
-            const res = await db.execute({ 
-                sql: `SELECT s.xp, s.level, s.custom_title, m.content as core_memory 
-                      FROM user_stats s 
-                      LEFT JOIN user_memories m ON s.username = m.username 
-                      WHERE s.username = ?`, 
-                args: [username] 
-            });
+            const res = await runtimeRepo.getUserStatsWithMemory(username);
 
             if (res.rows.length > 0) {
                 userStat = { 
@@ -478,241 +513,50 @@ async function addXP(username, amount) {
     }
 }
 
-// --- QUIZ STATE ---
-const QUIZ_DURATION_MS = 5 * 60 * 1000; // 5 menit
-const QUIZ_HINT_INTERVAL = 60 * 1000;   // Hint baru tiap 60 detik
-const STARTUP_QUIZ_FETCH_DELAY_MS = 30 * 60 * 1000; // Ambil data kuis 30 menit setelah restart
+const QUIZ_DURATION_MS = QUIZ.DURATION_MS; // 5 menit
+const QUIZ_HINT_INTERVAL = QUIZ.HINT_INTERVAL_MS;   // Hint baru tiap 60 detik
+const STARTUP_QUIZ_FETCH_DELAY_MS = QUIZ.STARTUP_FETCH_DELAY_MS; // Ambil data kuis 30 menit setelah restart
 
-let activeQuiz = {
-    isRunning: false,
-    isStarting: false,
-    isProcessingAnswer: false,
-    original: '',
-    titleLower: '',
-    startedAt: 0,
-    hintsRevealed: 0, // 0=judul tersensor, 1=studio, 2=genre, 3=tahun, 4=sinopsis
-    clues: {},        // { studio, genre, year, synopsis }
-    wrongGuessers: new Set(), // username yg sudah salah tebak
-    hintTimer: null,
-    expireTimer: null,
-};
+let activeQuiz = createInitialQuizState();
 
-let nextQuizTime = Date.now() + (3 * 60 * 60 * 1000);
+let nextQuizTime = Date.now() + QUIZ.NEXT_QUIZ_DELAY_MS;
 
-function clearQuizTimers() {
-    if (activeQuiz.hintTimer) { clearTimeout(activeQuiz.hintTimer); activeQuiz.hintTimer = null; }
-    if (activeQuiz.expireTimer) { clearTimeout(activeQuiz.expireTimer); activeQuiz.expireTimer = null; }
-}
-
-function buildHintMessage(level, senderName = null, penalty = 0) {
-    const title = activeQuiz.original;
-    const c = activeQuiz.clues;
-    
-    // 1. Logika Sensor Judul
-    let hiddenTitle = title.replace(/[a-zA-Z0-9]/g, '*');
-    if (level >= 4) {
-        hiddenTitle = title.split(' ').map(word => {
-            if (!word) return word;
-            return word[0] + word.slice(1).replace(/[a-zA-Z0-9]/g, '*');
-        }).join(' ');
-    }
-    if (level >= 5) {
-        hiddenTitle = title.split(' ').map(word => {
-            if (word.length <= 2) return word;
-            return word.slice(0, 2) + word.slice(2).replace(/[a-zA-Z0-9]/g, '*');
-        }).join(' ');
-    }
-
-    // Fungsi pembantu untuk menyamarkan judul
-    const censorSpoiler = (text) => {
-        if (!text) return '';
-        const words = title.split(/\s+/).filter(w => w.length > 2);
-        let result = text;
-        words.forEach(w => {
-            const regex = new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-            result = result.replace(regex, '___');
-        });
-        return result;
-    };
-
-    const remaining = Math.floor((QUIZ_DURATION_MS - (Date.now() - activeQuiz.startedAt)) / 1000);
-    const timeStr = `${Math.floor(remaining/60)}m ${remaining%60}s`;
-    const sentences = (c.synopsis || '').split('.').map(s => s.trim()).filter(s => s.length > 5);
-
-    // 2. Bangun Format Polos
-    const lines = [];
-    
-    if (senderName) {
-        lines.push(`[ HINT ${level}/5 ]`);
-        lines.push(`User: @${senderName}`);
-        lines.push(`Biaya: -${penalty} XP`);
-        lines.push(`--------------------`);
-    } else {
-        lines.push(`[ KUIS ANIME ]`);
-        lines.push(`Sisa: ${timeStr}`);
-        lines.push(`--------------------`);
-    }
-
-    lines.push(`Judul: ${hiddenTitle} (${title.length} char)`);
-    lines.push(`Skor: ${c.score}`);
-
-    if (level >= 1 || (level === 0 && !senderName)) {
-        if (level === 0) {
-            const words = (sentences[0] || '').split(' ').slice(0, 8).join(' ');
-            lines.push(`Clue: "${censorSpoiler(words)}..."`);
-        }
-        if (level >= 1) {
-            lines.push(`Studio: ${c.studio}`);
-            lines.push(`Desk 1: ${censorSpoiler(sentences[0]).substring(0, 80)}...`);
-        }
-        if (level >= 2) {
-            lines.push(`Tahun: ${c.year} | Genre: ${c.genre}`);
-            lines.push(`Desk 2: ${censorSpoiler(sentences[1] || '').substring(0, 80)}...`);
-        }
-        if (level >= 3) {
-            lines.push(`Tipe: ${c.type}`);
-            lines.push(`Desk 3: ${censorSpoiler(sentences[2] || '').substring(0, 80)}...`);
-        }
-        if (level >= 5) {
-            lines.push(`Full: ${censorSpoiler(c.synopsis).substring(0, 120)}...`);
-        }
-    }
-
-    if (level === 0 && !senderName) {
-        lines.push(`\nKetik .hint untuk bantuan!`);
-    } else {
-        lines.push(`\nKetik .tebak [jawaban]`);
-    }
-
-    return lines.join('\n');
-}
-
-async function scheduleQuizExpiry(bot, lastMsgId) {
-    clearQuizTimers();
-    const timeLeft = QUIZ_DURATION_MS - (Date.now() - activeQuiz.startedAt);
-    if (timeLeft <= 0) { expireQuiz(bot, lastMsgId); return; }
-
-    activeQuiz.expireTimer = setTimeout(() => expireQuiz(bot, lastMsgId), timeLeft);
-}
-
-async function expireQuiz(bot, lastMsgId) {
-    if (!activeQuiz.isRunning) return;
-    activeQuiz.isRunning = false;
-    clearQuizTimers();
-
-    const timeoutMsg = [
-        `-- WAKTU HABIS --`,
-        `Maaf, waktu kuis sudah habis!`,
-        `Tidak ada yang berhasil menebak.`,
-        `--------------------`,
-        `Jawaban: ${activeQuiz.original}`
-    ].join('\n');
-
-    await sendChatMessage(bot, timeoutMsg, lastMsgId);
-}
-
-async function startQuiz(bot, senderName, msgId, forcedId = null) {
-    if (isSystemOff) {
-        console.warn('[KILL SWITCH] Start kuis diblokir karena Kill Switch ON.');
-        return;
-    }
-    if (activeQuiz.isRunning || activeQuiz.isStarting) {
-        const remaining = Math.floor((QUIZ_DURATION_MS - (Date.now() - (activeQuiz.startedAt || Date.now()))) / 1000);
-        const timeStr = remaining > 0 ? `${Math.floor(remaining/60)}m ${remaining%60}s` : 'menunggu...';
-        const msg = `📌 @${senderName} Kuis masih berlangsung!\n\n` + (activeQuiz.isRunning ? buildHintMessage(activeQuiz.hintsRevealed) : '🔄 Sedang menyiapkan soal kuis...') + `\n\nKetik .tebak [jawaban] untuk menjawab!`;
-        await sendChatMessage(bot, msg, msgId);
-        return;
-    }
-
-    activeQuiz.isStarting = true;
-    try {
-        let anime = null;
-        try {
-            let sql = "SELECT * FROM quiz_pool";
-            let where = [];
-            let args = [];
-            
-            if (forcedId) {
-                where.push("id = ?");
-                args.push(parseInt(forcedId));
-            } else {
-                if (QUIZ_FILTER === 'high-rating') where.push("score >= '8.0'");
-                else if (QUIZ_FILTER.startsWith('genre:')) {
-                    where.push("genre LIKE ?");
-                    args.push(`%${QUIZ_FILTER.split(':')[1]}%`);
-                }
-            }
-            
-            if (where.length > 0) sql += " WHERE " + where.join(" AND ");
-            sql += " ORDER BY last_used_at ASC, RANDOM() LIMIT 1";
-
-            const res = await db.execute({ sql, args });
-            if (res.rows.length > 0) {
-                anime = res.rows[0];
-                await db.execute({
-                    sql: "UPDATE quiz_pool SET last_used_at = ? WHERE id = ?",
-                    args: [Math.floor(Date.now() / 1000), anime.id]
-                });
-            }
-        } catch (e) {
-            console.error("[QUIZ] Gagal ambil data dari DB:", e.message);
-        }
-        
-        if (!anime) {
-            await fetchHomeAnime();
-            const resRetry = await db.execute("SELECT * FROM quiz_pool ORDER BY RANDOM() LIMIT 1");
-            if (resRetry.rows.length > 0) anime = resRetry.rows[0];
-        }
-        
-        if (!anime) {
-            await sendChatMessage(bot, `@${senderName} Rara gagal mengambil data kuis dari database. Coba lagi kuisnya bentar lagi ya!`, msgId);
-            activeQuiz.isStarting = false;
-            return;
-        }
-        
-        const quizData = {
-            isRunning: true,
-            isStarting: false,
-            original: anime.title,
-            titleLower: anime.title.toLowerCase(),
-            startedAt: Date.now(),
-            hintsRevealed: 0,
-            clues: {
-                studio: anime.studio || '?',
-                genre: anime.genre || '?',
-                year: anime.year || '?',
-                synopsis: (anime.synopsis || '').replace(/\[Written by MAL Rewrite\]/g, '').trim(),
-                score: anime.score || '?',
-                type: anime.type || 'SERIES'
-            },
-            wrongGuessers: new Set(),
-            hintTimer: null,
-            expireTimer: null,
-        };
-        
-        activeQuiz = quizData;
+const quizService = createQuizService({
+    quizRepo,
+    settingsRepo,
+    settingsKeys: SETTINGS_KEYS,
+    durationMs: QUIZ_DURATION_MS,
+    getActiveQuiz: () => activeQuiz,
+    setActiveQuiz: (value) => { activeQuiz = value; },
+    getQuizFilter: () => QUIZ_FILTER,
+    getIsSystemOff: () => isSystemOff,
+    incrementTotalQuizzesStarted: () => {
         stats.totalQuizzesStarted++;
-        db.execute({ 
-            sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('total_quizzes_started', ?)", 
-            args: [String(stats.totalQuizzesStarted)] 
-        }).catch(() => {});
+        return stats.totalQuizzesStarted;
+    },
+    sendChatMessage,
+    fetchHomeAnime,
+    handleError,
+    stats: null,
+    logEmitter: null,
+});
 
-        const introMsg = buildHintMessage(0);
-        await sendChatMessage(bot, introMsg, msgId);
-        scheduleQuizExpiry(bot, msgId);
-    } catch (err) {
-        console.error("[QUIZ] Error starting:", err);
-        activeQuiz.isStarting = false;
-    }
-}
+const clearQuizTimers = quizService.clearQuizTimers;
+const buildHintMessage = quizService.buildHintMessage;
+const scheduleQuizExpiry = quizService.scheduleQuizExpiry;
+const expireQuiz = quizService.expireQuiz;
+const startQuiz = quizService.startQuiz;
 
 
 async function saveChatLog(username, question, answer, provider, tokens) {
     if (!CONFIG.TURSO_URL) return;
     try {
-        await db.execute({
-            sql: "INSERT INTO chat_logs (username, pertanyaan, jawaban, provider, tokens) VALUES (?, ?, ?, ?, ?)",
-            args: [username, question, answer, provider, tokens]
+        await chatRepo.insertChatLog({
+            username,
+            question,
+            answer,
+            provider,
+            tokens,
         });
     } catch (e) {
         console.error("[DB] Gagal simpan log chat ke Turso:", e.message);
@@ -729,10 +573,7 @@ async function checkCache(question) {
     if (Math.random() < 0.1) return null;
 
     try {
-        const result = await db.execute({
-            sql: "SELECT id, answer, domain, created_at FROM response_cache WHERE question_key = ?",
-            args: [key]
-        });
+        const result = await cacheRepo.findResponseByQuestionKey(key);
         
         if (result.rows.length > 0) {
             let answerData = result.rows[0].answer;
@@ -800,10 +641,7 @@ async function addToCache(question, answer, domain = 'general') {
 
     try {
         // Cek dulu apakah key sudah ada
-        const existing = await db.execute({
-            sql: "SELECT answer FROM response_cache WHERE question_key = ?",
-            args: [key]
-        });
+        const existing = await cacheRepo.getAnswerByQuestionKey(key);
 
         if (existing.rows.length > 0) {
             // Update: Tambah variasi jika belum ada
@@ -837,17 +675,11 @@ async function addToCache(question, answer, domain = 'general') {
                     }
                 }
 
-                await db.execute({
-                    sql: "UPDATE response_cache SET answer = ? WHERE question_key = ?",
-                    args: [JSON.stringify(variations), key]
-                });
+                await cacheRepo.updateAnswer(key, JSON.stringify(variations));
             }
         } else {
             // Insert baru (simpan sebagai JSON array)
-            await db.execute({
-                sql: "INSERT INTO response_cache (question_key, answer, domain) VALUES (?, ?, ?)",
-                args: [key, JSON.stringify([answer]), domain || 'umum']
-            });
+            await cacheRepo.createResponse(key, JSON.stringify([answer]), domain || 'umum');
             stats.cacheTotal++;
             console.log(`[CACHE] NEW SAVED: "${key.slice(0, 30)}..."`);
         }
@@ -859,10 +691,7 @@ async function addToCache(question, answer, domain = 'general') {
 async function getHistoryFromDB(username, limit = 5) { 
     if (!CONFIG.TURSO_URL) return { messages: [], lastTime: null };
     try {
-        const result = await db.execute({
-            sql: "SELECT pertanyaan, jawaban, timestamp FROM chat_logs WHERE username = ? ORDER BY id DESC LIMIT ?",
-            args: [username, limit]
-        });
+        const result = await chatRepo.getRecentUserHistory(username, limit);
         
         if (result.rows.length === 0) return { messages: [], lastTime: null };
 
@@ -885,17 +714,12 @@ async function getHistoryFromDB(username, limit = 5) {
 async function updateDBStats() {
     if (!CONFIG.TURSO_URL) return;
     try {
-        const result = await db.execute("SELECT COUNT(*) as count FROM chat_logs");
-        stats.totalDBLogs = result.rows[0].count;
-        
-        const cacheResult = await db.execute("SELECT COUNT(*) as count FROM response_cache");
+        const dbCounts = await statsRepo.getDashboardCounts();
+        stats.totalDBLogs = dbCounts.totalDBLogs;
+        stats.totalDBKuis = dbCounts.totalDBKuis;
+        stats.totalReports = dbCounts.totalReports;
+        const cacheResult = await cacheRepo.countCache();
         stats.cacheTotal = cacheResult.rows[0].count;
-
-        const kuisResult = await db.execute("SELECT COUNT(*) as count FROM quiz_pool");
-        stats.totalDBKuis = kuisResult.rows[0].count;
-
-        const reportResult = await db.execute("SELECT COUNT(*) as count FROM laporan");
-        stats.totalReports = reportResult.rows[0].count;
     } catch (e) {
         // Silent error to prevent log spam
     }
@@ -954,6 +778,16 @@ const stats = {
 };
 
 const logEmitter = new EventEmitter();
+limitService = createLimitService({
+    limitRepo,
+    getJakartaDateKey,
+    getDefaultCommandLimit: () => CMD_DAILY_LIMIT_DEFAULT,
+    getDefaultImageLimit: () => IMAGE_DAILY_LIMIT_DEFAULT,
+    isDatabaseEnabled: () => Boolean(CONFIG.TURSO_URL),
+    handleError,
+    stats,
+    logEmitter,
+});
 const originalConsole = {
     log: console.log.bind(console),
     warn: console.warn.bind(console),
@@ -998,7 +832,29 @@ const bannedUsers = new Set();
 const pinterestImageHistory = new Map();
 const PINTEREST_HISTORY_LIMIT = 100;
 const PINTEREST_HISTORY_TTL_MS = 24 * 60 * 60 * 1000;
-const IMAGE_DAILY_LIMIT_DEFAULT = 3;
+const imageService = createImageService({
+    axios,
+    fs,
+    path,
+    projectRoot: __dirname,
+    pinterestImageHistory,
+    historyLimit: PINTEREST_HISTORY_LIMIT,
+    historyTtlMs: PINTEREST_HISTORY_TTL_MS,
+    getPinterestApiUrl: () => CONFIG.PINTEREST_IMAGE_API_URL,
+});
+let IMAGE_DAILY_LIMIT_DEFAULT = LIMITS.DEFAULT_IMAGE_DAILY_LIMIT;
+let CMD_DAILY_LIMIT_DEFAULT = LIMITS.DEFAULT_COMMAND_DAILY_LIMIT;
+
+const checkCommandLimit = limitService.checkCommandLimit;
+const incrementCommandUsage = limitService.incrementCommandUsage;
+
+/** Format XP singkat untuk leaderboard */
+function fmtXP(xp) {
+    if (xp >= 1000000) return `${(xp/1000000).toFixed(1)}M`;
+    if (xp >= 10000) return `${Math.floor(xp/1000)}K`;
+    if (xp >= 1000) return `${(xp/1000).toFixed(1)}K`;
+    return String(xp);
+}
 
 // Timezone functions sudah dipindah ke src/utils.js (getJakartaDateKey, getAnimeinDayName, etc.)
 
@@ -1007,15 +863,9 @@ async function trackStreak(username) {
     if (!CONFIG.TURSO_URL) return;
     const today = getJakartaDateKey();
     try {
-        const res = await db.execute({
-            sql: "SELECT current_streak, best_streak, last_active_date FROM user_quiz_stats WHERE username = ?",
-            args: [username]
-        });
+        const res = await streakRepo.getUserStreak(username);
         if (res.rows.length === 0) {
-            await db.execute({
-                sql: "INSERT INTO user_quiz_stats (username, current_streak, best_streak, last_active_date) VALUES (?, 1, 1, ?)",
-                args: [username, today]
-            });
+            await streakRepo.createInitialStreak(username, today);
             return;
         }
         const row = res.rows[0];
@@ -1029,10 +879,7 @@ async function trackStreak(username) {
         let newStreak = diffDays === 1 ? (Number(row.current_streak) + 1) : 1;
         const newBest = Math.max(newStreak, Number(row.best_streak));
 
-        await db.execute({
-            sql: "UPDATE user_quiz_stats SET current_streak = ?, best_streak = ?, last_active_date = ? WHERE username = ?",
-            args: [newStreak, newBest, today, username]
-        });
+        await streakRepo.updateUserStreak(username, newStreak, newBest, today);
     } catch (e) {
         console.warn(`[STREAK] Gagal track streak ${username}:`, e.message);
     }
@@ -1042,11 +889,7 @@ async function trackStreak(username) {
 async function trackQuizStat(username, field, amount = 1) {
     if (!CONFIG.TURSO_URL) return;
     try {
-        await db.execute({
-            sql: `INSERT INTO user_quiz_stats (username, ${field}) VALUES (?, ?)
-                  ON CONFLICT(username) DO UPDATE SET ${field} = ${field} + ?`,
-            args: [username, amount, amount]
-        });
+        await streakRepo.incrementQuizStat(username, field, amount);
     } catch (e) {
         console.warn(`[QUIZ STATS] Gagal track ${field} ${username}:`, e.message);
     }
@@ -1056,11 +899,7 @@ async function trackQuizStat(username, field, amount = 1) {
 async function trackImageRequest(username) {
     if (!CONFIG.TURSO_URL) return;
     try {
-        await db.execute({
-            sql: `INSERT INTO user_quiz_stats (username, total_images) VALUES (?, 1)
-                  ON CONFLICT(username) DO UPDATE SET total_images = total_images + 1`,
-            args: [username]
-        });
+        await streakRepo.incrementImageRequest(username);
     } catch (e) {
         console.warn(`[IMAGE STATS] Gagal track gambar ${username}:`, e.message);
     }
@@ -1107,10 +946,12 @@ function getKnowledgeContext(query) {
         }
     }
 
+    const normalizedKnowledge = normalizeKnowledgeList(ANIMEIN_KNOWLEDGE);
+
     // Step 2: Filter knowledge berdasarkan domain (jika terdeteksi)
     const pool = detectedDomain
-        ? ANIMEIN_KNOWLEDGE.filter(k => k.domain === detectedDomain)
-        : ANIMEIN_KNOWLEDGE;
+        ? normalizedKnowledge.filter(k => k.domain === detectedDomain)
+        : normalizedKnowledge;
 
     // Step 3: Keyword matching dalam domain yang sudah difilter
     let scored = pool
@@ -1242,11 +1083,12 @@ function isNewTopic(oldText, newText) {
 
     return false;
 }
-/** Cek apakah pesan mengandung trigger (.ai, ai., .rika, rika., atau @username) */
+/** Cek apakah pesan diawali trigger AI (.ai, ai., .rara, rara., atau @username) */
 function isMentioned(text) {
     const username = CONFIG.USERNAME.toLowerCase();
-    const regex = new RegExp(`\\.lapor|\\.ai|ai\\.|\\.rara|rara\\.|@${username}`, 'i');
-    return regex.test(text);
+    const normalized = String(text || '').trimStart();
+    const regex = new RegExp(`^(?:\\.ai\\b|ai\\.|\\.rara\\b|rara\\.|@${username}\\b|@animeinai\\b)`, 'i');
+    return regex.test(normalized);
 }
 
 
@@ -1267,6 +1109,22 @@ function containsProfanity(text) {
         }
     });
 }
+
+aiService = createAiService({
+    isMentioned,
+    sendChatMessage,
+    addActivity,
+    addXP,
+    trackStreak,
+    saveChatLog,
+    containsProfanity,
+    isAnimeDataQuestion,
+    handleAnimeDataQuestion,
+    getAIResponse,
+    stats,
+    getFilterData: () => FILTER_DATA,
+    getAutoReply: () => AUTO_REPLY,
+});
 
 /** Deteksi intent user untuk konteks data */
 function detectIntent(text) {
@@ -1319,7 +1177,7 @@ async function fetchHomeAnime(force = false) {
 
     try {
         // --- A. CEK RESET 2 MINGGU (hanya jika bukan force) ---
-        const lastResetRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = ?", args: ['last_quiz_reset'] });
+        const lastResetRes = await quizRepo.getLastResetTimestamp();
         const lastReset = lastResetRes.rows.length > 0 ? parseInt(lastResetRes.rows[0].value) : 0;
         const nowMs = Date.now();
         
@@ -1327,14 +1185,8 @@ async function fetchHomeAnime(force = false) {
         if (!force && nowMs - lastReset > 21600000) {
             const resetLimit = 50;
             console.log(`[QUIZ] Rotasi Berkala: Menghapus ${resetLimit} data kuis lama...`);
-            await db.execute({
-                sql: "DELETE FROM quiz_pool WHERE id IN (SELECT id FROM quiz_pool ORDER BY last_used_at ASC LIMIT ?)",
-                args: [resetLimit]
-            });
-            await db.execute({ 
-                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
-                args: ['last_quiz_reset', String(nowMs)] 
-            });
+            await quizRepo.deleteOldestQuizzes(resetLimit);
+            await quizRepo.setLastResetTimestamp(nowMs);
         }
 
         const baseUrl = CONFIG.BASE_URL.replace(/\/$/, '');
@@ -1355,12 +1207,11 @@ async function fetchHomeAnime(force = false) {
             const randomPage = Math.floor(Math.random() * 15) + 1; // Page 1 - 15
             
             try {
-                const res = await axios.get(`${baseUrl}/3/2/explore/movie`, { 
-                    params: { genre: randomGenre, page: randomPage }, 
-                    headers: ANIMEIN_HEADERS, 
-                    timeout: 10000 
+                const res = await animeinClient.get('/3/2/explore/movie', {
+                    params: { genre: randomGenre, page: randomPage },
+                    headers: ANIMEIN_HEADERS,
+                    timeout: 10000
                 });
-                recordPath('/3/2/explore/movie');
                 if (res?.data?.data?.movie) return res.data.data.movie;
             } catch (e) {
                 console.warn(`[ANIMEIN] Gagal ambil page acak (${randomGenre} p${randomPage}): ${e.message}`);
@@ -1374,7 +1225,7 @@ async function fetchHomeAnime(force = false) {
         if (allRawMovies.length === 0) return false;
 
         // 2. Filter yang belum ada di DB
-        const existingIdsRes = await db.execute("SELECT anime_id FROM quiz_pool");
+        const existingIdsRes = await quizRepo.getExistingAnimeIds();
         const existingIds = new Set(existingIdsRes.rows.map(r => r.anime_id));
         
         // Acak urutan candidate agar tidak selalu urutan atas yang diambil
@@ -1390,13 +1241,13 @@ async function fetchHomeAnime(force = false) {
         }
 
         // 3. Jika DB Penuh (1000), hapus 5 data terlama untuk rotasi
-        const countRes = await db.execute("SELECT COUNT(*) as count FROM quiz_pool");
+        const countRes = await quizRepo.countQuizPool();
         const currentCount = countRes.rows[0].count;
         
         if (currentCount + newMovies.length > 2000) {
             const deleteCount = newMovies.length;
             console.log(`[QUIZ] DB Penuh (${currentCount}). Menghapus ${deleteCount} data terlama untuk rotasi...`);
-            await db.execute({ sql: "DELETE FROM quiz_pool WHERE anime_id IN (SELECT anime_id FROM quiz_pool ORDER BY id ASC LIMIT ?)", args: [deleteCount] });
+            await quizRepo.deleteOldestAnimeIds(deleteCount);
         }
 
         console.log(`[ANIMEIN] Microfetching hingga ${newMovies.length} items...`);
@@ -1413,12 +1264,11 @@ async function fetchHomeAnime(force = false) {
                         key_client: bots[0].auth.userKey
                     } : {};
 
-                    const detailRes = await axios.get(`${baseUrl}/3/2/movie/detail/${m.id}`, {
+                    const detailRes = await animeinClient.get(`/3/2/movie/detail/${m.id}`, {
                         params: authParams,
                         headers: ANIMEIN_HEADERS,
-                        timeout: 7000 
+                        timeout: 7000
                     });
-                    recordPath('/3/2/movie/detail');
 
                     if (detailRes?.data?.data?.movie) {
                         const d = detailRes.data.data.movie;
@@ -1446,9 +1296,15 @@ async function fetchHomeAnime(force = false) {
             const synopsis = item.synopsis && item.synopsis !== '?' ? item.synopsis : (item.synopsis_short || '');
             if (item.title && synopsis && synopsis.length > 10) {
                 try {
-                    await db.execute({
-                        sql: "INSERT OR IGNORE INTO quiz_pool (anime_id, title, synopsis, studio, genre, year, score, type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                        args: [String(item.id), item.title, synopsis, item.studio || '?', item.genre || '?', item.year || '?', item.score || '?', item.type || '?']
+                    await quizRepo.insertQuizPoolItem({
+                        id: item.id,
+                        title: item.title,
+                        synopsis,
+                        studio: item.studio,
+                        genre: item.genre,
+                        year: item.year,
+                        score: item.score,
+                        type: item.type,
                     });
                     inserted++;
                 } catch (e) { console.warn('[ANIMEIN] Insert error:', e.message); }
@@ -1456,15 +1312,14 @@ async function fetchHomeAnime(force = false) {
         }
 
         // Update Cache untuk trending (ambil dari hot data home)
-        const resHome = await axios.get(`${CONFIG.BASE_URL}/3/2/home/data`, { headers: ANIMEIN_HEADERS }).catch(() => null);
-        recordPath('/3/2/home/data');
+        const resHome = await animeinClient.get('/3/2/home/data', { headers: ANIMEIN_HEADERS }).catch(() => null);
         if (resHome?.data?.data?.hot) {
             const hot = resHome.data.data.hot.slice(0, 30);
             cache.trending.data = hot.map((a, i) => `${i+1}. ${a.title} [Rating: ${a.favorites||'?'}]`);
             cache.trending.lastFetch = now;
         }
 
-        const totalDB = await db.execute("SELECT COUNT(*) as count FROM quiz_pool");
+        const totalDB = await quizRepo.countQuizPool();
         stats.lastMicrofetch = Date.now();
         console.log(`[ANIMEIN] Microfetch Done. New: ${inserted}. Total Quiz Pool: ${totalDB.rows[0].count}`);
         return true;
@@ -1519,8 +1374,7 @@ async function fetchSchedule(dayOffset = 0) {
     };
 
     try {
-        recordPath('/3/2/schedule/data');
-        const res = await axios.get(`${CONFIG.BASE_URL}/3/2/schedule/data`, {
+        const res = await animeinClient.get('/3/2/schedule/data', {
             params: { day: targetDay, hari: targetDay },
             headers: ANIMEIN_HEADERS,
             timeout: 12000,
@@ -1537,12 +1391,11 @@ async function fetchSchedule(dayOffset = 0) {
             return list;
         }
     } catch (e) {
-        console.warn('[ANIMEIN] Gagal ambil jadwal dari /3/2/schedule/data:', e.message.slice(0, 80));
+        console.warn('[ANIMEIN] Gagal ambil jadwal dari /3/2/schedule/data:', safeMessage(e, 80));
     }
 
     try {
-        recordPath('/3/2/home/data');
-        const res = await axios.get(`${CONFIG.BASE_URL}/3/2/home/data`, {
+        const res = await animeinClient.get('/3/2/home/data', {
             params: { day: targetDay },
             headers: ANIMEIN_HEADERS,
             timeout: 10000,
@@ -1555,7 +1408,7 @@ async function fetchSchedule(dayOffset = 0) {
         }
         return list;
     } catch (e) {
-        console.warn('[ANIMEIN] Gagal ambil jadwal:', e.message.slice(0, 60));
+        console.warn('[ANIMEIN] Gagal ambil jadwal:', safeMessage(e, 60));
         return cache.schedule[targetDay]?.data || [];
     }
 }
@@ -1564,7 +1417,7 @@ async function fetchSchedule(dayOffset = 0) {
 async function searchAnime(query) {
     if (isAnimeinApiBlocked('Search anime')) return [];
     try {
-        const res = await axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, {
+        const res = await animeinClient.get('/3/2/explore/movie', {
             params: { keyword: query, page: 1 },
             headers: ANIMEIN_HEADERS,
             timeout: 8000,
@@ -1582,7 +1435,7 @@ async function searchAnime(query) {
             return info;
         });
     } catch (e) {
-        console.warn('[ANIMEIN] Gagal search anime:', e.message.slice(0, 60));
+        console.warn('[ANIMEIN] Gagal search anime:', safeMessage(e, 60));
         return [];
     }
 }
@@ -1593,9 +1446,9 @@ async function fetchGenresList() {
     const now = Date.now();
     if (cache.genres.data && now - cache.genres.lastFetch < cache.TTL) return cache.genres.data;
     try {
-        const res = await axios.get(`${CONFIG.BASE_URL}/3/2/explore/genre`, { 
-            headers: ANIMEIN_HEADERS, 
-            timeout: 10000 
+        const res = await animeinClient.get('/3/2/explore/genre', {
+            headers: ANIMEIN_HEADERS,
+            timeout: 10000
         });
         const genresList = res.data?.data?.genre || res.data?.data || [];
         if (genresList.length > 0) {
@@ -1609,7 +1462,7 @@ async function fetchGenresList() {
             return parsed;
         }
     } catch(e) {
-        console.warn('[ANIMEIN] Gagal ambil genres:', e.message.slice(0, 60));
+        console.warn('[ANIMEIN] Gagal ambil genres:', safeMessage(e, 60));
     }
     return cache.genres.data || [];
 }
@@ -1624,9 +1477,9 @@ async function fetchByGenre(genreId, isSpecific = false, maxLimit = 10) {
             const promises = [];
             for (let i = 1; i <= 10; i++) {
                 promises.push(
-                    axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, {
+                    animeinClient.get('/3/2/explore/movie', {
                         params: { sort: 'popular', page: i, genre_in: genreId },
-                        headers: ANIMEIN_HEADERS, 
+                        headers: ANIMEIN_HEADERS,
                         timeout: 10000
                     }).catch(() => null)
                 );
@@ -1651,17 +1504,17 @@ async function fetchByGenre(genreId, isSpecific = false, maxLimit = 10) {
             });
         } else {
             const randomPage = Math.floor(Math.random() * 5) + 1;
-            const res = await axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, {
+            const res = await animeinClient.get('/3/2/explore/movie', {
                 params: { sort: 'popular', page: randomPage, genre_in: genreId },
-                headers: ANIMEIN_HEADERS, 
+                headers: ANIMEIN_HEADERS,
                 timeout: 10000
             });
             
             movies = res.data?.data?.movie || [];
             if (movies.length === 0 && randomPage > 1) {
-                const fallback = await axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, {
+                const fallback = await animeinClient.get('/3/2/explore/movie', {
                     params: { sort: 'popular', page: 1, genre_in: genreId },
-                    headers: ANIMEIN_HEADERS, 
+                    headers: ANIMEIN_HEADERS,
                     timeout: 10000
                 });
                 movies = fallback.data?.data?.movie || [];
@@ -1674,7 +1527,7 @@ async function fetchByGenre(genreId, isSpecific = false, maxLimit = 10) {
             
             const detailedMovies = await Promise.all(topMovies.map(async (m) => {
                 try {
-                    const detailRes = await axios.get(`${CONFIG.BASE_URL}/3/2/movie/detail/${m.id}`, {
+                    const detailRes = await animeinClient.get(`/3/2/movie/detail/${m.id}`, {
                         headers: ANIMEIN_HEADERS,
                         timeout: 5000
                     }).catch(() => null);
@@ -1687,7 +1540,9 @@ async function fetchByGenre(genreId, isSpecific = false, maxLimit = 10) {
                             year: (d.year && d.year !== 'UNKNOWN') ? d.year : (d.aired_start ? d.aired_start.split('-')[0] : (m.year || '?'))
                         };
                     }
-                } catch (err) {}
+                } catch (err) {
+                    ignoreExpectedError(err, { scope: 'ANIME DATA', detail: 'movie detail enrichment' });
+                }
                 return m;
             }));
 
@@ -1699,6 +1554,57 @@ async function fetchByGenre(genreId, isSpecific = false, maxLimit = 10) {
         console.warn(`[ANIMEIN] Gagal ambil anime untuk genre ${genreId}:`, e.message.slice(0, 60));
     }
     return [];
+}
+
+function extractAnimeKeyword(message) {
+    let text = message.toLowerCase();
+    text = text.replace(/\.ai|\.rara|\.gambar|\.help|@animeinai|rara/g, '');
+    text = text.replace(/\b(ada|gak|ga|tidak|kah|bagus|rating|skor|score|sinopsis|deskripsi|review|nonton|streaming|tayang|di|tentang|apakah|bagaimana|dan|yang|dong|bang|kak|rara|info|informasi|mengenai|anime|seru)\b/g, '');
+    text = text.replace(/[^a-zA-Z0-9\s]/g, ' ').trim();
+    text = text.replace(/\s+/g, ' ');
+    return text.length > 1 ? text : null;
+}
+
+async function fetchMyAnimeList(query) {
+    const trimmed = String(query || '').trim();
+    if (!trimmed) return null;
+    
+    const endpoint = `https://api.jikan.moe/v4/anime`;
+    const response = await axios.get(endpoint, {
+        params: {
+            q: trimmed,
+            limit: 5
+        },
+        timeout: 15000
+    });
+
+    const results = response.data?.data;
+    if (!Array.isArray(results) || results.length === 0) {
+        return null;
+    }
+    
+    let bestMatch = results[0];
+    const tvSeries = results.find(item => item.type === 'TV');
+    if (tvSeries) {
+        bestMatch = tvSeries;
+    }
+    
+    return {
+        id: bestMatch.mal_id,
+        title: bestMatch.title,
+        titleEnglish: bestMatch.title_english || bestMatch.title,
+        titleJapanese: bestMatch.title_japanese,
+        type: bestMatch.type,
+        episodes: bestMatch.episodes || 'Masih tayang',
+        status: bestMatch.status,
+        score: bestMatch.score || 'N/A',
+        rank: bestMatch.rank || 'N/A',
+        popularity: bestMatch.popularity || 'N/A',
+        synopsis: bestMatch.synopsis || 'Tidak ada deskripsi.',
+        studios: (bestMatch.studios || []).map(s => s.name).join(', ') || 'N/A',
+        year: bestMatch.year || bestMatch.aired?.prop?.from?.year || 'N/A',
+        url: bestMatch.url
+    };
 }
 
 /** Build konteks Animein berdasarkan intent user */
@@ -1757,12 +1663,64 @@ async function buildAnimeContext(intent, question) {
         if (list.length > 0) {
             contextData += `\n\n[DATA ANIMEIN - Jadwal Tayang ${dayOffset === 1 ? 'Besok' : dayOffset === 2 ? 'Lusa' : 'Hari Ini'} (${targetDay}) - Zona Asia/Jakarta/WIB]:\n${list.join('\n')}\nInstruksi AI: Gunakan list ini untuk menjawab anime apa saja yang update ${dayOffset === 1 ? 'besok' : dayOffset === 2 ? 'lusa' : 'hari ini'}. Semua jam adalah WIB/Asia Jakarta. Sebutkan jam update jika ada.`;
         }
-    } else if (intent === 'search') {
-        const keywords = question.replace(/cari|search|ada ga|ada gak|ada tidak/gi, '').trim();
-        if (keywords) {
-            const list = await searchAnime(keywords);
-            if (list.length > 0) {
-                contextData += `\n\n[DATA ANIMEIN - Hasil Pencarian "${keywords}"]:\n${list.join('\n')}\nInstruksi AI: User sepertinya sedang nyari atau nanya "ada anime ${keywords} gak?". Beri tahu mereka ada atau tidak sesuai list ini, sekalian kasih bocoran view/ratingnya biar mereka tertarik nonton.`;
+    } else if (intent === 'search' || /\b(anime|bagus|rating|skor|score|sinopsis|deskripsi|review|alur cerita|cerita|kualitas)\b/i.test(lowerQ)) {
+        const keywords = extractAnimeKeyword(question);
+        if (keywords && keywords.length > 2) {
+            const apiList = await searchAnime(keywords);
+            let hasMatch = apiList.length > 0;
+            let localInfo = '';
+            
+            // Fallback 1: Cek database lokal quiz_pool
+            if (!hasMatch) {
+                try {
+                    const dbRes = await quizRepo.searchQuizPoolByTitle(keywords, 3);
+                    if (dbRes.rows && dbRes.rows.length > 0) {
+                        hasMatch = true;
+                        localInfo = dbRes.rows.map(r => `- ${r.title} [Studio: ${r.studio || '?'}, Tahun: ${r.year || '?'}, Skor: ${r.score || '?'}]`).join('\n');
+                    }
+                } catch (dbErr) {
+                    console.warn('[DB SEARCH] Gagal search quiz_pool:', dbErr.message);
+                }
+            }
+            
+            // Fallback 2: Cek data halaman utama (untuk anime baru/populer di homepage)
+            if (!hasMatch) {
+                try {
+                    const resHome = await animeinClient.get('/3/2/home/data', {
+                        headers: ANIMEIN_HEADERS,
+                        timeout: 5000
+                    }).catch(() => null);
+                    if (resHome?.data?.data) {
+                        const today = resHome.data.data.today || [];
+                        const hot = resHome.data.data.hot || [];
+                        const latest = resHome.data.data.new || [];
+                        const homeTitles = [...today, ...hot, ...latest].map(m => m.title).filter(Boolean);
+                        
+                        const matchedHome = homeTitles.find(t => t.toLowerCase().includes(keywords.toLowerCase()));
+                        if (matchedHome) {
+                            hasMatch = true;
+                            localInfo = `- ${matchedHome} [Tersedia di Halaman Utama Animein]`;
+                        }
+                    }
+                } catch (homeErr) {
+                    console.warn('[HOME SEARCH] Gagal search home data:', homeErr.message);
+                }
+            }
+
+            if (hasMatch) {
+                try {
+                    const malData = await fetchMyAnimeList(keywords);
+                    if (malData) {
+                        contextData += `\n\n[DATA LIVE MYANIMELIST - ${keywords.toUpperCase()} (Tersedia di Animein)]:\n- Judul: ${malData.title}\n- Skor: ${malData.score}\n- Studio: ${malData.studios}\n- Tahun: ${malData.year}\n- Status: ${malData.status} (${malData.episodes} eps)\n- Sinopsis (English): ${malData.synopsis}\n- Link: ${malData.url}\n\nInstruksi AI: Anime ini TERSEDIA di platform Animein! Berikan info rating dan deskripsi di atas ke user. Terjemahkan sinopsisnya ke Bahasa Indonesia yang santai, wibu, dan bersahabat. Katakan bahwa anime ini bisa ditonton langsung di Animein.`;
+                    } else {
+                        contextData += `\n\n[DATA LOCAL ANIMEIN - Hasil Pencarian "${keywords}"]:\n${apiList.length > 0 ? apiList.join('\n') : localInfo}\n\nInstruksi AI: Anime ini TERSEDIA di Animein. Berikan info lokal di atas ke user.`;
+                    }
+                } catch (err) {
+                    console.warn('[MAL API] Gagal fetch MyAnimeList:', err.message);
+                    contextData += `\n\n[DATA LOCAL ANIMEIN - Hasil Pencarian "${keywords}"]:\n${apiList.length > 0 ? apiList.join('\n') : localInfo}\n\nInstruksi AI: Anime ini TERSEDIA di Animein. Berikan info lokal di atas ke user.`;
+                }
+            } else {
+                contextData += `\n\n[INFO STATUS ANIME - TIDAK TERSEDIA]: Anime "${keywords}" tidak ada di Animein.\n\nInstruksi AI: Jawab dengan tegas dan santai bahwa anime ini tidak tersedia/tidak ada di platform Animein saat ini.`;
             }
         }
     } else if (intent === 'popular' || lowerQ.includes('rekomendasi') || lowerQ.includes('rekomen')) {
@@ -1791,9 +1749,7 @@ async function fetchPokemonShop(bot = bots[0], force = false) {
     if (!bot?.auth?.userId || !bot?.auth?.userKey) return cache.pokemonShop.data || [];
 
     try {
-        const baseUrl = CONFIG.BASE_URL.replace(/\/$/, '');
-        recordPath('/3/2/user/shop/pokemon');
-        const res = await axios.get(`${baseUrl}/3/2/user/shop/pokemon`, {
+        const res = await animeinClient.get('/3/2/user/shop/pokemon', {
             params: { id_user: bot.auth.userId, key_client: bot.auth.userKey },
             headers: ANIMEIN_HEADERS,
             timeout: 12000,
@@ -1804,7 +1760,7 @@ async function fetchPokemonShop(bot = bots[0], force = false) {
         console.log(`[POKEMON SHOP] Loaded ${items.length} item dari shop.`);
         return items;
     } catch (e) {
-        console.warn('[POKEMON SHOP] Gagal ambil data shop:', e.message.slice(0, 120));
+        console.warn('[POKEMON SHOP] Gagal ambil data shop:', safeMessage(e, 120));
         return cache.pokemonShop.data || [];
     }
 }
@@ -2003,10 +1959,8 @@ async function resolveAnimeinUser(username, bot = bots[0]) {
     if (!cleanUsername) return null;
 
     try {
-        const baseUrl = CONFIG.BASE_URL.replace(/\/$/, '');
         const params = { ...getAuthParams(bot), keyword: cleanUsername, username: cleanUsername, q: cleanUsername, search: cleanUsername };
-        recordPath('/data/user/find');
-        const response = await axios.get(`${baseUrl}/data/user/find`, {
+        const response = await animeinClient.get('/data/user/find', {
             params,
             headers: ANIMEIN_HEADERS,
             timeout: 12000,
@@ -2075,17 +2029,14 @@ async function fetchAnimeinExtraEndpoint(key, bot = bots[0], force = false, targ
     if (!spec || isAnimeinApiBlocked(`Fetch ${key}`)) return null;
 
     try {
-        const baseUrl = CONFIG.BASE_URL.replace(/\/$/, '');
         const requestParams = buildAnimeinExtraRequestParams(spec, bot, targetUser);
-        recordPath(spec.path);
-        const response = await axios({
-            method: spec.method,
-            url: `${baseUrl}${spec.path}`,
-            params: spec.method === 'get' ? requestParams : undefined,
-            data: spec.method !== 'get' ? new URLSearchParams(requestParams) : undefined,
+        const requestOptions = {
             headers: spec.method === 'get' ? ANIMEIN_HEADERS : { ...ANIMEIN_HEADERS, 'Content-Type': 'application/x-www-form-urlencoded' },
             timeout: 12000,
-        });
+        };
+        const response = spec.method === 'get'
+            ? await animeinClient.get(spec.path, { ...requestOptions, params: requestParams })
+            : await animeinClient.post(spec.path, new URLSearchParams(requestParams), requestOptions);
         return response.data;
     } catch (err) {
         console.warn(`[ANIMEIN EXTRA] ${key} gagal: ${err.message.slice(0, 100)}`);
@@ -2290,10 +2241,8 @@ async function answerOwnProfileStatQuestion(userMessage, senderName, senderUserI
 
     if (profile?.error && senderUserId) {
         try {
-            const baseUrl = CONFIG.BASE_URL.replace(/\/$/, '');
             const authParams = getAuthParams(bots[0]);
-            recordPath('/3/2/profile/other');
-            const byIdRes = await axios.get(`${baseUrl}/3/2/profile/other`, {
+            const byIdRes = await animeinClient.get('/3/2/profile/other', {
                 params: {
                     ...authParams,
                     id_other: senderUserId,
@@ -2324,8 +2273,7 @@ async function answerOwnProfileStatQuestion(userMessage, senderName, senderUserI
                 let page = 1;
                 let total = 0;
                 while (page <= 10) {
-                    recordPath(endpoint);
-                    const collectionRes = await axios.get(`${baseUrl}${endpoint}`, {
+                    const collectionRes = await animeinClient.get(endpoint, {
                         params: { ...authParams, id_other: senderUserId, page: String(page) },
                         headers: ANIMEIN_HEADERS,
                         timeout: 12000,
@@ -2454,182 +2402,25 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
     return { text: 'Maaf kak, semua koneksi AI Rara lagi sibuk/limit. Coba lagi nanti ya! 🙏', provider: 'Error', tokens: 0 };
 }
 
-async function getImageLimitStatus(username) {
-    const cleanUsername = String(username || '').replace(/^@/, '').trim();
-    const today = getJakartaDateKey();
-    if (!cleanUsername || !CONFIG.TURSO_URL) {
-        return { username: cleanUsername, usageDate: today, used: 0, limit: IMAGE_DAILY_LIMIT_DEFAULT, remaining: IMAGE_DAILY_LIMIT_DEFAULT };
-    }
+const getImageLimitStatus = limitService.getImageLimitStatus;
+const incrementImageLimitUsage = limitService.incrementImageLimitUsage;
 
-    const result = await db.execute({
-        sql: "SELECT username, usage_date, used_count, daily_limit FROM image_limits WHERE username = ?",
-        args: [cleanUsername]
-    });
-
-    if (result.rows.length === 0) {
-        await db.execute({
-            sql: "INSERT INTO image_limits (username, usage_date, used_count, daily_limit) VALUES (?, ?, 0, ?)",
-            args: [cleanUsername, today, IMAGE_DAILY_LIMIT_DEFAULT]
-        });
-        return { username: cleanUsername, usageDate: today, used: 0, limit: IMAGE_DAILY_LIMIT_DEFAULT, remaining: IMAGE_DAILY_LIMIT_DEFAULT };
-    }
-
-    const row = result.rows[0];
-    const limit = Number(row.daily_limit ?? IMAGE_DAILY_LIMIT_DEFAULT);
-    let used = Number(row.used_count || 0);
-    let usageDate = row.usage_date || today;
-
-    if (usageDate !== today) {
-        used = 0;
-        usageDate = today;
-        await db.execute({
-            sql: "UPDATE image_limits SET usage_date = ?, used_count = 0, updated_at = CURRENT_TIMESTAMP WHERE username = ?",
-            args: [today, cleanUsername]
-        });
-    }
-
-    return { username: cleanUsername, usageDate, used, limit, remaining: Math.max(0, limit - used) };
-}
-
-async function incrementImageLimitUsage(username) {
-    const status = await getImageLimitStatus(username);
-    const nextUsed = status.used + 1;
-    await db.execute({
-        sql: "INSERT INTO image_limits (username, usage_date, used_count, daily_limit, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(username) DO UPDATE SET usage_date = ?, used_count = ?, daily_limit = ?, updated_at = CURRENT_TIMESTAMP",
-        args: [status.username, status.usageDate, nextUsed, status.limit, status.usageDate, nextUsed, status.limit]
-    });
-    return { ...status, used: nextUsed, remaining: Math.max(0, status.limit - nextUsed) };
-}
-
-async function fetchPinterestImage(queryOrUrl) {
-    const apiUrl = process.env.PINTEREST_IMAGE_API_URL;
-    const trimmed = String(queryOrUrl || '').trim();
-    const isUrl = /^https?:\/\//i.test(trimmed);
-    const endpoint = new URL(apiUrl);
-    endpoint.searchParams.set(isUrl ? 'url' : 'query', trimmed);
-    endpoint.searchParams.set('limit', '25'); // Ambil 25 gambar untuk lebih banyak variasi
-
-    const res = await axios.get(endpoint.toString(), {
-        headers: { 'Accept': 'application/json, text/plain, */*' },
-        timeout: 20000,
-    });
-
-    const data = res.data;
-    if (data?.status === 'error') {
-        throw new Error(data.message || 'Pinterest API error');
-    }
-
-    const imageUrls = [...new Set(collectImageUrls(data))];
-    if (!imageUrls.length) {
-        throw new Error('Tidak ada URL gambar ditemukan dari Pinterest API');
-    }
-
-    return pickUnusedPinterestImage(trimmed, imageUrls);
-}
-
-function getPinterestHistoryKey(queryOrUrl) {
-    return String(queryOrUrl || '').trim().toLowerCase();
-}
-
-function pickUnusedPinterestImage(queryOrUrl, imageUrls) {
-    const historyKey = getPinterestHistoryKey(queryOrUrl);
-    const now = Date.now();
-    const usedUrls = pruneExpiredPinterestHistory(historyKey, now);
-    const candidates = imageUrls.filter(url => !usedUrls.has(url));
-
-    if (!candidates.length) {
-        throw new Error('Semua gambar untuk keyword ini sudah pernah dikirim dalam 24 jam terakhir');
-    }
-
-    const selectedUrl = candidates[Math.floor(Math.random() * candidates.length)];
-    rememberPinterestImage(historyKey, selectedUrl, now);
-    return selectedUrl;
-}
-
-function pruneExpiredPinterestHistory(historyKey, now = Date.now()) {
-    const usedUrls = pinterestImageHistory.get(historyKey) || new Map();
-
-    for (const [url, sentAt] of usedUrls.entries()) {
-        if (now - sentAt >= PINTEREST_HISTORY_TTL_MS) {
-            usedUrls.delete(url);
-        }
-    }
-
-    if (usedUrls.size) {
-        pinterestImageHistory.set(historyKey, usedUrls);
-    } else {
-        pinterestImageHistory.delete(historyKey);
-    }
-
-    return usedUrls;
-}
-
-function rememberPinterestImage(historyKey, imageUrl, sentAt = Date.now()) {
-    if (!historyKey || !imageUrl) return;
-
-    const usedUrls = pinterestImageHistory.get(historyKey) || new Map();
-    usedUrls.set(imageUrl, sentAt);
-
-    while (usedUrls.size > PINTEREST_HISTORY_LIMIT) {
-        const oldestUrl = usedUrls.keys().next().value;
-        usedUrls.delete(oldestUrl);
-    }
-
-    pinterestImageHistory.set(historyKey, usedUrls);
-}
-
-function collectImageUrls(value, found = new Set()) {
-    if (!value) return found;
-
-    if (typeof value === 'string') {
-        if (/^https?:\/\/.+\.(jpg|jpeg|png|webp|gif)(\?.*)?$/i.test(value) || /pinimg\.com/i.test(value)) {
-            found.add(value);
-        }
-        return [...found];
-    }
-
-    if (Array.isArray(value)) {
-        value.forEach(item => collectImageUrls(item, found));
-        return [...found];
-    }
-
-    if (typeof value === 'object') {
-        Object.values(value).forEach(item => collectImageUrls(item, found));
-    }
-
-    return [...found];
-}
-
-async function downloadImageAsBase64(imageUrl) {
-    const res = await axios.get(imageUrl, {
-        responseType: 'arraybuffer',
-        headers: {
-            'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        },
-        timeout: 25000,
-        maxContentLength: 10 * 1024 * 1024,
-    });
-
-    const mimeType = String(res.headers['content-type'] || 'image/jpeg').split(';')[0];
-    if (!mimeType.startsWith('image/')) {
-        throw new Error(`Response bukan gambar: ${mimeType}`);
-    }
-
-    return {
-        data: Buffer.from(res.data).toString('base64'),
-        mimeType,
-        sourceUrl: imageUrl,
-    };
-}
+const fetchPinterestImage = imageService.fetchPinterestImage;
+const pickUnusedPinterestImage = imageService.pickUnusedPinterestImage;
+const getPinterestHistoryKey = imageService.getPinterestHistoryKey;
+const pruneExpiredPinterestHistory = imageService.pruneExpiredPinterestHistory;
+const rememberPinterestImage = imageService.rememberPinterestImage;
+const collectImageUrls = imageService.collectImageUrls;
+const downloadImageToTempFile = imageService.downloadImageToTempFile;
+const cleanupTempImage = imageService.cleanupTempImage;
 
 async function sendChatWithImage(bot, imageData, caption, replyTo = '0') {
     if (isAnimeinApiBlocked('Kirim gambar chat')) return false;
+    const { filePath, mimeType } = imageData;
     try {
-        const buffer = Buffer.from(imageData.data, 'base64');
-        let ext = imageData.mimeType.split('/')[1] || 'jpg';
+        let ext = mimeType.split('/')[1] || 'jpg';
         if (ext === 'jpeg') ext = 'jpg'; 
-        const contentType = ext === 'jpg' ? 'image/jpeg' : imageData.mimeType;
+        const contentType = ext === 'jpg' ? 'image/jpeg' : mimeType;
         const filename = `animein_${Date.now()}.${ext}`;
         
         const form = new FormData();
@@ -2637,17 +2428,13 @@ async function sendChatWithImage(bot, imageData, caption, replyTo = '0') {
         form.append('id_chat_replay', replyTo);
         form.append('id_user', bot.auth.userId);
         form.append('key_client', bot.auth.userKey);
-        form.append('image', buffer, { filename, contentType });
+        form.append('image', fs.createReadStream(filePath), { filename, contentType });
         
-        const baseUrl = CONFIG.BASE_URL.replace(/\/$/, '');
-        recordPath('/3/2/chat/do');
-        const res = await axios.post(`${baseUrl}/3/2/chat/do`, form, {
+        const res = await animeinClient.postForm('/3/2/chat/do', form, {
             headers: {
-                ...form.getHeaders(),
                 'Accept': 'application/json, text/plain, */*',
                 'Origin': 'https://japi.animein.net',
                 'Referer': 'https://japi.animein.net',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             },
             timeout: 20000,
         });
@@ -2666,8 +2453,14 @@ async function sendChatWithImage(bot, imageData, caption, replyTo = '0') {
         console.warn('[CHAT/IMG] API tidak mengembalikan sukses, response:', JSON.stringify(res.data).slice(0,100));
         return false;
     } catch (err) {
-        console.warn('[CHAT/IMG] Upload gambar ke chat gagal:', err.message.slice(0, 80));
+        console.warn('[CHAT/IMG] Upload gambar ke chat gagal:', safeMessage(err, 80));
         return false;
+    } finally {
+        try {
+            cleanupTempImage(filePath);
+        } catch (unlinkErr) {
+            console.warn('[CHAT/IMG] Gagal menghapus file sementara:', unlinkErr.message);
+        }
     }
 }
 
@@ -2677,8 +2470,8 @@ async function login(bot, forceApiLogin = false) {
         const isAI = bot.username === CONFIG.USERNAME;
         const isKuis = bot.username === CONFIG.KUIS_USERNAME;
         const isImage = bot.username === CONFIG.IMG_USERNAME;
-        const preUserId = isAI ? process.env.ANIMEIN_AI_USER_ID : (isKuis ? process.env.ANIMEIN_KUIS_USER_ID : (isImage ? process.env.ANIMEIN_IMG_USER_ID : null));
-        const preKeyClient = isAI ? process.env.ANIMEIN_AI_KEY_CLIENT : (isKuis ? process.env.ANIMEIN_KUIS_KEY_CLIENT : (isImage ? process.env.ANIMEIN_IMG_KEY_CLIENT : null));
+        const preUserId = isAI ? CONFIG.AI_USER_ID : (isKuis ? CONFIG.KUIS_USER_ID : (isImage ? CONFIG.IMG_USER_ID : null));
+        const preKeyClient = isAI ? CONFIG.AI_KEY_CLIENT : (isKuis ? CONFIG.KUIS_KEY_CLIENT : (isImage ? CONFIG.IMG_KEY_CLIENT : null));
         
         if (!forceApiLogin && preUserId && preKeyClient) {
             bot.auth.userId = preUserId;
@@ -2695,11 +2488,8 @@ async function login(bot, forceApiLogin = false) {
         params.append('username_or_email', bot.username);
         params.append('password', bot.password);
         
-        const baseUrl = CONFIG.BASE_URL.replace(/\/$/, '');
-        const loginUrl = `${baseUrl}/auth/login`;
-        
-        const response = await axios.post(loginUrl, params, {
-            headers: { 
+        const response = await animeinClient.post('/auth/login', params, {
+            headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
                 ...ANIMEIN_HEADERS
             },
@@ -2732,10 +2522,7 @@ async function fetchMessages(bot) {
         const queryParams = { id_user: bot.auth.userId, key_client: bot.auth.userKey };
         if (bot.lastMessageId > 0) queryParams.highest_id = bot.lastMessageId;
         
-        const baseUrl = CONFIG.BASE_URL.replace(/\/$/, '');
-        recordPath('/3/2/chat/data');
-        
-        const response = await axios.get(`${baseUrl}/3/2/chat/data`, { 
+        const response = await animeinClient.get('/3/2/chat/data', {
             params: queryParams,
             headers: ANIMEIN_HEADERS_FULL
         });
@@ -2760,6 +2547,48 @@ async function fetchMessages(bot) {
     }
 }
 
+function visualWidth(str) {
+    let w = 0;
+    for (const ch of str) {
+        const cp = ch.codePointAt(0);
+        if (cp > 0xFFFF || (cp >= 0x2600 && cp <= 0x27BF) || (cp >= 0x1F000 && cp <= 0x1FFFF) || (cp >= 0xFE00 && cp <= 0xFE0F)) {
+            w += 2;
+        } else {
+            w += 1;
+        }
+    }
+    return w;
+}
+
+function padVisual(str, targetLen, isStart = false, char = ' ') {
+    const w = visualWidth(str);
+    const diff = targetLen - w;
+    if (diff <= 0) return str;
+    const padding = char.repeat(diff);
+    return isStart ? padding + str : str + padding;
+}
+
+function wrapInBox(title, text, boxWidth = 23) {
+    // Top border
+    let top = '┌──';
+    if (title) {
+        top += ' ' + title + ' ';
+    }
+    const currentTopWidth = visualWidth(top);
+    const topFill = boxWidth - currentTopWidth;
+    if (topFill > 0) {
+        top += '─'.repeat(topFill);
+    }
+
+    const lines = text.split('\n');
+    const boxLines = [top];
+    for (const line of lines) {
+        boxLines.push('│ ' + line);
+    }
+    boxLines.push('└' + '─'.repeat(boxWidth - 1));
+    return boxLines.join('\n');
+}
+
 async function sendChatMessage(bot, text, replyTo = '0') {
     // Gunakan bot pertama (info) sebagai default jika parameter bot adalah string (legacy support)
     if (typeof bot === 'string') {
@@ -2780,15 +2609,18 @@ async function sendChatMessage(bot, text, replyTo = '0') {
         params.append('id_user', bot.auth.userId);
         params.append('key_client', bot.auth.userKey);
         
-        const baseUrl = CONFIG.BASE_URL.replace(/\/$/, '');
-        recordPath('/3/2/chat/do');
-        await axios.post(`${baseUrl}/3/2/chat/do`, params, {
-            headers: { 
-                ...ANIMEIN_HEADERS_FULL,
+        const res = await animeinClient.post('/3/2/chat/do', params, {
+            headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
                 'Origin': 'https://animeinweb.com',
             }
         });
+        
+        if (res.data && (res.data.success === false || res.data.status === 0 || res.data.status === 'error')) {
+            console.warn(`[CHAT] Gagal kirim pesan (${bot.username}):`, res.data);
+            return false;
+        }
+        
         return true;
     } catch (error) {
         console.error('Send error:', error.message);
@@ -2818,678 +2650,72 @@ async function processMessages(bot, messages) {
         const mentionRegex = new RegExp(`@${botName}\\s*:?|${botName}\\s*:?|@AnimeinAi\\s*:?|@AnimeinBot\\s*:?`, 'gi');
         const cleanMsg = msgText.replace(mentionRegex, '').trim();
         const lowerMsg = cleanMsg.toLowerCase();
+
+        // --- GLOBAL BAN CHECK (berlaku untuk semua bot) ---
+        if (bannedUsers.has(senderName.toLowerCase())) {
+            // Hanya balas 1x jika mereka coba pakai command dari bot yang relevan
+            if (bot.role === 'kuis' && (lowerMsg === '.tebak' || lowerMsg.startsWith('.tebak ') || lowerMsg === '.hint')) {
+                await sendChatMessage(bot, `🚫 @${senderName.substring(0, 10)} Diblokir.`, msg.id);
+            }
+            continue;
+        }
         
         // AKUN KUIS (AnimeinKuis): Hanya memproses game
         if (bot.role === 'kuis') {
-            // Cek ban
-            if (bannedUsers.has(senderName.toLowerCase())) {
-                // Hanya balas jika mereka coba main kuis
-                if (lowerMsg.startsWith('.tebak ') || lowerMsg === '.hint') {
-                    await sendChatMessage(bot, `🚫 @${senderName} Kamu dibanned dari kuis.`, msg.id);
-                }
-                continue;
-            }
-
-            // Game Logic
-            if (lowerMsg.startsWith('.tebak ')) {
-                if (bot.isCooldown) continue;
-                if (activeQuiz.isProcessingAnswer) continue;
-                const answer = lowerMsg.substring(7).trim();
-                if (!activeQuiz.isRunning) {
-                    await sendChatMessage(bot, `@${senderName} Tidak ada kuis aktif. Kuis akan muncul otomatis setiap 3 jam!`, msg.id);
-                } else if (Date.now() - activeQuiz.startedAt > QUIZ_DURATION_MS) {
-                    await expireQuiz(bot, msg.id);
-                } else {
-                    activeQuiz.isProcessingAnswer = true;
-                    try {
-                    trackQuizStat(senderName, 'participations');
-                    trackStreak(senderName);
-                    const norm = (s) => (s || '').normalize('NFKC').normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
-                    const normTitle = norm(activeQuiz.original);
-                    const normAnswer = norm(answer);
-
-                    const titleWords = normTitle.split(/\s+/).filter(w => w.length > 2);
-                    const userWords = normAnswer.split(/\s+/).filter(w => w.length > 2);
-                    
-                    let matches = 0;
-                    userWords.forEach(uw => {
-                        const isMatch = titleWords.some(tw => {
-                            const maxDist = tw.length <= 4 ? 1 : 2;
-                            return levenshtein(uw, tw) <= maxDist;
-                        });
-                        if (isMatch) matches++;
-                    });
-                    
-                    const isFuzzyFull = normTitle.includes(normAnswer) && normAnswer.length >= Math.floor(normTitle.length * 0.7);
-                    const isWordMatch = (titleWords.length >= 2 && matches >= 2);
-                    
-                    if (normTitle === normAnswer || isFuzzyFull || isWordMatch) {
-                        activeQuiz.isRunning = false;
-                        clearQuizTimers();
-                        
-                        const baseXP = 500; 
-                        const penaltyHint = activeQuiz.hintsRevealed * 40;
-                        const penaltyWrong = (activeQuiz.wrongGuessCount || 0) * 20;
-                        const xpEarned = Math.max(100, baseXP - penaltyHint - penaltyWrong);
-                        
-                        const xpRes = await addXP(senderName, xpEarned);
-                        const finalDisplayXP = (XP_MULTIPLIER > 1 && xpEarned > 0) ? xpEarned * XP_MULTIPLIER : xpEarned;
-                        trackQuizStat(senderName, 'wins');
-                        
-                        const resultCard = [
-                            `-- KUIS SELESAI --`,
-                            `Pemenang : @${senderName}`,
-                            `Jawaban  : ${activeQuiz.original}`,
-                            `Hadiah   : +${finalDisplayXP.toLocaleString('id-ID')} XP ${XP_MULTIPLIER > 1 ? `(x${XP_MULTIPLIER}!)` : ''}`,
-                            `Salah    : ${activeQuiz.wrongGuessCount || 0} kali`,
-                            `--------------------`
-                        ];
-
-                        if (xpRes.leveledUp) {
-                            const gelar = getGelar(xpRes.level, xpRes.custom_title);
-                            resultCard.push(
-                                `-- LEVEL UP! --`,
-                                `Level Baru: ${xpRes.level}`,
-                                `Gelar     : ${gelar || 'Wibu Baru'}`,
-                                `--------------------`
-                            );
-                        }
-                        
-                        await sendChatMessage(bot, resultCard.join('\n'), msg.id);
-                    } else {
-                        activeQuiz.wrongGuessCount = (activeQuiz.wrongGuessCount || 0) + 1;
-                        activeQuiz.wrongGuessers.add(senderName);
-                        await sendChatMessage(bot, `❌ @${senderName} Salah! XP Hadiah berkurang -5.\nCoba lagi. (Panjang: ${activeQuiz.original.length} char)`, msg.id);
-                        await addXP(senderName, -3);
-                    }
-                    } finally {
-                        activeQuiz.isProcessingAnswer = false;
-                    }
-                }
-                continue;
-            }
-
-            if (lowerMsg === '.hint') {
-                if (bot.isCooldown) continue;
-                if (!activeQuiz.isRunning) {
-                    await sendChatMessage(bot, `📌 @${senderName} Tidak ada kuis aktif.`, msg.id);
-                } else if (activeQuiz.hintsRevealed >= 5) {
-                    await sendChatMessage(bot, `📌 @${senderName} Semua hint sudah terbuka. Cek pesan lama ya.`, msg.id);
-                } else {
-                    // Cek apakah user punya free hint dari shop
-                    const freeHints = await getItemCount(db, senderName, 'free_hint');
-                    let penalty = 0;
-                    if (freeHints > 0) {
-                        await useItem(db, senderName, 'free_hint', 1);
-                        console.log(`[SHOP] ${senderName} menggunakan free hint (sisa: ${freeHints - 1})`);
-                    } else {
-                        penalty = Math.floor(Math.random() * 5) + 1;
-                        await addXP(senderName, -penalty);
-                    }
-                    activeQuiz.hintsRevealed++;
-                    trackQuizStat(senderName, 'total_hints_used');
-                    
-                    // Kirim pesan hint dengan format kartu yang rapi
-                    const hintMsg = buildHintMessage(activeQuiz.hintsRevealed, senderName, penalty);
-                    await sendChatMessage(bot, hintMsg, msg.id);
-                }
-                continue;
-            }
 
 
-
-            if (lowerMsg === '.profil') {
-                if (bot.isCooldown) continue;
-                try {
-                    // Ambil data user beserta peringkat (rank) berdasarkan XP
-                    const res = await db.execute({ 
-                        sql: `SELECT xp, level, custom_title,
-                              (SELECT COUNT(*) + 1 FROM user_stats u2 WHERE u2.xp > u1.xp) as rank
-                              FROM user_stats u1 WHERE username = ?`, 
-                        args: [senderName] 
-                    });
-
-                    let userData;
-                    if (res.rows.length > 0) {
-                        userData = res.rows[0];
-                    } else {
-                        const totalRes = await db.execute("SELECT COUNT(*) + 1 as total FROM user_stats");
-                        userData = { xp: 0, level: 1, custom_title: null, rank: totalRes.rows[0].total };
-                    }
-
-                    // Ambil quiz stats
-                    let quizData = { wins: 0, participations: 0, total_hints_used: 0, total_images: 0, current_streak: 0, best_streak: 0 };
-                    try {
-                        const qRes = await db.execute({
-                            sql: "SELECT wins, participations, total_hints_used, total_images, current_streak, best_streak FROM user_quiz_stats WHERE username = ?",
-                            args: [senderName]
-                        });
-                        if (qRes.rows.length > 0) quizData = qRes.rows[0];
-                    } catch (e) { console.warn("[PROFIL] Quiz stats query failed:", e.message); }
-
-                    const {xp, level, custom_title, rank} = userData;
-                    const gelar = getGelar(level, custom_title);
-                    const req = Math.floor(50 * Math.pow(level, 3));
-                    const toNext = req - xp;
-                    const percentage = Math.min(100, Math.floor((xp / req) * 100));
-                    
-                    const barWidth = 10;
-                    const filledCount = Math.floor((percentage / 100) * barWidth);
-                    const bar = '='.repeat(filledCount) + '-'.repeat(barWidth - filledCount);
-
-                    const winRate = quizData.participations > 0 
-                        ? Math.floor((quizData.wins / quizData.participations) * 100) 
-                        : 0;
-
-                    const profileMsg = [
-                        `-- PROFILE INFO --`,
-                        `User   : @${senderName.substring(0, 15)}`,
-                        `Rank   : #${rank}`,
-                        `Gelar  : ${gelar || 'Wibu Baru'}`,
-                        `--------------------`,
-                        `Level  : ${level}`,
-                        `XP     : ${xp.toLocaleString('id-ID')} / ${req.toLocaleString('id-ID')}`,
-                        `Sisa   : ${toNext.toLocaleString('id-ID')} XP lagi`,
-                        `[${bar}] ${percentage}%`,
-                        `--------------------`,
-                        `Kuis Menang : ${quizData.wins}`,
-                        `Partisipasi : ${quizData.participations}`,
-                        `Win Rate    : ${winRate}%`,
-                        `Hint Dipakai: ${quizData.total_hints_used}`,
-                        `Gambar      : ${quizData.total_images}`,
-                        `--------------------`,
-                        `Streak : ${quizData.current_streak} hari`,
-                        `Best   : ${quizData.best_streak} hari`,
-                    ].join('\n');
-
-                    await sendChatMessage(bot, profileMsg, msg.id);
-                } catch(e) {
-                    console.error("[PROFIL ERROR]", e);
-                }
-                continue;
-            }
-
-            if (lowerMsg === '.help' || lowerMsg.startsWith('.help ')) {
-                if (bot.isCooldown) continue;
-                const helpArg = lowerMsg.replace('.help', '').trim();
-                let helpMsg;
-
-                // --- Topik Statis (backward compatible) ---
-                if (helpArg === 'kuis') {
-                    helpMsg = [
-                        `-- PANDUAN KUIS --`,
-                        `Kuis muncul otomatis setiap 3 jam.`,
-                        ``,
-                        `Command:`,
-                        `.tebak [jawaban] - Jawab kuis aktif`,
-                        `.hint - Minta petunjuk (potong XP)`,
-                        `.kuis - Lihat waktu kuis berikutnya`,
-                        ``,
-                        `Scoring:`,
-                        `Jawaban benar = +500 XP (maks)`,
-                        `Setiap hint = -40 XP hadiah`,
-                        `Setiap jawaban salah = -20 XP hadiah`,
-                        `Minimal hadiah = 100 XP`,
-                        ``,
-                        `Tips: Beli Hint Pack di .shop supaya`,
-                        `hint tidak potong XP kamu.`,
-                    ].join('\n');
-                } else if (helpArg === 'gambar') {
-                    helpMsg = [
-                        `-- PANDUAN GAMBAR --`,
-                        `Kirim gambar dari Pinterest ke chat.`,
-                        ``,
-                        `Command:`,
-                        `.gambar [keyword] - Cari & kirim gambar`,
-                        ``,
-                        `Limit: ${IMAGE_DAILY_LIMIT_DEFAULT} gambar/hari`,
-                        `Bonus: +5 XP per gambar terkirim`,
-                        ``,
-                        `Tips: Beli Extra Gambar di .shop`,
-                        `untuk tambah limit harian.`,
-                    ].join('\n');
-                } else if (helpArg === 'xp') {
-                    helpMsg = [
-                        `-- PANDUAN XP & LEVEL --`,
-                        `XP didapat dari aktivitas:`,
-                        ``,
-                        `Chat dengan AI  : +10 XP`,
-                        `Auto Reply      : +5 XP`,
-                        `Menang Kuis     : +100~500 XP`,
-                        `Kirim Gambar    : +500 XP`,
-                        `Cek Profil User : +5 XP`,
-                        ``,
-                        `Formula Level Up:`,
-                        `XP dibutuhkan = 50 * Level^3`,
-                        ``,
-                        `Gelar otomatis berubah di level`,
-                        `10, 50, dan 100.`,
-                        `Atau beli Custom Title di .shop`,
-                    ].join('\n');
-                } else if (helpArg === 'shop' || helpArg === 'toko') {
-                    helpMsg = [
-                        `-- PANDUAN TOKO --`,
-                        `.shop - Lihat daftar item`,
-                        `.beli [nomor] - Beli item`,
-                        `.beli 1 [nama] - Beli custom title`,
-                        ``,
-                        `XP akan dipotong saat pembelian.`,
-                        `Item consumable bisa dipakai berkali-kali`,
-                        `selama stok masih ada.`,
-                    ].join('\n');
-                } else if (helpArg === 'kombo' || helpArg === 'combo') {
-                    helpMsg = [
-                        `-- PANDUAN KOMBO --`,
-                        `Mencari 3 Pokemon terbaik di tas kamu`,
-                        `untuk battle (1 DEF, 1 ATK, 1 SPD).`,
-                        ``,
-                        `Command:`,
-                        `.kombo / .combo - Rekomendasi tim`,
-                        ``,
-                        `Aturan:`,
-                        `- Pokemon disaring berdasarkan Grade`,
-                        `  battle yang aktif minggu ini.`,
-                        `- Pokemon yang sedang kena Ban akan`,
-                        `  diabaikan secara otomatis.`,
-                        `- Menggunakan Level (LV) tertinggi.`,
-                    ].join('\n');
-                } else if (helpArg === 'profil') {
-                    helpMsg = [
-                        `-- PANDUAN PROFIL --`,
-                        `Cek statistik akun kamu di bot.`,
-                        ``,
-                        `Command:`,
-                        `.profil - Lihat profil kamu`,
-                        ``,
-                        `Info yang ditampilkan:`,
-                        `- Rank, Gelar, Level, XP`,
-                        `- Progress bar ke level berikutnya`,
-                        `- Statistik kuis (menang, partisipasi)`,
-                        `- Win Rate dan total hint dipakai`,
-                        `- Streak harian (aktif dan terbaik)`,
-                    ].join('\n');
-                } else if (helpArg === 'cek') {
-                    helpMsg = [
-                        `-- PANDUAN CEK USER --`,
-                        `Intip profil Animein user lain.`,
-                        ``,
-                        `Command:`,
-                        `.cek [username] - Cek profil user`,
-                        ``,
-                        `Contoh:`,
-                        `.cek @sashaww`,
-                        `.cek username123`,
-                        ``,
-                        `Bonus: +5 XP setiap cek berhasil.`,
-                    ].join('\n');
-                } else if (helpArg === 'rank' || helpArg === 'leaderboard') {
-                    helpMsg = [
-                        `-- PANDUAN LEADERBOARD --`,
-                        `Lihat 10 pemain dengan XP tertinggi.`,
-                        ``,
-                        `Command:`,
-                        `.rank / .leaderboard`,
-                        ``,
-                        `Peringkat dihitung berdasarkan`,
-                        `total XP yang dimiliki.`,
-                        `Kumpulkan XP dari kuis, chat,`,
-                        `dan aktivitas lain untuk naik rank.`,
-                    ].join('\n');
-                } else if (helpArg === 'lapor') {
-                    helpMsg = [
-                        `-- PANDUAN LAPOR --`,
-                        `Laporkan bug atau masalah ke admin.`,
-                        ``,
-                        `Command:`,
-                        `.lapor [isi laporan]`,
-                        ``,
-                        `Contoh:`,
-                        `.lapor link rusak episode 5`,
-                        `.lapor gambar tidak muncul`,
-                        ``,
-                        `Semua laporan tersimpan di database`,
-                        `dan akan ditinjau oleh admin.`,
-                    ].join('\n');
-                } else if (helpArg === 'meta') {
-                    helpMsg = [
-                        `-- PANDUAN META BATTLE --`,
-                        `Lihat Pokemon paling populer minggu ini.`,
-                        ``,
-                        `Command:`,
-                        `.meta - Lihat top 10 meta battle`,
-                        ``,
-                        `Data diambil dari leaderboard battle`,
-                        `mingguan Animein secara real-time.`,
-                        `Gunakan info ini untuk menyusun`,
-                        `strategi team kamu di .kombo`,
-                    ].join('\n');
-                } else if (helpArg === 'streak') {
-                    helpMsg = [
-                        `-- PANDUAN STREAK --`,
-                        `Streak = berapa hari berturut-turut`,
-                        `kamu aktif di bot.`,
-                        ``,
-                        `Cara mendapat streak:`,
-                        `- Chat dengan AI (.ai / .rara)`,
-                        `- Ikut kuis (.tebak)`,
-                        `- Kirim gambar (.gambar)`,
-                        ``,
-                        `Streak reset jika kamu tidak aktif`,
-                        `selama 1 hari penuh.`,
-                        `Cek streak kamu di .profil`,
-                    ].join('\n');
-                } else if (helpArg === 'level' || helpArg === 'gelar') {
-                    helpMsg = [
-                        `-- PANDUAN LEVEL & GELAR --`,
-                        `Formula naik level:`,
-                        `XP dibutuhkan = 50 x Level^3`,
-                        ``,
-                        `Daftar Gelar Otomatis:`,
-                        `Lvl 1-9   : (belum ada gelar)`,
-                        `Lvl 10-49 : Ksatria Animein`,
-                        `Lvl 50-99 : Legenda Otaku`,
-                        `Lvl 100+  : Dewa Animein`,
-                        ``,
-                        `Atau beli Custom Title di .shop`,
-                        `untuk gelar pilihan kamu sendiri.`,
-                    ].join('\n');
-                } else if (helpArg === 'ai' || helpArg === 'rara') {
-                    helpMsg = [
-                        `-- PANDUAN AI / RARA --`,
-                        `Chat dengan AI asisten Rara.`,
-                        ``,
-                        `Command:`,
-                        `.ai [pertanyaan]`,
-                        `.rara [pertanyaan]`,
-                        `Atau mention @AnimeinAi di chat.`,
-                        ``,
-                        `Rara bisa diajak ngobrol, tanya`,
-                        `info anime, atau sekedar curhat.`,
-                        `Bonus: +10 XP setiap chat.`,
-                    ].join('\n');
-                } else if (helpArg === 'ban') {
-                    helpMsg = [
-                        `-- INFO BAN --`,
-                        `User yang melanggar aturan bisa`,
-                        `di-ban oleh admin.`,
-                        ``,
-                        `Larangan:`,
-                        `- Spam chat atau command`,
-                        `- Kata-kata kasar / toxic`,
-                        `- Exploit / abuse sistem XP`,
-                        ``,
-                        `User yang di-ban tidak bisa`,
-                        `menggunakan semua fitur bot.`,
-                    ].join('\n');
-                } else if (helpArg === 'event') {
-                    helpMsg = [
-                        `-- INFO EVENT --`,
-                        `Kadang admin mengaktifkan event`,
-                        `khusus untuk semua pemain.`,
-                        ``,
-                        `Event yang tersedia:`,
-                        `- Double XP : Semua XP x2`,
-                        `- Event Kuis : Kuis spesial`,
-                        ``,
-                        `Event diumumkan langsung di chat.`,
-                        `Pantau terus supaya tidak ketinggalan.`,
-                    ].join('\n');
-                } else if (helpArg) {
-                    // --- Topik Dinamis: Cari di ANIMEIN_KNOWLEDGE berdasarkan keywords ---
-                    // Prioritas 1: help_topic exact match (override custom)
-                    let knowledgeMatch = ANIMEIN_KNOWLEDGE.find(k => 
-                        k.help_topic && k.help_topic.toLowerCase() === helpArg
-                    );
-                    // Prioritas 2: Cari di keywords yang sudah ada
-                    if (!knowledgeMatch) {
-                        // Scoring: hitung berapa keyword yang cocok
-                        let bestScore = 0;
-                        ANIMEIN_KNOWLEDGE.forEach(k => {
-                            const score = k.keywords.filter(kw => {
-                                const lk = kw.toLowerCase();
-                                if (lk.length <= 3) return helpArg.split(/\s+/).includes(lk);
-                                return helpArg.includes(lk) || lk.includes(helpArg);
-                            }).length;
-                            if (score > bestScore) {
-                                bestScore = score;
-                                knowledgeMatch = k;
-                            }
-                        });
-                    }
-
-                    if (knowledgeMatch) {
-                        // Jika ada help_text custom, pakai itu. Kalau tidak, kirim info utuh.
-                        helpMsg = knowledgeMatch.help_text || knowledgeMatch.info;
-                    } else {
-                        helpMsg = `Topik "${helpArg}" tidak ditemukan.\nKetik .help untuk lihat daftar topik.`;
-                    }
-                } else {
-                    // --- Daftar Semua Topik (statis + dinamis dari knowledge) ---
-                    const lines = [
-                        `-- DAFTAR HELP --`,
-                        ``,
-                        `--- FITUR UTAMA ---`,
-                        `.help ai     - Panduan AI Rara`,
-                        `.help kuis   - Panduan kuis`,
-                        `.help gambar - Panduan gambar`,
-                        `.help kombo  - Panduan kombo`,
-                        `.help meta   - Panduan meta battle`,
-                        ``,
-                        `--- PROFIL & RANK ---`,
-                        `.help profil - Panduan profil`,
-                        `.help cek    - Cek profil user lain`,
-                        `.help rank   - Panduan leaderboard`,
-                        `.help streak - Panduan streak`,
-                        ``,
-                        `--- SISTEM ---`,
-                        `.help xp     - Panduan XP & level`,
-                        `.help level  - Panduan level & gelar`,
-                        `.help shop   - Panduan toko`,
-                        `.help lapor  - Panduan lapor bug`,
-                        `.help ban    - Info aturan ban`,
-                        `.help event  - Info event`,
-                    ];
-
-                    // Auto-generate dari semua knowledge, grouped by domain
-                    const domainMap = {};
-                    ANIMEIN_KNOWLEDGE.forEach(k => {
-                        const domain = k.domain || 'umum';
-                        if (!domainMap[domain]) domainMap[domain] = [];
-                        const topic = k.help_topic || k.keywords[0];
-                        const label = k.help_label || k.keywords[0];
-                        domainMap[domain].push({ topic, label });
-                    });
-
-                    if (Object.keys(domainMap).length > 0) {
-                        lines.push(`--- TOPIK ANIMEIN ---`);
-                        for (const [domain, topics] of Object.entries(domainMap)) {
-                            topics.forEach(t => {
-                                lines.push(`.help ${t.topic} - ${t.label}`);
-                            });
-                        }
-                    }
-
-                    lines.push(``);
-                    lines.push(`.menu - Lihat semua command`);
-                    helpMsg = lines.join('\n');
-                }
-
-                await sendChatMessage(bot, `@${senderName}\n${helpMsg}`, msg.id);
-                continue;
-            }
-
-            if (lowerMsg === '.shop' || lowerMsg === '.toko') {
-                if (bot.isCooldown) continue;
-                const shopMsg = getShopMessage();
-                await sendChatMessage(bot, `@${senderName}\n${shopMsg}`, msg.id);
-                continue;
-            }
-
-            if (lowerMsg.startsWith('.beli ')) {
-                if (bot.isCooldown) continue;
-                try {
-                    const beliArgs = cleanMsg.substring(6).trim();
-                    const beliParts = beliArgs.split(/\s+/);
-                    const itemId = parseInt(beliParts[0]);
-                    
-                    if (isNaN(itemId)) {
-                        await sendChatMessage(bot, `@${senderName} Format: .beli [nomor item]\nKetik .shop untuk lihat daftar.`, msg.id);
-                        continue;
-                    }
-
-                    // Ambil XP user saat ini
-                    const xpRes = await db.execute({
-                        sql: "SELECT xp FROM user_stats WHERE username = ?",
-                        args: [senderName]
-                    });
-                    const currentXP = xpRes.rows.length > 0 ? Number(xpRes.rows[0].xp) : 0;
-
-                    const titleName = beliParts.length > 1 ? beliParts.slice(1).join(' ') : undefined;
-                    const result = await buyItem(db, senderName, itemId, currentXP, { titleName });
-
-                    if (result.success) {
-                        await addXP(senderName, -result.xpDeducted);
-                        
-                        // Jika beli extra image, tambahkan ke image limits
-                        if (itemId === 3) {
-                            const today = getJakartaDateKey();
-                            try {
-                                await db.execute({
-                                    sql: `INSERT INTO image_limits (username, usage_date, used_count, daily_limit)
-                                          VALUES (?, ?, 0, ?)
-                                          ON CONFLICT(username) DO UPDATE SET daily_limit = daily_limit + 3`,
-                                    args: [senderName, today, IMAGE_DAILY_LIMIT_DEFAULT + 3]
-                                });
-                            } catch (e) {
-                                console.warn("[SHOP] Gagal update image limit:", e.message);
-                            }
-                        }
-
-                        await sendChatMessage(bot, `@${senderName}\n-- PEMBELIAN BERHASIL --\n${result.message}\nXP dipotong: -${result.xpDeducted.toLocaleString('id-ID')}`, msg.id);
-                    } else {
-                        await sendChatMessage(bot, `@${senderName} ${result.message}`, msg.id);
-                    }
-                } catch (e) {
-                    console.error("[SHOP ERROR]", e);
-                    await sendChatMessage(bot, `@${senderName} Gagal memproses pembelian. Coba lagi nanti.`, msg.id);
-                }
-                continue;
-            }
-
-            if (lowerMsg.startsWith('.cek ')) {
-                if (bot.isCooldown) continue;
-                try {
-                    // Extract username dari command
-                    const targetUsername = cleanMsg.substring(5).trim().replace(/^@+/, '');
-                    
-                    if (!targetUsername) {
-                        await sendChatMessage(bot, `@${senderName} Tulis username yang ingin dicek!\nContoh: .cek @username`, msg.id);
-                        continue;
-                    }
-
-                    // Fetch profil user lain
-                    const profile = await fetchOtherUserProfile(
-                        targetUsername, 
-                        bots[0], // Gunakan bot info untuk auth
-                        CONFIG, 
-                        recordPath, 
-                        isAnimeinApiBlocked
-                    );
-
-                    // Format dan kirim hasil
-                    const profileMsg = formatOtherUserProfile(profile);
-                    await sendChatMessage(bot, `@${senderName}\n${profileMsg}`, msg.id);
-                    
-                    // Tambah XP jika berhasil
-                    if (!profile.error) {
-                        await addXP(senderName, 5);
-                    }
-                } catch(e) {
-                    console.error("[CEK PROFIL ERROR]", e);
-                    await sendChatMessage(bot, `@${senderName} Gagal mengecek profil user. Coba lagi nanti ya.`, msg.id);
-                }
-                continue;
-            }
-
-            if (lowerMsg === '.rank' || lowerMsg === '.leaderboard') {
-                if (bot.isCooldown) continue;
-                try {
-                    const res = await db.execute("SELECT username, level, xp FROM user_stats ORDER BY xp DESC LIMIT 10");
-                    let rankMsg = [
-                        `-- LEADERBOARD --`,
-                        `Top 10 Pemain Animein`,
-                        `--------------------`
-                    ];
-                    res.rows.forEach((r, i) => {
-                        const rankNum = i + 1;
-                        const displayName = r.username.length > 10 ? r.username.substring(0, 10) : r.username;
-                        rankMsg.push(`#${rankNum} ${displayName.padEnd(11)} Lvl ${r.level.toString().padEnd(2)} (${r.xp.toLocaleString('id-ID')} XP)`);
-                    });
-                    await sendChatMessage(bot, rankMsg.join('\n'), msg.id);
-                } catch(e) {}
-                continue;
-            }
-
-            if (lowerMsg === '.kuis' || lowerMsg === '.kius') {
-                if (bot.isCooldown) continue;
-                if (activeQuiz.isRunning) {
-                    await sendChatMessage(bot, `📌 @${senderName} Kuis sedang berlangsung! Ketik .tebak [jawaban] untuk menjawab.`, msg.id);
-                } else {
-                    const diff = nextQuizTime - Date.now();
-                    if (diff <= 0) {
-                         await sendChatMessage(bot, `🔄 @${senderName} Kuis sedang disiapkan, tunggu sebentar ya!`, msg.id);
-                    } else {
-                        const hours = Math.floor(diff / 3600000);
-                        const minutes = Math.floor((diff % 3600000) / 60000);
-                        const seconds = Math.floor((diff % 60000) / 1000);
-                        const kuisMsg = [
-                            `-- INFO KUIS --`,
-                            `User : @${senderName.substring(0, 15)}`,
-                            `--------------------`,
-                            `Kuis selanjutnya dalam:`,
-                            `${hours}j ${minutes}m ${seconds}s`
-                        ].join('\n');
-                        await sendChatMessage(bot, kuisMsg, msg.id);
-                    }
-                }
-                continue;
-            }
-
-            if (lowerMsg === '.meta') {
-                if (bot.isCooldown) continue;
-                try {
-                    const meta = await fetchBattleMeta(bot, CONFIG, recordPath);
-                    const metaMsg = formatMetaMessage(meta);
-                    await sendChatMessage(bot, `@${senderName}\n${metaMsg}`, msg.id);
-                } catch (e) {
-                    console.error("[META ERROR]", e);
-                    await sendChatMessage(bot, `@${senderName} Gagal mengambil data meta battle. Coba lagi nanti.`, msg.id);
-                }
-                continue;
-            }
-
-            if (lowerMsg === '.kombo' || lowerMsg === '.combo') {
-                if (bot.isCooldown) continue;
-                try {
-                    let targetId = senderUserId;
-                    if (!targetId) {
-                        const targetProfile = await fetchOtherUserProfile(senderName, bot, CONFIG, recordPath, isAnimeinApiBlocked);
-                        targetId = targetProfile?.raw?.id_user || targetProfile?.raw?.user_id || targetProfile?.raw?.id;
-                    }
-                    
-                    if (!targetId) {
-                        await sendChatMessage(bot, `@${senderName} Gagal mendeteksi User ID kamu. Pastikan akun kamu terdaftar di Animein.`, msg.id);
-                        continue;
-                    }
-                    
-                    const comboMsg = await getPokemonComboMessage(bot, senderName, targetId, CONFIG, recordPath, pokemonData);
-                    await sendChatMessage(bot, comboMsg, msg.id);
-                } catch (e) {
-                    console.error("[KOMBO ERROR]", e);
-                    await sendChatMessage(bot, `@${senderName} Gagal memproses kombo Pokemon kamu. Coba lagi nanti ya.`, msg.id);
-                }
-                continue;
-            }
+            const kuisCommandContext = {
+                bot,
+                msg,
+                senderName,
+                senderUserId,
+                cleanMsg,
+                lowerMsg,
+                db,
+                CONFIG,
+                recordPath,
+                pokemonData,
+                animeinClient,
+                sendChatMessage,
+                checkCommandLimit,
+                incrementCommandUsage,
+                fetchOtherUserProfile,
+                isAnimeinApiBlocked,
+                getPokemonComboMessage,
+                fetchBattleMeta,
+                formatMetaMessage,
+                userRepo,
+                fmtXP,
+                padVisual,
+                activeQuiz,
+                getGelar,
+                getImageLimitStatus,
+                IMAGE_DAILY_LIMIT_DEFAULT,
+                handleError,
+                stats,
+                logEmitter,
+                getShopMessage,
+                shopRepo,
+                buyItem,
+                addXP,
+                USER_STATS_CACHE,
+                limitRepo,
+                getJakartaDateKey,
+                bots,
+                formatOtherUserProfile,
+                durationMs: QUIZ_DURATION_MS,
+                expireQuiz,
+                clearQuizTimers,
+                trackQuizStat,
+                trackStreak,
+                levenshtein,
+                XP_MULTIPLIER,
+                getItemCount,
+                useItem,
+                buildHintMessage,
+                get nextQuizTime() { return nextQuizTime; },
+            };
+            if (await commands.handleKuisCommand(kuisCommandContext)) continue;
             
             // Bot kuis mengabaikan semua pesan lain agar tidak berisik
             continue;
@@ -3497,141 +2723,63 @@ async function processMessages(bot, messages) {
 
         // AKUN GAMBAR (AnimeinIMG): Khusus memproses command .gambar
         if (bot.role === 'image') {
-            if (!isImageCommandActive) continue;
-            if (!lowerMsg.startsWith('.gambar')) continue;
-
-            const imageQuery = cleanMsg.replace(/^\.gambar\s*/i, '').trim();
-            if (!imageQuery) {
-                await sendChatMessage(bot, `@${senderName} Tulis kata kunci setelah .gambar\nContoh: .gambar yanami`, msg.id);
-                continue;
-            }
-
-            const now = Date.now();
-            const remainingMs = IMAGE_COMMAND_COOLDOWN_MS - (now - lastImageCommandAt);
-            if (remainingMs > 0) {
-                console.log(`[GAMBAR] Cooldown aktif, request dari ${senderName} diabaikan.`);
-                continue;
-            }
-
-            try {
-                const limitStatus = await getImageLimitStatus(senderName);
-                if (limitStatus.remaining <= 0) {
-                    await sendChatMessage(bot, `@${senderName} Limit gambar harian kamu sudah habis (${limitStatus.used}/${limitStatus.limit}). Coba lagi besok ya.`, msg.id);
-                    continue;
-                }
-            } catch (e) {
-                console.warn('[GAMBAR] Gagal cek limit harian:', e.message.slice(0, 120));
-                await sendChatMessage(bot, `❌ @${senderName} Rara gagal cek limit gambar kamu. Coba lagi nanti ya.`, msg.id);
-                continue;
-            }
-
-            try {
-                const imageUrl = await fetchPinterestImage(imageQuery);
-                const imageData = await downloadImageAsBase64(imageUrl);
-                const caption = `@${senderName} Ini gambar untuk: ${imageQuery}`;
-                const sent = await sendChatWithImage(bot, imageData, caption, msg.id);
-
-                if (!sent) {
-                    await sendChatMessage(bot, `❌ @${senderName} Gambarnya ketemu, tapi gagal dikirim ke chat. Coba lagi nanti ya.`, msg.id);
-                } else {
-                    lastImageCommandAt = Date.now();
-                    const usage = await incrementImageLimitUsage(senderName);
-                    addActivity('image', senderName, `${imageQuery} (${usage.used}/${usage.limit})`, imageUrl, 'PinterestAPI', 0);
-                    await addXP(senderName, 500);
-                    trackImageRequest(senderName);
-                    trackStreak(senderName);
-                }
-            } catch (e) {
-                console.warn('[GAMBAR] Gagal proses .gambar:', e.message.slice(0, 120));
-                await sendChatMessage(bot, `❌ @${senderName} Maaf, gambar "${imageQuery}" belum bisa diambil. Coba keyword lain ya.`, msg.id);
-            }
+            const imageCommandContext = {
+                bot,
+                msg,
+                senderName,
+                cleanMsg,
+                lowerMsg,
+                sendChatMessage,
+                isImageCommandActive,
+                getLastImageCommandAt: () => lastImageCommandAt,
+                setLastImageCommandAt: (value) => { lastImageCommandAt = value; },
+                imageCommandCooldownMs: IMAGE_COMMAND_COOLDOWN_MS,
+                getImageLimitStatus,
+                fetchPinterestImage,
+                downloadImageToTempFile,
+                sendChatWithImage,
+                incrementImageLimitUsage,
+                addActivity,
+                addXP,
+                trackImageRequest,
+                trackStreak,
+                cleanupTempImage,
+            };
+            if (await commands.handleImageCommand(imageCommandContext)) continue;
             continue;
         }
         
         // AKUN INFO (AnimeinAI): Memproses AI, AutoReply, dan Lapor
         if (bot.role === 'info') {
-            // Cek Lapor
-            if (lowerMsg.startsWith('.lapor')) {
-                let isiLaporan = cleanMsg.substring(6).trim();
-                if (!isiLaporan) {
-                    await sendChatMessage(bot, `🔰 @${senderName} Tulis laporan kamu setelah .lapor\nContoh: .lapor link rusak episode 5`, msg.id);
-                } else {
-                    try {
-                        await db.execute({ sql: 'INSERT INTO laporan (username, pesan) VALUES (?, ?)', args: [senderName, isiLaporan] });
-                        console.log(`[LAPORAN] ${senderName}: ${isiLaporan}`);
-                        await sendChatMessage(bot, `✅ @${senderName} Laporan diterima! Terima kasih informasinya.`, msg.id);
-                    } catch (e) {
-                        await sendChatMessage(bot, `❌ @${senderName} Gagal menyimpan laporan. Coba lagi nanti.`, msg.id);
-                    }
-                }
-                continue;
-            }
-
             // Abaikan command kuis agar tidak dobel respons
-            if (lowerMsg.startsWith('.tebak ') || lowerMsg === '.hint' || 
-                lowerMsg === '.kuis' || lowerMsg === '.game' || 
-                lowerMsg === '.profil' || lowerMsg === '.rank' ||
-                lowerMsg.startsWith('.gambar') || lowerMsg === '.shop' ||
-                lowerMsg === '.toko' || lowerMsg.startsWith('.beli ') ||
-                lowerMsg.startsWith('.help') || lowerMsg === '.leaderboard' ||
-                lowerMsg === '.kombo' || lowerMsg === '.combo' ||
-                lowerMsg === '.meta') {
+            if (commandRouter.resolve(lowerMsg)) {
                 continue;
             }
 
-            if (lowerMsg === '.menu') {
-                const menu = [
-                    `-- DAFTAR MENU --`,
-                    `1. Panggil Rara : .ai / .rara`,
-                    `2. Laporan      : .lapor [pesan]`,
-                    `3. Cek Profil   : .profil`,
-                    `4. Cek User     : .cek @username`,
-                    `5. Peringkat    : .rank`,
-                    `6. Bantuan      : .help [topik]`,
-                    `7. Toko         : .shop`,
-                    `8. Beli Item    : .beli [nomor]`,
-                    `9. Kombo Team  : .kombo`,
-                    `10. Meta Battle : .meta`,
-                    `--------------------`,
-                    `Chatting = +XP`,
-                ].join('\n');
-                await sendChatMessage(bot, `@${senderName}\n${menu}`, msg.id);
-                continue;
-            }
+            const infoCommandContext = {
+                bot,
+                msg,
+                senderName,
+                cleanMsg,
+                lowerMsg,
+                sendChatMessage,
+                checkCommandLimit,
+                incrementCommandUsage,
+                reportRepo,
+                wrapInBox,
+                ANIMEIN_KNOWLEDGE,
+            };
+            if (await commands.handleInfoCommand(infoCommandContext)) continue;
 
-            if (bot.isCooldown) continue;
-            if (!isMentioned(msgText)) continue;
-            
-            const triggerRegex = new RegExp(`\\.ai|ai\\.|\\.rara|rara\\.|@AnimeinAi|@${bot.username}`, 'gi');
-            const cleanText = msgText.replace(triggerRegex, '').trim();
-            
-            // Auto Reply
-            const matchedAuto = AUTO_REPLY.find(a => cleanText.toLowerCase().includes(a.keyword.toLowerCase()));
-            if (matchedAuto) {
-                await sendChatMessage(bot, `@${senderName} ${matchedAuto.answer}`, msg.id);
-                addActivity('text', senderName, cleanText, matchedAuto.answer, 'AutoReply', 0);
-                await addXP(senderName, 5); 
-                continue;
-            }
-            
-            if (containsProfanity(cleanText)) {
-                stats.filter.blocked++;
-                await sendChatMessage(bot, `🚨 @${senderName} ${FILTER_DATA.response}`, msg.id);
-                addActivity('blocked', senderName, cleanText, FILTER_DATA.response, 'Filter');
-                continue;
-            }
+            const aiMessageContext = {
+                bot,
+                msg,
+                msgText,
+                senderName,
+                senderUserId,
+            };
+            if (await aiService.handleInfoMessage(aiMessageContext)) continue;
 
-            { // Blok AI
-                console.log(`[TRIGGER-AI] ${senderName}: ${msgText}`);
-                stats.totalTriggers++;
-                const question = cleanText || 'panggil rara?';
-                const { text: aiText, provider, tokens } = await getAIResponse(question, senderName, !!msg.replay_text, senderUserId);
-                await sendChatMessage(bot, `@${senderName} ${aiText}`, msg.id);
-                addActivity('text', senderName, question, aiText, provider, tokens);
-                await addXP(senderName, 10);
-                trackStreak(senderName);
-                saveChatLog(senderName, question, aiText, provider, tokens);
-            }
         }
     }
 }
@@ -3767,6 +2915,10 @@ const runtimeState = {
     set CUSTOM_DOMAINS(value) { CUSTOM_DOMAINS = value; },
     get AUTO_REPLY() { return AUTO_REPLY; },
     set AUTO_REPLY(value) { AUTO_REPLY = value; },
+    get CMD_DAILY_LIMIT_DEFAULT() { return CMD_DAILY_LIMIT_DEFAULT; },
+    set CMD_DAILY_LIMIT_DEFAULT(value) { CMD_DAILY_LIMIT_DEFAULT = value; },
+    get IMAGE_DAILY_LIMIT_DEFAULT() { return IMAGE_DAILY_LIMIT_DEFAULT; },
+    set IMAGE_DAILY_LIMIT_DEFAULT(value) { IMAGE_DAILY_LIMIT_DEFAULT = value; },
 };
 
 startDashboard({
@@ -3789,7 +2941,12 @@ startDashboard({
     fetchHomeAnime,
     clearQuizTimers,
     getImageLimitStatus,
-    IMAGE_DAILY_LIMIT_DEFAULT,
+    checkCommandLimit,
+    reportRepo,
+    cacheRepo,
+    chatRepo,
+    statsRepo,
     login,
 });
 startBot();
+

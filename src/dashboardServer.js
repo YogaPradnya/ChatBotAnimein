@@ -1,17 +1,17 @@
 const express = require('express');
 const path = require('path');
 const crypto = require('crypto');
-const axios = require('axios');
+const axios = require('./httpClient');
 const { getDashboardHTML, getLoginHTML } = require('../dashboard.js');
+const { SESSION, RATE_LIMIT, LIMITS } = require('./config/constants');
 
-// Session storage dengan TTL (24 jam)
-const SESSIONS = new Map(); // token -> { createdAt: number }
-const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 jam
+const SESSION_TTL_MS = SESSION.TTL_MS; // 24 jam
+const SESSIONS = new Map();
 
 // Rate limiting sederhana (60 req/menit per IP)
 const RATE_LIMITS = new Map(); // ip -> { count, resetAt }
-const RATE_LIMIT_WINDOW_MS = 60 * 1000;
-const RATE_LIMIT_MAX_REQUESTS = 60;
+const RATE_LIMIT_WINDOW_MS = RATE_LIMIT.WINDOW_MS;
+const RATE_LIMIT_MAX_REQUESTS = RATE_LIMIT.MAX_REQUESTS;
 
 function isSessionValid(token) {
     if (!SESSIONS.has(token)) return false;
@@ -43,7 +43,7 @@ setInterval(() => {
     for (const [ip, entry] of RATE_LIMITS.entries()) {
         if (now > entry.resetAt) RATE_LIMITS.delete(ip);
     }
-}, 10 * 60 * 1000);
+}, SESSION.CLEANUP_INTERVAL_MS);
 
 function createRuntime(scope) {
     const { state } = scope;
@@ -88,7 +88,15 @@ function createRuntime(scope) {
         set AUTO_REPLY(value) { state.AUTO_REPLY = value; },
         get logEmitter() { return state.logEmitter; },
         get getImageLimitStatus() { return scope.getImageLimitStatus; },
-        get IMAGE_DAILY_LIMIT_DEFAULT() { return scope.IMAGE_DAILY_LIMIT_DEFAULT; },
+        get IMAGE_DAILY_LIMIT_DEFAULT() { return state.IMAGE_DAILY_LIMIT_DEFAULT; },
+        set IMAGE_DAILY_LIMIT_DEFAULT(value) { state.IMAGE_DAILY_LIMIT_DEFAULT = value; },
+        get CMD_DAILY_LIMIT_DEFAULT() { return state.CMD_DAILY_LIMIT_DEFAULT; },
+        set CMD_DAILY_LIMIT_DEFAULT(value) { state.CMD_DAILY_LIMIT_DEFAULT = value; },
+        get checkCommandLimit() { return scope.checkCommandLimit; },
+        get reportRepo() { return scope.reportRepo; },
+        get cacheRepo() { return scope.cacheRepo; },
+        get chatRepo() { return scope.chatRepo; },
+        get statsRepo() { return scope.statsRepo; },
         get login() { return scope.login; },
     };
 }
@@ -330,8 +338,22 @@ function startDashboard(scope) {
     // --- BAN MANAGEMENT ---
     app.get('/api/quiz/banned', async (req, res) => {
         try {
-            const rows = await db.execute("SELECT username, reason, banned_at FROM quiz_banned ORDER BY banned_at DESC");
-            res.json({ success: true, banned: rows.rows });
+            const q = String(req.query.q || '').replace(/^@/, '').trim();
+            const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+            const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 30));
+            const offset = (page - 1) * limit;
+
+            const whereSql = q ? " WHERE username LIKE ?" : "";
+            const args = q ? [`%${q}%`] : [];
+
+            const countRes = await db.execute({ sql: `SELECT COUNT(*) as total FROM quiz_banned${whereSql}`, args });
+            const total = Number(countRes.rows[0]?.total || 0);
+
+            const rows = await db.execute({
+                sql: `SELECT username, reason, banned_at FROM quiz_banned${whereSql} ORDER BY banned_at DESC LIMIT ? OFFSET ?`,
+                args: [...args, limit, offset]
+            });
+            res.json({ success: true, banned: rows.rows, pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) }, q });
         } catch(e) {
             res.json({ success: false, message: e.message });
         }
@@ -506,7 +528,7 @@ function startDashboard(scope) {
             const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).toISOString().slice(0, 10);
             const q = String(req.query.q || '').replace(/^@/, '').trim();
             const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-            const limit = Math.min(35, Math.max(1, parseInt(req.query.limit, 10) || 35));
+            const limit = Math.min(10, Math.max(1, parseInt(req.query.limit, 10) || LIMITS.DASHBOARD_PAGE_SIZE));
             const offset = (page - 1) * limit;
             const whereSql = q ? " WHERE username LIKE ?" : "";
             const args = q ? [`%${q}%`] : [];
@@ -589,6 +611,161 @@ function startDashboard(scope) {
         }
     });
 
+    // --- GLOBAL LIMIT SETTINGS ---
+    app.get('/api/limits/global', async (req, res) => {
+        try {
+            const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).toISOString().slice(0, 10);
+            const cmdUserCount = await db.execute("SELECT COUNT(*) as total FROM command_limits");
+            const imgUserCount = await db.execute("SELECT COUNT(*) as total FROM image_limits");
+            res.json({
+                success: true,
+                date: today,
+                cmdDefaultLimit: CMD_DAILY_LIMIT_DEFAULT,
+                imgDefaultLimit: IMAGE_DAILY_LIMIT_DEFAULT,
+                cmdUserCount: Number(cmdUserCount.rows[0]?.total || 0),
+                imgUserCount: Number(imgUserCount.rows[0]?.total || 0),
+            });
+        } catch (e) {
+            res.status(500).json({ success: false, message: e.message });
+        }
+    });
+
+    app.post('/api/limits/global/update', async (req, res) => {
+        const { cmdDefaultLimit, imgDefaultLimit } = req.body;
+        try {
+            if (cmdDefaultLimit !== undefined) {
+                const val = parseInt(cmdDefaultLimit, 10);
+                if (isNaN(val) || val < 0) return res.status(400).json({ success: false, message: 'Limit CMD harus angka valid.' });
+                CMD_DAILY_LIMIT_DEFAULT = val;
+                await db.execute({
+                    sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('cmd_daily_limit_default', ?)",
+                    args: [String(val)]
+                });
+            }
+            if (imgDefaultLimit !== undefined) {
+                const val = parseInt(imgDefaultLimit, 10);
+                if (isNaN(val) || val < 0) return res.status(400).json({ success: false, message: 'Limit Gambar harus angka valid.' });
+                IMAGE_DAILY_LIMIT_DEFAULT = val;
+                await db.execute({
+                    sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('image_daily_limit_default', ?)",
+                    args: [String(val)]
+                });
+            }
+            console.log(`[DASHBOARD] Global limit updated -> CMD: ${CMD_DAILY_LIMIT_DEFAULT}/hari, IMG: ${IMAGE_DAILY_LIMIT_DEFAULT}/hari`);
+            res.json({ success: true, cmdDefaultLimit: CMD_DAILY_LIMIT_DEFAULT, imgDefaultLimit: IMAGE_DAILY_LIMIT_DEFAULT });
+        } catch (e) {
+            res.status(500).json({ success: false, message: e.message });
+        }
+    });
+
+    // --- COMMAND LIMITS PER USER ---
+    app.get('/api/limits/commands', async (req, res) => {
+        try {
+            const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).toISOString().slice(0, 10);
+            const q = String(req.query.q || '').replace(/^@/, '').trim();
+            const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+            const limit = Math.min(10, Math.max(1, parseInt(req.query.limit, 10) || LIMITS.DASHBOARD_PAGE_SIZE));
+            const offset = (page - 1) * limit;
+            const whereSql = q ? " WHERE username LIKE ?" : "";
+            const args = q ? [`%${q}%`] : [];
+
+            const countRes = await db.execute({
+                sql: `SELECT COUNT(*) as total FROM command_limits${whereSql}`,
+                args
+            });
+            const total = Number(countRes.rows[0]?.total || 0);
+
+            const rows = await db.execute({
+                sql: `SELECT username, usage_date, used_count, extra_limit, updated_at FROM command_limits${whereSql} ORDER BY updated_at DESC, username ASC LIMIT ? OFFSET ?`,
+                args: [...args, limit, offset]
+            });
+
+            const data = rows.rows.map(row => {
+                let used = Number(row.used_count || 0);
+                let extra = Number(row.extra_limit || 0);
+                let usageDate = row.usage_date || today;
+                // Reset jika tanggal sudah lewat
+                if (usageDate !== today) {
+                    used = 0;
+                    extra = 0;
+                }
+                const totalLimit = CMD_DAILY_LIMIT_DEFAULT + extra;
+                return {
+                    username: row.username,
+                    usage_date: usageDate,
+                    used_count: used,
+                    base_limit: CMD_DAILY_LIMIT_DEFAULT,
+                    extra_limit: extra,
+                    total_limit: totalLimit,
+                    remaining: Math.max(0, totalLimit - used),
+                    updated_at: row.updated_at,
+                };
+            });
+
+            res.json({ success: true, date: today, defaultLimit: CMD_DAILY_LIMIT_DEFAULT, data, pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) }, q });
+        } catch (e) {
+            res.status(500).json({ success: false, message: e.message });
+        }
+    });
+
+    app.post('/api/limits/commands/update', async (req, res) => {
+        const username = String(req.body.username || '').replace(/^@/, '').trim();
+        const extraLimit = parseInt(req.body.extraLimit, 10);
+        const usedCountRaw = req.body.usedCount;
+        if (!username || Number.isNaN(extraLimit) || extraLimit < 0) {
+            return res.status(400).json({ success: false, message: 'Username dan extra limit wajib valid.' });
+        }
+
+        try {
+            const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).toISOString().slice(0, 10);
+            let usedCount = 0;
+            // Ambil data existing
+            const existing = await db.execute({ sql: "SELECT usage_date, used_count FROM command_limits WHERE username = ?", args: [username] });
+            if (existing.rows.length > 0 && existing.rows[0].usage_date === today) {
+                usedCount = Number(existing.rows[0].used_count || 0);
+            }
+            if (usedCountRaw !== undefined && usedCountRaw !== '') {
+                const parsed = parseInt(usedCountRaw, 10);
+                if (Number.isNaN(parsed) || parsed < 0) return res.status(400).json({ success: false, message: 'Terpakai wajib angka valid.' });
+                usedCount = parsed;
+            }
+
+            await db.execute({
+                sql: `INSERT INTO command_limits (username, usage_date, used_count, extra_limit)
+                      VALUES (?, ?, ?, ?)
+                      ON CONFLICT(username) DO UPDATE SET
+                      usage_date = excluded.usage_date,
+                      used_count = excluded.used_count,
+                      extra_limit = excluded.extra_limit,
+                      updated_at = CURRENT_TIMESTAMP`,
+                args: [username, today, usedCount, extraLimit]
+            });
+            const totalLimit = CMD_DAILY_LIMIT_DEFAULT + extraLimit;
+            const remaining = Math.max(0, totalLimit - usedCount);
+            console.log(`[DASHBOARD] Limit cmd @${username}: ${usedCount}/${totalLimit} (extra: ${extraLimit}, sisa: ${remaining})`);
+            res.json({ success: true, data: { username, usage_date: today, used_count: usedCount, extra_limit: extraLimit, total_limit: totalLimit, remaining } });
+        } catch (e) {
+            res.status(500).json({ success: false, message: e.message });
+        }
+    });
+
+    app.post('/api/limits/commands/reset', async (req, res) => {
+        const username = String(req.body.username || '').replace(/^@/, '').trim();
+        if (!username) return res.status(400).json({ success: false, message: 'Username wajib diisi.' });
+
+        try {
+            const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).toISOString().slice(0, 10);
+            await db.execute({
+                sql: "UPDATE command_limits SET usage_date = ?, used_count = 0, extra_limit = 0, updated_at = CURRENT_TIMESTAMP WHERE username = ?",
+                args: [today, username]
+            });
+            console.log(`[DASHBOARD] Pemakaian cmd @${username} direset.`);
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ success: false, message: e.message });
+        }
+    });
+
     app.post('/api/system/toggle', async (req, res) => {
         isSystemOff = !isSystemOff;
         stats.botStatus = isSystemOff ? 'offline' : 'online';
@@ -633,7 +810,12 @@ function startDashboard(scope) {
         const botName = targetBot ? targetBot.username : 'Unknown';
         
         console.log(`[DASHBOARD] Manual Send via ${botName}: ${text}`);
-        await sendChatMessage(targetBot, text);
+        const sent = await sendChatMessage(targetBot, text);
+        if (!sent) {
+            console.warn(`[DASHBOARD] Manual Send gagal via ${botName}.`);
+            return res.status(500).json({ success: false, message: `Pesan gagal dikirim via ${botName}. Cek auth/API Animein.` });
+        }
+
         addActivity('manual', 'Admin', '-', text, `Dashboard (${botName})`);
         res.json({ success: true, via: botName });
     });
@@ -667,7 +849,7 @@ function startDashboard(scope) {
 
     app.post('/api/cache/clear', async (req, res) => {
         try {
-            const result = await db.execute("DELETE FROM response_cache");
+            const result = await cacheRepo.clearCache();
             const deleted = result.rowsAffected || 0;
             stats.cacheHits = 0;
             stats.cacheTotal = 0;
@@ -680,7 +862,7 @@ function startDashboard(scope) {
 
     app.get('/api/cache/list', async (req, res) => {
         try {
-            const result = await db.execute("SELECT * FROM response_cache ORDER BY created_at DESC");
+            const result = await cacheRepo.listCache();
             const data = result.rows.map(r => {
                 let vCount = 0;
                 try {
@@ -704,7 +886,7 @@ function startDashboard(scope) {
     app.get('/api/cache/get', async (req, res) => {
         try {
             const { id } = req.query;
-            const result = await db.execute({ sql: "SELECT * FROM response_cache WHERE id = ?", args: [id] });
+            const result = await cacheRepo.getCacheById(id);
             if (result.rows.length === 0) return res.status(404).json({ success: false });
             
             // Dashboard expects answer_json instead of answer
@@ -718,10 +900,7 @@ function startDashboard(scope) {
     app.post('/api/cache/update', async (req, res) => {
         try {
             const { id, key, answer, domain } = req.body; // Dashboard sends 'key'
-            await db.execute({
-                sql: "UPDATE response_cache SET question_key = ?, answer = ?, domain = ? WHERE id = ?",
-                args: [key, answer, domain, id]
-            });
+            await cacheRepo.updateCacheById(id, key, answer, domain);
             res.json({ success: true });
         } catch (e) {
             res.status(500).json({ success: false, error: e.message });
@@ -731,10 +910,7 @@ function startDashboard(scope) {
     app.post('/api/cache/delete', async (req, res) => {
         try {
             const { id } = req.body;
-            await db.execute({
-                sql: "DELETE FROM response_cache WHERE id = ?",
-                args: [id]
-            });
+            await cacheRepo.deleteCacheById(id);
             res.json({ success: true });
         } catch (e) {
             res.status(500).json({ success: false, error: e.message });
@@ -987,7 +1163,7 @@ function startDashboard(scope) {
 
     app.get('/api/laporan', async (req, res) => {
         try {
-            const result = await db.execute('SELECT * FROM laporan ORDER BY id DESC LIMIT 100');
+            const result = await reportRepo.listReports(100);
             res.json({ success: true, laporan: result.rows });
         } catch (e) {
             res.json({ success: false, error: e.message });
@@ -997,7 +1173,7 @@ function startDashboard(scope) {
     app.post('/api/laporan/status', async (req, res) => {
         const { id, status } = req.body;
         try {
-            await db.execute({ sql: 'UPDATE laporan SET status = ? WHERE id = ?', args: [status, id] });
+            await reportRepo.updateReportStatus(id, status);
             res.json({ success: true });
         } catch (e) {
             res.json({ success: false, error: e.message });
@@ -1007,7 +1183,7 @@ function startDashboard(scope) {
     app.post('/api/laporan/delete', async (req, res) => {
         const { id } = req.body;
         try {
-            await db.execute({ sql: 'DELETE FROM laporan WHERE id = ?', args: [id] });
+            await reportRepo.deleteReport(id);
             res.json({ success: true });
         } catch (e) {
             res.json({ success: false, error: e.message });
@@ -1016,7 +1192,7 @@ function startDashboard(scope) {
 
     app.post('/api/laporan/delete-all', async (req, res) => {
         try {
-            await db.execute('DELETE FROM laporan');
+            await reportRepo.deleteAllReports();
             res.json({ success: true });
         } catch (e) {
             res.json({ success: false, error: e.message });

@@ -3,11 +3,13 @@
  * User bisa menukar XP untuk item: custom title, free hint, extra image limit.
  */
 
+const { createShopRepo } = require('./database/shopRepo');
+
 const SHOP_ITEMS = [
     {
         id: 1,
         name: 'Custom Title',
-        description: 'Pilih gelar kustom dari daftar tersedia',
+        description: 'Pilih gelar kustom',
         price: 5000,
         type: 'custom_title',
         consumable: false,
@@ -15,7 +17,7 @@ const SHOP_ITEMS = [
     {
         id: 2,
         name: 'Hint Pack (x3)',
-        description: '3 hint gratis untuk kuis (tanpa potong XP)',
+        description: '3 hint gratis kuis',
         price: 300,
         type: 'free_hint',
         consumable: true,
@@ -24,53 +26,60 @@ const SHOP_ITEMS = [
     {
         id: 3,
         name: 'Extra Gambar (+3)',
-        description: '+3 limit gambar tambahan hari ini',
+        description: '+3 limit gambar',
         price: 1500,
         type: 'extra_image',
         consumable: true,
         quantity: 3,
     },
+    {
+        id: 4,
+        name: 'Extra Limit (+1)',
+        description: '+1 limit hari ini',
+        price: 1000,
+        type: 'extra_cmd_limit',
+        consumable: true,
+        quantity: 1,
+    },
 ];
+
+function resolveShopRepo(repoOrDb) {
+    if (repoOrDb && typeof repoOrDb.getItemCount === 'function' && typeof repoOrDb.addItem === 'function') {
+        return repoOrDb;
+    }
+    return createShopRepo(repoOrDb);
+}
 
 function getShopMessage() {
     const lines = [
-        `-- TOKO RARA --`,
-        `--------------------`,
+        `┌── 🛒 TOKO RARA ──────`,
+        `├───────────────────`,
     ];
     SHOP_ITEMS.forEach(item => {
-        lines.push(`${item.id}. ${item.name} - ${item.price.toLocaleString('id-ID')} XP`);
-        lines.push(`   ${item.description}`);
+        const p = item.price.toLocaleString('id-ID');
+        lines.push(`│ ${item.id}. ${item.name}`);
+        lines.push(`│   ${p} XP`);
+        lines.push(`│   ${item.description}`);
     });
-    lines.push(`--------------------`);
-    lines.push(`Ketik .beli [nomor]`);
-    lines.push(`Contoh: .beli 2`);
+    lines.push(`├───────────────────`);
+    lines.push(`│ .beli [nomor]`);
+    lines.push(`│ Cth: .beli 2`);
+    lines.push(`└──────────────────────`);
     return lines.join('\n');
 }
 
-async function initShopTables(db) {
-    await db.execute(`
-        CREATE TABLE IF NOT EXISTS user_inventory (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT NOT NULL,
-            item_type TEXT NOT NULL,
-            item_value TEXT DEFAULT '',
-            quantity INTEGER DEFAULT 0,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    `);
-    // Unique constraint per user per item_type agar bisa di-upsert
-    await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_user_type ON user_inventory (username, item_type)`);
+async function initShopTables(repoOrDb) {
+    const shopRepo = resolveShopRepo(repoOrDb);
+    await shopRepo.initTables();
 }
 
 /**
  * Dapatkan jumlah item tertentu yang dimiliki user.
  */
-async function getItemCount(db, username, itemType) {
+async function getItemCount(repoOrDb, username, itemType) {
+    const shopRepo = resolveShopRepo(repoOrDb);
     try {
-        const res = await db.execute({
-            sql: "SELECT quantity FROM user_inventory WHERE username = ? AND item_type = ?",
-            args: [username, itemType]
-        });
+        const res = await shopRepo.getItemCount(username, itemType);
         return res.rows.length > 0 ? Number(res.rows[0].quantity) : 0;
     } catch (e) {
         console.warn(`[SHOP] Gagal cek inventory ${username}/${itemType}:`, e.message);
@@ -81,15 +90,10 @@ async function getItemCount(db, username, itemType) {
 /**
  * Tambah item ke inventory user.
  */
-async function addItem(db, username, itemType, amount = 1, itemValue = '') {
+async function addItem(repoOrDb, username, itemType, amount = 1, itemValue = '') {
+    const shopRepo = resolveShopRepo(repoOrDb);
     try {
-        await db.execute({
-            sql: `INSERT INTO user_inventory (username, item_type, item_value, quantity, updated_at)
-                  VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-                  ON CONFLICT(username, item_type) DO UPDATE SET
-                  quantity = quantity + ?, item_value = CASE WHEN ? != '' THEN ? ELSE item_value END, updated_at = CURRENT_TIMESTAMP`,
-            args: [username, itemType, itemValue, amount, amount, itemValue, itemValue]
-        });
+        await shopRepo.addItem(username, itemType, amount, itemValue);
         return true;
     } catch (e) {
         console.warn(`[SHOP] Gagal tambah item ${itemType} ke ${username}:`, e.message);
@@ -101,14 +105,12 @@ async function addItem(db, username, itemType, amount = 1, itemValue = '') {
  * Gunakan (kurangi) item dari inventory.
  * Return true jika berhasil (item cukup), false jika gagal.
  */
-async function useItem(db, username, itemType, amount = 1) {
-    const current = await getItemCount(db, username, itemType);
+async function useItem(repoOrDb, username, itemType, amount = 1) {
+    const shopRepo = resolveShopRepo(repoOrDb);
+    const current = await getItemCount(shopRepo, username, itemType);
     if (current < amount) return false;
     try {
-        await db.execute({
-            sql: "UPDATE user_inventory SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP WHERE username = ? AND item_type = ?",
-            args: [amount, username, itemType]
-        });
+        await shopRepo.useItem(username, itemType, amount);
         return true;
     } catch (e) {
         console.warn(`[SHOP] Gagal gunakan item ${itemType} dari ${username}:`, e.message);
@@ -120,71 +122,68 @@ async function useItem(db, username, itemType, amount = 1) {
  * Proses pembelian item.
  * Mengembalikan { success, message, xpDeducted }.
  */
-async function buyItem(db, username, itemId, userXP, extraArgs = {}) {
+async function buyItem(repoOrDb, username, itemId, userXP, extraArgs = {}) {
+    const shopRepo = resolveShopRepo(repoOrDb);
     const item = SHOP_ITEMS.find(i => i.id === itemId);
     if (!item) {
-        return { success: false, message: 'Item tidak ditemukan. Ketik .shop untuk lihat daftar.' };
+        return { success: false, message: 'Item tidak ditemukan. Ketik .toko untuk lihat daftar.' };
     }
 
-    if (userXP < item.price) {
+    const quantity = extraArgs.quantity || 1;
+    if (quantity < 1) {
+        return { success: false, message: 'Jumlah pembelian minimal 1.' };
+    }
+
+    if (item.type === 'custom_title' && quantity > 1) {
+        return { success: false, message: 'Custom Title tidak bisa dibeli dalam jumlah banyak.' };
+    }
+
+    const totalPrice = item.price * quantity;
+    if (userXP < totalPrice) {
         return {
             success: false,
-            message: `XP kamu tidak cukup. Butuh ${item.price.toLocaleString('id-ID')} XP, kamu punya ${userXP.toLocaleString('id-ID')} XP.`
+            message: `XP kamu tidak cukup. Butuh ${totalPrice.toLocaleString('id-ID')} XP, kamu punya ${userXP.toLocaleString('id-ID')} XP.`
         };
     }
 
     // Handle custom title: perlu argumen title
     if (item.type === 'custom_title') {
-        const titleName = extraArgs.titleName;
+        const titleName = extraArgs.titleName ? extraArgs.titleName.trim() : '';
         if (!titleName) {
-            // Ambil daftar title yang tersedia
-            try {
-                const titleRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'available_titles'" });
-                const titles = titleRes.rows.length > 0 ? JSON.parse(titleRes.rows[0].value) : [];
-                if (titles.length === 0) {
-                    return { success: false, message: 'Belum ada custom title yang tersedia. Hubungi admin.' };
-                }
-                const titleList = titles.map((t, i) => `  ${i + 1}. ${t}`).join('\n');
-                return {
-                    success: false,
-                    message: `Pilih title yang kamu mau:\n${titleList}\n\nKetik: .beli 1 [nama title]\nContoh: .beli 1 ${titles[0]}`
-                };
-            } catch (e) {
-                return { success: false, message: 'Gagal mengambil daftar title.' };
-            }
+            return {
+                success: false,
+                message: `Ketik nama title yang kamu inginkan.\nContoh: .beli 1 Yogaa Ganteng`
+            };
         }
 
-        // Validasi title ada di daftar
+        if (titleName.length > 15) {
+            return {
+                success: false,
+                message: `Nama title terlalu panjang (maksimal 15 karakter).`
+            };
+        }
+
         try {
-            const titleRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'available_titles'" });
-            const titles = titleRes.rows.length > 0 ? JSON.parse(titleRes.rows[0].value) : [];
-            const matched = titles.find(t => t.toLowerCase() === titleName.toLowerCase());
-            if (!matched) {
-                return { success: false, message: `Title "${titleName}" tidak tersedia. Ketik .beli 1 untuk lihat daftar.` };
-            }
-
             // Set custom title langsung di user_stats
-            await db.execute({
-                sql: "INSERT INTO user_stats (username, xp, level, custom_title) VALUES (?, 0, 1, ?) ON CONFLICT(username) DO UPDATE SET custom_title = ?",
-                args: [username, matched, matched]
-            });
+            await shopRepo.setCustomTitle(username, titleName);
 
-            return { success: true, message: `Title berhasil diubah menjadi: ${matched}`, xpDeducted: item.price };
+            return { success: true, message: `Title berhasil diubah menjadi: ${titleName}`, xpDeducted: totalPrice };
         } catch (e) {
             return { success: false, message: 'Gagal memproses pembelian title.' };
         }
     }
 
     // Consumable items
-    const added = await addItem(db, username, item.type, item.quantity || 1);
+    const totalQuantity = (item.quantity || 1) * quantity;
+    const added = await addItem(shopRepo, username, item.type, totalQuantity);
     if (!added) {
         return { success: false, message: 'Gagal menambahkan item ke inventory.' };
     }
 
     return {
         success: true,
-        message: `Berhasil membeli ${item.name}! (+${item.quantity || 1} ${item.type})`,
-        xpDeducted: item.price,
+        message: `Berhasil membeli ${quantity}x ${item.name}! (+${totalQuantity} ${item.type})`,
+        xpDeducted: totalPrice,
     };
 }
 

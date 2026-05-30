@@ -1,34 +1,24 @@
-require('dotenv').config();
+const { ENV_CONFIG, warnMissingEnv } = require('./config/env');
 
 const CONFIG = {
-    BASE_URL: process.env.ANIMEIN_API_URL,
-    USERNAME: process.env.ANIMEIN_USERNAME,
-    KUIS_USERNAME: process.env.ANIMEIN_KUIS_USERNAME,
-    IMG_USERNAME: process.env.ANIMEIN_IMG_USERNAME,
-    PASSWORD: process.env.ANIMEIN_PASSWORD,
-
-    GROQ_KEYS: [
-        process.env.GROQ_API_KEY,
-        process.env.GROQ_API_KEY_2,
-        process.env.GROQ_API_KEY_3,
-        process.env.GROQ_API_KEY_4,
-        process.env.GROQ_API_KEY_5,
-        process.env.GROQ_API_KEY_6,
-        process.env.GROQ_API_KEY_7,
-        process.env.GROQ_API_KEY_8,
-        process.env.GROQ_API_KEY_9,
-        process.env.GROQ_API_KEY_10,
-        process.env.GROQ_API_KEY_11,
-        process.env.GROQ_API_KEY_12,
-        process.env.GROQ_API_KEY_13,
-        process.env.GROQ_API_KEY_14,
-        process.env.GROQ_API_KEY_15,
-    ].filter(Boolean),
-    POLL_INTERVAL: 9000,
-    DASHBOARD_PORT: process.env.PORT || 3500,
-    GROQ_COOLDOWN: 45 * 60 * 1000,
-    TURSO_URL: process.env.TURSO_URL,
-    TURSO_AUTH_TOKEN: process.env.TURSO_AUTH_TOKEN,
+    BASE_URL: ENV_CONFIG.ANIMEIN.BASE_URL,
+    USERNAME: ENV_CONFIG.ANIMEIN.USERNAME,
+    KUIS_USERNAME: ENV_CONFIG.ANIMEIN.KUIS_USERNAME,
+    IMG_USERNAME: ENV_CONFIG.ANIMEIN.IMG_USERNAME,
+    PASSWORD: ENV_CONFIG.ANIMEIN.PASSWORD,
+    AI_USER_ID: ENV_CONFIG.ANIMEIN.AI_USER_ID,
+    AI_KEY_CLIENT: ENV_CONFIG.ANIMEIN.AI_KEY_CLIENT,
+    KUIS_USER_ID: ENV_CONFIG.ANIMEIN.KUIS_USER_ID,
+    KUIS_KEY_CLIENT: ENV_CONFIG.ANIMEIN.KUIS_KEY_CLIENT,
+    IMG_USER_ID: ENV_CONFIG.ANIMEIN.IMG_USER_ID,
+    IMG_KEY_CLIENT: ENV_CONFIG.ANIMEIN.IMG_KEY_CLIENT,
+    PINTEREST_IMAGE_API_URL: ENV_CONFIG.PINTEREST.IMAGE_API_URL,
+    GROQ_KEYS: ENV_CONFIG.GROQ.KEYS,
+    POLL_INTERVAL: ENV_CONFIG.BOT.POLL_INTERVAL,
+    DASHBOARD_PORT: ENV_CONFIG.DASHBOARD.PORT,
+    GROQ_COOLDOWN: ENV_CONFIG.GROQ.COOLDOWN_MS,
+    TURSO_URL: ENV_CONFIG.DATABASE.TURSO_URL,
+    TURSO_AUTH_TOKEN: ENV_CONFIG.DATABASE.TURSO_AUTH_TOKEN,
 };
 
 const ANIMEIN_HEADERS = {
@@ -50,16 +40,7 @@ const ANIMEIN_HEADERS_FULL = {
 };
 
 function warnMissingConfig() {
-    const missing = [];
-    if (!CONFIG.BASE_URL) missing.push('ANIMEIN_API_URL');
-    if (!CONFIG.USERNAME) missing.push('ANIMEIN_USERNAME');
-    if (!CONFIG.KUIS_USERNAME) missing.push('ANIMEIN_KUIS_USERNAME');
-    if (!CONFIG.IMG_USERNAME) missing.push('ANIMEIN_IMG_USERNAME');
-    if (!CONFIG.GROQ_KEYS.length) missing.push('GROQ_API_KEY');
-
-    if (missing.length > 0) {
-        console.warn(`[CONFIG] Env belum lengkap: ${missing.join(', ')}`);
-    }
+    warnMissingEnv();
 }
 
 module.exports = { CONFIG, ANIMEIN_HEADERS, ANIMEIN_HEADERS_FULL, warnMissingConfig };

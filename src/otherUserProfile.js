@@ -1,4 +1,4 @@
-const axios = require('axios');
+const axios = require('./httpClient');
 
 function firstDefined(...values) {
     return values.find(value => value !== undefined && value !== null && value !== '');
@@ -203,14 +203,19 @@ async function fetchOtherUserProfile(username, bot, CONFIG, recordPath, isAnimei
         const data = envelopeData?.user || findProfilePayload(envelopeData) || envelopeData;
         console.log('[OTHER PROFILE] Raw keys:', Object.keys(data || {}).join(', ') || 'empty');
 
+        // Deteksi tipe akun: data_pro/pro = "0" (free), "1" (PRO), "2" (support)
+        const proValue = String(firstDefined(data?.data_pro, data?.pro) || '0');
+        const isPro = proValue === '1';
+        const isSupport = proValue === '2';
+
         const profile = {
             username: firstDefined(data?.username, data?.user_name, data?.name, targetName, cleanUsername),
             total_view: firstDefined(data?.views, data?.total_view, data?.profile_view, data?.view),
             total_love: firstDefined(data?.likes, data?.total_love, data?.total_like, data?.love, data?.like, data?.lopers),
             kontribusi: firstDefined(data?.contribs, data?.kontribusi, data?.contribution, data?.contrib),
             created_at: firstDefined(data?.date_join, data?.created_at, data?.join_date, data?.register_date, data?.tanggal_daftar),
-            is_pro: firstDefined(envelopeData?.pro, data?.is_pro, data?.pro, data?.data_pro === '1' ? true : undefined, data?.status_pro === true || data?.status_pro === 1 ? true : undefined),
-            is_support: firstDefined(data?.is_support, data?.support, data?.status_support === true || data?.status_support === 1 ? true : undefined),
+            is_pro: isPro,
+            is_support: isSupport,
             battle_point: firstDefined(data?.battle_point, data?.bp, data?.point),
             rank: firstDefined(data?.data_rank_battle, data?.rank, data?.battle_rank),
             medal_count: undefined,
@@ -269,58 +274,59 @@ async function fetchOtherUserProfile(username, bot, CONFIG, recordPath, isAnimei
  */
 function formatOtherUserProfile(profile) {
     if (profile.error) {
-        return `❌ ${profile.error}\nUsername: @${profile.username}`;
+        return `❌ ${profile.error}\n@${profile.username}`;
     }
 
+    const dn = (profile.username || '').substring(0, 10);
     const lines = [
-        `╭━━👤 *PROFIL USER* 👤━━╮`,
-        `┃ Username : @${profile.username}`,
-        `┣━━━━━━━━━━━━━━━━━━━┫`,
+        `┌── 👤 CEK USER ───────`,
+        `│ @${dn}`,
+        `├───────────────────`,
     ];
 
     const statusParts = [];
     if (profile.is_pro) statusParts.push('⭐ PRO');
-    if (profile.is_support) statusParts.push('💎 SUPPORT');
+    if (profile.is_support) statusParts.push('💎 SUP');
     if (statusParts.length > 0) {
-        lines.push(`┃ Status   : ${statusParts.join(' | ')}`);
+        lines.push(`│ ${statusParts.join(' | ')}`);
     }
 
     let hasStats = false;
     if (profile.total_view !== undefined) {
-        lines.push(`┃ 👁️ Views   : ${Number(profile.total_view).toLocaleString('id-ID')}`);
+        lines.push(`│ 👁️ View : ${Number(profile.total_view).toLocaleString('id-ID')}`);
         hasStats = true;
     }
     if (profile.total_love !== undefined) {
-        lines.push(`┃ ❤️ Love    : ${Number(profile.total_love).toLocaleString('id-ID')}`);
+        lines.push(`│ ❤️ Love : ${Number(profile.total_love).toLocaleString('id-ID')}`);
         hasStats = true;
     }
     if (profile.kontribusi !== undefined) {
-        lines.push(`┃ 📝 Kontrib : ${Number(profile.kontribusi).toLocaleString('id-ID')}`);
+        lines.push(`│ 📝 Kontr: ${Number(profile.kontribusi).toLocaleString('id-ID')}`);
         hasStats = true;
     }
     if (!hasStats) {
-        lines.push('┃ Data statistik tidak tersedia dari API');
+        lines.push('│ Data tidak tersedia');
     }
 
     if (profile.battle_point !== undefined || profile.rank !== undefined) {
-        lines.push(`┣━━━━━━━━━━━━━━━━━━━┫`);
-        if (profile.rank !== undefined) lines.push(`┃ 🏆 Rank Battle : #${profile.rank}`);
-        if (profile.battle_point !== undefined) lines.push(`┃ ⚔️ BP          : ${Number(profile.battle_point).toLocaleString('id-ID')}`);
+        lines.push(`├── ⚔️ BATTLE ───────`);
+        if (profile.rank !== undefined) lines.push(`│ 🏆 Rank: #${profile.rank}`);
+        if (profile.battle_point !== undefined) lines.push(`│ ⚔️ BP  : ${Number(profile.battle_point).toLocaleString('id-ID')}`);
     }
 
     if (profile.medal_count !== undefined || profile.pokemon_count !== undefined || profile.waifu_count !== undefined) {
-        lines.push(`┣━━━━━━━━━━━━━━━━━━━┫`);
-        if (profile.medal_count !== undefined) lines.push(`┃ 🏅 Total Medal  : ${Number(profile.medal_count).toLocaleString('id-ID')}`);
-        if (profile.pokemon_count !== undefined) lines.push(`┃ 🎮 Total Pokemon: ${Number(profile.pokemon_count).toLocaleString('id-ID')}`);
-        if (profile.waifu_count !== undefined) lines.push(`┃ 💞 Total Waifu  : ${Number(profile.waifu_count).toLocaleString('id-ID')}`);
+        lines.push(`├── 🎮 KOLEKSI ────────`);
+        if (profile.medal_count !== undefined) lines.push(`│ 🏅 Medal : ${Number(profile.medal_count).toLocaleString('id-ID')}`);
+        if (profile.pokemon_count !== undefined) lines.push(`│ 🎮 Poke  : ${Number(profile.pokemon_count).toLocaleString('id-ID')}`);
+        if (profile.waifu_count !== undefined) lines.push(`│ 💞 Waifu : ${Number(profile.waifu_count).toLocaleString('id-ID')}`);
     }
 
     if (profile.created_at !== undefined) {
-        lines.push(`┣━━━━━━━━━━━━━━━━━━━┫`);
-        lines.push(`┃ 📅 Join    : ${profile.created_at}`);
+        lines.push(`├───────────────────`);
+        lines.push(`│ 📅 Join: ${profile.created_at}`);
     }
 
-    lines.push(`╰━━━━━━━━━━━━━━━━━━━╯`);
+    lines.push(`└──────────────────────`);
 
     return lines.join('\n');
 }

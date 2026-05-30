@@ -1,13 +1,6 @@
-const axios = require('axios');
+const axios = require('./httpClient');
 const { POKEMON_LIST } = require('./pokemon');
 
-/**
- * Fetch battle rank top 10, lalu hitung Pokemon paling sering dipakai.
- * Menampilkan "meta" battle minggu ini berdasarkan tim top player.
- */
-
-// Extract pokemon number dari URL avatar battle
-// URL format: https://xyz-api.animein.net/assets/images/battle/ava/136.png
 function extractPokemonNumber(url) {
     if (!url) return null;
     const match = url.match(/\/(\d+)\.png$/);
@@ -19,6 +12,27 @@ function getPokemonNameByNumber(no) {
     return POKEMON_LIST[no - 1];
 }
 
+function visualWidth(str) {
+    let w = 0;
+    for (const ch of str) {
+        const cp = ch.codePointAt(0);
+        if (cp > 0xFFFF || (cp >= 0x2600 && cp <= 0x27BF) || (cp >= 0x1F000 && cp <= 0x1FFFF) || (cp >= 0xFE00 && cp <= 0xFE0F)) {
+            w += 2;
+        } else {
+            w += 1;
+        }
+    }
+    return w;
+}
+
+function padVisual(str, targetLen, isStart = false, char = ' ') {
+    const w = visualWidth(str);
+    const diff = targetLen - w;
+    if (diff <= 0) return str;
+    const padding = char.repeat(diff);
+    return isStart ? padding + str : str + padding;
+}
+
 async function fetchBattleMeta(bot, CONFIG, recordPath) {
     const baseUrl = CONFIG.BASE_URL.replace(/\/$/, '');
     const authParams = { id_user: bot.auth.userId, key_client: bot.auth.userKey };
@@ -27,7 +41,7 @@ async function fetchBattleMeta(bot, CONFIG, recordPath) {
         if (recordPath) recordPath('/3/2/user/battle/rank_list');
         const res = await axios.get(`${baseUrl}/3/2/user/battle/rank_list`, {
             params: authParams,
-            headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+            headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' },
             timeout: 15000
         });
 
@@ -36,11 +50,8 @@ async function fetchBattleMeta(bot, CONFIG, recordPath) {
             return null;
         }
 
-        // Ambil top 10
         const top10 = rankList.slice(0, 10);
-
-        // Hitung frekuensi penggunaan Pokemon
-        const usageMap = {}; // pokemonNo -> { count, users[] }
+        const usageMap = {};
         const playerDetails = [];
 
         for (const player of top10) {
@@ -63,7 +74,6 @@ async function fetchBattleMeta(bot, CONFIG, recordPath) {
             });
         }
 
-        // Sort by usage count descending
         const sorted = Object.entries(usageMap)
             .map(([no, data]) => ({
                 no: parseInt(no, 10),
@@ -84,31 +94,47 @@ async function fetchBattleMeta(bot, CONFIG, recordPath) {
 
 function formatMetaMessage(meta) {
     if (!meta) {
-        return `Data meta battle tidak tersedia saat ini. Coba lagi nanti.`;
+        return [
+            `┌── ⚠️ META BATTLE ────`,
+            `│ Data tidak tersedia.`,
+            `└──────────────────────`
+        ].join('\n');
     }
 
-    const { sorted, playerDetails, totalPlayers } = meta;
+    const { sorted, playerDetails } = meta;
 
     const lines = [
-        `-- META BATTLE MINGGU INI --`,
-        `Data dari Top ${totalPlayers} Rank Battle`,
-        `Total ${totalPlayers * 3} slot Pokemon dianalisis`,
-        ``
+        `┌── 📊 META BATTLE ────`,
+        `│ Top 5 Pokemon:`,
     ];
 
-    // Top Pokemon Usage
-    lines.push(`Pokemon Terpopuler:`);
     sorted.slice(0, 5).forEach((p, i) => {
-        lines.push(`${i + 1}. ${p.name} - ${p.count}x (${p.pickRate}%)`);
+        const rankStr = `${i + 1}.`;
+        const nameStr = p.name.substring(0, 6);
+        const statStr = `${p.count}x (${p.pickRate}%)`;
+        
+        const r = padVisual(rankStr, 2);
+        const n = padVisual(nameStr, 6);
+        const s = padVisual(statStr, 8, true);
+        
+        const row = `${r} ${n} ${s}`;
+        lines.push(`│ ${row}`);
     });
 
-    lines.push(``);
+    lines.push(`├───────────────────`);
+    lines.push(`│ Tim Top Player:`);
 
-    // Top 10 Player Teams
-    lines.push(`Tim Top Player:`);
-    playerDetails.forEach(p => {
-        lines.push(`#${p.rank} @${p.username} (${p.bp} BP) : ${p.pokemon.join(', ')}`);
+    playerDetails.slice(0, 3).forEach(p => {
+        const user = p.username.substring(0, 8);
+        const header = `#${p.rank} @${user} (${p.bp})`;
+        lines.push(`│ ${header}`);
+        
+        const shortPokes = p.pokemon.map(name => name.substring(0, 4)).join(',');
+        const row = ` └ ${shortPokes}`;
+        lines.push(`│ ${row}`);
     });
+
+    lines.push(`└──────────────────────`);
 
     return lines.join('\n');
 }

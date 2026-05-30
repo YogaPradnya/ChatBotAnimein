@@ -1,4 +1,4 @@
-const axios = require('axios');
+const axios = require('./httpClient');
 const { POKEMON_GRADES } = require('./pokemon');
 
 function getBasePokemonName(name) {
@@ -51,13 +51,19 @@ function isGradeAllowed(pokemonGrade, allowedLimits) {
     return normalizedAllowed.includes(pGrade);
 }
 
-async function fetchBannedAndLimits(bot, CONFIG, recordPath) {
+async function fetchBannedAndLimits(bot, CONFIG, recordPath, animeinClient = null) {
     const baseUrl = CONFIG.BASE_URL.replace(/\/$/, '');
     const authParams = { id_user: bot.auth.userId, key_client: bot.auth.userKey };
     
     try {
         recordPath('/data/user/battle/banned/info/now');
-        const res = await axios.get(`${baseUrl}/data/user/battle/banned/info/now`, {
+        const res = animeinClient
+            ? await animeinClient.get('/data/user/battle/banned/info/now', {
+                params: authParams,
+                headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' },
+                timeout: 10000
+            })
+            : await axios.get(`${baseUrl}/data/user/battle/banned/info/now`, {
             params: authParams,
             headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' },
             timeout: 10000
@@ -76,7 +82,7 @@ async function fetchBannedAndLimits(bot, CONFIG, recordPath) {
     }
 }
 
-async function fetchUserPokemonList(bot, targetUserId, CONFIG, recordPath) {
+async function fetchUserPokemonList(bot, targetUserId, CONFIG, recordPath, animeinClient = null) {
     const baseUrl = CONFIG.BASE_URL.replace(/\/$/, '');
     const authParams = { id_user: bot.auth.userId, key_client: bot.auth.userKey };
     
@@ -86,7 +92,13 @@ async function fetchUserPokemonList(bot, targetUserId, CONFIG, recordPath) {
     try {
         while (page <= 10) {
             recordPath('/data/profile/pokemon');
-            const res = await axios.get(`${baseUrl}/data/profile/pokemon`, {
+            const res = animeinClient
+                ? await animeinClient.get('/data/profile/pokemon', {
+                    params: { ...authParams, id_other: targetUserId, page: String(page) },
+                    headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' },
+                    timeout: 10000
+                })
+                : await axios.get(`${baseUrl}/data/profile/pokemon`, {
                 params: { ...authParams, id_other: targetUserId, page: String(page) },
                 headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' },
                 timeout: 10000
@@ -173,16 +185,30 @@ function findBestCombo(eligiblePokemon, pokemonData) {
     return bestCombo;
 }
 
-async function getPokemonComboMessage(bot, senderName, senderUserId, CONFIG, recordPath, pokemonData) {
-    const { limits, banned } = await fetchBannedAndLimits(bot, CONFIG, recordPath);
-    const userPokemon = await fetchUserPokemonList(bot, senderUserId, CONFIG, recordPath);
+// Potong nama pokemon agar muat max char
+function shortName(name, max) {
+    const base = getBasePokemonName(name);
+    return base.length > max ? base.substring(0, max) : base;
+}
+
+async function getPokemonComboMessage(bot, senderName, senderUserId, CONFIG, recordPath, pokemonData, animeinClient = null) {
+    const { limits, banned } = await fetchBannedAndLimits(bot, CONFIG, recordPath, animeinClient);
+    const userPokemon = await fetchUserPokemonList(bot, senderUserId, CONFIG, recordPath, animeinClient);
     
+    const dn = senderName.substring(0, 10);
+
     if (userPokemon.length === 0) {
-        return `@${senderName} Kamu tidak memiliki Pokemon di tas profilmu. Tangkap atau beli Pokemon terlebih dahulu di aplikasi Animein.`;
+        return [
+            `┌── ⚠️ KOMBO ──────────`,
+            `│ 👤 @${dn}`,
+            `├───────────────────`,
+            `│ Tidak ada Pokemon`,
+            `│ di tas kamu.`,
+            `└──────────────────────`,
+        ].join('\n');
     }
 
     const eligible = [];
-    const excludedByGrade = [];
     const excludedByBanned = [];
 
     for (const p of userPokemon) {
@@ -195,7 +221,6 @@ async function getPokemonComboMessage(bot, senderName, senderUserId, CONFIG, rec
         }
         
         if (!isGradeAllowed(grade, limits)) {
-            excludedByGrade.push(p.name);
             continue;
         }
         
@@ -203,37 +228,45 @@ async function getPokemonComboMessage(bot, senderName, senderUserId, CONFIG, rec
     }
 
     const combo = findBestCombo(eligible, pokemonData);
-
-    const limitStr = limits.length > 0 ? limits.join(', ') : 'Semua Grade';
-    const banStr = banned.length > 0 ? banned.map(b => b.charAt(0).toUpperCase() + b.slice(1)).join(', ') : 'Tidak ada';
-
-    let msg = [
-        `-- REKOMENDASI KOMBO BATTLE --`,
-        `User: @${senderName}`,
-        `Grade Aktif Minggu Ini: [${limitStr}]`,
-        `Pokemon Banned: ${banStr}`,
-        `Total Pokemon Dimiliki: ${userPokemon.length}`,
-        `Pokemon Memenuhi Syarat: ${eligible.length}`,
-        ``
-    ];
+    const gradeStr = limits.length > 0 ? limits.join(',') : 'All';
+    const banStr = banned.length > 0 ? banned.map(b => shortName(b, 8)).join(',') : '-';
 
     if (!combo) {
-        msg.push(`Maaf, tidak dapat menyusun kombo 3 Pokemon unik.`);
-        msg.push(`Pastikan kamu memiliki minimal 3 Pokemon dengan Grade [${limitStr}] dan tidak terkena Ban.`);
-        if (excludedByGrade.length > 0) {
-            msg.push(`\nBeberapa Pokemon kamu tidak masuk Grade minggu ini: ${excludedByGrade.slice(0, 5).join(', ')}...`);
-        }
-        return msg.join('\n');
+        return [
+            `┌── ⚔️ KOMBO ──────────`,
+            `│ 👤 @${dn}`,
+            `├───────────────────`,
+            `│ Grade : ${gradeStr}`,
+            `│ Ban   : ${banStr}`,
+            `├───────────────────`,
+            `│ ❌ Kombo tidak tersedia`,
+            `│ Min. 3 Pokemon sesuai`,
+            `│ grade aktif.`,
+            `└──────────────────────`,
+        ].join('\n');
     }
 
-    msg.push(`Rekomendasi Tim Terbaik:`);
-    msg.push(`🛡️ DEF Slot: ${combo.DEF.name} (LV ${combo.DEF.lv}, CP ${combo.DEF.cp})`);
-    msg.push(`⚔️ ATK Slot: ${combo.ATK.name} (LV ${combo.ATK.lv}, CP ${combo.ATK.cp})`);
-    msg.push(`⚡ SPD Slot: ${combo.SPD.name} (LV ${combo.SPD.lv}, CP ${combo.SPD.cp})`);
-    msg.push(``);
-    msg.push(`Perhitungan didasarkan pada Level (LV) tertinggi dan kecocokan base stat Pokemon.`);
+    // Potong nama max 12 char agar muat
+    const dN = shortName(combo.DEF.name, 12);
+    const aN = shortName(combo.ATK.name, 12);
+    const sN = shortName(combo.SPD.name, 12);
 
-    return msg.join('\n');
+    return [
+        `┌── ⚔️ KOMBO ──────────`,
+        `│ 👤 @${dn}`,
+        `├───────────────────`,
+        `│ Grade : ${gradeStr}`,
+        `│ Ban   : ${banStr}`,
+        `│ Milik : ${userPokemon.length} | OK: ${eligible.length}`,
+        `├── 💎 TIM ────────────`,
+        `│ 🛡️ ${dN}`,
+        `│   L${combo.DEF.lv} CP${combo.DEF.cp}`,
+        `│ ⚔️ ${aN}`,
+        `│   L${combo.ATK.lv} CP${combo.ATK.cp}`,
+        `│ ⚡ ${sN}`,
+        `│   L${combo.SPD.lv} CP${combo.SPD.cp}`,
+        `└──────────────────────`,
+    ].join('\n');
 }
 
 module.exports = {

@@ -620,8 +620,9 @@ function getDashboardHTML() {
     <button class="nav-item" onclick="showPage('model', this); toggleSidebar(false)">Model AI</button>
     <button class="nav-item" onclick="showPage('database', this); toggleSidebar(false)">Database</button>
     <button class="nav-item" onclick="showPage('autoreply', this); toggleSidebar(false)">Auto Reply</button>
-    <button class="nav-item" onclick="showPage('gambar', this); toggleSidebar(false)">Gambar</button>
+    <button class="nav-item" onclick="showPage('gambar', this); toggleSidebar(false)">Limit Manager</button>
     <button class="nav-item" onclick="showPage('laporan', this); toggleSidebar(false)">Laporan</button>
+    <button class="nav-item" onclick="showPage('banned', this); toggleSidebar(false)">Blokir User</button>
     <button class="nav-item" onclick="showPage('logs', this); toggleSidebar(false)">Realtime Logs</button>
     <button class="nav-item" onclick="showPage('api-traffic', this); toggleSidebar(false)">API Monitor</button>
   </nav>
@@ -781,52 +782,121 @@ function getDashboardHTML() {
         </div>
     </div>
 
-    <!-- PAGE: DASHBOARD GAMBAR -->
+    <!-- PAGE: LIMIT MANAGER -->
     <div class="page" id="page-gambar">
+
+      <!-- SECTION 1: Global Limit Setting -->
       <div class="card" style="background:linear-gradient(135deg,#fff7ed 0%,#ffffff 50%,#eff6ff 100%); border-color:#fed7aa;">
-        <div class="card-title">Dashboard Gambar</div>
-        <div class="three-col">
+        <div class="card-title">Setting Global Limit</div>
+        <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr);">
           <div class="stat-card accent">
-            <div class="label">Default Limit / Hari</div>
-            <div class="value" id="imageDefaultLimit">5</div>
+            <div class="label">Default CMD / Hari</div>
+            <div class="value" id="globalCmdDefault">10</div>
           </div>
           <div class="stat-card blue">
-            <div class="label">Tanggal Reset</div>
-            <div class="value" id="imageLimitDate" style="font-size:20px;">-</div>
+            <div class="label">Default Gambar / Hari</div>
+            <div class="value" id="globalImgDefault">3</div>
           </div>
           <div class="stat-card green">
-            <div class="label">User Terdaftar</div>
-            <div class="value" id="imageLimitUsers">0</div>
+            <div class="label">User CMD</div>
+            <div class="value" id="globalCmdUsers">0</div>
+          </div>
+          <div class="stat-card green">
+            <div class="label">User Gambar</div>
+            <div class="value" id="globalImgUsers">0</div>
+          </div>
+        </div>
+        <div class="control-row" style="align-items:flex-end; flex-wrap:wrap; margin-top:16px;">
+          <div style="width:180px;">
+            <label class="form-label">Limit CMD / Hari</label>
+            <input type="number" id="globalCmdInput" value="10" min="0">
+          </div>
+          <div style="width:180px;">
+            <label class="form-label">Limit Gambar / Hari</label>
+            <input type="number" id="globalImgInput" value="3" min="0">
+          </div>
+          <button class="btn-primary" onclick="saveGlobalLimits()">Simpan Global</button>
+        </div>
+        <p style="font-size:11px; color:var(--muted); margin-top:10px; margin-bottom:0;">Perubahan berlaku realtime. Command yang dikecualikan: .ai, .rara, .tebak, .hint, .help</p>
+      </div>
+
+      <!-- SECTION 2: Command Limits per User -->
+      <div class="card">
+        <div class="card-title">
+          <span>Command Limits per User</span>
+          <button class="btn-sm btn-sm-edit" onclick="loadCommandLimits()">Refresh</button>
+        </div>
+        <div class="control-row" style="align-items:flex-end; flex-wrap:wrap; margin-bottom:14px;">
+          <div style="flex:1; min-width:160px;">
+            <label class="form-label">Username</label>
+            <input type="text" id="cmdLimitUsername" placeholder="contoh: YogaPradnya">
+          </div>
+          <div style="width:120px;">
+            <label class="form-label">Extra Limit</label>
+            <input type="number" id="cmdLimitExtra" value="0" min="0">
+          </div>
+          <div style="width:120px;">
+            <label class="form-label">Terpakai</label>
+            <input type="number" id="cmdLimitUsed" placeholder="auto" min="0">
+          </div>
+          <button class="btn-primary" onclick="saveCmdLimit()">Simpan</button>
+        </div>
+        <div class="control-row" style="align-items:center; flex-wrap:wrap; margin-bottom:12px;">
+          <input type="text" id="cmdLimitSearch" placeholder="Cari username..." oninput="debouncedCmdLimitSearch()" style="max-width:280px;">
+          <button class="btn-secondary" onclick="clearCmdLimitSearch()">Clear</button>
+          <div id="cmdLimitPageInfo" style="margin-left:auto; color:var(--muted); font-size:12px; font-weight:700;">Page 1 / 1</div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Tanggal</th>
+                <th>Terpakai</th>
+                <th>Base</th>
+                <th>Extra</th>
+                <th>Total</th>
+                <th>Sisa</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="cmdLimitTable">
+              <tr><td colspan="8" style="text-align:center; color:var(--muted);">Belum ada data.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:14px; flex-wrap:wrap;">
+          <div id="cmdLimitTotalInfo" style="font-size:12px; color:var(--muted); font-weight:700;">0 user</div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <button class="btn-sm btn-sm-edit" id="cmdLimitPrevBtn" onclick="changeCmdLimitPage(-1)">Prev</button>
+            <button class="btn-sm btn-sm-edit" id="cmdLimitNextBtn" onclick="changeCmdLimitPage(1)">Next</button>
           </div>
         </div>
       </div>
 
+      <!-- SECTION 3: Image Limits per User -->
       <div class="card">
-        <div class="card-title">Edit Limit User</div>
-        <div class="control-row" style="align-items:flex-end; flex-wrap:wrap;">
-          <div style="flex:1; min-width:180px;">
+        <div class="card-title">
+          <span>Limit Gambar per User</span>
+          <button class="btn-sm btn-sm-edit" onclick="loadImageLimits()">Refresh</button>
+        </div>
+        <div class="control-row" style="align-items:flex-end; flex-wrap:wrap; margin-bottom:14px;">
+          <div style="flex:1; min-width:160px;">
             <label class="form-label">Username</label>
             <input type="text" id="imageLimitUsername" placeholder="contoh: YogaPradnya">
           </div>
-          <div style="width:150px;">
+          <div style="width:120px;">
             <label class="form-label">Limit / Hari</label>
-            <input type="number" id="imageLimitDaily" value="5" min="0">
+            <input type="number" id="imageLimitDaily" value="3" min="0">
           </div>
-          <div style="width:150px;">
-            <label class="form-label">Terpakai Hari Ini</label>
+          <div style="width:120px;">
+            <label class="form-label">Terpakai</label>
             <input type="number" id="imageLimitUsed" placeholder="auto" min="0">
           </div>
-          <button class="btn-primary" onclick="saveImageLimit()">Simpan Limit</button>
+          <button class="btn-primary" onclick="saveImageLimit()">Simpan</button>
         </div>
-      </div>
-
-      <div class="card">
-        <div class="card-title">
-          <span>Limit Gambar User</span>
-          <button class="btn-sm btn-sm-edit" onclick="loadImageLimits()">Refresh</button>
-        </div>
-        <div class="control-row" style="align-items:center; flex-wrap:wrap; margin-bottom:16px;">
-          <input type="text" id="imageLimitSearch" placeholder="Cari username..." oninput="debouncedImageLimitSearch()" style="max-width:320px;">
+        <div class="control-row" style="align-items:center; flex-wrap:wrap; margin-bottom:12px;">
+          <input type="text" id="imageLimitSearch" placeholder="Cari username..." oninput="debouncedImageLimitSearch()" style="max-width:280px;">
           <button class="btn-secondary" onclick="clearImageLimitSearch()">Clear</button>
           <div id="imageLimitPageInfo" style="margin-left:auto; color:var(--muted); font-size:12px; font-weight:700;">Page 1 / 1</div>
         </div>
@@ -843,15 +913,15 @@ function getDashboardHTML() {
               </tr>
             </thead>
             <tbody id="imageLimitTable">
-              <tr><td colspan="6" style="text-align:center; color:var(--muted);">Belum ada data limit gambar.</td></tr>
+              <tr><td colspan="6" style="text-align:center; color:var(--muted);">Belum ada data.</td></tr>
             </tbody>
           </table>
         </div>
         <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:14px; flex-wrap:wrap;">
           <div id="imageLimitTotalInfo" style="font-size:12px; color:var(--muted); font-weight:700;">0 user</div>
           <div style="display:flex; gap:8px; align-items:center;">
-            <button class="btn-sm btn-sm-edit" id="imageLimitPrevBtn" onclick="changeImageLimitPage(-1)">← Prev</button>
-            <button class="btn-sm btn-sm-edit" id="imageLimitNextBtn" onclick="changeImageLimitPage(1)">Next →</button>
+            <button class="btn-sm btn-sm-edit" id="imageLimitPrevBtn" onclick="changeImageLimitPage(-1)">Prev</button>
+            <button class="btn-sm btn-sm-edit" id="imageLimitNextBtn" onclick="changeImageLimitPage(1)">Next</button>
           </div>
         </div>
       </div>
@@ -1020,6 +1090,60 @@ function getDashboardHTML() {
               <tr><td colspan="6" style="color:var(--muted); text-align:center;">Memuat...</td></tr>
             </tbody>
           </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: BLOKIR USER -->
+    <div class="page" id="page-banned">
+      <div class="card" style="background:linear-gradient(135deg,#fef2f2 0%,#ffffff 50%,#fff7ed 100%); border-color:#fecaca;">
+        <div class="card-title">Blokir User</div>
+        <p style="font-size:12px; color:var(--muted); margin-top:-12px; margin-bottom:16px;">User yang diblokir tidak bisa mengakses semua fitur bot (AI, Kuis, Gambar).</p>
+        <div class="control-row" style="align-items:flex-end; flex-wrap:wrap;">
+          <div style="flex:1; min-width:180px;">
+            <label class="form-label">Username</label>
+            <input type="text" id="banUsername" placeholder="contoh: username123">
+          </div>
+          <div style="flex:2; min-width:220px;">
+            <label class="form-label">Alasan (opsional)</label>
+            <input type="text" id="banReason" placeholder="Spam, toxic, dll.">
+          </div>
+          <button class="btn-primary" onclick="banUser()" style="background:linear-gradient(135deg,#ef4444,#dc2626);">Blokir User</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">
+          <span>Daftar User Diblokir</span>
+          <button class="btn-sm btn-sm-edit" onclick="loadBannedPage()">Refresh</button>
+        </div>
+        <div class="control-row" style="align-items:center; flex-wrap:wrap; margin-bottom:16px;">
+          <input type="text" id="banSearch" placeholder="Cari username..." oninput="debouncedBanSearch()" style="max-width:320px;">
+          <button class="btn-secondary" onclick="clearBanSearch()">Clear</button>
+          <div id="banPageInfo" style="margin-left:auto; color:var(--muted); font-size:12px; font-weight:700;">Page 1 / 1</div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:5%;">#</th>
+                <th style="width:25%;">Username</th>
+                <th>Alasan</th>
+                <th style="width:18%;">Tanggal Blokir</th>
+                <th style="width:10%;">Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="bannedUserList">
+              <tr><td colspan="5" style="text-align:center; color:var(--muted);">Memuat...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:14px; flex-wrap:wrap;">
+          <div id="banTotalInfo" style="font-size:12px; color:var(--muted); font-weight:700;">0 user diblokir</div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <button class="btn-sm btn-sm-edit" id="banPrevBtn" onclick="changeBanPage(-1)">Prev</button>
+            <button class="btn-sm btn-sm-edit" id="banNextBtn" onclick="changeBanPage(1)">Next</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1544,7 +1668,7 @@ function getDashboardHTML() {
       target.style.display = 'block';
     }
     el.classList.add('active');
-    const titles = { dashboard: 'Dashboard', model: 'Model AI', database: 'Database', prompt: 'Prompt & Knowledge', autoreply: 'Auto Reply', gambar: 'Dashboard Gambar', laporan: 'Laporan', filter: 'Filter Kata', kuis: 'Kuis & Leaderboard', logs: 'Realtime Logs', 'api-traffic': 'API Monitor' };
+    const titles = { dashboard: 'Dashboard', model: 'Model AI', database: 'Database', prompt: 'Prompt & Knowledge', autoreply: 'Auto Reply', gambar: 'Limit Manager', laporan: 'Laporan', banned: 'Blokir User', filter: 'Filter Kata', kuis: 'Kuis & Leaderboard', logs: 'Realtime Logs', 'api-traffic': 'API Monitor' };
     document.getElementById('pageTitle').textContent = titles[id] || id;
     if (id === 'dashboard') refresh();
     if (id === 'database') loadCache();
@@ -1552,7 +1676,8 @@ function getDashboardHTML() {
     if (id === 'laporan') loadLaporan();
     if (id === 'filter') loadFilter();
     if (id === 'autoreply') loadAutoReply();
-    if (id === 'gambar') loadImageLimits();
+    if (id === 'gambar') { loadGlobalLimits(); loadCommandLimits(); loadImageLimits(); }
+    if (id === 'banned') loadBannedPage();
     if (id === 'kuis') { loadTitles(); loadUsers(); loadBanned(); loadQuizPool(); }
     if (id === 'logs') renderRealtimeLogs();
     if (id === 'model') {
@@ -2465,19 +2590,26 @@ async function updateStats() {
   }
 
   async function banUser() {
-    const uInput = document.getElementById('banUsernameInput');
-    const rInput = document.getElementById('banReasonInput');
+    // Support both Kuis page inputs and Blokir User page inputs
+    const uInput = document.getElementById('banUsername') || document.getElementById('banUsernameInput');
+    const rInput = document.getElementById('banReason') || document.getElementById('banReasonInput');
     const username = (uInput?.value || '').trim();
     const reason = (rInput?.value || '').trim();
     if (!username) return showToast('Username tidak boleh kosong!', 'warning');
-    const ok = await customConfirm('Ban @' + username + ' dari kuis? Mereka tidak bisa main kuis sampai di-unban.', 'Konfirmasi Ban', 'Ban');
+    const ok = await customConfirm('Blokir @' + username + '? User ini tidak bisa mengakses semua fitur bot sampai diunblokir.', 'Konfirmasi Blokir', 'Blokir');
     if (!ok) return;
     const res = await fetch('/api/quiz/ban', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, reason })
     });
     const d = await res.json();
-    if (d.success) { uInput.value = ''; rInput.value = ''; loadBanned(); }
+    if (d.success) { 
+      uInput.value = ''; 
+      if (rInput) rInput.value = ''; 
+      showToast('@' + username + ' berhasil diblokir.', 'success');
+      loadBanned(); 
+      loadBannedPage(); 
+    }
     else showToast('Gagal: ' + (d.message || 'Error'), 'error');
   }
 
@@ -2489,7 +2621,73 @@ async function updateStats() {
       body: JSON.stringify({ username })
     });
     const d = await res.json();
-    if (d.success) loadBanned();
+    if (d.success) { loadBanned(); loadBannedPage(); }
+    else showToast('Gagal: ' + (d.message || 'Error'), 'error');
+  }
+
+  // === BLOKIR USER PAGE ===
+  let _banPage = 1;
+  let _banSearchTimer = null;
+
+  async function loadBannedPage(page) {
+    if (page !== undefined) _banPage = page;
+    const q = (document.getElementById('banSearch')?.value || '').trim();
+    try {
+      const res = await fetch('/api/quiz/banned?page=' + _banPage + '&limit=30' + (q ? '&q=' + encodeURIComponent(q) : ''));
+      const d = await res.json();
+      if (!d.success) return;
+      const tbody = document.getElementById('bannedUserList');
+      const { pagination } = d;
+      document.getElementById('banPageInfo').textContent = 'Page ' + pagination.page + ' / ' + pagination.totalPages;
+      document.getElementById('banTotalInfo').textContent = pagination.total + ' user diblokir';
+      document.getElementById('banPrevBtn').disabled = pagination.page <= 1;
+      document.getElementById('banNextBtn').disabled = pagination.page >= pagination.totalPages;
+      if (d.banned.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--muted);">Tidak ada user yang diblokir.</td></tr>';
+        return;
+      }
+      const offset = (pagination.page - 1) * pagination.limit;
+      tbody.innerHTML = d.banned.map((b, i) => {
+        const date = b.banned_at ? new Date(b.banned_at).toLocaleString('id-ID', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '-';
+        return '<tr>' +
+          '<td>' + (offset + i + 1) + '</td>' +
+          '<td style="font-weight:700;">@' + escapeHTML(b.username) + '</td>' +
+          '<td style="color:var(--muted); font-size:12px;">' + (b.reason ? escapeHTML(b.reason) : '<span style="opacity:0.5;">-</span>') + '</td>' +
+          '<td style="font-size:12px;">' + date + '</td>' +
+          '<td><button class="btn-sm btn-sm-del" onclick="unbanUserFromPage(\\\'' + jsString(b.username) + '\\\')">Unblokir</button></td>' +
+        '</tr>';
+      }).join('');
+    } catch(e) {
+      console.error('[BANNED PAGE]', e);
+    }
+  }
+
+  function changeBanPage(delta) {
+    _banPage = Math.max(1, _banPage + delta);
+    loadBannedPage(_banPage);
+  }
+
+  function debouncedBanSearch() {
+    clearTimeout(_banSearchTimer);
+    _banSearchTimer = setTimeout(() => { _banPage = 1; loadBannedPage(); }, 350);
+  }
+
+  function clearBanSearch() {
+    const el = document.getElementById('banSearch');
+    if (el) el.value = '';
+    _banPage = 1;
+    loadBannedPage();
+  }
+
+  async function unbanUserFromPage(username) {
+    const ok = await customConfirm('Unblokir @' + username + '? User ini akan bisa mengakses semua fitur bot kembali.', 'Konfirmasi Unblokir', 'Unblokir');
+    if (!ok) return;
+    const res = await fetch('/api/quiz/unban', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username })
+    });
+    const d = await res.json();
+    if (d.success) { showToast('@' + username + ' berhasil diunblokir.', 'success'); loadBannedPage(); loadBanned(); }
     else showToast('Gagal: ' + (d.message || 'Error'), 'error');
   }
 
@@ -2577,6 +2775,169 @@ async function updateStats() {
   loadTitles();
   connectRealtimeLogs();
   setInterval(refresh, 5000);
+
+  // =============== GLOBAL LIMITS ===============
+  async function loadGlobalLimits() {
+    try {
+      const res = await fetch('/api/limits/global');
+      const d = await res.json();
+      if (!d.success) return;
+      document.getElementById('globalCmdDefault').textContent = d.cmdDefaultLimit ?? 10;
+      document.getElementById('globalImgDefault').textContent = d.imgDefaultLimit ?? 3;
+      document.getElementById('globalCmdUsers').textContent = (d.cmdUserCount || 0).toLocaleString('id-ID');
+      document.getElementById('globalImgUsers').textContent = (d.imgUserCount || 0).toLocaleString('id-ID');
+      document.getElementById('globalCmdInput').value = d.cmdDefaultLimit ?? 10;
+      document.getElementById('globalImgInput').value = d.imgDefaultLimit ?? 3;
+    } catch (e) {
+      console.error('loadGlobalLimits error:', e);
+    }
+  }
+
+  async function saveGlobalLimits() {
+    const cmdVal = document.getElementById('globalCmdInput').value;
+    const imgVal = document.getElementById('globalImgInput').value;
+    if (cmdVal === '' && imgVal === '') return showToast('Isi minimal satu field.', 'warning');
+    const body = {};
+    if (cmdVal !== '') body.cmdDefaultLimit = cmdVal;
+    if (imgVal !== '') body.imgDefaultLimit = imgVal;
+    try {
+      const res = await fetch('/api/limits/global/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const d = await res.json();
+      if (!d.success) return showToast(d.message || 'Gagal simpan.', 'error');
+      showToast('Global limit berhasil disimpan.', 'success');
+      loadGlobalLimits();
+    } catch (e) {
+      showToast('Error: ' + e.message, 'error');
+    }
+  }
+
+  // =============== COMMAND LIMITS ===============
+  let cmdLimitPage = 1;
+  let cmdLimitTotalPages = 1;
+  let cmdLimitSearchTimer = null;
+
+  async function loadCommandLimits(page = cmdLimitPage) {
+    const tbody = document.getElementById('cmdLimitTable');
+    if (!tbody) return;
+    const query = document.getElementById('cmdLimitSearch')?.value.trim() || '';
+    cmdLimitPage = Math.max(1, page || 1);
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--muted);">Memuat data...</td></tr>';
+    try {
+      const params = new URLSearchParams({ page: String(cmdLimitPage), limit: '10' });
+      if (query) params.set('q', query);
+      const res = await fetch('/api/limits/commands?' + params.toString());
+      const d = await res.json();
+      if (!d.success) throw new Error(d.message || 'Gagal memuat command limits');
+      cmdLimitTotalPages = d.pagination?.totalPages || 1;
+      updateCmdLimitPagination(d.pagination || { page: 1, totalPages: 1, total: 0, limit: 10 });
+      if (!d.data || d.data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--muted);">Belum ada user yang menggunakan command hari ini.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = d.data.map(row => {
+        const used = Number(row.used_count || 0);
+        const total = Number(row.total_limit || 0);
+        const remaining = Number(row.remaining || 0);
+        const extra = Number(row.extra_limit || 0);
+        const base = Number(row.base_limit || 0);
+        const badgeColor = remaining <= 0 ? 'var(--red)' : remaining <= 2 ? '#f59e0b' : 'var(--green)';
+        return '<tr>' +
+          '<td class="td-key">@' + escapeHtml(row.username || '-') + '</td>' +
+          '<td>' + escapeHtml(row.usage_date || '-') + '</td>' +
+          '<td><strong>' + used + '</strong></td>' +
+          '<td>' + base + '</td>' +
+          '<td>' + extra + '</td>' +
+          '<td><strong>' + total + '</strong></td>' +
+          '<td><span style="background:' + badgeColor + '; color:#fff; padding:4px 10px; border-radius:999px; font-size:11px; font-weight:800;">' + remaining + '</span></td>' +
+          '<td class="td-actions">' +
+            '<button class="btn-sm btn-sm-edit cmd-limit-edit" data-username="' + escapeAttr(row.username || '') + '" data-extra="' + extra + '" data-used="' + used + '">Edit</button>' +
+            '<button class="btn-sm btn-sm-del cmd-limit-reset" data-username="' + escapeAttr(row.username || '') + '">Reset</button>' +
+          '</td>' +
+        '</tr>';
+      }).join('');
+    } catch (e) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--red);">' + escapeHtml(e.message) + '</td></tr>';
+    }
+  }
+
+  function updateCmdLimitPagination(pagination) {
+    const page = pagination.page || 1;
+    const totalPages = pagination.totalPages || 1;
+    const total = pagination.total || 0;
+    const limit = pagination.limit || 10;
+    const start = total === 0 ? 0 : ((page - 1) * limit) + 1;
+    const end = Math.min(total, page * limit);
+    cmdLimitPage = page;
+    cmdLimitTotalPages = totalPages;
+    const pageInfo = document.getElementById('cmdLimitPageInfo');
+    const totalInfo = document.getElementById('cmdLimitTotalInfo');
+    const prevBtn = document.getElementById('cmdLimitPrevBtn');
+    const nextBtn = document.getElementById('cmdLimitNextBtn');
+    if (pageInfo) pageInfo.textContent = 'Page ' + page + ' / ' + totalPages;
+    if (totalInfo) totalInfo.textContent = total ? ('Menampilkan ' + start + '-' + end + ' dari ' + total + ' user') : '0 user';
+    if (prevBtn) prevBtn.disabled = page <= 1;
+    if (nextBtn) nextBtn.disabled = page >= totalPages;
+  }
+
+  function changeCmdLimitPage(delta) {
+    const nextPage = Math.min(cmdLimitTotalPages, Math.max(1, cmdLimitPage + delta));
+    if (nextPage !== cmdLimitPage) loadCommandLimits(nextPage);
+  }
+
+  function debouncedCmdLimitSearch() {
+    clearTimeout(cmdLimitSearchTimer);
+    cmdLimitSearchTimer = setTimeout(() => loadCommandLimits(1), 350);
+  }
+
+  function clearCmdLimitSearch() {
+    const input = document.getElementById('cmdLimitSearch');
+    if (input) input.value = '';
+    loadCommandLimits(1);
+  }
+
+  function fillCmdLimitForm(username, extra, used) {
+    document.getElementById('cmdLimitUsername').value = username || '';
+    document.getElementById('cmdLimitExtra').value = extra ?? 0;
+    document.getElementById('cmdLimitUsed').value = used ?? 0;
+  }
+
+  async function saveCmdLimit() {
+    const username = document.getElementById('cmdLimitUsername').value.trim();
+    const extraLimit = document.getElementById('cmdLimitExtra').value;
+    const usedCount = document.getElementById('cmdLimitUsed').value;
+    if (!username) return showToast('Username wajib diisi.', 'warning');
+    if (extraLimit === '' || Number.isNaN(Number(extraLimit)) || Number(extraLimit) < 0) return showToast('Extra limit wajib angka valid.', 'warning');
+    if (usedCount !== '' && (Number.isNaN(Number(usedCount)) || Number(usedCount) < 0)) return showToast('Terpakai wajib angka valid.', 'warning');
+    const res = await fetch('/api/limits/commands/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, extraLimit, usedCount })
+    });
+    const d = await res.json();
+    if (!d.success) return showToast(d.message || 'Gagal simpan.', 'error');
+    showToast('Limit command berhasil disimpan.', 'success');
+    loadCommandLimits();
+  }
+
+  async function resetCmdLimit(username) {
+    const ok = await customConfirm('Reset pemakaian command @' + username + ' menjadi 0?', 'Reset Limit CMD', 'Reset');
+    if (!ok) return;
+    const res = await fetch('/api/limits/commands/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username })
+    });
+    const d = await res.json();
+    if (!d.success) return showToast(d.message || 'Gagal reset.', 'error');
+    showToast('Pemakaian command berhasil direset.', 'success');
+    loadCommandLimits();
+  }
+
+  // =============== IMAGE LIMITS ===============
   let imageLimitPage = 1;
   let imageLimitTotalPages = 1;
   let imageLimitSearchTimer = null;
@@ -2588,16 +2949,13 @@ async function updateStats() {
     imageLimitPage = Math.max(1, page || 1);
     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--muted);">Memuat data...</td></tr>';
     try {
-      const params = new URLSearchParams({ page: String(imageLimitPage), limit: '35' });
+      const params = new URLSearchParams({ page: String(imageLimitPage), limit: '10' });
       if (query) params.set('q', query);
       const res = await fetch('/api/images/limits?' + params.toString());
       const d = await res.json();
       if (!d.success) throw new Error(d.message || 'Gagal memuat limit gambar');
-      document.getElementById('imageDefaultLimit').textContent = d.defaultLimit ?? 5;
-      document.getElementById('imageLimitDate').textContent = d.date || '-';
-      document.getElementById('imageLimitUsers').textContent = (d.pagination?.total || 0).toLocaleString('id-ID');
       imageLimitTotalPages = d.pagination?.totalPages || 1;
-      updateImageLimitPagination(d.pagination || { page: 1, totalPages: 1, total: 0, limit: 35 });
+      updateImageLimitPagination(d.pagination || { page: 1, totalPages: 1, total: 0, limit: 10 });
       if (!d.data || d.data.length === 0) {
         tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--muted);">Belum ada user yang berhasil request gambar hari ini.</td></tr>';
         return;
@@ -2628,7 +2986,7 @@ async function updateStats() {
     const page = pagination.page || 1;
     const totalPages = pagination.totalPages || 1;
     const total = pagination.total || 0;
-    const limit = pagination.limit || 35;
+    const limit = pagination.limit || 10;
     const start = total === 0 ? 0 : ((page - 1) * limit) + 1;
     const end = Math.min(total, page * limit);
     imageLimitPage = page;
@@ -2706,6 +3064,7 @@ async function updateStats() {
   }
 
   document.addEventListener('click', function(event) {
+    // Image limit buttons
     const editBtn = event.target.closest('.image-limit-edit');
     if (editBtn) {
       fillImageLimitForm(editBtn.dataset.username || '', Number(editBtn.dataset.limit || 0), Number(editBtn.dataset.used || 0));
@@ -2715,6 +3074,19 @@ async function updateStats() {
     const resetBtn = event.target.closest('.image-limit-reset');
     if (resetBtn) {
       resetImageLimit(resetBtn.dataset.username || '');
+      return;
+    }
+
+    // Command limit buttons
+    const cmdEditBtn = event.target.closest('.cmd-limit-edit');
+    if (cmdEditBtn) {
+      fillCmdLimitForm(cmdEditBtn.dataset.username || '', Number(cmdEditBtn.dataset.extra || 0), Number(cmdEditBtn.dataset.used || 0));
+      return;
+    }
+
+    const cmdResetBtn = event.target.closest('.cmd-limit-reset');
+    if (cmdResetBtn) {
+      resetCmdLimit(cmdResetBtn.dataset.username || '');
     }
   });
 </script>

@@ -1,0 +1,33 @@
+function createBanRepo(db) {
+    async function listBannedUsers() {
+        return db.execute('SELECT username FROM quiz_banned');
+    }
+
+    async function listBannedPaginated({ q = '', limit = 30, offset = 0 }) {
+        const whereSql = q ? ' WHERE username LIKE ?' : '';
+        const args = q ? [`%${q}%`] : [];
+        const countRes = await db.execute({ sql: `SELECT COUNT(*) as total FROM quiz_banned${whereSql}`, args });
+        const rows = await db.execute({
+            sql: `SELECT username, reason, banned_at FROM quiz_banned${whereSql} ORDER BY banned_at DESC LIMIT ? OFFSET ?`,
+            args: [...args, limit, offset],
+        });
+        return { total: Number(countRes.rows[0]?.total || 0), rows: rows.rows };
+    }
+
+    async function ban(username, reason = '') {
+        return db.execute({
+            sql: 'INSERT OR REPLACE INTO quiz_banned (username, reason) VALUES (?, ?)',
+            args: [username, reason],
+        });
+    }
+
+    async function unban(username) {
+        return db.execute({ sql: 'DELETE FROM quiz_banned WHERE username = ?', args: [username] });
+    }
+
+    return { listBannedUsers, listBannedPaginated, ban, unban };
+}
+
+module.exports = {
+    createBanRepo,
+};
