@@ -33,12 +33,22 @@ function createUserRepo(db) {
         });
     }
 
+    async function setUserXP(username, xp) {
+        return db.execute({
+            sql: `INSERT INTO user_stats (username, xp, level)
+                  VALUES (?, ?, 1)
+                  ON CONFLICT(username) DO UPDATE SET xp = excluded.xp`,
+            args: [username, xp],
+        });
+    }
+
     return {
         getUserProfileWithRank,
         getNextRankForNewUser,
         getQuizStats,
         getLeaderboard,
         getUserXP,
+        setUserXP,
     };
 }
 

@@ -68,7 +68,7 @@ function createAiService(deps) {
             console.log(`[ANIME DATA] Handler returned null, fallback to normal AI`);
         }
 
-        const { text: aiText, provider, tokens } = await getAIResponse(question, senderName, !!msg.replay_text, senderUserId);
+        const { text: aiText, provider, tokens } = await getAIResponse(question, senderName, !!msg.replay_text, senderUserId, msg.replay_text || '');
         const sent = await sendChatMessage(bot, `@${senderName} ${aiText}`, msg.id);
 
         if (!sent) {

@@ -185,10 +185,9 @@ function findBestCombo(eligiblePokemon, pokemonData) {
     return bestCombo;
 }
 
-// Potong nama pokemon agar muat max char
-function shortName(name, max) {
-    const base = getBasePokemonName(name);
-    return base.length > max ? base.substring(0, max) : base;
+// Ambil nama pokemon penuh, termasuk grade seperti [L] atau [M].
+function fullPokemonName(name) {
+    return String(name || '').trim();
 }
 
 async function getPokemonComboMessage(bot, senderName, senderUserId, CONFIG, recordPath, pokemonData, animeinClient = null) {
@@ -229,7 +228,7 @@ async function getPokemonComboMessage(bot, senderName, senderUserId, CONFIG, rec
 
     const combo = findBestCombo(eligible, pokemonData);
     const gradeStr = limits.length > 0 ? limits.join(',') : 'All';
-    const banStr = banned.length > 0 ? banned.map(b => shortName(b, 8)).join(',') : '-';
+    const banStr = banned.length > 0 ? banned.map(fullPokemonName).join(', ') : '-';
 
     if (!combo) {
         return [
@@ -246,10 +245,9 @@ async function getPokemonComboMessage(bot, senderName, senderUserId, CONFIG, rec
         ].join('\n');
     }
 
-    // Potong nama max 12 char agar muat
-    const dN = shortName(combo.DEF.name, 12);
-    const aN = shortName(combo.ATK.name, 12);
-    const sN = shortName(combo.SPD.name, 12);
+    const dN = fullPokemonName(combo.DEF.name);
+    const aN = fullPokemonName(combo.ATK.name);
+    const sN = fullPokemonName(combo.SPD.name);
 
     return [
         `┌── ⚔️ KOMBO ──────────`,

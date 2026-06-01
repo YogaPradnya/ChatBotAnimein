@@ -110,14 +110,8 @@ function formatMetaMessage(meta) {
 
     sorted.slice(0, 5).forEach((p, i) => {
         const rankStr = `${i + 1}.`;
-        const nameStr = p.name.substring(0, 6);
         const statStr = `${p.count}x (${p.pickRate}%)`;
-        
-        const r = padVisual(rankStr, 2);
-        const n = padVisual(nameStr, 6);
-        const s = padVisual(statStr, 8, true);
-        
-        const row = `${r} ${n} ${s}`;
+        const row = `${rankStr} ${p.name} ${statStr}`;
         lines.push(`│ ${row}`);
     });
 
@@ -129,8 +123,8 @@ function formatMetaMessage(meta) {
         const header = `#${p.rank} @${user} (${p.bp})`;
         lines.push(`│ ${header}`);
         
-        const shortPokes = p.pokemon.map(name => name.substring(0, 4)).join(',');
-        const row = ` └ ${shortPokes}`;
+        const fullPokes = p.pokemon.join(', ');
+        const row = ` └ ${fullPokes}`;
         lines.push(`│ ${row}`);
     });
 

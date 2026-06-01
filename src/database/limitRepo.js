@@ -24,9 +24,11 @@ function createLimitRepo(db) {
             sql: `INSERT INTO command_limits (username, usage_date, used_count, extra_limit)
                   VALUES (?, ?, 0, ?)
                   ON CONFLICT(username) DO UPDATE SET
+                  used_count = CASE WHEN usage_date = ? THEN used_count ELSE 0 END,
                   extra_limit = CASE WHEN usage_date = ? THEN extra_limit + ? ELSE ? END,
-                  usage_date = CASE WHEN usage_date = ? THEN usage_date ELSE ? END`,
-            args: [username, usageDate, amount, usageDate, amount, amount, usageDate, usageDate],
+                  usage_date = ?,
+                  updated_at = CURRENT_TIMESTAMP`,
+            args: [username, usageDate, amount, usageDate, usageDate, amount, amount, usageDate],
         });
     }
 

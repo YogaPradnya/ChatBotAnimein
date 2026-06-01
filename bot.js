@@ -48,6 +48,7 @@ const { createStreakRepo } = require('./src/database/streakRepo');
 const { createMemoryRepo } = require('./src/database/memoryRepo');
 const { createKnowledgeRepo, normalizeKnowledgeList, findKnowledgeByHelpTopic, buildKnowledgeContext } = require('./src/database/knowledgeRepo');
 const commands = require('./src/commands');
+const { formatEvolutionContext, getEvolutionByQuery } = require('./src/data/pokemonEvolutions');
 
 warnMissingConfig();
 
@@ -1002,7 +1003,11 @@ ${bottom5.map((p, i) => `${i+1}. ${p.name} (CP: ${p.cp}, HP: ${p.hp}, Atk: ${p.a
 Instruksi AI: Jika user nanya "siapa pokemon terkuat, dewa, paling OP, terhebat" atau "siapa yang terlemah, ampas, noob", berikan ranking dari data ini dengan bahasa ngegas tapi asik.`;
     }
 
-    if (scored.length === 0 && extraStats === "" && comparisonData === "") return { context: "", domain: detectedDomain };
+    const evolutionContext = (/evo|evolusi|evolve|berubah\s+jadi|jadi\s+apa|bagus\s+mana|lebih\s+bagus|mana\s+yang\s+bagus/i.test(lowerQ) || getEvolutionByQuery(query))
+        ? formatEvolutionContext(query)
+        : '';
+
+    if (scored.length === 0 && extraStats === "" && comparisonData === "" && evolutionContext === "") return { context: "", domain: detectedDomain };
     
     let resultContext = `\n\n[INFO ANIMEIN - Akurat]:`;
     if (scored.length > 0) {
@@ -1013,6 +1018,9 @@ Instruksi AI: Jika user nanya "siapa pokemon terkuat, dewa, paling OP, terhebat"
     }
     if (comparisonData !== "") {
         resultContext += `\n${comparisonData}`;
+    }
+    if (evolutionContext !== "") {
+        resultContext += evolutionContext;
     }
     return { context: resultContext, domain: detectedDomain || (scored.length > 0 ? scored[0].domain : null) };
 }
@@ -2322,7 +2330,8 @@ async function answerOwnProfileStatQuestion(userMessage, senderName, senderUserI
 }
 
 /** Main AI handler: Groq only */
-async function getAIResponse(userMessage, senderName, isReply = false, senderUserId = null) {
+async function getAIResponse(userMessage, senderName, isReply = false, senderUserId = null, replyText = '') {
+    const contextMessage = [replyText, userMessage].filter(Boolean).join('\n');
     const directProfileAnswer = await answerOwnProfileStatQuestion(userMessage, senderName, senderUserId);
     if (directProfileAnswer) {
         return { text: directProfileAnswer, provider: 'Animein Profile', tokens: 0 };
@@ -2330,7 +2339,7 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
 
     const intent = detectIntent(userMessage);
     const animeContext = await buildAnimeContext(intent, userMessage);
-    const knowledgeResult = getKnowledgeContext(userMessage);
+    const knowledgeResult = getKnowledgeContext(contextMessage || userMessage);
     const knowledgeContext = knowledgeResult.context;
     const knowledgeDomain = knowledgeResult.domain;
     const wantsPokemonShop = /pokemon|poke|pika|shop|toko|jual|dijual|jualan|harga|price|stok|stock/i.test(userMessage)
@@ -2744,6 +2753,8 @@ async function processMessages(bot, messages) {
                 trackImageRequest,
                 trackStreak,
                 cleanupTempImage,
+                getFilterData: () => FILTER_DATA,
+                stats,
             };
             if (await commands.handleImageCommand(imageCommandContext)) continue;
             continue;

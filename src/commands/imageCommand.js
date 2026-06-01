@@ -1,5 +1,6 @@
 const { safeMessage } = require('../services/errorHandler');
 const { formatCommandUsage, formatImageLimitExceeded, formatSimpleError } = require('../utils/messageFormatter');
+const { validateImagePrompt } = require('../utils/contentFilter');
 
 async function execute(ctx) {
     const {
@@ -23,6 +24,8 @@ async function execute(ctx) {
         trackImageRequest,
         trackStreak,
         cleanupTempImage,
+        getFilterData,
+        stats,
     } = ctx;
 
     if (!isImageCommandActive) return true;
@@ -39,6 +42,16 @@ async function execute(ctx) {
             `└──────────────────────`,
         ].join('\n');
         await sendChatMessage(bot, formatCommandUsage(senderName, imgHelp), msg.id);
+        return true;
+    }
+
+    const filterData = typeof getFilterData === 'function' ? getFilterData() : {};
+    const imagePromptCheck = validateImagePrompt(imageQuery, filterData.profanities || []);
+    if (!imagePromptCheck.allowed) {
+        const response = filterData.response || 'Prompt gambar ditolak. Gunakan kata kunci yang aman dan sopan.';
+        if (stats?.filter) stats.filter.blocked++;
+        addActivity('blocked', senderName, imageQuery, response, 'ImageFilter');
+        await sendChatMessage(bot, `@${senderName} ${response}`, msg.id);
         return true;
     }
 

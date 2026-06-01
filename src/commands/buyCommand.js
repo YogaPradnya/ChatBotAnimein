@@ -51,11 +51,21 @@ async function execute(ctx) {
         }
 
         const xpRes = await userRepo.getUserXP(senderName);
-        const currentXP = xpRes.rows.length > 0 ? Number(xpRes.rows[0].xp) : 0;
+        const dbXP = xpRes.rows.length > 0 ? Number(xpRes.rows[0].xp) : 0;
+        const cachedXP = USER_STATS_CACHE[senderName]?.xp;
+        const currentXP = Number.isFinite(Number(cachedXP)) ? Number(cachedXP) : dbXP;
         const result = await buyItem(shopRepo, senderName, itemId, currentXP, { titleName, quantity: buyQuantity });
 
         if (result.success) {
-            await addXP(senderName, -result.xpDeducted);
+            const nextXP = Math.max(0, currentXP - result.xpDeducted);
+            await userRepo.setUserXP(senderName, nextXP);
+
+            if (USER_STATS_CACHE[senderName]) {
+                USER_STATS_CACHE[senderName].xp = nextXP;
+            }
+            if (ctx.XP_PENDING_UPDATES) {
+                delete ctx.XP_PENDING_UPDATES[senderName];
+            }
 
             if (itemId === 1 && USER_STATS_CACHE[senderName]) {
                 USER_STATS_CACHE[senderName].custom_title = titleName;

@@ -22,15 +22,13 @@ async function execute(ctx) {
         res.rows.forEach((r, i) => {
             const medal = i < 3 ? medals[i] : `${i+1}.`;
             const nm = r.username.substring(0, 5);
-            const lv = `L${r.level}`;
             const xp = fmtXP(r.xp) + ' XP';
 
             const medalStr = padVisual(medal, 2);
             const nmStr = padVisual(nm, 5);
-            const lvStr = padVisual(lv, 4);
             const xpStr = padVisual(xp, 9, true);
 
-            const rowContent = `${medalStr} ${nmStr} ${lvStr} ${xpStr}`;
+            const rowContent = `${medalStr} ${nmStr} ${xpStr}`;
             rankMsg.push(`│ ${rowContent}`);
         });
         rankMsg.push(`└──────────────────────`);
