@@ -64,6 +64,7 @@ async function execute(ctx) {
             const views = pickValue(anime.views, anime.view);
             lines.push(`│ ${index + 1}. ${title}`);
             lines.push(`│    ${type} | ${year} | ${views}`);
+            if (anime._matchReason) lines.push(`│    Cocok: ${cleanText(anime._matchReason, 23)}`);
         });
 
         lines.push('├────────────────────');

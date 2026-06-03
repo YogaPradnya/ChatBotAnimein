@@ -1500,7 +1500,7 @@ async function fetchAnimeinList(type) {
     }
 }
 
-/** Cari daftar anime dari Animein berdasarkan judul */
+/** Cari daftar anime dari Animein berdasarkan keyword luas */
 async function fetchAnimeSearchResults(query, limit = 7) {
     if (isAnimeinApiBlocked('Fetch anime search')) return [];
     const keyword = String(query || '').trim();
@@ -1511,42 +1511,122 @@ async function fetchAnimeSearchResults(query, limit = 7) {
         key_client: bots[0].auth.userKey
     } : {};
 
-    try {
-        let candidates = [];
-        const findRes = await animeinClient.get('/data/movie/find', {
-            params: { ...authParams, keyword, q: keyword, search: keyword, page: 1 },
-            headers: ANIMEIN_HEADERS,
-            timeout: 9000,
-        }).catch(() => null);
+    const normalize = value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const keywordMap = {
+        mahiru: ['mahiru', 'shiina mahiru', 'otonari', 'tenshi sama', 'angel next door', 'dame ningen'],
+    };
+    const terms = [...new Set([keyword, ...(keywordMap[normalize(keyword)] || [])].map(normalize).filter(Boolean))];
 
-        const findPayload = findRes?.data?.data;
-        if (Array.isArray(findPayload)) {
-            candidates = findPayload;
-        } else if (findPayload?.movie) {
-            candidates = findPayload.movie;
-        } else if (findPayload?.list) {
-            candidates = findPayload.list;
+    const collectItems = payload => {
+        if (Array.isArray(payload)) return payload;
+        if (Array.isArray(payload?.movie)) return payload.movie;
+        if (Array.isArray(payload?.list)) return payload.list;
+        if (Array.isArray(payload?.data)) return payload.data;
+        if (Array.isArray(payload?.items)) return payload.items;
+        for (const value of Object.values(payload || {})) {
+            if (Array.isArray(value)) return value;
+        }
+        return [];
+    };
+
+    const searchableText = item => normalize([
+        item.title,
+        item.name,
+        item.synonyms,
+        item.synonym,
+        item.alternative_title,
+        item.english_title,
+        item.japanese_title,
+        item.synopsis,
+        item.description,
+        item.genre,
+        item.genres,
+        item.studio,
+        item.studio_name,
+        item.character,
+        item.characters,
+    ].filter(Boolean).join(' '));
+
+    const scoreItem = item => {
+        const title = normalize(item.title || item.name);
+        const synonyms = normalize([item.synonyms, item.synonym, item.alternative_title, item.english_title].filter(Boolean).join(' '));
+        const synopsis = normalize([item.synopsis, item.description, item.character, item.characters].filter(Boolean).join(' '));
+        const metadata = normalize([item.genre, item.genres, item.studio, item.studio_name].filter(Boolean).join(' '));
+        let score = 0;
+        const matched = [];
+
+        for (const term of terms) {
+            if (!term) continue;
+            if (title === term) { score += 120; matched.push('judul'); }
+            else if (title.includes(term)) { score += 90; matched.push('judul'); }
+            if (synonyms.includes(term)) { score += 70; matched.push('synonym'); }
+            if (synopsis.includes(term)) { score += 45; matched.push('sinopsis/karakter'); }
+            if (metadata.includes(term)) { score += 20; matched.push('metadata'); }
         }
 
-        if (candidates.length === 0) {
-            const exploreRes = await animeinClient.get('/3/2/explore/movie', {
+        if (score === 0 && terms.some(term => searchableText(item).includes(term))) {
+            score = 10;
+            matched.push('metadata');
+        }
+
+        return { score, matched: [...new Set(matched)] };
+    };
+
+    try {
+        const candidates = [];
+        const requests = [
+            animeinClient.get('/data/movie/find', {
+                params: { ...authParams, keyword, q: keyword, search: keyword, page: 1 },
+                headers: ANIMEIN_HEADERS,
+                timeout: 9000,
+            }).catch(() => null),
+            animeinClient.get('/3/2/explore/movie', {
                 params: { ...authParams, keyword, page: 1 },
                 headers: ANIMEIN_HEADERS,
                 timeout: 9000,
-            }).catch(() => null);
-            candidates = exploreRes?.data?.data?.movie || [];
+            }).catch(() => null),
+            animeinClient.get('/data/home/list', {
+                params: { ...authParams, keyword, q: keyword, search: keyword, page: 1 },
+                headers: ANIMEIN_HEADERS,
+                timeout: 9000,
+            }).catch(() => null),
+        ];
+
+        for (const term of terms.filter(term => term !== normalize(keyword)).slice(0, 4)) {
+            requests.push(animeinClient.get('/data/movie/find', {
+                params: { ...authParams, keyword: term, q: term, search: term, page: 1 },
+                headers: ANIMEIN_HEADERS,
+                timeout: 9000,
+            }).catch(() => null));
+            requests.push(animeinClient.get('/3/2/explore/movie', {
+                params: { ...authParams, keyword: term, page: 1 },
+                headers: ANIMEIN_HEADERS,
+                timeout: 9000,
+            }).catch(() => null));
+        }
+
+        const responses = await Promise.all(requests);
+        responses.forEach(res => candidates.push(...collectItems(res?.data?.data || res?.data || {})));
+
+        if (Array.isArray(cache.trending?.data)) candidates.push(...cache.trending.data);
+        for (const key of ['hot', 'popular', 'random', 'new_episode']) {
+            if (Array.isArray(cache[key]?.data)) candidates.push(...cache[key].data);
         }
 
         const seen = new Set();
         return candidates
             .filter(item => item && (item.title || item.name))
-            .filter(item => {
-                const key = String(item.id || item.id_movie || item.title || item.name).toLowerCase();
+            .map(item => ({ item, ...scoreItem(item) }))
+            .filter(entry => entry.score > 0)
+            .sort((a, b) => b.score - a.score)
+            .filter(entry => {
+                const key = String(entry.item.id || entry.item.id_movie || entry.item.title || entry.item.name).toLowerCase();
                 if (seen.has(key)) return false;
                 seen.add(key);
                 return true;
             })
-            .slice(0, limit);
+            .slice(0, limit)
+            .map(entry => ({ ...entry.item, _matchReason: entry.matched.join(', ') || 'keyword' }));
     } catch (e) {
         console.warn('[ANIMEIN] Gagal search anime:', safeMessage(e, 80));
         return [];
