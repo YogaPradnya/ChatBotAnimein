@@ -12,10 +12,12 @@ async function execute(ctx) {
         fetchOtherUserProfile,
         isAnimeinApiBlocked,
         getPokemonComboMessage,
+        getPokemonComboWithTargetMessage,
         CONFIG,
         recordPath,
         pokemonData,
         animeinClient,
+        cleanMsg,
     } = ctx;
 
     if (bot.isCooldown) return true;
@@ -34,7 +36,10 @@ async function execute(ctx) {
             return true;
         }
 
-        const comboMsg = await getPokemonComboMessage(bot, senderName, targetId, CONFIG, recordPath, pokemonData, animeinClient);
+        const targetPokemonName = String(cleanMsg || '').replace(/^\.(?:kombo|combo)\s*/i, '').trim();
+        const comboMsg = targetPokemonName && getPokemonComboWithTargetMessage
+            ? await getPokemonComboWithTargetMessage(bot, senderName, targetId, CONFIG, recordPath, pokemonData, animeinClient, targetPokemonName)
+            : await getPokemonComboMessage(bot, senderName, targetId, CONFIG, recordPath, pokemonData, animeinClient);
         await sendChatMessage(bot, comboMsg, msg.id);
     } catch (e) {
         console.error("[KOMBO ERROR]", e);

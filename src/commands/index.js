@@ -36,7 +36,7 @@ async function handleKuisCommand(ctx) {
         return metaCommand.execute(ctx);
     }
 
-    if (lowerMsg === '.kombo' || lowerMsg === '.combo') {
+    if (lowerMsg === '.kombo' || lowerMsg.startsWith('.kombo ') || lowerMsg === '.combo' || lowerMsg.startsWith('.combo ')) {
         return comboCommand.execute(ctx);
     }
 

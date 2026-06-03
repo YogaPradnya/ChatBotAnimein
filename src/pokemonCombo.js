@@ -6,6 +6,10 @@ function getBasePokemonName(name) {
     return name.replace(/^\[[A-Z0-9]+\]\s*/i, '').trim();
 }
 
+function normalizePokemonName(name) {
+    return getBasePokemonName(name).toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
 function getPokemonGrade(name) {
     if (!name) return '';
     const match = name.match(/^\[([A-Z0-9]+)\]/i);
@@ -119,8 +123,8 @@ async function fetchUserPokemonList(bot, targetUserId, CONFIG, recordPath, anime
     return allPokemon;
 }
 
-function findBestCombo(eligiblePokemon, pokemonData) {
-    const enriched = eligiblePokemon.map(p => {
+function enrichPokemonList(eligiblePokemon, pokemonData) {
+    return eligiblePokemon.map(p => {
         const baseName = getBasePokemonName(p.name);
         const basePoke = pokemonData.find(bp => bp.name.toLowerCase() === baseName.toLowerCase());
         
@@ -143,6 +147,16 @@ function findBestCombo(eligiblePokemon, pokemonData) {
             cp: parseInt(p.battle_cp || 0, 10)
         };
     });
+}
+
+function scoreCombo(pDef, pAtk, pSpd) {
+    return (pDef.lv + pAtk.lv + pSpd.lv) * 1000000 
+        + (pDef.def + pAtk.atk + pSpd.spd) * 100 
+        + (pDef.cp + pAtk.cp + pSpd.cp);
+}
+
+function findBestCombo(eligiblePokemon, pokemonData) {
+    const enriched = enrichPokemonList(eligiblePokemon, pokemonData);
 
     let bestScore = -1;
     let bestCombo = null;
@@ -161,9 +175,7 @@ function findBestCombo(eligiblePokemon, pokemonData) {
                 if (!pAtk.roles.includes('ATK')) continue;
                 if (!pSpd.roles.includes('SPD')) continue;
 
-                const score = (pDef.lv + pAtk.lv + pSpd.lv) * 1000000 
-                            + (pDef.def + pAtk.atk + pSpd.spd) * 100 
-                            + (pDef.cp + pAtk.cp + pSpd.cp);
+                const score = scoreCombo(pDef, pAtk, pSpd);
 
                 if (score > bestScore) {
                     bestScore = score;
@@ -183,6 +195,64 @@ function findBestCombo(eligiblePokemon, pokemonData) {
     }
 
     return bestCombo;
+}
+
+function findBestComboWithTarget(eligiblePokemon, pokemonData, targetName) {
+    const enriched = enrichPokemonList(eligiblePokemon, pokemonData);
+    const normalizedTarget = normalizePokemonName(targetName);
+    const targetOptions = enriched.filter(p => normalizePokemonName(p.name) === normalizedTarget);
+    if (!targetOptions.length) return { combo: null, target: null };
+
+    const target = targetOptions.sort((a, b) => (b.lv - a.lv) || (b.cp - a.cp))[0];
+    let bestScore = -1;
+    let bestCombo = null;
+
+    const tryCombo = (combo) => {
+        if (!combo.DEF || !combo.ATK || !combo.SPD) return;
+        const ids = new Set([combo.DEF.raw, combo.ATK.raw, combo.SPD.raw]);
+        if (ids.size < 3) return;
+        const score = scoreCombo(combo.DEF, combo.ATK, combo.SPD);
+        if (score > bestScore) {
+            bestScore = score;
+            bestCombo = combo;
+        }
+    };
+
+    for (const role of ['DEF', 'ATK', 'SPD']) {
+        if (!target.roles.includes(role)) continue;
+        const rolePool = enriched.filter(p => p.raw !== target.raw);
+        for (const p1 of rolePool) {
+            for (const p2 of rolePool) {
+                if (p1.raw === p2.raw) continue;
+                const combo = { DEF: null, ATK: null, SPD: null };
+                combo[role] = target;
+                const missing = ['DEF', 'ATK', 'SPD'].filter(r => r !== role);
+                combo[missing[0]] = p1;
+                combo[missing[1]] = p2;
+                if (!combo.DEF.roles.includes('DEF')) continue;
+                if (!combo.ATK.roles.includes('ATK')) continue;
+                if (!combo.SPD.roles.includes('SPD')) continue;
+                tryCombo(combo);
+            }
+        }
+    }
+
+    if (!bestCombo && enriched.length >= 3) {
+        const partners = enriched
+            .filter(p => p.raw !== target.raw)
+            .sort((a, b) => (b.lv - a.lv) || (b.cp - a.cp))
+            .slice(0, 2);
+        if (partners.length >= 2) {
+            const sorted = [target, ...partners].sort((a, b) => (b.lv - a.lv) || (b.cp - a.cp));
+            bestCombo = {
+                DEF: sorted[0],
+                ATK: sorted[1],
+                SPD: sorted[2]
+            };
+        }
+    }
+
+    return { combo: bestCombo, target };
 }
 
 // Ambil nama pokemon penuh, termasuk grade seperti [L] atau [M].
@@ -267,6 +337,111 @@ async function getPokemonComboMessage(bot, senderName, senderUserId, CONFIG, rec
     ].join('\n');
 }
 
+async function getPokemonComboWithTargetMessage(bot, senderName, senderUserId, CONFIG, recordPath, pokemonData, animeinClient = null, targetPokemonName = '') {
+    const { limits, banned } = await fetchBannedAndLimits(bot, CONFIG, recordPath, animeinClient);
+    const userPokemon = await fetchUserPokemonList(bot, senderUserId, CONFIG, recordPath, animeinClient);
+    const dn = senderName.substring(0, 10);
+    const targetLabel = String(targetPokemonName || '').trim();
+
+    if (!targetLabel) {
+        return getPokemonComboMessage(bot, senderName, senderUserId, CONFIG, recordPath, pokemonData, animeinClient);
+    }
+
+    if (userPokemon.length === 0) {
+        return [
+            `┌── ⚠️ KOMBO ──────────`,
+            `│ 👤 @${dn}`,
+            `├───────────────────`,
+            `│ Tidak ada Pokemon`,
+            `│ di tas kamu.`,
+            `└──────────────────────`,
+        ].join('\n');
+    }
+
+    const targetOwned = userPokemon.filter(p => normalizePokemonName(p.name) === normalizePokemonName(targetLabel));
+    if (!targetOwned.length) {
+        return [
+            `┌── ⚠️ KOMBO ──────────`,
+            `│ 👤 @${dn}`,
+            `├───────────────────`,
+            `│ Kamu belum punya`,
+            `│ ${targetLabel} di tas.`,
+            `└──────────────────────`,
+        ].join('\n');
+    }
+
+    const eligible = [];
+    const targetBlocked = [];
+
+    for (const p of userPokemon) {
+        const grade = getPokemonGrade(p.name);
+        const baseName = getBasePokemonName(p.name);
+        if (banned.includes(baseName.toLowerCase())) {
+            if (normalizePokemonName(p.name) === normalizePokemonName(targetLabel)) targetBlocked.push('banned');
+            continue;
+        }
+        if (!isGradeAllowed(grade, limits)) {
+            if (normalizePokemonName(p.name) === normalizePokemonName(targetLabel)) targetBlocked.push('grade');
+            continue;
+        }
+        eligible.push(p);
+    }
+
+    const gradeStr = limits.length > 0 ? limits.join(',') : 'All';
+    const banStr = banned.length > 0 ? banned.map(fullPokemonName).join(', ') : '-';
+    const { combo, target } = findBestComboWithTarget(eligible, pokemonData, targetLabel);
+
+    if (!target) {
+        const reason = targetBlocked.includes('banned') ? 'Pokemon target sedang ban.' : 'Pokemon target tidak sesuai grade aktif.';
+        return [
+            `┌── ⚔️ KOMBO ──────────`,
+            `│ 👤 @${dn}`,
+            `├───────────────────`,
+            `│ Target: ${targetLabel}`,
+            `│ Grade : ${gradeStr}`,
+            `│ Ban   : ${banStr}`,
+            `├───────────────────`,
+            `│ ❌ ${reason}`,
+            `└──────────────────────`,
+        ].join('\n');
+    }
+
+    if (!combo) {
+        return [
+            `┌── ⚔️ KOMBO ──────────`,
+            `│ 👤 @${dn}`,
+            `├───────────────────`,
+            `│ Target: ${fullPokemonName(target.name)}`,
+            `│ Grade : ${gradeStr}`,
+            `│ Ban   : ${banStr}`,
+            `├───────────────────`,
+            `│ ❌ Partner kurang`,
+            `│ Min. 3 Pokemon sesuai`,
+            `│ grade aktif.`,
+            `└──────────────────────`,
+        ].join('\n');
+    }
+
+    return [
+        `┌── ⚔️ KOMBO TARGET ─────`,
+        `│ 👤 @${dn}`,
+        `├───────────────────`,
+        `│ Target: ${fullPokemonName(target.name)}`,
+        `│ Grade : ${gradeStr}`,
+        `│ Ban   : ${banStr}`,
+        `│ Milik : ${userPokemon.length} | OK: ${eligible.length}`,
+        `├── 💎 TIM ────────────`,
+        `│ 🛡️ ${fullPokemonName(combo.DEF.name)}`,
+        `│   L${combo.DEF.lv} CP${combo.DEF.cp}`,
+        `│ ⚔️ ${fullPokemonName(combo.ATK.name)}`,
+        `│   L${combo.ATK.lv} CP${combo.ATK.cp}`,
+        `│ ⚡ ${fullPokemonName(combo.SPD.name)}`,
+        `│   L${combo.SPD.lv} CP${combo.SPD.cp}`,
+        `└──────────────────────`,
+    ].join('\n');
+}
+
 module.exports = {
-    getPokemonComboMessage
+    getPokemonComboMessage,
+    getPokemonComboWithTargetMessage,
 };
