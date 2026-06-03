@@ -1,3 +1,33 @@
+function extractAnimeTagRequest(text) {
+    const lower = String(text || '').toLowerCase();
+    const match = lower.match(/\btag(?:\s+anime)?\s+(?:no|nomor|number|#)?\s*(\d{1,2})\b/);
+    return match ? parseInt(match[1], 10) : null;
+}
+
+function extractTitleFromNumberedList(text, targetNo) {
+    const lines = String(text || '').split(/\r?\n/);
+    const escapedNo = String(targetNo).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`^\\s*${escapedNo}\\s*[.):-]\\s*(.+)$`, 'i');
+    for (const line of lines) {
+        const match = line.match(re);
+        if (!match) continue;
+        return match[1]
+            .replace(/\s*\[(?:Rating|Update|Jam|Views|Studio|Tahun|Skor|Score)[^\]]*\].*$/i, '')
+            .replace(/\s*\([^)]*(?:Alt|Rating|Update|Jam|Views|Studio|Tahun)[^)]*\).*$/i, '')
+            .replace(/^[-•]\s*/, '')
+            .trim();
+    }
+    return '';
+}
+
+function toAnimeHashtag(title) {
+    return `#${String(title || '')
+        .trim()
+        .replace(/^[-•]\s*/, '')
+        .replace(/[^\p{L}\p{N}]+/gu, '_')
+        .replace(/^_+|_+$/g, '')}`;
+}
+
 function createAiService(deps) {
     const {
         isMentioned,
@@ -13,6 +43,7 @@ function createAiService(deps) {
         stats,
         getFilterData,
         getAutoReply,
+        animeinSearchAnime,
     } = deps;
 
     async function handleInfoMessage(ctx) {
@@ -51,9 +82,24 @@ function createAiService(deps) {
         stats.totalTriggers++;
         const question = cleanText || 'panggil rara?';
 
+        const tagNo = extractAnimeTagRequest(question);
+        if (tagNo && msg.replay_text) {
+            const title = extractTitleFromNumberedList(msg.replay_text, tagNo);
+            if (title) {
+                const tag = toAnimeHashtag(title);
+                const sent = await sendChatMessage(bot, `@${senderName} ${tag}`, msg.id);
+                if (sent) {
+                    addActivity('anime_tag', senderName, question, tag, 'AnimeTag', 0);
+                    await addXP(senderName, 10);
+                    trackStreak(senderName);
+                }
+                return true;
+            }
+        }
+
         if (isAnimeDataQuestion(question)) {
             console.log(`[ANIME DATA] Detected anime data question from ${senderName}`);
-            const animeResponse = await handleAnimeDataQuestion(question);
+            const animeResponse = await handleAnimeDataQuestion(question, animeinSearchAnime);
             if (animeResponse) {
                 const sent = await sendChatMessage(bot, `@${senderName}\n${animeResponse}`, msg.id);
                 if (sent) {

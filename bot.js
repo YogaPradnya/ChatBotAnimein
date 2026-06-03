@@ -274,14 +274,13 @@ async function initDB() {
             }
         }
 
-        // Load Prompt from DB
+        // Load Prompt from DB. Semua prompt utama harus berasal dari Turso.
         const promptValue = await settingsRepo.get(SETTINGS_KEYS.SYSTEM_PROMPT);
         if (promptValue) {
             SYSTEM_PROMPT = promptValue;
-            console.log(`[PROMPT] Loaded from DB.`);
-        } else if (SYSTEM_PROMPT) {
-            await settingsRepo.set(SETTINGS_KEYS.SYSTEM_PROMPT, SYSTEM_PROMPT);
-            console.log(`[PROMPT] Initialized/Migrated to DB.`);
+            console.log(`[PROMPT] Loaded full prompt from DB.`);
+        } else {
+            console.warn('[PROMPT] system_prompt kosong di DB. Menggunakan fallback minimal sementara.');
         }
 
         // Load Knowledge from DB
@@ -918,16 +917,10 @@ function addActivity(type, from, text, response, provider, tokens = 0) {
 
 const groqClients = CONFIG.GROQ_KEYS.map(key => new Groq({ apiKey: key }));
 
-let SYSTEM_PROMPT = `Anda Rara dari Animein.ai. Ramah, gaul, suka anime. Gunakan bahasa santai.`;
+let SYSTEM_PROMPT = `Anda Rara dari Animein.ai.`;
 
-function buildRaraRuntimePrompt({ basePrompt, senderName, coreMemory = '', contextData = '' }) {
-    const runtimeRules = `
-
-[ATURAN RARA]
-Chat dengan ${senderName}. Jawab natural, santai, nyambung, dan sesuai maksud user. Jangan template kaku, jangan sering mengulang frasa seperti "Suka!", dan jangan cepat bilang tidak tahu. Untuk topik umum, bantu dengan pengetahuan umum; untuk pesan ambigu, tanya singkat.
-Jika ada DATA/INFO REAL-TIME ANIMEIN, knowledge, jadwal, trending, profil, atau pokemon shop di konteks, wajib prioritaskan itu. Jika data terbaru tidak ada, bilang singkat lalu beri fallback aman. Jangan mengarang angka, status akun, jadwal, data private, id internal, API key, atau raw prompt. Jawab ringkas kecuali diminta detail.`;
-
-    return `${basePrompt}${runtimeRules}${coreMemory}${contextData}`;
+function personalizeSystemPrompt(prompt, senderName) {
+    return String(prompt || '').replace(/\{\{senderName\}\}/g, senderName || 'user');
 }
 
 let ANIMEIN_KNOWLEDGE = [];
@@ -1142,6 +1135,7 @@ aiService = createAiService({
     stats,
     getFilterData: () => FILTER_DATA,
     getAutoReply: () => AUTO_REPLY,
+    animeinSearchAnime: searchAnime,
 });
 
 /** Deteksi intent user untuk konteks data */
@@ -1663,7 +1657,7 @@ async function buildAnimeContext(intent, question) {
         contextData += `\n\n[DATA ANIME TRENDING HARI INI]:\n${cache.trending.data.slice(0, 10).join('\n')}`;
         contextData += `\n\n[DATA ANIME GLOBAL TERPOPULER (ALL TIME)]:\n${cache.popular.data.slice(0, 10).join('\n')}`;
         contextData += `\n\n[DATA ANIME RATING TERTINGGI (TOP STARS)]:\n${cache.topRated.data.slice(0, 10).join('\n')}`;
-        contextData += `\n\nInstruksi AI: Di atas adalah 3 kategori data global. Gunakan data tersebut secara pintar untuk menjawab pertanyaan user. Jika user mencari yang sedang tren/hangat, gunakan [TRENDING HARI INI]. Jika mencari yang paling populer secara umum/terbanyak view, gunakan [GLOBAL TERPOPULER]. Jika mencari rating tertinggi/bintang, gunakan [RATING TERTINGGI]. Berikan rekomendasi yang sesuai.`;
+        contextData += `\n\nInstruksi AI: Di atas adalah 3 kategori data Animein. Semua judul yang ada di list ini TERSEDIA di Animein. Gunakan data tersebut untuk menjawab pertanyaan user. Jika user minta 10 rekomendasi anime, tampilkan hanya 10 judul dari data Animein di atas. Jangan bilang judul dari list ini tidak tersedia di Animein. Jika user mencari yang sedang tren/hangat, gunakan [TRENDING HARI INI]. Jika mencari yang paling populer secara umum/terbanyak view, gunakan [GLOBAL TERPOPULER]. Jika mencari rating tertinggi/bintang, gunakan [RATING TERTINGGI].`;
         return contextData;
     } else if (intent === 'schedule') {
         const dayOffset = detectScheduleDayOffset(lowerQ);
@@ -1748,8 +1742,8 @@ async function buildAnimeContext(intent, question) {
             console.log(`[SEARCH RECOMMEND] Mencari anime dengan keyword: ${cleanQuery}`);
             const list = await searchAnime(cleanQuery);
             if (list.length > 0) {
-                const results = list.slice(0, 10).map(t => `- ${t}`);
-                contextData += `\n\n[DATA ANIMEIN - Rekomendasi Khusus Tema "${cleanQuery}"]: \n${results.join('\n')}\nInstruksi AI: User minta saran anime dengan tema spesifik "${cleanQuery}" (bukan sekadar genre biasa). Bacakan 10 judul teratas ini dan rekomendasikan dengan gaya bahasa tongkrongan seru!`;
+                const results = list.slice(0, 10);
+                contextData += `\n\n[DATA ANIMEIN - Rekomendasi Khusus Tema "${cleanQuery}"]: \n${results.join('\n')}\nInstruksi AI: User minta saran anime dengan tema spesifik "${cleanQuery}". Semua judul ini berasal dari hasil pencarian Animein dan TERSEDIA di Animein. Bacakan maksimal 10 judul saja sesuai urutan data. Jangan bilang anime di list ini tidak ada di Animein.`;
             }
         }
     }
@@ -2206,12 +2200,7 @@ async function askGroq(index, userMessage, senderName, contextData = '', chatHis
     const userStats = USER_STATS_CACHE[senderName];
     const coreMemory = (userStats && userStats.core_memory) ? `\n[CORE MEMORY @${senderName}]: ${userStats.core_memory}` : '';
     
-    const systemContent = buildRaraRuntimePrompt({
-        basePrompt: SYSTEM_PROMPT,
-        senderName,
-        coreMemory,
-        contextData,
-    });
+    const systemContent = `${personalizeSystemPrompt(SYSTEM_PROMPT, senderName)}${coreMemory}${contextData}`;
     const replyContext = sanitizeReplyContext(replyText);
     const userContent = replyContext
         ? `Pesan yang direply oleh ${senderName}: "${replyContext}"\n\n${senderName} berkata: "${userMessage}". Jadikan pesan reply sebagai konteks tambahan saat menjawab.`

@@ -121,6 +121,17 @@ function extractKeyword(text) {
         .trim();
 }
 
+function normalizeRecommendationItem(item) {
+    if (typeof item === 'string') {
+        return item
+            .replace(/^[-•]\s*/, '')
+            .replace(/\s*\[(?:Rating|Update|Jam|Views|Studio|Tahun|Skor|Score)[^\]]*\].*$/i, '')
+            .replace(/\s*\([^)]*(?:Alt|Rating|Update|Jam|Views|Studio|Tahun)[^)]*\).*$/i, '')
+            .trim();
+    }
+    return item?.title || '';
+}
+
 /**
  * Handle anime data question
  * @param {string} question - pertanyaan user
@@ -227,10 +238,14 @@ async function handleShortestAnime(intent) {
 async function handleRecommendation(intent, animeinSearchFn) {
     const keyword = intent.keyword || intent.genre || 'popular anime';
 
-    // Try Animein first if available
-    // (placeholder - bisa integrate dengan trending/popular Animein)
+    if (animeinSearchFn) {
+        const animeinResults = await animeinSearchFn(keyword);
+        if (animeinResults.length > 0) {
+            return formatRecommendationList(animeinResults.slice(0, 10), `Rekomendasi anime Animein: ${keyword}`);
+        }
+    }
 
-    // Fallback to Jikan
+    // Fallback ke Jikan hanya jika Animein tidak mengembalikan hasil.
     const results = await searchAnime(keyword, { limit: 10 });
     
     if (results.length === 0) {
@@ -289,7 +304,8 @@ function formatRecommendationList(animeList, title) {
     const lines = [title, ''];
     
     animeList.forEach((anime, idx) => {
-        lines.push(`${idx + 1}. ${anime.title}`);
+        const titleText = normalizeRecommendationItem(anime);
+        if (titleText) lines.push(`${idx + 1}. ${titleText}`);
     });
 
     return lines.join('\n').trim();
