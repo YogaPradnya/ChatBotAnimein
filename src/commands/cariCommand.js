@@ -51,11 +51,13 @@ async function execute(ctx) {
             return true;
         }
 
+        const interpretation = results.find(item => item._interpretation)?._interpretation;
         const lines = [
             '┌── HASIL CARI ──────',
             `│ Keyword: ${cleanText(query, 26)}`,
-            '├────────────────────',
         ];
+        if (interpretation) lines.push(`│ Tafsir : ${cleanText(interpretation, 26)}`);
+        lines.push('├────────────────────');
 
         results.slice(0, 7).forEach((anime, index) => {
             const title = cleanText(pickValue(anime.title, anime.name), 29);

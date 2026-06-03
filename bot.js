@@ -1512,10 +1512,76 @@ async function fetchAnimeSearchResults(query, limit = 7) {
     } : {};
 
     const normalize = value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-    const keywordMap = {
-        mahiru: ['mahiru', 'shiina mahiru', 'otonari', 'tenshi sama', 'angel next door', 'dame ningen'],
+    const normalizedKeyword = normalize(keyword);
+    const semanticRules = [
+        {
+            type: 'karakter',
+            labels: ['mahiru', 'mhiru', 'shiina', 'shiina mahiru'],
+            title: 'Otonari no Tenshi-sama ni Itsunomanika Dame Ningen ni Sareteita Ken',
+            synonyms: 'The Angel Next Door Spoils Me Rotten, Otonari no Tenshi-sama',
+            reason: 'karakter Mahiru Shiina',
+        },
+        {
+            type: 'singkatan',
+            labels: ['tensura', 'slime isekai', 'rimuru'],
+            title: 'Tensei shitara Slime Datta Ken',
+            synonyms: 'That Time I Got Reincarnated as a Slime, TenSura',
+            reason: 'singkatan/karakter',
+        },
+        {
+            type: 'singkatan',
+            labels: ['konosuba', 'kono suba'],
+            title: 'Kono Subarashii Sekai ni Shukufuku wo!',
+            synonyms: 'KonoSuba',
+            reason: 'singkatan anime',
+        },
+        {
+            type: 'singkatan',
+            labels: ['oregairu', 'yahari', 'hikki', 'hachiman'],
+            title: 'Yahari Ore no Seishun Love Comedy wa Machigatteiru.',
+            synonyms: 'Oregairu, My Teen Romantic Comedy SNAFU',
+            reason: 'singkatan/karakter',
+        },
+        {
+            type: 'karakter',
+            labels: ['rem', 'ram'],
+            title: 'Re:Zero kara Hajimeru Isekai Seikatsu',
+            synonyms: 'Re:Zero Starting Life in Another World',
+            reason: 'karakter',
+        },
+        {
+            type: 'karakter',
+            labels: ['anya', 'loid', 'yor'],
+            title: 'Spy x Family',
+            synonyms: 'SPY×FAMILY',
+            reason: 'karakter',
+        },
+        {
+            type: 'karakter',
+            labels: ['gojo', 'itadori', 'sukuna'],
+            title: 'Jujutsu Kaisen',
+            synonyms: 'JJK',
+            reason: 'karakter/singkatan',
+        },
+    ];
+    const isClose = (a, b) => {
+        if (!a || !b) return false;
+        if (a.includes(b) || b.includes(a)) return true;
+        if (Math.abs(a.length - b.length) > 1) return false;
+        let i = 0, j = 0, diff = 0;
+        while (i < a.length && j < b.length) {
+            if (a[i] === b[j]) { i++; j++; continue; }
+            diff++;
+            if (diff > 1) return false;
+            if (a.length > b.length) i++;
+            else if (b.length > a.length) j++;
+            else { i++; j++; }
+        }
+        return diff + (a.length - i) + (b.length - j) <= 1;
     };
-    const terms = [...new Set([keyword, ...(keywordMap[normalize(keyword)] || [])].map(normalize).filter(Boolean))];
+    const semanticMatches = semanticRules.filter(rule => rule.labels.some(label => isClose(normalizedKeyword, normalize(label))));
+    const keywordMap = Object.fromEntries(semanticRules.map(rule => [normalize(rule.labels[0]), [rule.title, rule.synonyms, ...rule.labels]]));
+    const terms = [...new Set([keyword, ...(keywordMap[normalizedKeyword] || []), ...semanticMatches.flatMap(rule => [rule.title, rule.synonyms, ...rule.labels])].map(normalize).filter(Boolean))];
 
     const collectItems = payload => {
         if (Array.isArray(payload)) return payload;
@@ -1573,7 +1639,15 @@ async function fetchAnimeSearchResults(query, limit = 7) {
     };
 
     try {
-        const candidates = [];
+        const candidates = semanticMatches.map((rule, index) => ({
+            id: `semantic-${normalizedKeyword}-${index}`,
+            title: rule.title,
+            synonyms: rule.synonyms,
+            synopsis: `Hasil semantic search: ${rule.reason}.`,
+            _semanticDirect: true,
+            _interpretation: `${rule.type}: ${rule.reason}`,
+            _matchReason: rule.reason,
+        }));
         const requests = [
             animeinClient.get('/data/movie/find', {
                 params: { ...authParams, keyword, q: keyword, search: keyword, page: 1 },
@@ -1626,7 +1700,11 @@ async function fetchAnimeSearchResults(query, limit = 7) {
                 return true;
             })
             .slice(0, limit)
-            .map(entry => ({ ...entry.item, _matchReason: entry.matched.join(', ') || 'keyword' }));
+            .map(entry => ({
+                ...entry.item,
+                _matchReason: entry.item._matchReason || entry.matched.join(', ') || 'keyword',
+                _interpretation: entry.item._interpretation || null,
+            }));
     } catch (e) {
         console.warn('[ANIMEIN] Gagal search anime:', safeMessage(e, 80));
         return [];
