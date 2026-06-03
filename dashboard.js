@@ -618,8 +618,6 @@ function getDashboardHTML() {
     <button class="nav-item" onclick="showPage('kuis', this); toggleSidebar(false)">Kuis & Leaderboard</button>
     <button class="nav-item" onclick="showPage('filter', this); toggleSidebar(false)">Filter Kata</button>
     <button class="nav-item" onclick="showPage('model', this); toggleSidebar(false)">Model AI</button>
-    <button class="nav-item" onclick="showPage('database', this); toggleSidebar(false)">Database</button>
-    <button class="nav-item" onclick="showPage('autoreply', this); toggleSidebar(false)">Auto Reply</button>
     <button class="nav-item" onclick="showPage('gambar', this); toggleSidebar(false)">Limit Manager</button>
     <button class="nav-item" onclick="showPage('laporan', this); toggleSidebar(false)">Laporan</button>
     <button class="nav-item" onclick="showPage('banned', this); toggleSidebar(false)">Blokir User</button>
@@ -1668,14 +1666,12 @@ function getDashboardHTML() {
       target.style.display = 'block';
     }
     el.classList.add('active');
-    const titles = { dashboard: 'Dashboard', model: 'Model AI', database: 'Database', prompt: 'Prompt & Knowledge', autoreply: 'Auto Reply', gambar: 'Limit Manager', laporan: 'Laporan', banned: 'Blokir User', filter: 'Filter Kata', kuis: 'Kuis & Leaderboard', logs: 'Realtime Logs', 'api-traffic': 'API Monitor' };
+    const titles = { dashboard: 'Dashboard', model: 'Model AI', prompt: 'Prompt & Knowledge', gambar: 'Limit Manager', laporan: 'Laporan', banned: 'Blokir User', filter: 'Filter Kata', kuis: 'Kuis & Leaderboard', logs: 'Realtime Logs', 'api-traffic': 'API Monitor' };
     document.getElementById('pageTitle').textContent = titles[id] || id;
     if (id === 'dashboard') refresh();
-    if (id === 'database') loadCache();
     if (id === 'prompt') loadPrompt();
     if (id === 'laporan') loadLaporan();
     if (id === 'filter') loadFilter();
-    if (id === 'autoreply') loadAutoReply();
     if (id === 'gambar') { loadGlobalLimits(); loadCommandLimits(); loadImageLimits(); }
     if (id === 'banned') loadBannedPage();
     if (id === 'kuis') { loadTitles(); loadUsers(); loadBanned(); loadQuizPool(); }

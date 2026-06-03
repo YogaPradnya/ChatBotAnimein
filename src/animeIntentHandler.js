@@ -202,7 +202,7 @@ async function handleRecommendationByDuration(intent) {
         return `Tidak ketemu anime dengan durasi sekitar ${targetMin} menit per episode.`;
     }
 
-    return formatRecommendationList(results.slice(0, 5), `Rekomendasi anime durasi ~${targetMin} menit/episode`);
+    return formatRecommendationList(results.slice(0, 10), `Rekomendasi anime durasi ~${targetMin} menit/episode`);
 }
 
 /**
@@ -218,7 +218,7 @@ async function handleShortestAnime(intent) {
         return 'Tidak ketemu anime pendek/singkat.';
     }
 
-    return formatRecommendationList(results.slice(0, 5), 'Anime tersingkat/pendek');
+    return formatRecommendationList(results.slice(0, 10), 'Anime tersingkat/pendek');
 }
 
 /**
@@ -231,7 +231,7 @@ async function handleRecommendation(intent, animeinSearchFn) {
     // (placeholder - bisa integrate dengan trending/popular Animein)
 
     // Fallback to Jikan
-    const results = await searchAnime(keyword, { limit: 5 });
+    const results = await searchAnime(keyword, { limit: 10 });
     
     if (results.length === 0) {
         return `Tidak ketemu rekomendasi anime untuk "${keyword}".`;
@@ -290,10 +290,6 @@ function formatRecommendationList(animeList, title) {
     
     animeList.forEach((anime, idx) => {
         lines.push(`${idx + 1}. ${anime.title}`);
-        lines.push(`   ${anime.type} | ${anime.episodes} eps | ${anime.duration}`);
-        lines.push(`   Score: ${anime.score} | ${anime.year}`);
-        if (anime.genres) lines.push(`   Genre: ${anime.genres}`);
-        lines.push('');
     });
 
     return lines.join('\n').trim();
