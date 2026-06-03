@@ -104,7 +104,10 @@ commandRouter
         COMMANDS.LEADERBOARD,
         COMMANDS.KOMBO,
         COMMANDS.COMBO,
+        COMMANDS.TAS,
         COMMANDS.META,
+        COMMANDS.BATTLEINFO,
+        COMMANDS.BATTLE,
     ], () => {});
 
 async function initDB() {
@@ -1422,6 +1425,207 @@ async function fetchSchedule(dayOffset = 0) {
     } catch (e) {
         console.warn('[ANIMEIN] Gagal ambil jadwal:', safeMessage(e, 60));
         return cache.schedule[targetDay]?.data || [];
+    }
+}
+
+/** Ambil daftar anime dari Animein berdasarkan tipe (hot, popular, random, new_episode) */
+async function fetchAnimeinList(type) {
+    if (isAnimeinApiBlocked(`Fetch ${type}`)) return [];
+    const cacheKey = type;
+    const now = Date.now();
+    const ANIMEIN_LIST_TTL = 30 * 60 * 1000; // 30 menit
+
+    if (cache[cacheKey]?.data?.length > 0 && now - (cache[cacheKey]?.lastFetch || 0) < ANIMEIN_LIST_TTL) {
+        return cache[cacheKey].data;
+    }
+
+    try {
+        const endpoints = {
+            hot: '/3/2/home/hot',
+            popular: '/3/2/home/popular',
+            random: '/3/2/home/random',
+            new_episode: '/data/home/list_new_episode',
+        };
+
+        const endpoint = endpoints[type];
+        if (!endpoint) return [];
+
+        const authParams = (bots[0] && bots[0].auth.userId) ? {
+            id_user: bots[0].auth.userId,
+            key_client: bots[0].auth.userKey
+        } : {};
+
+        const res = await animeinClient.get(endpoint, {
+            params: { ...authParams, limit: '20' },
+            headers: ANIMEIN_HEADERS,
+            timeout: 10000,
+        });
+
+        const payload = res.data?.data;
+        let items = [];
+
+        if (Array.isArray(payload)) {
+            items = payload;
+        } else if (payload?.movie) {
+            items = payload.movie;
+        } else if (payload?.hot) {
+            items = payload.hot;
+        } else if (payload?.popular) {
+            items = payload.popular;
+        } else if (payload?.random) {
+            items = payload.random;
+        } else if (payload?.list) {
+            items = payload.list;
+        } else {
+            // Fallback: cari array pertama di payload
+            for (const val of Object.values(payload || {})) {
+                if (Array.isArray(val) && val.length > 0 && val[0]?.title) {
+                    items = val;
+                    break;
+                }
+            }
+        }
+
+        if (items.length > 0) {
+            if (!cache[cacheKey]) cache[cacheKey] = { data: [], lastFetch: 0 };
+            cache[cacheKey].data = items;
+            cache[cacheKey].lastFetch = now;
+            console.log(`[ANIMEIN] ${type} cache updated: ${items.length} items`);
+        }
+
+        return items;
+    } catch (e) {
+        console.warn(`[ANIMEIN] Gagal fetch ${type}:`, e.message?.substring(0, 60));
+        return cache[cacheKey]?.data || [];
+    }
+}
+
+/** Cari daftar anime dari Animein berdasarkan judul */
+async function fetchAnimeSearchResults(query, limit = 7) {
+    if (isAnimeinApiBlocked('Fetch anime search')) return [];
+    const keyword = String(query || '').trim();
+    if (!keyword) return [];
+
+    const authParams = (bots[0] && bots[0].auth.userId) ? {
+        id_user: bots[0].auth.userId,
+        key_client: bots[0].auth.userKey
+    } : {};
+
+    try {
+        let candidates = [];
+        const findRes = await animeinClient.get('/data/movie/find', {
+            params: { ...authParams, keyword, q: keyword, search: keyword, page: 1 },
+            headers: ANIMEIN_HEADERS,
+            timeout: 9000,
+        }).catch(() => null);
+
+        const findPayload = findRes?.data?.data;
+        if (Array.isArray(findPayload)) {
+            candidates = findPayload;
+        } else if (findPayload?.movie) {
+            candidates = findPayload.movie;
+        } else if (findPayload?.list) {
+            candidates = findPayload.list;
+        }
+
+        if (candidates.length === 0) {
+            const exploreRes = await animeinClient.get('/3/2/explore/movie', {
+                params: { ...authParams, keyword, page: 1 },
+                headers: ANIMEIN_HEADERS,
+                timeout: 9000,
+            }).catch(() => null);
+            candidates = exploreRes?.data?.data?.movie || [];
+        }
+
+        const seen = new Set();
+        return candidates
+            .filter(item => item && (item.title || item.name))
+            .filter(item => {
+                const key = String(item.id || item.id_movie || item.title || item.name).toLowerCase();
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            })
+            .slice(0, limit);
+    } catch (e) {
+        console.warn('[ANIMEIN] Gagal search anime:', safeMessage(e, 80));
+        return [];
+    }
+}
+
+/** Cari detail anime dari Animein berdasarkan judul */
+async function fetchAnimeDetailByQuery(query) {
+    if (isAnimeinApiBlocked('Fetch anime detail')) return null;
+    const keyword = String(query || '').trim();
+    if (!keyword) return null;
+
+    const authParams = (bots[0] && bots[0].auth.userId) ? {
+        id_user: bots[0].auth.userId,
+        key_client: bots[0].auth.userKey
+    } : {};
+
+    try {
+        let candidates = [];
+
+        const findRes = await animeinClient.get('/data/movie/find', {
+            params: { ...authParams, keyword, q: keyword, search: keyword, page: 1 },
+            headers: ANIMEIN_HEADERS,
+            timeout: 9000,
+        }).catch(() => null);
+
+        const findPayload = findRes?.data?.data;
+        if (Array.isArray(findPayload)) {
+            candidates = findPayload;
+        } else if (findPayload?.movie) {
+            candidates = findPayload.movie;
+        } else if (findPayload?.list) {
+            candidates = findPayload.list;
+        }
+
+        if (candidates.length === 0) {
+            const exploreRes = await animeinClient.get('/3/2/explore/movie', {
+                params: { ...authParams, keyword, page: 1 },
+                headers: ANIMEIN_HEADERS,
+                timeout: 9000,
+            }).catch(() => null);
+            candidates = exploreRes?.data?.data?.movie || [];
+        }
+
+        const best = candidates.find(item => item?.id || item?.id_movie) || null;
+        const idMovie = best?.id || best?.id_movie;
+        if (!idMovie) return null;
+
+        const [detailRes, episodeRes] = await Promise.all([
+            animeinClient.get(`/3/2/movie/detail/${idMovie}`, {
+                params: authParams,
+                headers: ANIMEIN_HEADERS,
+                timeout: 9000,
+            }).catch(() => null),
+            animeinClient.get(`/3/2/movie/episode/${idMovie}`, {
+                params: authParams,
+                headers: ANIMEIN_HEADERS,
+                timeout: 9000,
+            }).catch(() => null),
+        ]);
+
+        const detailPayload = detailRes?.data?.data;
+        const movie = detailPayload?.movie || detailPayload || best;
+        const episodePayload = episodeRes?.data?.data;
+        let episodes = [];
+        if (Array.isArray(episodePayload)) {
+            episodes = episodePayload;
+        } else if (episodePayload?.episode) {
+            episodes = episodePayload.episode;
+        } else if (episodePayload?.episodes) {
+            episodes = episodePayload.episodes;
+        } else if (episodePayload?.list) {
+            episodes = episodePayload.list;
+        }
+
+        return { movie: { ...best, ...movie }, episodes };
+    } catch (e) {
+        console.warn('[ANIMEIN] Gagal fetch detail anime:', safeMessage(e, 80));
+        return null;
     }
 }
 
@@ -2810,6 +3014,12 @@ async function processMessages(bot, messages) {
                 reportRepo,
                 wrapInBox,
                 ANIMEIN_KNOWLEDGE,
+                fetchSchedule,
+                fetchAnimeinList,
+                fetchAnimeSearchResults,
+                fetchAnimeDetailByQuery,
+                fetchGenresList,
+                fetchByGenre,
             };
             if (await commands.handleInfoCommand(infoCommandContext)) continue;
 

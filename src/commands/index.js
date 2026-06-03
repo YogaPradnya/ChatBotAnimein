@@ -12,6 +12,16 @@ const buyCommand = require('./buyCommand');
 const guessCommand = require('./guessCommand');
 const hintCommand = require('./hintCommand');
 const imageCommand = require('./imageCommand');
+const jadwalCommand = require('./jadwalCommand');
+const hotCommand = require('./hotCommand');
+const baruCommand = require('./baruCommand');
+const randomCommand = require('./randomCommand');
+const populerCommand = require('./populerCommand');
+const detailCommand = require('./detailCommand');
+const cariCommand = require('./cariCommand');
+const genreCommand = require('./genreCommand');
+const tasCommand = require('./tasCommand');
+const battleInfoCommand = require('./battleInfoCommand');
 
 async function handleKuisCommand(ctx) {
     const { lowerMsg } = ctx;
@@ -38,6 +48,14 @@ async function handleKuisCommand(ctx) {
 
     if (lowerMsg === '.kombo' || lowerMsg.startsWith('.kombo ') || lowerMsg === '.combo' || lowerMsg.startsWith('.combo ')) {
         return comboCommand.execute(ctx);
+    }
+
+    if (lowerMsg === '.tas') {
+        return tasCommand.execute(ctx);
+    }
+
+    if (lowerMsg === '.battleinfo' || lowerMsg === '.battle') {
+        return battleInfoCommand.execute(ctx);
     }
 
     if (lowerMsg === '.profil') {
@@ -74,6 +92,38 @@ async function handleInfoCommand(ctx) {
         return helpCommand.execute(ctx);
     }
 
+    if (lowerMsg === '.jadwal') {
+        return jadwalCommand.execute(ctx);
+    }
+
+    if (lowerMsg === '.hot' || lowerMsg === '.trending') {
+        return hotCommand.execute(ctx);
+    }
+
+    if (lowerMsg === '.baru') {
+        return baruCommand.execute(ctx);
+    }
+
+    if (lowerMsg === '.random') {
+        return randomCommand.execute(ctx);
+    }
+
+    if (lowerMsg === '.populer') {
+        return populerCommand.execute(ctx);
+    }
+
+    if (lowerMsg === '.detail' || lowerMsg.startsWith('.detail ')) {
+        return detailCommand.execute(ctx);
+    }
+
+    if (lowerMsg === '.cari' || lowerMsg.startsWith('.cari ')) {
+        return cariCommand.execute(ctx);
+    }
+
+    if (lowerMsg === '.genre' || lowerMsg.startsWith('.genre ')) {
+        return genreCommand.execute(ctx);
+    }
+
     return false;
 }
 
@@ -96,6 +146,16 @@ module.exports = {
     guessCommand,
     hintCommand,
     imageCommand,
+    jadwalCommand,
+    hotCommand,
+    baruCommand,
+    randomCommand,
+    populerCommand,
+    detailCommand,
+    cariCommand,
+    genreCommand,
+    tasCommand,
+    battleInfoCommand,
     handleKuisCommand,
     handleInfoCommand,
     handleImageCommand,

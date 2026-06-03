@@ -8,10 +8,20 @@ function createInitialQuizState() {
         startedAt: 0,
         hintsRevealed: 0,
         clues: {},
+        hintOrder: [],
         wrongGuessers: new Set(),
         hintTimer: null,
         expireTimer: null,
     };
+}
+
+function shuffleArray(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
 }
 
 function createQuizService({
@@ -46,6 +56,7 @@ function createQuizService({
         const activeQuiz = getActiveQuiz();
         const title = activeQuiz.original;
         const c = activeQuiz.clues;
+        const order = activeQuiz.hintOrder || ['studio', 'year_genre', 'type'];
 
         let hiddenTitle = title.replace(/[a-zA-Z0-9]/g, '*');
         if (level >= 4) {
@@ -76,6 +87,21 @@ function createQuizService({
         const timeStr = `${Math.floor(remaining/60)}m ${remaining%60}s`;
         const sentences = (c.synopsis || '').split('.').map(s => s.trim()).filter(s => s.length > 5);
 
+        const hintRenderers = {
+            studio: (si) => {
+                lines.push(`\u2502\uD83C\uDFA8 ${c.studio}`);
+                if (sentences[si]) lines.push(`\u2502${censorSpoiler(sentences[si]).substring(0, 26)}`);
+            },
+            year_genre: (si) => {
+                lines.push(`\u2502\uD83D\uDCC5 ${c.year} | ${c.genre}`);
+                if (sentences[si]) lines.push(`\u2502${censorSpoiler(sentences[si]).substring(0, 26)}`);
+            },
+            type: (si) => {
+                lines.push(`\u2502\uD83D\uDCFA Tipe: ${c.type}`);
+                if (sentences[si]) lines.push(`\u2502${censorSpoiler(sentences[si]).substring(0, 26)}`);
+            },
+        };
+
         const lines = [];
 
         if (senderName) {
@@ -94,26 +120,19 @@ function createQuizService({
         lines.push(`\u2502   (${title.length} char)`);
         lines.push(`\u2502\u2B50 Skor: ${c.score}`);
 
-        if (level >= 1 || (level === 0 && !senderName)) {
-            if (level === 0) {
-                const words = (sentences[0] || '').split(' ').slice(0, 5).join(' ');
-                lines.push(`\u2502\uD83D\uDD0D "${censorSpoiler(words)}..."`);
+        if (level === 0 && !senderName) {
+            const introSynopsis = censorSpoiler((sentences[0] || '').substring(0, 50));
+            lines.push(`\u2502\uD83D\uDD0D "${introSynopsis}..."`);
+        }
+
+        for (let i = 0; i < 3; i++) {
+            if (level >= i + 1) {
+                hintRenderers[order[i]](i);
             }
-            if (level >= 1) {
-                lines.push(`\u2502\uD83C\uDFA8 ${c.studio}`);
-                lines.push(`\u2502${censorSpoiler(sentences[0]).substring(0, 26)}`);
-            }
-            if (level >= 2) {
-                lines.push(`\u2502\uD83D\uDCC5 ${c.year} | ${c.genre}`);
-                lines.push(`\u2502${censorSpoiler(sentences[1] || '').substring(0, 26)}`);
-            }
-            if (level >= 3) {
-                lines.push(`\u2502\uD83D\uDCFA Tipe: ${c.type}`);
-                lines.push(`\u2502${censorSpoiler(sentences[2] || '').substring(0, 26)}`);
-            }
-            if (level >= 5) {
-                lines.push(`\u2502${censorSpoiler(c.synopsis).substring(0, 26)}`);
-            }
+        }
+
+        if (level >= 5) {
+            lines.push(`\u2502${censorSpoiler(c.synopsis).substring(0, 26)}`);
         }
 
         lines.push(`\u251C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524`);
@@ -211,6 +230,7 @@ function createQuizService({
                     score: anime.score || '?',
                     type: anime.type || 'SERIES'
                 },
+                hintOrder: shuffleArray(['studio', 'year_genre', 'type']),
                 wrongGuessers: new Set(),
                 hintTimer: null,
                 expireTimer: null,

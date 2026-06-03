@@ -51,6 +51,18 @@ const COMMANDS = {
     COMBO: '.combo',
     GAMBAR: '.gambar',
     LAPOR: '.lapor',
+    JADWAL: '.jadwal',
+    HOT: '.hot',
+    TRENDING: '.trending',
+    BARU: '.baru',
+    RANDOM: '.random',
+    POPULER: '.populer',
+    DETAIL: '.detail',
+    CARI: '.cari',
+    GENRE: '.genre',
+    TAS: '.tas',
+    BATTLEINFO: '.battleinfo',
+    BATTLE: '.battle',
 };
 
 const SETTINGS_KEYS = {
