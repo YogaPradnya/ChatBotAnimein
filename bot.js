@@ -2175,8 +2175,28 @@ async function buildAnimeinExtraContext(question, bot = bots[0], senderName = ''
     return `\n\n[DATA REAL-TIME ANIMEIN TAMBAHAN]${targetInfo}${targetDebug}\n${sections.join('\n\n')}\nInstruksi AI: WAJIB jawab berdasarkan data Animein di atas. Jangan jawab "tidak paham", "tidak tahu", atau jawaban ngambang jika ada angka/field di Ringkasan/RAW_JSON_RINGKAS. Untuk pertanyaan "berapa like/love/view/kontrib/coin/gems saya", baca field likes/love/views/contribs/coin/gems dari data. Jika data real-time endpoint tidak memiliki field yang ditanya, baru gunakan knowledge yang tersedia sebagai fallback dan jelaskan field real-time tersebut tidak tersedia. Jangan menebak. Jangan tampilkan id/id_user/user_id ke user.`;
 }
 
+function sanitizeReplyContext(replyText) {
+    return String(replyText || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 700);
+}
+
+function polishAiAnswer(answer, userMessage, replyText = '') {
+    const text = String(answer || '').trim();
+    const genericConfusion = /\b(saya|aku|rara)\s+(kurang\s+paham|tidak\s+paham|nggak\s+paham|gak\s+paham|tidak\s+tahu|tidak\s+tau|nggak\s+tahu|gak\s+tau)\b/i;
+    if (!genericConfusion.test(text)) return text;
+
+    const reply = sanitizeReplyContext(replyText);
+    const question = String(userMessage || '').trim();
+    if (reply) {
+        return `Aku baca konteks reply-nya: "${reply.slice(0, 180)}". Dari situ, maksudmu soal "${question}" kan? Bisa aku bantu bahas dari konteks itu.`;
+    }
+    return `Bisa jelasin sedikit lagi maksudnya? Aku tangkap kamu lagi nanya soal "${question}", tapi butuh konteks kecil biar jawabannya tepat.`;
+}
+
 /** Groq (Llama 3.1) - kualitas lebih baik */
-async function askGroq(index, userMessage, senderName, contextData = '', chatHistory = []) {
+async function askGroq(index, userMessage, senderName, contextData = '', chatHistory = [], replyText = '') {
     const client = groqClients[index];
     const stat = stats.otak[index];
     
@@ -2192,12 +2212,17 @@ async function askGroq(index, userMessage, senderName, contextData = '', chatHis
         coreMemory,
         contextData,
     });
+    const replyContext = sanitizeReplyContext(replyText);
+    const userContent = replyContext
+        ? `Pesan yang direply oleh ${senderName}: "${replyContext}"\n\n${senderName} berkata: "${userMessage}". Jadikan pesan reply sebagai konteks tambahan saat menjawab.`
+        : `${senderName} berkata: "${userMessage}".`;
+
     const { data: completion, response } = await client.chat.completions.create({
         model: 'llama-3.1-8b-instant',
         messages: [
             { role: 'system', content: systemContent },
             ...chatHistory,
-            { role: 'user', content: `${senderName} berkata: "${userMessage}".` }
+            { role: 'user', content: userContent }
         ],
         max_tokens: 1024,
         temperature: 0.75,
@@ -2373,9 +2398,9 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
     const now = Date.now();
     let history = [];
     
-    // Ambil riwayat ultra-pendek (Hemat Token)
-    const dbHistory = await getHistoryFromDB(senderName, 2); 
-    history = dbHistory.messages.slice(-3); // Cuma 3 pesan terakhir
+    // Ambil riwayat pendek agar konteks obrolan tetap nyambung tanpa boros token.
+    const dbHistory = await getHistoryFromDB(senderName, 4); 
+    history = dbHistory.messages.slice(-6); // Maksimal 6 message terakhir
     const lastTime = dbHistory.lastTime;
     
     // 1. Reset context jika idle > 10 menit
@@ -2407,13 +2432,14 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
                 updateUserMemory(senderName, history);
             }
 
-            const { text, tokens } = await askGroq(i, userMessage, senderName, finalContext, history);
-            if (text) {
+            const { text, tokens } = await askGroq(i, userMessage, senderName, finalContext, history, replyText);
+            const finalText = polishAiAnswer(text, userMessage, replyText);
+            if (finalText) {
                 stats.lastUsedGroq = i;
                 
                 // Cache jawaban AI dinonaktifkan: jangan simpan response dinamis ke response_cache.
                 
-                return { text, provider: `Otak #${i+1}`, tokens };
+                return { text: finalText, provider: `Otak #${i+1}`, tokens };
             }
         } catch (err) {
             stat.errors++;
