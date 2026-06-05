@@ -7,7 +7,7 @@ const TIME = {
 
 const LIMITS = {
     DEFAULT_COMMAND_DAILY_LIMIT: 10,
-    DEFAULT_IMAGE_DAILY_LIMIT: 3,
+    DEFAULT_IMAGE_DAILY_LIMIT: 2,
     DASHBOARD_PAGE_SIZE: 10,
     DASHBOARD_MAX_PAGE_SIZE: 50,
     RATE_LIMIT_MAX_REQUESTS: 60,
@@ -61,8 +61,7 @@ const COMMANDS = {
     CARI: '.cari',
     GENRE: '.genre',
     TAS: '.tas',
-    BATTLEINFO: '.battleinfo',
-    BATTLE: '.battle',
+
 };
 
 const SETTINGS_KEYS = {

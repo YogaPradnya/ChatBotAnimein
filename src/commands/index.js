@@ -21,7 +21,7 @@ const detailCommand = require('./detailCommand');
 const cariCommand = require('./cariCommand');
 const genreCommand = require('./genreCommand');
 const tasCommand = require('./tasCommand');
-const battleInfoCommand = require('./battleInfoCommand');
+
 
 async function handleKuisCommand(ctx) {
     const { lowerMsg } = ctx;
@@ -54,9 +54,7 @@ async function handleKuisCommand(ctx) {
         return tasCommand.execute(ctx);
     }
 
-    if (lowerMsg === '.battleinfo' || lowerMsg === '.battle') {
-        return battleInfoCommand.execute(ctx);
-    }
+
 
     if (lowerMsg === '.profil') {
         return profileCommand.execute(ctx);
@@ -155,7 +153,7 @@ module.exports = {
     cariCommand,
     genreCommand,
     tasCommand,
-    battleInfoCommand,
+
     handleKuisCommand,
     handleInfoCommand,
     handleImageCommand,

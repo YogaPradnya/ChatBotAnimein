@@ -106,8 +106,6 @@ commandRouter
         COMMANDS.COMBO,
         COMMANDS.TAS,
         COMMANDS.META,
-        COMMANDS.BATTLEINFO,
-        COMMANDS.BATTLE,
     ], () => {});
 
 async function initDB() {

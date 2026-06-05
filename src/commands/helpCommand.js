@@ -55,8 +55,7 @@ async function execute(ctx) {
         helpMsg = wrapInBox('GENRE', 'Cari rekomendasi anime berdasarkan genre.\n\nCommand:\n- .genre [nama]\n\nContoh:\n- .genre action\n- .genre romance\n\nData diambil dari Animein Explore.');
     } else if (helpArg === 'tas') {
         helpMsg = wrapInBox('TAS', 'Lihat ringkasan pokemon di tas kamu.\n\nCommand:\n- .tas\n\nData: total pokemon, jumlah per grade, dan top CP.\n\nLanjut: gunakan .kombo untuk rekomendasi tim.');
-    } else if (helpArg === 'battleinfo' || helpArg === 'battle') {
-        helpMsg = wrapInBox('BATTLEINFO', 'Lihat info battle pokemon secara ringkas.\n\nCommand:\n- .battleinfo\n- .battle\n\nData: rank, point, win/lose, coin, banned saat ini, dan banned berikutnya.');
+
     } else if (helpArg === 'ban') {
         helpMsg = wrapInBox('BAN', 'Aturan bot:\n• Dilarang spam\n• Dilarang toxic\n• Dilarang abuse XP\n\nPelanggar akan di-ban permanen.');
     } else if (helpArg) {
@@ -84,7 +83,7 @@ async function execute(ctx) {
             `\u250215. baru    16. random`,
             `\u250217. populer 18. detail`,
             `\u250219. cari    20. genre`,
-            `\u250221. tas     22. battleinfo`,
+            `\u250221. tas`,
             `\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`,
         ].join('\n');
     }
