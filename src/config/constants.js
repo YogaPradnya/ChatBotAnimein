@@ -61,6 +61,7 @@ const COMMANDS = {
     CARI: '.cari',
     GENRE: '.genre',
     TAS: '.tas',
+    LIMIT: '.limit',
 
 };
 

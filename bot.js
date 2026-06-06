@@ -106,6 +106,7 @@ commandRouter
         COMMANDS.COMBO,
         COMMANDS.TAS,
         COMMANDS.META,
+        COMMANDS.LIMIT,
     ], () => {});
 
 async function initDB() {

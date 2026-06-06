@@ -21,6 +21,7 @@ const detailCommand = require('./detailCommand');
 const cariCommand = require('./cariCommand');
 const genreCommand = require('./genreCommand');
 const tasCommand = require('./tasCommand');
+const limitCommand = require('./limitCommand');
 
 
 async function handleKuisCommand(ctx) {
@@ -52,6 +53,10 @@ async function handleKuisCommand(ctx) {
 
     if (lowerMsg === '.tas') {
         return tasCommand.execute(ctx);
+    }
+
+    if (lowerMsg === '.limit') {
+        return limitCommand.execute(ctx);
     }
 
 
@@ -153,6 +158,7 @@ module.exports = {
     cariCommand,
     genreCommand,
     tasCommand,
+    limitCommand,
 
     handleKuisCommand,
     handleInfoCommand,
