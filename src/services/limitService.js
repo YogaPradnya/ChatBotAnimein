@@ -76,7 +76,8 @@ function createLimitService({
         }
 
         const row = result.rows[0];
-        const limit = Number(row.daily_limit ?? defaultLimit);
+        const storedLimit = Number(row.daily_limit ?? defaultLimit);
+        const limit = Math.max(defaultLimit, storedLimit);
         let used = Number(row.used_count || 0);
         let usageDate = row.usage_date || today;
 
