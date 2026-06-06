@@ -1163,6 +1163,7 @@ const cache = {
     genres: { data: null, lastFetch: 0 },
     pokemonShop: { data: [], lastFetch: 0 },
     genreCache: {},
+    recentAnimeLists: new Map(),
     TTL: 6 * 60 * 60 * 1000,
     POKEMON_SHOP_TTL: 2 * 60 * 1000,
 };
@@ -1710,6 +1711,80 @@ async function fetchAnimeSearchResults(query, limit = 7) {
     }
 }
 
+function collectAnimeinItems(payload) {
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.movie)) return payload.movie;
+    if (Array.isArray(payload?.list)) return payload.list;
+    if (Array.isArray(payload?.data)) return payload.data;
+    if (Array.isArray(payload?.items)) return payload.items;
+    for (const value of Object.values(payload || {})) {
+        if (Array.isArray(value)) return value;
+    }
+    return [];
+}
+
+function scoreAnimeTitleMatch(query, item) {
+    const normalize = value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const q = normalize(query);
+    const title = normalize(item?.title || item?.name);
+    const aliases = normalize([item?.synonyms, item?.synonym, item?.alternative_title, item?.english_title].filter(Boolean).join(' '));
+    if (!q || !title) return 0;
+    if (title === q) return 1000;
+    if (title.startsWith(q)) return 850;
+    if (title.includes(q)) return 700;
+    if (aliases.includes(q)) return 600;
+
+    const qWords = q.split(' ').filter(Boolean);
+    const titleWords = title.split(' ').filter(Boolean);
+    const matchedWords = qWords.filter(word => titleWords.some(tw => tw === word || tw.startsWith(word) || word.startsWith(tw))).length;
+    return matchedWords > 0 ? matchedWords * 120 : 0;
+}
+
+async function fetchAnimeTagCandidates(query, limit = 6) {
+    if (isAnimeinApiBlocked('Fetch anime tag candidates')) return [];
+    const title = String(query || '').trim();
+    if (!title) return [];
+
+    const authParams = (bots[0] && bots[0].auth.userId) ? {
+        id_user: bots[0].auth.userId,
+        key_client: bots[0].auth.userKey,
+    } : {};
+
+    try {
+        const responses = await Promise.all([
+            animeinClient.get('/data/movie/find', {
+                params: { ...authParams, title },
+                headers: ANIMEIN_HEADERS,
+                timeout: 9000,
+            }).catch(() => null),
+            animeinClient.get('/data/movie/find', {
+                params: { ...authParams, title, keyword: title, q: title, search: title },
+                headers: ANIMEIN_HEADERS,
+                timeout: 9000,
+            }).catch(() => null),
+        ]);
+
+        const candidates = responses.flatMap(res => collectAnimeinItems(res?.data?.data || res?.data || {}));
+        const seen = new Set();
+        return candidates
+            .filter(item => item && (item.id || item.id_movie) && (item.title || item.name))
+            .map(item => ({ item, score: scoreAnimeTitleMatch(title, item) }))
+            .filter(entry => entry.score > 0)
+            .sort((a, b) => b.score - a.score)
+            .filter(entry => {
+                const key = String(entry.item.id || entry.item.id_movie || entry.item.title || entry.item.name).toLowerCase();
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            })
+            .slice(0, limit)
+            .map(entry => entry.item);
+    } catch (err) {
+        console.warn('[TAG ANIME] Gagal cari anime:', safeMessage(err, 100));
+        return [];
+    }
+}
+
 /** Cari detail anime dari Animein berdasarkan judul */
 async function fetchAnimeDetailByQuery(query) {
     if (isAnimeinApiBlocked('Fetch anime detail')) return null;
@@ -1841,7 +1916,7 @@ async function fetchGenresList() {
 }
 
 /** Ambil anime berdasarkan genre dengan opsi acak (rekomendasi) atau spesifik (terpopuler/terbanyak) */
-async function fetchByGenre(genreId, isSpecific = false, maxLimit = 10) {
+async function fetchByGenre(genreId, isSpecific = false, maxLimit = 10, options = {}) {
     if (isAnimeinApiBlocked('Fetch anime by genre')) return [];
     try {
         let movies = [];
@@ -1909,6 +1984,10 @@ async function fetchByGenre(genreId, isSpecific = false, maxLimit = 10) {
                         const d = detailRes.data.data.movie;
                         return {
                             ...m,
+                            ...d,
+                            id: m.id || d.id || d.id_movie,
+                            id_movie: m.id_movie || d.id_movie || d.id,
+                            title: d.title || m.title,
                             studio: d.studio || m.studio || '?',
                             year: (d.year && d.year !== 'UNKNOWN') ? d.year : (d.aired_start ? d.aired_start.split('-')[0] : (m.year || '?'))
                         };
@@ -1918,6 +1997,8 @@ async function fetchByGenre(genreId, isSpecific = false, maxLimit = 10) {
                 }
                 return m;
             }));
+
+            if (options.returnObjects) return detailedMovies;
 
             return detailedMovies.map((a, i) => {
                 return `${i + 1}. ${a.title} [Rating: ${a.favorites || '?'}, Views: ${a.views || '?'}, Studio: ${a.studio || '?'}, Tahun: ${a.year || '?'}]`;
@@ -2719,12 +2800,79 @@ async function answerOwnProfileStatQuestion(userMessage, senderName, senderUserI
         : `${stat.label} @${senderName}: ${formatted}`;
 }
 
+function normalizeAnimeKey(value) {
+    return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function getRecentAnimeListKey(senderName, senderUserId) {
+    return String(senderUserId || senderName || '').toLowerCase();
+}
+
+function saveRecentAnimeList(senderName, senderUserId, items, source = '') {
+    const key = getRecentAnimeListKey(senderName, senderUserId);
+    if (!key || !Array.isArray(items) || items.length === 0) return;
+    cache.recentAnimeLists.set(key, {
+        items,
+        source,
+        savedAt: Date.now(),
+    });
+}
+
+function getRecentAnimeList(senderName, senderUserId) {
+    const key = getRecentAnimeListKey(senderName, senderUserId);
+    const entry = cache.recentAnimeLists.get(key);
+    if (!entry || Date.now() - entry.savedAt > 30 * 60 * 1000) return null;
+    return entry;
+}
+
+async function getMatchedGenreFromText(text) {
+    const lower = normalizeAnimeKey(text).replace(/\bactions\b/g, 'action');
+    if (!/rekomendasi|rekomen|recommend|saran|saranin|anime/.test(lower)) return null;
+
+    const genres = await fetchGenresList();
+    return genres.find(genre => {
+        const name = normalizeAnimeKey(genre.name).replace(/s$/, '');
+        return new RegExp(`(^|\\s)${name}s?(\\s|$)`, 'i').test(lower);
+    }) || null;
+}
+
+async function buildDeterministicGenreRecommendation(userMessage, senderName, senderUserId) {
+    const genre = await getMatchedGenreFromText(userMessage);
+    if (!genre) return null;
+
+    const isSpecific = /terbanyak|paling|terpopuler|top|view|rating|bintang|terbaik/.test(userMessage.toLowerCase());
+    const movies = await fetchByGenre(genre.id, isSpecific, 10, { returnObjects: true });
+    const validMovies = movies.filter(item => item && (item.id || item.id_movie) && (item.title || item.name));
+    if (!validMovies.length) return null;
+
+    saveRecentAnimeList(senderName, senderUserId, validMovies, `genre:${genre.name}`);
+
+    const lines = validMovies.map((a, i) => {
+        const title = a.title || a.name;
+        const studio = a.studio || '?';
+        const year = a.year || '?';
+        const views = a.views || '?';
+        return `${i + 1}. ${title} [Views: ${views}, Studio: ${studio}, Tahun: ${year}]`;
+    });
+
+    return {
+        text: `Rekomendasi anime ${genre.name}:\n${lines.join('\n')}\n\nKalau mau tag salah satu, ketik: tag no 1 sampai tag no ${validMovies.length}`,
+        provider: 'Animein Genre',
+        tokens: 0,
+    };
+}
+
 /** Main AI handler: Groq only */
 async function getAIResponse(userMessage, senderName, isReply = false, senderUserId = null, replyText = '') {
     const contextMessage = [replyText, userMessage].filter(Boolean).join('\n');
     const directProfileAnswer = await answerOwnProfileStatQuestion(userMessage, senderName, senderUserId);
     if (directProfileAnswer) {
         return { text: directProfileAnswer, provider: 'Animein Profile', tokens: 0 };
+    }
+
+    const deterministicGenreAnswer = await buildDeterministicGenreRecommendation(userMessage, senderName, senderUserId);
+    if (deterministicGenreAnswer) {
+        return deterministicGenreAnswer;
     }
 
     const intent = detectIntent(userMessage);
@@ -2989,7 +3137,7 @@ function wrapInBox(title, text, boxWidth = 23) {
     return boxLines.join('\n');
 }
 
-async function sendChatMessage(bot, text, replyTo = '0') {
+async function sendChatMessage(bot, text, replyTo = '0', options = {}) {
     // Gunakan bot pertama (info) sebagai default jika parameter bot adalah string (legacy support)
     if (typeof bot === 'string') {
         replyTo = text || '0';
@@ -3003,18 +3151,54 @@ async function sendChatMessage(bot, text, replyTo = '0') {
     setTimeout(() => { bot.isCooldown = false; }, 10000);
     
     try {
-        const params = new URLSearchParams();
-        params.append('text', text);
-        params.append('id_chat_replay', replyTo);
-        params.append('id_user', bot.auth.userId);
-        params.append('key_client', bot.auth.userKey);
-        
-        const res = await animeinClient.post('/3/2/chat/do', params, {
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Origin': 'https://animeinweb.com',
+        let res;
+        if (options?.idMovie) {
+            const form = new FormData();
+            form.append('text', text);
+            form.append('id_chat_replay', replyTo);
+            form.append('id_movie', String(options.idMovie));
+            form.append('id_user', bot.auth.userId);
+            form.append('key_client', bot.auth.userKey);
+
+            res = await animeinClient.postForm('/3/2/chat/do', form, {
+                headers: {
+                    'Accept': 'application/json, text/plain, */*',
+                    'Origin': 'https://japi.animein.net',
+                    'Referer': 'https://japi.animein.net',
+                },
+                timeout: 15000,
+            });
+
+            const multipartFailed = res.data && (res.data.success === false || res.data.status === 0 || res.data.status === 'error');
+            if (multipartFailed) {
+                const params = new URLSearchParams();
+                params.append('text', text);
+                params.append('id_chat_replay', replyTo);
+                params.append('id_movie', String(options.idMovie));
+                params.append('id_user', bot.auth.userId);
+                params.append('key_client', bot.auth.userKey);
+                res = await animeinClient.post('/3/2/chat/do', params, {
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'Origin': 'https://animeinweb.com',
+                    },
+                    timeout: 15000,
+                });
             }
-        });
+        } else {
+            const params = new URLSearchParams();
+            params.append('text', text);
+            params.append('id_chat_replay', replyTo);
+            params.append('id_user', bot.auth.userId);
+            params.append('key_client', bot.auth.userKey);
+            
+            res = await animeinClient.post('/3/2/chat/do', params, {
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Origin': 'https://animeinweb.com',
+                }
+            });
+        }
         
         if (res.data && (res.data.success === false || res.data.status === 0 || res.data.status === 'error')) {
             console.warn(`[CHAT] Gagal kirim pesan (${bot.username}):`, res.data);
@@ -3028,6 +3212,74 @@ async function sendChatMessage(bot, text, replyTo = '0') {
     }
 }
 
+
+function extractAnimeTagQuery(text) {
+    let value = String(text || '').trim();
+    value = value.replace(/^\.(?:ai|rara)\s+/i, '').trim();
+
+    const match = value.match(/^tag\s+(?!no\b)(?:anime\s+)?(.{2,80})$/i);
+    if (!match) return '';
+
+    return match[1]
+        .replace(/^#/, '')
+        .replace(/[?.!]+$/g, '')
+        .trim()
+        .replace(/\s+/g, ' ');
+}
+
+function extractAnimeTagNumber(text) {
+    const match = String(text || '').match(/(?:^|\s)tag\s+(?:anime\s+)?no\s*(\d{1,2})(?:\s|$)/i);
+    return match ? Number(match[1]) : 0;
+}
+
+async function sendAnimeTag(bot, msg, movie, label = 'direct') {
+    const title = movie?.title || movie?.name;
+    const idMovie = movie?.id_movie || movie?.id;
+    if (!title || !idMovie) {
+        await sendChatMessage(bot, wrapInBox('TAG ANIME', 'Data anime tidak lengkap untuk dikirim sebagai tag.'), msg.id);
+        return true;
+    }
+
+    console.log(`[TAG ANIME] ${label}: title="${title}" id_movie=${idMovie}`);
+    const ok = await sendChatMessage(bot, `#${title}`, msg.id, { idMovie });
+    console.log(`[TAG ANIME] send ${ok ? 'ok' : 'failed'}: title="${title}" id_movie=${idMovie}`);
+    if (!ok) {
+        await sendChatMessage(bot, wrapInBox('TAG ANIME', `Gagal mengirim tag anime "${title}".`), msg.id);
+    }
+    return true;
+}
+
+async function handleAnimeTagInstruction(ctx) {
+    const { bot, msg, cleanMsg, senderName, senderUserId } = ctx;
+
+    const tagNumber = extractAnimeTagNumber(cleanMsg);
+    if (tagNumber > 0) {
+        const recent = getRecentAnimeList(senderName, senderUserId);
+        const selected = recent?.items?.[tagNumber - 1];
+        if (!selected) {
+            await sendChatMessage(bot, wrapInBox('TAG ANIME', `List rekomendasi belum ada atau nomor ${tagNumber} tidak tersedia.`), msg.id);
+            return true;
+        }
+        return sendAnimeTag(bot, msg, selected, `no:${tagNumber}`);
+    }
+
+    const query = extractAnimeTagQuery(cleanMsg);
+    if (!query) return false;
+
+    const candidates = await fetchAnimeTagCandidates(query, 6);
+    if (!candidates.length) {
+        await sendChatMessage(bot, wrapInBox('TAG ANIME', `Anime "${query}" tidak ditemukan di Animein.`), msg.id);
+        return true;
+    }
+
+    const normalizedQuery = normalizeAnimeKey(query);
+    const selected = candidates.find(item => normalizeAnimeKey(item.title || item.name) === normalizedQuery)
+        || candidates.find(item => normalizeAnimeKey(item.title || item.name).includes(normalizedQuery))
+        || candidates[0];
+
+    saveRecentAnimeList(senderName, senderUserId, candidates, `search:${query}`);
+    return sendAnimeTag(bot, msg, selected, `search:${query}`);
+}
 
 async function processMessages(bot, messages) {
     for (const msg of messages) {
@@ -3178,6 +3430,7 @@ async function processMessages(bot, messages) {
                 fetchGenresList,
                 fetchByGenre,
             };
+            if (await handleAnimeTagInstruction(infoCommandContext)) continue;
             if (await commands.handleInfoCommand(infoCommandContext)) continue;
 
             const aiMessageContext = {
