@@ -1915,67 +1915,110 @@ async function fetchGenresList() {
     return cache.genres.data || [];
 }
 
-/** Ambil anime berdasarkan genre dengan opsi acak (rekomendasi) atau spesifik (terpopuler/terbanyak) */
+function parseAnimeMetric(value) {
+    if (value === null || value === undefined) return 0;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+    const text = String(value).toLowerCase().trim();
+    const number = parseFloat(text.replace(',', '.').replace(/[^0-9.]/g, '')) || 0;
+    if (/\bk\b|ribu|rb/.test(text)) return number * 1000;
+    if (/\bm\b|juta|jt/.test(text)) return number * 1000000;
+    return number;
+}
+
+function normalizeGenreMovies(movies) {
+    const seen = new Set();
+    return movies
+        .filter(m => m && (m.id || m.id_movie) && (m.title || m.name))
+        .map(m => ({
+            ...m,
+            id: m.id || m.id_movie,
+            id_movie: m.id_movie || m.id,
+            title: m.title || m.name,
+        }))
+        .filter(m => {
+            const key = `${m.id_movie || m.id}:${normalizeAnimeKey(m.title)}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+}
+
+function pickMixedGenreMovies(movies, maxLimit = 10, mode = 'mixed') {
+    const normalized = normalizeGenreMovies(movies);
+    const picked = [];
+    const used = new Set();
+    const add = (item, reason) => {
+        if (!item || picked.length >= maxLimit) return;
+        const key = `${item.id_movie || item.id}:${normalizeAnimeKey(item.title)}`;
+        if (used.has(key)) return;
+        used.add(key);
+        picked.push({ ...item, recommendation_reason: reason });
+    };
+
+    const byViewsHigh = [...normalized].sort((a, b) => parseAnimeMetric(b.views || b.view || b.total_view) - parseAnimeMetric(a.views || a.view || a.total_view));
+    const byViewsLow = [...normalized].filter(a => parseAnimeMetric(a.views || a.view || a.total_view) > 0)
+        .sort((a, b) => parseAnimeMetric(a.views || a.view || a.total_view) - parseAnimeMetric(b.views || b.view || b.total_view));
+    const byRating = [...normalized].sort((a, b) => parseAnimeMetric(b.rating || b.score || b.favorites || b.star) - parseAnimeMetric(a.rating || a.score || a.favorites || a.star));
+    const randoms = [...normalized].sort(() => Math.random() - 0.5);
+
+    if (mode === 'views_high') byViewsHigh.forEach(item => add(item, 'views tertinggi'));
+    else if (mode === 'views_low') byViewsLow.forEach(item => add(item, 'views rendah'));
+    else if (mode === 'rating') byRating.forEach(item => add(item, 'rating tertinggi'));
+    else {
+        byRating.slice(0, 3).forEach(item => add(item, 'rating tertinggi'));
+        byViewsHigh.slice(0, 3).forEach(item => add(item, 'views terbanyak'));
+        byViewsLow.slice(0, 2).forEach(item => add(item, 'hidden gem'));
+        randoms.forEach(item => add(item, 'acak genre'));
+    }
+
+    randoms.forEach(item => add(item, 'acak genre'));
+    return picked.slice(0, maxLimit);
+}
+
+/** Ambil anime berdasarkan genre dengan opsi acak/campuran atau spesifik */
 async function fetchByGenre(genreId, isSpecific = false, maxLimit = 10, options = {}) {
     if (isAnimeinApiBlocked('Fetch anime by genre')) return [];
     try {
         let movies = [];
-        
-        if (isSpecific) {
-            const promises = [];
-            for (let i = 1; i <= 10; i++) {
-                promises.push(
-                    animeinClient.get('/3/2/explore/movie', {
-                        params: { sort: 'popular', page: i, genre_in: genreId },
-                        headers: ANIMEIN_HEADERS,
-                        timeout: 10000
-                    }).catch(() => null)
-                );
-            }
-            
-            const responses = await Promise.all(promises);
-            responses.forEach(res => {
-                if (res && res.data && res.data.data && res.data.data.movie) {
-                    movies = movies.concat(res.data.data.movie);
-                }
-            });
-            
-            const seen = new Set();
-            movies = movies.filter(m => {
-                if (!m.title || seen.has(m.title)) return false;
-                seen.add(m.title); return true;
-            });
-            
-            movies.sort((a, b) => {
-                const getViews = (v) => parseInt(String(v || 0).replace(/[^\d]/g, '')) || 0;
-                return getViews(b.views) - getViews(a.views);
-            });
-        } else {
-            const randomPage = Math.floor(Math.random() * 5) + 1;
-            const res = await animeinClient.get('/3/2/explore/movie', {
-                params: { sort: 'popular', page: randomPage, genre_in: genreId },
-                headers: ANIMEIN_HEADERS,
-                timeout: 10000
-            });
-            
-            movies = res.data?.data?.movie || [];
-            if (movies.length === 0 && randomPage > 1) {
-                const fallback = await animeinClient.get('/3/2/explore/movie', {
-                    params: { sort: 'popular', page: 1, genre_in: genreId },
+        const pageLimit = options.pageLimit || 8;
+        const sort = options.sort || 'popular';
+        const promises = [];
+
+        for (let i = 1; i <= pageLimit; i++) {
+            promises.push(
+                animeinClient.get('/3/2/explore/movie', {
+                    params: { sort, page: i, genre_in: genreId },
                     headers: ANIMEIN_HEADERS,
                     timeout: 10000
-                });
-                movies = fallback.data?.data?.movie || [];
-            }
-            movies.sort(() => 0.5 - Math.random());
+                }).catch(() => null)
+            );
         }
+
+        const responses = await Promise.all(promises);
+        responses.forEach(res => {
+            const rows = res?.data?.data?.movie || [];
+            if (Array.isArray(rows)) movies = movies.concat(rows);
+        });
+
+        if (movies.length === 0) {
+            const fallback = await animeinClient.get('/3/2/explore/movie', {
+                params: { sort: 'popular', page: 1, genre_in: genreId },
+                headers: ANIMEIN_HEADERS,
+                timeout: 10000
+            }).catch(() => null);
+            movies = fallback?.data?.data?.movie || [];
+        }
+
+        const lowerMode = String(options.mode || '').toLowerCase();
+        const mode = lowerMode || (isSpecific
+            ? (/rating|bintang|score/.test(String(options.requestText || '').toLowerCase()) ? 'rating' : 'views_high')
+            : 'mixed');
+        const selectedMovies = pickMixedGenreMovies(movies, maxLimit, mode);
         
-        if (movies.length > 0) {
-            const topMovies = movies.slice(0, maxLimit);
-            
-            const detailedMovies = await Promise.all(topMovies.map(async (m) => {
+        if (selectedMovies.length > 0) {
+            const detailedMovies = await Promise.all(selectedMovies.map(async (m) => {
                 try {
-                    const detailRes = await animeinClient.get(`/3/2/movie/detail/${m.id}`, {
+                    const detailRes = await animeinClient.get(`/3/2/movie/detail/${m.id || m.id_movie}`, {
                         headers: ANIMEIN_HEADERS,
                         timeout: 5000
                     }).catch(() => null);
@@ -1989,6 +2032,9 @@ async function fetchByGenre(genreId, isSpecific = false, maxLimit = 10, options 
                             id_movie: m.id_movie || d.id_movie || d.id,
                             title: d.title || m.title,
                             studio: d.studio || m.studio || '?',
+                            views: d.views || d.view || m.views || m.view || '?',
+                            rating: d.rating || d.score || d.favorites || m.rating || m.score || m.favorites || '?',
+                            recommendation_reason: m.recommendation_reason,
                             year: (d.year && d.year !== 'UNKNOWN') ? d.year : (d.aired_start ? d.aired_start.split('-')[0] : (m.year || '?'))
                         };
                     }
@@ -2001,7 +2047,7 @@ async function fetchByGenre(genreId, isSpecific = false, maxLimit = 10, options 
             if (options.returnObjects) return detailedMovies;
 
             return detailedMovies.map((a, i) => {
-                return `${i + 1}. ${a.title} [Rating: ${a.favorites || '?'}, Views: ${a.views || '?'}, Studio: ${a.studio || '?'}, Tahun: ${a.year || '?'}]`;
+                return `${i + 1}. ${a.title} [Rating: ${a.rating || a.favorites || '?'}, Views: ${a.views || a.view || '?'}, Studio: ${a.studio || '?'}, Tahun: ${a.year || '?'}, ID Tag: ${a.id_movie || a.id || '?'}]`;
             });
         }
     } catch(e) {
@@ -2825,23 +2871,84 @@ function getRecentAnimeList(senderName, senderUserId) {
     return entry;
 }
 
+function getGenreAliases() {
+    return {
+        advanture: 'adventure',
+        adventures: 'adventure',
+        romace: 'romance',
+        komedi: 'comedy',
+        comedy: 'comedy',
+        aksi: 'action',
+        action: 'action',
+        fantasi: 'fantasy',
+        school: 'school',
+        sekolah: 'school',
+        sport: 'sports',
+        olahraga: 'sports',
+        supernatural: 'supernatural',
+        supranatural: 'supernatural',
+        misteri: 'mystery',
+    };
+}
+
+function levenshteinDistance(a, b) {
+    a = String(a || '');
+    b = String(b || '');
+    const dp = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0));
+    for (let i = 0; i <= a.length; i++) dp[i][0] = i;
+    for (let j = 0; j <= b.length; j++) dp[0][j] = j;
+    for (let i = 1; i <= a.length; i++) {
+        for (let j = 1; j <= b.length; j++) {
+            const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+            dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+        }
+    }
+    return dp[a.length][b.length];
+}
+
 async function getMatchedGenreFromText(text) {
-    const lower = normalizeAnimeKey(text).replace(/\bactions\b/g, 'action');
+    let lower = normalizeAnimeKey(text).replace(/\bactions\b/g, 'action');
     if (!/rekomendasi|rekomen|recommend|saran|saranin|anime/.test(lower)) return null;
 
+    const aliases = getGenreAliases();
+    Object.entries(aliases).forEach(([wrong, right]) => {
+        lower = lower.replace(new RegExp(`\\b${wrong}\\b`, 'g'), right);
+    });
+
     const genres = await fetchGenresList();
-    return genres.find(genre => {
+    const exact = genres.find(genre => {
         const name = normalizeAnimeKey(genre.name).replace(/s$/, '');
         return new RegExp(`(^|\\s)${name}s?(\\s|$)`, 'i').test(lower);
-    }) || null;
+    });
+    if (exact) return exact;
+
+    const words = lower.split(/\s+/).filter(w => w.length >= 4);
+    let best = null;
+    for (const genre of genres) {
+        const name = normalizeAnimeKey(genre.name).replace(/s$/, '');
+        for (const word of words) {
+            const distance = levenshteinDistance(word, name);
+            const limit = name.length <= 6 ? 1 : 2;
+            if (distance <= limit && (!best || distance < best.distance)) {
+                best = { genre, distance };
+            }
+        }
+    }
+    return best?.genre || null;
 }
 
 async function buildDeterministicGenreRecommendation(userMessage, senderName, senderUserId) {
     const genre = await getMatchedGenreFromText(userMessage);
     if (!genre) return null;
 
-    const isSpecific = /terbanyak|paling|terpopuler|top|view|rating|bintang|terbaik/.test(userMessage.toLowerCase());
-    const movies = await fetchByGenre(genre.id, isSpecific, 10, { returnObjects: true });
+    const lowerMessage = userMessage.toLowerCase();
+    const isSpecific = /terbanyak|paling|terpopuler|top|view|rating|bintang|terbaik|paling dikit|paling sedikit/.test(lowerMessage);
+    let mode = 'mixed';
+    if (/rating|bintang|score|terbaik/.test(lowerMessage)) mode = 'rating';
+    else if (/paling dikit|paling sedikit|view.*(dikit|sedikit)|sepi/.test(lowerMessage)) mode = 'views_low';
+    else if (/terbanyak|terpopuler|top|view|views|rame/.test(lowerMessage)) mode = 'views_high';
+
+    const movies = await fetchByGenre(genre.id, isSpecific, 10, { returnObjects: true, requestText: userMessage, mode });
     const validMovies = movies.filter(item => item && (item.id || item.id_movie) && (item.title || item.name));
     if (!validMovies.length) return null;
 
@@ -2849,14 +2956,11 @@ async function buildDeterministicGenreRecommendation(userMessage, senderName, se
 
     const lines = validMovies.map((a, i) => {
         const title = a.title || a.name;
-        const studio = a.studio || '?';
-        const year = a.year || '?';
-        const views = a.views || '?';
-        return `${i + 1}. ${title} [Views: ${views}, Studio: ${studio}, Tahun: ${year}]`;
+        return `${i + 1}. ${title}`;
     });
 
     return {
-        text: `Rekomendasi anime ${genre.name}:\n${lines.join('\n')}\n\nKalau mau tag salah satu, ketik: tag no 1 sampai tag no ${validMovies.length}`,
+        text: `Rekomendasi anime ${genre.name} dari Animein:\n${lines.join('\n')}\n\nData tag sudah tersimpan. Kalau mau tag salah satu, ketik: tag no 1 sampai tag no ${validMovies.length}`,
         provider: 'Animein Genre',
         tokens: 0,
     };
