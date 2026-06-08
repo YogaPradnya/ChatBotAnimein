@@ -3025,6 +3025,24 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
         }
     }
 
+    const looksLikeGenreRecommendation = /rekomendasi|rekomen|recommend|saran|saranin/i.test(userMessage)
+        && /anime/i.test(userMessage)
+        && animeRecommendationService
+        && (await animeRecommendationService.getMatchedGenresFromText(userMessage, 1)).length > 0;
+    if (looksLikeGenreRecommendation) {
+        logError({
+            category: ERROR_CATEGORY.DATA_EMPTY,
+            scope: 'ANIME_RECOMMENDATION',
+            message: 'Deterministic genre recommendation kosong, AI fallback diblokir agar tag no tidak rusak',
+            maxLength: 120,
+        });
+        return {
+            text: 'Data rekomendasi genre belum bisa diambil. Coba ulang sebentar lagi supaya list bisa disimpan dan tag no tetap aman.',
+            provider: 'Animein Genre',
+            tokens: 0,
+        };
+    }
+
     const intent = detectIntent(userMessage);
     const animeContext = await buildAnimeContext(intent, userMessage);
     const knowledgeResult = getKnowledgeContext(contextMessage || userMessage);
@@ -3382,6 +3400,22 @@ function extractAnimeTagNumber(text) {
     return match ? Number(match[1]) : 0;
 }
 
+function extractTitleFromNumberedList(text, targetNo) {
+    const lines = String(text || '').split(/\r?\n/);
+    const escapedNo = String(targetNo).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`^\\s*${escapedNo}\\s*[.):-]\\s*(.+)$`, 'i');
+    for (const line of lines) {
+        const match = line.match(re);
+        if (!match) continue;
+        return match[1]
+            .replace(/\s*\[(?:Rating|Update|Jam|Views|Studio|Tahun|Skor|Score)[^\]]*\].*$/i, '')
+            .replace(/\s*\([^)]*(?:Alt|Rating|Update|Jam|Views|Studio|Tahun)[^)]*\).*$/i, '')
+            .replace(/^[-•]\s*/, '')
+            .trim();
+    }
+    return '';
+}
+
 async function sendAnimeTag(bot, msg, movie, label = 'direct') {
     const title = movie?.title || movie?.name;
     const idMovie = movie?.id_movie || movie?.id;
@@ -3407,6 +3441,18 @@ async function handleAnimeTagInstruction(ctx) {
         const recent = getRecentAnimeList(senderName, senderUserId);
         const selected = recent?.items?.[tagNumber - 1];
         if (!selected) {
+            const replyTitle = extractTitleFromNumberedList(msg.replay_text || '', tagNumber);
+            if (replyTitle) {
+                const candidates = await fetchAnimeTagCandidates(replyTitle, 6);
+                const normalizedTitle = normalizeAnimeKey(replyTitle);
+                const replySelected = candidates.find(item => normalizeAnimeKey(item.title || item.name) === normalizedTitle)
+                    || candidates.find(item => normalizeAnimeKey(item.title || item.name).includes(normalizedTitle))
+                    || candidates[0];
+                if (replySelected) {
+                    saveRecentAnimeList(senderName, senderUserId, candidates, `reply:${replyTitle}`);
+                    return sendAnimeTag(bot, msg, replySelected, `reply-no:${tagNumber}`);
+                }
+            }
             await sendChatMessage(bot, wrapInBox('TAG ANIME', `List rekomendasi belum ada atau nomor ${tagNumber} tidak tersedia.`), msg.id);
             return true;
         }
