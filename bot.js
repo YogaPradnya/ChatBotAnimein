@@ -1142,6 +1142,9 @@ aiService = createAiService({
     getFilterData: () => FILTER_DATA,
     getAutoReply: () => AUTO_REPLY,
     animeinSearchAnime: searchAnime,
+    hydrateAnimeTitlesForTagCache,
+    getAnimeRecommendationService: () => animeRecommendationService,
+    rememberAnimeListFromText,
 });
 
 /** Deteksi intent user untuk konteks data */
@@ -1168,6 +1171,7 @@ const cache = {
     pokemonShop: { data: [], lastFetch: 0 },
     genreCache: {},
     recentAnimeLists: new Map(),
+    recentAnimeListTexts: new Map(),
     TTL: 6 * 60 * 60 * 1000,
     POKEMON_SHOP_TTL: 2 * 60 * 1000,
 };
@@ -2030,19 +2034,22 @@ async function fetchByGenre(genreId, isSpecific = false, maxLimit = 10, options 
         if (selectedMovies.length > 0) {
             const detailedMovies = await Promise.all(selectedMovies.map(async (m) => {
                 try {
-                    const detailRes = await animeinClient.get(`/3/2/movie/detail/${m.id || m.id_movie}`, {
+                    const detailId = m.id_movie || m.id;
+                    const detailRes = await animeinClient.get(`/3/2/movie/detail/${detailId}`, {
                         headers: ANIMEIN_HEADERS,
                         timeout: 5000
                     }).catch(() => null);
                     
                     if (detailRes?.data?.data?.movie) {
                         const d = detailRes.data.data.movie;
+                        const movieId = m.id_movie || m.id || d.id_movie || d.id;
                         return {
-                            ...m,
                             ...d,
-                            id: m.id || d.id || d.id_movie,
-                            id_movie: m.id_movie || d.id_movie || d.id,
-                            title: d.title || m.title,
+                            ...m,
+                            id: movieId,
+                            id_movie: movieId,
+                            title: m.title || m.name || d.title || d.name,
+                            name: m.name || m.title || d.name || d.title,
                             studio: d.studio || m.studio || '?',
                             views: d.views || d.view || m.views || m.view || '?',
                             rating: d.rating || d.score || d.favorites || m.rating || m.score || m.favorites || '?',
@@ -2868,25 +2875,97 @@ function normalizeAnimeKey(value) {
     return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
+function isStrongAnimeTitleMatch(requestedTitle, candidateTitle) {
+    const requested = normalizeAnimeKey(requestedTitle);
+    const candidate = normalizeAnimeKey(candidateTitle);
+    if (!requested || !candidate) return false;
+    if (requested === candidate) return true;
+    if (candidate.startsWith(`${requested} `)) return true;
+    if (requested.startsWith(`${candidate} `) && candidate.length >= 8) return true;
+    return false;
+}
+
+function getRecentAnimeListKeys(senderName, senderUserId) {
+    return [...new Set([
+        senderUserId,
+        senderName,
+        String(senderName || '').replace(/^@+/, ''),
+    ].map(v => String(v || '').toLowerCase().trim()).filter(Boolean))];
+}
+
 function getRecentAnimeListKey(senderName, senderUserId) {
-    return String(senderUserId || senderName || '').toLowerCase();
+    return getRecentAnimeListKeys(senderName, senderUserId)[0] || '';
 }
 
 function saveRecentAnimeList(senderName, senderUserId, items, source = '') {
-    const key = getRecentAnimeListKey(senderName, senderUserId);
-    if (!key || !Array.isArray(items) || items.length === 0) return;
-    cache.recentAnimeLists.set(key, {
-        items,
+    const keys = getRecentAnimeListKeys(senderName, senderUserId);
+    if (!keys.length || !Array.isArray(items) || items.length === 0) return;
+    const normalizedItems = items.filter(Boolean);
+    const entry = {
+        items: normalizedItems,
         source,
         savedAt: Date.now(),
+    };
+    keys.forEach(key => cache.recentAnimeLists.set(key, entry));
+    console.log(`[TAG ANIME] cache saved keys="${keys.join(',')}" source="${source}" count=${normalizedItems.length}`);
+    normalizedItems.slice(0, 10).forEach((item, index) => {
+        console.log(`[TAG ANIME] cache item no=${index + 1} title="${item.title || item.name || '-'}" id_movie=${item.id_movie || item.id || '-'}`);
     });
 }
 
 function getRecentAnimeList(senderName, senderUserId) {
-    const key = getRecentAnimeListKey(senderName, senderUserId);
-    const entry = cache.recentAnimeLists.get(key);
-    if (!entry || Date.now() - entry.savedAt > 30 * 60 * 1000) return null;
-    return entry;
+    const keys = getRecentAnimeListKeys(senderName, senderUserId);
+    console.log(`[TAG ANIME] lookup keys="${keys.join(',')}"`);
+    for (const key of keys) {
+        const entry = cache.recentAnimeLists.get(key);
+        if (!entry || Date.now() - entry.savedAt > 30 * 60 * 1000) continue;
+        console.log(`[TAG ANIME] cache hit key="${key}" source="${entry.source || '-'}"`);
+        return entry;
+    }
+    console.log(`[TAG ANIME] cache miss keys="${keys.join(',')}"`);
+    return null;
+}
+
+function saveRecentAnimeListText(senderName, senderUserId, text, titles, source = '') {
+    const keys = getRecentAnimeListKeys(senderName, senderUserId);
+    if (!keys.length || !text || !Array.isArray(titles) || titles.length === 0) return;
+    const entry = {
+        text,
+        titles,
+        source,
+        savedAt: Date.now(),
+    };
+    keys.forEach(key => cache.recentAnimeListTexts.set(key, entry));
+    console.log(`[LIST MEMORY] saved keys="${keys.join(',')}" source="${source}" count=${titles.length}`);
+}
+
+function getRecentAnimeListText(senderName, senderUserId) {
+    const keys = getRecentAnimeListKeys(senderName, senderUserId);
+    for (const key of keys) {
+        const entry = cache.recentAnimeListTexts.get(key);
+        if (!entry || Date.now() - entry.savedAt > 30 * 60 * 1000) continue;
+        console.log(`[LIST MEMORY] hit key="${key}" source="${entry.source || '-'}"`);
+        return entry;
+    }
+    return null;
+}
+
+async function rememberAnimeListFromText(text, senderName, senderUserId, source = '') {
+    const titles = extractNumberedAnimeTitles(text);
+    if (!titles.length) return [];
+    saveRecentAnimeListText(senderName, senderUserId, text, titles, source);
+    return hydrateAnimeTitlesForTagCache(titles, senderName, senderUserId, `list-memory:${source}`);
+}
+
+async function resolveAnimeFromTitleStrict(title) {
+    const candidates = await fetchAnimeTagCandidates(title, 6);
+    const selected = candidates.find(item => isStrongAnimeTitleMatch(title, item.title || item.name));
+    if (!selected) {
+        const topTitle = candidates[0]?.title || candidates[0]?.name || 'none';
+        console.warn(`[TAG ANIME] strict search failed title="${title}", top="${topTitle}"`);
+        return null;
+    }
+    return { ...selected, requestedTitle: title };
 }
 
 function getGenreAliases() {
@@ -3400,20 +3479,65 @@ function extractAnimeTagNumber(text) {
     return match ? Number(match[1]) : 0;
 }
 
+function getReplyText(msg = {}) {
+    return String(
+        msg.replay_text
+        || msg.reply_text
+        || msg.quoted_text
+        || msg.quotedText
+        || msg.reply?.text
+        || msg.replay?.text
+        || msg.quoted?.text
+        || msg.message?.reply_text
+        || ''
+    );
+}
+
 function extractTitleFromNumberedList(text, targetNo) {
+    const titles = extractNumberedAnimeTitles(text);
+    return titles[targetNo - 1] || '';
+}
+
+function extractNumberedAnimeTitles(text, maxItems = 10) {
     const lines = String(text || '').split(/\r?\n/);
-    const escapedNo = String(targetNo).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re = new RegExp(`^\\s*${escapedNo}\\s*[.):-]\\s*(.+)$`, 'i');
+    const titles = [];
     for (const line of lines) {
-        const match = line.match(re);
+        const match = line.match(/^\s*(\d{1,2})\s*[.):-]\s*(.+)$/i);
         if (!match) continue;
-        return match[1]
+        const no = Number(match[1]);
+        if (!Number.isInteger(no) || no < 1 || no > maxItems) continue;
+        const title = match[2]
             .replace(/\s*\[(?:Rating|Update|Jam|Views|Studio|Tahun|Skor|Score)[^\]]*\].*$/i, '')
             .replace(/\s*\([^)]*(?:Alt|Rating|Update|Jam|Views|Studio|Tahun)[^)]*\).*$/i, '')
             .replace(/^[-•]\s*/, '')
             .trim();
+        if (title) titles[no - 1] = title;
     }
-    return '';
+    return titles.filter(Boolean).slice(0, maxItems);
+}
+
+async function hydrateAnimeTitlesForTagCache(titles, senderName, senderUserId, source = 'ai-list') {
+    const cleanTitles = [...new Set((titles || []).map(t => String(t || '').trim()).filter(Boolean))].slice(0, 10);
+    if (!cleanTitles.length) return [];
+
+    const hydrated = [];
+    for (let index = 0; index < cleanTitles.length; index++) {
+        const title = cleanTitles[index];
+        const candidates = await fetchAnimeTagCandidates(title, 4);
+        const selected = candidates.find(item => isStrongAnimeTitleMatch(title, item.title || item.name));
+        if (selected && (selected.id || selected.id_movie)) {
+            hydrated[index] = { ...selected, requestedTitle: title };
+        } else {
+            const topTitle = candidates[0]?.title || candidates[0]?.name || 'none';
+            console.warn(`[TAG ANIME] Skip hydrate mismatch: no=${index + 1}, requested="${title}", top="${topTitle}"`);
+        }
+    }
+
+    if (hydrated.length) {
+        saveRecentAnimeList(senderName, senderUserId, hydrated, source);
+        console.log(`[TAG ANIME] Saved ${hydrated.length} hydrated titles from ${source}.`);
+    }
+    return hydrated;
 }
 
 async function sendAnimeTag(bot, msg, movie, label = 'direct') {
@@ -3441,21 +3565,44 @@ async function handleAnimeTagInstruction(ctx) {
         const recent = getRecentAnimeList(senderName, senderUserId);
         const selected = recent?.items?.[tagNumber - 1];
         if (!selected) {
-            const replyTitle = extractTitleFromNumberedList(msg.replay_text || '', tagNumber);
-            if (replyTitle) {
-                const candidates = await fetchAnimeTagCandidates(replyTitle, 6);
-                const normalizedTitle = normalizeAnimeKey(replyTitle);
-                const replySelected = candidates.find(item => normalizeAnimeKey(item.title || item.name) === normalizedTitle)
-                    || candidates.find(item => normalizeAnimeKey(item.title || item.name).includes(normalizedTitle))
-                    || candidates[0];
-                if (replySelected) {
-                    saveRecentAnimeList(senderName, senderUserId, candidates, `reply:${replyTitle}`);
-                    return sendAnimeTag(bot, msg, replySelected, `reply-no:${tagNumber}`);
+            const listMemory = getRecentAnimeListText(senderName, senderUserId);
+            const memoryTitle = listMemory?.titles?.[tagNumber - 1];
+            if (memoryTitle) {
+                const memorySelected = await resolveAnimeFromTitleStrict(memoryTitle);
+                if (memorySelected) {
+                    const memoryItems = [];
+                    memoryItems[tagNumber - 1] = memorySelected;
+                    saveRecentAnimeList(senderName, senderUserId, memoryItems, `resolved-list-memory:${listMemory.source || '-'}`);
+                    console.log(`[TAG ANIME] resolve no=${tagNumber} from=list-memory title="${memoryTitle}"`);
+                    return sendAnimeTag(bot, msg, memorySelected, `list-memory-no:${tagNumber}`);
                 }
             }
+
+            const replyText = getReplyText(msg);
+            const replyTitles = extractNumberedAnimeTitles(replyText);
+            if (replyTitles.length) {
+                const hydrated = await hydrateAnimeTitlesForTagCache(replyTitles, senderName, senderUserId, 'reply-list');
+                const hydratedSelected = hydrated[tagNumber - 1];
+                if (hydratedSelected) return sendAnimeTag(bot, msg, hydratedSelected, `reply-no:${tagNumber}`);
+            }
+
+            const replyTitle = extractTitleFromNumberedList(replyText, tagNumber);
+            if (replyTitle) {
+                const candidates = await fetchAnimeTagCandidates(replyTitle, 6);
+                const replySelected = candidates.find(item => isStrongAnimeTitleMatch(replyTitle, item.title || item.name));
+                if (replySelected) {
+                    saveRecentAnimeList(senderName, senderUserId, [replySelected], `reply:${replyTitle}`);
+                    return sendAnimeTag(bot, msg, { ...replySelected, requestedTitle: replyTitle }, `reply-no:${tagNumber}`);
+                }
+                const topTitle = candidates[0]?.title || candidates[0]?.name || 'none';
+                console.warn(`[TAG ANIME] Reply title mismatch: requested="${replyTitle}", top="${topTitle}"`);
+            }
+            console.warn(`[TAG ANIME] cache kosong dan replay tidak bisa dipakai. no=${tagNumber}, replay_len=${replyText.length}, replay_preview="${safeMessage(replyText, 120)}"`);
             await sendChatMessage(bot, wrapInBox('TAG ANIME', `List rekomendasi belum ada atau nomor ${tagNumber} tidak tersedia.`), msg.id);
             return true;
         }
+        const selectedTitle = selected.title || selected.name || '';
+        console.log(`[TAG ANIME] cache select no=${tagNumber}, source="${recent?.source || '-'}", title="${selectedTitle}", requested="${selected.requestedTitle || selectedTitle}"`);
         return sendAnimeTag(bot, msg, selected, `no:${tagNumber}`);
     }
 
