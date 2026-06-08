@@ -554,6 +554,22 @@ function getDashboardHTML() {
   .path-bar-bg { background: #e2e8f0; height: 8px; border-radius: 4px; overflow: hidden; }
   .path-bar-fill { background: var(--blue); height: 100%; transition: width 0.5s ease; }
 
+  /* LOG SEND FORM */
+  .log-send-panel { flex-shrink:0; display:grid; grid-template-columns: 180px minmax(0, 1fr) 110px; gap:10px; align-items:center; background:#020617; border:1px solid #1e293b; border-radius:16px; padding:12px; margin-bottom:14px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.03); }
+  .log-send-select, .log-send-input { background:#0f172a !important; border:1px solid #243244 !important; color:#e5e7eb !important; border-radius:12px !important; min-height:44px; box-shadow:none !important; }
+  .log-send-select:focus, .log-send-input:focus { border-color:var(--accent) !important; box-shadow:0 0 0 3px rgba(249,115,22,0.18) !important; background:#111827 !important; }
+  .log-send-input::placeholder { color:#64748b; }
+  .log-send-btn { min-height:44px; border-radius:12px; background:linear-gradient(135deg,var(--accent),var(--accent-hover)); color:#fff; box-shadow:0 10px 24px rgba(249,115,22,0.22); }
+  .bot-status-mini { display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:12px; }
+  .bot-status-mini-item { padding:16px; border:1px solid var(--border); border-radius:14px; background:linear-gradient(135deg,#fff7ed 0%,#fff 70%); }
+  .bot-status-mini-label { font-size:11px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px; }
+  .bot-status-mini-value { font-size:14px; font-weight:900; color:var(--text); }
+
+  @media (max-width: 768px) {
+    .log-send-panel { grid-template-columns: 1fr; }
+    .bot-status-mini { grid-template-columns: 1fr; }
+  }
+
   @media (max-width: 1024px) {
     .stats-grid { grid-template-columns: repeat(3, 1fr); }
     .three-col { grid-template-columns: repeat(2, 1fr); }
@@ -743,23 +759,22 @@ function getDashboardHTML() {
 
       <div class="two-col">
         <div style="display:flex; flex-direction:column; gap:20px;">
-          <!-- Manual Send -->
-          <div class="card" style="margin-bottom:0; overflow:hidden;">
-            <div class="card-title">Kirim Pesan Manual</div>
-            <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px;">
-              <span style="font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em;">Kirim via:</span>
-              <div style="display:flex; gap:0; border-radius:10px; overflow:hidden; border:1.5px solid var(--accent); flex-shrink:0;">
-                <button id="botBtn0" onclick="selectBot(0)" style="padding:6px 14px; font-size:11px; font-weight:700; background:var(--accent); color:#fff; border:none; cursor:pointer; transition:all 0.2s;">🤖 Bot AI</button>
-                <button id="botBtn1" onclick="selectBot(1)" style="padding:6px 14px; font-size:11px; font-weight:700; background:#fff; color:var(--accent); border:none; cursor:pointer; transition:all 0.2s;">🎮 Bot Kuis</button>
+          <div class="card" style="margin-bottom:0; overflow:hidden; background:linear-gradient(135deg,#ffffff 0%,#fff7ed 100%);">
+            <div class="card-title">Status Bot Chat</div>
+            <p style="font-size:12px; color:var(--muted); margin-top:-8px; margin-bottom:16px;">Panel kirim pesan manual sudah dipindahkan ke Realtime Logs agar monitoring dan aksi admin berada di satu tempat.</p>
+            <div class="bot-status-mini">
+              <div class="bot-status-mini-item">
+                <div class="bot-status-mini-label">Bot AI</div>
+                <div class="bot-status-mini-value" id="miniBotAiStatus">Memuat...</div>
               </div>
-            </div>
-            <div class="form-group">
-              <input type="text" id="manualText" placeholder="Ketik pesan..." onkeydown="if(event.key==='Enter') sendManual()">
-            </div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap;">
-              <button class="btn-primary" onclick="sendManual()">Kirim</button>
-              <button class="btn-secondary" onclick="sendTemplate('online')">Broadcast Online</button>
-              <button class="btn-danger" onclick="sendTemplate('offline')">Broadcast Offline</button>
+              <div class="bot-status-mini-item">
+                <div class="bot-status-mini-label">Bot Kuis</div>
+                <div class="bot-status-mini-value" id="miniBotKuisStatus">Memuat...</div>
+              </div>
+              <div class="bot-status-mini-item">
+                <div class="bot-status-mini-label">Bot Gambar</div>
+                <div class="bot-status-mini-value" id="miniBotImageStatus">Memuat...</div>
+              </div>
             </div>
           </div>
 
@@ -933,6 +948,15 @@ function getDashboardHTML() {
             <button class="btn-sm btn-sm-del" onclick="purgeRealtimeLogs()">Purge Logs</button>
           </div>
           <p style="font-size: 12px; color:#94a3b8; margin-top:-8px; margin-bottom:18px;">Memantau console.log, console.warn, dan console.error bot secara realtime.</p>
+          <div class="log-send-panel">
+            <select id="manualBotSelect" class="log-send-select" aria-label="Pilih bot pengirim">
+              <option value="0">Bot AI</option>
+              <option value="1">Bot Kuis</option>
+              <option value="2">Bot Gambar</option>
+            </select>
+            <input type="text" id="manualText" class="log-send-input" placeholder="Ketik pesan untuk dikirim ke chat..." onkeydown="if(event.key==='Enter') sendManual()">
+            <button class="log-send-btn" onclick="sendManual()">Kirim</button>
+          </div>
           <div class="realtime-log-list" id="realtimeLogList" style="height:auto; flex:1; min-height:480px;">
             <div style="color:#94a3b8; text-align:center; padding:20px;">Menunggu log...</div>
           </div>
@@ -1727,6 +1751,12 @@ async function updateStats() {
     if (imagePill) {
       if (isImageCommandOn) imagePill.classList.add('is-on'); else imagePill.classList.remove('is-on');
     }
+    const miniAi = document.getElementById('miniBotAiStatus');
+    const miniKuis = document.getElementById('miniBotKuisStatus');
+    const miniImage = document.getElementById('miniBotImageStatus');
+    if (miniAi) { miniAi.textContent = isBotInfoOn ? 'Aktif' : 'Nonaktif'; miniAi.style.color = isBotInfoOn ? 'var(--green)' : 'var(--red)'; }
+    if (miniKuis) { miniKuis.textContent = isBotKuisOn ? 'Aktif' : 'Nonaktif'; miniKuis.style.color = isBotKuisOn ? 'var(--green)' : 'var(--red)'; }
+    if (miniImage) { miniImage.textContent = isImageCommandOn ? 'Aktif' : 'Nonaktif'; miniImage.style.color = isImageCommandOn ? 'var(--green)' : 'var(--red)'; }
 
     isSystemOff = d.isSystemOff || false;
     const sysPill = document.getElementById('systemTogglePill');
@@ -1914,26 +1944,16 @@ async function updateStats() {
     }
   }
 
-  let selectedBotIndex = 0;
-  function selectBot(index) {
-    selectedBotIndex = index;
-    const btn0 = document.getElementById('botBtn0');
-    const btn1 = document.getElementById('botBtn1');
-    if (btn0 && btn1) {
-      btn0.style.background = index === 0 ? 'var(--accent)' : '#fff';
-      btn0.style.color = index === 0 ? '#fff' : 'var(--accent)';
-      btn1.style.background = index === 1 ? 'var(--accent)' : '#fff';
-      btn1.style.color = index === 1 ? '#fff' : 'var(--accent)';
-    }
-  }
-
   async function sendManual() {
     const inp = document.getElementById('manualText');
+    const botSelect = document.getElementById('manualBotSelect');
+    if (!inp) return;
     const text = inp.value.trim();
     if (!text) return;
+    const botIndex = Number(botSelect?.value || 0);
     const res = await fetch('/api/chat/send', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, botIndex: selectedBotIndex })
+      body: JSON.stringify({ text, botIndex })
     });
     const d = await res.json().catch(() => ({}));
     if (!res.ok || d.success === false) {
@@ -1941,19 +1961,7 @@ async function updateStats() {
       return;
     }
     inp.value = '';
-    refresh();
-  }
-  async function sendTemplate(type) {
-    const text = type === 'online' ? "Halo kawan-kawan! Rara is back ONLINE! Ayo sapa Rara sekarang atau ajak main kuis! 🚀" : "Rara izin istirahat dulu yaa, see you later kawan-kawan! Rara OFFLINE dulu 👋";
-    const res = await fetch('/api/chat/send', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, botIndex: selectedBotIndex })
-    });
-    const d = await res.json().catch(() => ({}));
-    if (!res.ok || d.success === false) {
-      showToast(d.message || 'Pesan template gagal dikirim.', 'error');
-      return;
-    }
+    showToast('Pesan terkirim via ' + (d.via || 'bot') + '.', 'success');
     refresh();
   }
 

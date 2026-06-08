@@ -805,7 +805,8 @@ function startDashboard(scope) {
         const { text, botIndex } = req.body;
         if (!text) return res.status(400).json({ success: false, message: 'Text required' });
         
-        const idx = (botIndex === 1) ? 1 : 0;
+        const parsedIndex = Number.parseInt(botIndex, 10);
+        const idx = Number.isInteger(parsedIndex) && parsedIndex >= 0 && parsedIndex < Math.min(bots.length, 3) ? parsedIndex : 0;
         const targetBot = bots[idx];
         const botName = targetBot ? targetBot.username : 'Unknown';
         
