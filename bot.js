@@ -26,13 +26,15 @@ const { getPokemonComboMessage, getPokemonComboWithTargetMessage } = require('./
 const { fetchBattleMeta, formatMetaMessage } = require('./src/pokemonMeta');
 const { isAnimeDataQuestion, handleAnimeDataQuestion } = require('./src/animeIntentHandler');
 const { LIMITS, QUIZ, COMMANDS, SETTINGS_KEYS } = require('./src/config/constants');
-const { handleError, ignoreExpectedError, safeMessage } = require('./src/services/errorHandler');
+const { handleError, ignoreExpectedError, safeMessage, logError, ERROR_CATEGORY } = require('./src/services/errorHandler');
 const { createCommandRouter } = require('./src/services/commandRouter');
 const { createLimitService } = require('./src/services/limitService');
 const { createInitialQuizState, createQuizService } = require('./src/services/quizService');
 const { createImageService } = require('./src/services/imageService');
 const { createAnimeinClient } = require('./src/animein/client');
 const { createAiService } = require('./src/services/aiService');
+const { createAnimeRecommendationService } = require('./src/services/animeRecommendationService');
+const { createDeterministicAnswerRouter } = require('./src/services/deterministicAnswerRouter');
 const { createSettingsRepo } = require('./src/database/settingsRepo');
 const { createUserRepo } = require('./src/database/userRepo');
 const { createLimitRepo } = require('./src/database/limitRepo');
@@ -69,6 +71,8 @@ const animeinClient = createAnimeinClient({
 });
 
 let aiService;
+let animeRecommendationService;
+let deterministicAnswerRouter;
 
 const db = createClient({
     url: CONFIG.TURSO_URL || '',
@@ -1910,7 +1914,13 @@ async function fetchGenresList() {
             return parsed;
         }
     } catch(e) {
-        console.warn('[ANIMEIN] Gagal ambil genres:', safeMessage(e, 60));
+        logError({
+            category: ERROR_CATEGORY.API,
+            scope: 'ANIMEIN_GENRE',
+            message: 'Gagal ambil daftar genre',
+            error: e,
+            maxLength: 80,
+        });
     }
     return cache.genres.data || [];
 }
@@ -2013,7 +2023,9 @@ async function fetchByGenre(genreId, isSpecific = false, maxLimit = 10, options 
         const mode = lowerMode || (isSpecific
             ? (/rating|bintang|score/.test(String(options.requestText || '').toLowerCase()) ? 'rating' : 'views_high')
             : 'mixed');
-        const selectedMovies = pickMixedGenreMovies(movies, maxLimit, mode);
+        const selectedMovies = animeRecommendationService?.pickMixedGenreMovies
+            ? animeRecommendationService.pickMixedGenreMovies(movies, maxLimit, mode)
+            : pickMixedGenreMovies(movies, maxLimit, mode);
         
         if (selectedMovies.length > 0) {
             const detailedMovies = await Promise.all(selectedMovies.map(async (m) => {
@@ -2051,7 +2063,13 @@ async function fetchByGenre(genreId, isSpecific = false, maxLimit = 10, options 
             });
         }
     } catch(e) {
-        console.warn(`[ANIMEIN] Gagal ambil anime untuk genre ${genreId}:`, e.message.slice(0, 60));
+        logError({
+            category: ERROR_CATEGORY.API,
+            scope: 'ANIMEIN_GENRE_MOVIE',
+            message: `Gagal ambil anime untuk genre ${genreId}`,
+            error: e,
+            maxLength: 80,
+        });
     }
     return [];
 }
@@ -2966,17 +2984,45 @@ async function buildDeterministicGenreRecommendation(userMessage, senderName, se
     };
 }
 
+animeRecommendationService = createAnimeRecommendationService({
+    fetchGenresList,
+    fetchByGenre,
+    saveRecentAnimeList,
+});
+
+deterministicAnswerRouter = createDeterministicAnswerRouter([
+    async ({ userMessage, senderName, senderUserId }) => {
+        const text = await answerOwnProfileStatQuestion(userMessage, senderName, senderUserId);
+        return text ? { text, provider: 'Animein Profile', tokens: 0 } : null;
+    },
+    async ({ userMessage, senderName, senderUserId }) => {
+        if (!animeRecommendationService) return null;
+        return animeRecommendationService.buildDeterministicGenreRecommendation(userMessage, senderName, senderUserId);
+    },
+]);
+
 /** Main AI handler: Groq only */
 async function getAIResponse(userMessage, senderName, isReply = false, senderUserId = null, replyText = '') {
     const contextMessage = [replyText, userMessage].filter(Boolean).join('\n');
-    const directProfileAnswer = await answerOwnProfileStatQuestion(userMessage, senderName, senderUserId);
-    if (directProfileAnswer) {
-        return { text: directProfileAnswer, provider: 'Animein Profile', tokens: 0 };
+    const deterministicAnswer = deterministicAnswerRouter
+        ? await deterministicAnswerRouter.run({ userMessage, senderName, senderUserId })
+        : null;
+    if (deterministicAnswer) {
+        return deterministicAnswer;
     }
 
-    const deterministicGenreAnswer = await buildDeterministicGenreRecommendation(userMessage, senderName, senderUserId);
-    if (deterministicGenreAnswer) {
-        return deterministicGenreAnswer;
+    if (!deterministicAnswerRouter) {
+        const directProfileAnswer = await answerOwnProfileStatQuestion(userMessage, senderName, senderUserId);
+        if (directProfileAnswer) {
+            return { text: directProfileAnswer, provider: 'Animein Profile', tokens: 0 };
+        }
+
+        const deterministicGenreAnswer = animeRecommendationService
+            ? await animeRecommendationService.buildDeterministicGenreRecommendation(userMessage, senderName, senderUserId)
+            : await buildDeterministicGenreRecommendation(userMessage, senderName, senderUserId);
+        if (deterministicGenreAnswer) {
+            return deterministicGenreAnswer;
+        }
     }
 
     const intent = detectIntent(userMessage);

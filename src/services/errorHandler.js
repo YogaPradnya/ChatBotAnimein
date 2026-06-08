@@ -3,17 +3,59 @@ const path = require('path');
 
 const DEFAULT_LOG_FILE = path.join(process.cwd(), 'realtime_logs.txt');
 
+const ERROR_CATEGORY = {
+    API: 'API_ERROR',
+    NETWORK: 'NETWORK_ERROR',
+    AUTH: 'AUTH_ERROR',
+    RATE_LIMIT: 'RATE_LIMIT',
+    DATA_EMPTY: 'DATA_EMPTY',
+    VALIDATION: 'VALIDATION_ERROR',
+    UNKNOWN: 'UNKNOWN_ERROR',
+};
+
+function maskSecretValue(value) {
+    const text = String(value || '');
+    if (text.length <= 6) return '****';
+    return `${text.slice(0, 2)}****${text.slice(-2)}`;
+}
+
+function maskSensitiveText(value) {
+    return String(value || '')
+        .replace(/((?:key_client|password|token|authorization|api[_-]?key|groq_api_key)\s*[=:]\s*)([^\s&]+)/gi, (_, prefix, secret) => `${prefix}${maskSecretValue(secret)}`)
+        .replace(/(Bearer\s+)([A-Za-z0-9._-]+)/gi, (_, prefix, secret) => `${prefix}${maskSecretValue(secret)}`);
+}
+
 function formatError(error) {
     if (!error) return 'Unknown error';
-    if (error.stack) return error.stack;
-    if (error.message) return error.message;
-    return String(error);
+    const raw = error.stack || error.message || String(error);
+    return maskSensitiveText(raw);
 }
 
 function safeMessage(error, maxLength = 120) {
-    const raw = error?.message || String(error || 'Unknown error');
+    const raw = maskSensitiveText(error?.message || String(error || 'Unknown error'));
     if (!maxLength || raw.length <= maxLength) return raw;
     return raw.slice(0, maxLength);
+}
+
+function inferErrorCategory(error) {
+    const status = error?.response?.status;
+    const code = String(error?.code || '').toUpperCase();
+    const msg = String(error?.message || '').toLowerCase();
+
+    if (status === 401 || status === 403) return ERROR_CATEGORY.AUTH;
+    if (status === 429) return ERROR_CATEGORY.RATE_LIMIT;
+    if (status >= 400 || /request failed with status code/.test(msg)) return ERROR_CATEGORY.API;
+    if (/ENOTFOUND|ECONNRESET|ETIMEDOUT|ECONNABORTED|EAI_AGAIN|NETWORK/i.test(code) || /timeout|getaddrinfo|network/i.test(msg)) return ERROR_CATEGORY.NETWORK;
+    return ERROR_CATEGORY.UNKNOWN;
+}
+
+function logError({ category, scope = 'APP', message = 'Terjadi error', error, level = 'warn', maxLength = 160 } = {}) {
+    const finalCategory = category || inferErrorCategory(error);
+    const suffix = error ? `: ${safeMessage(error, maxLength)}` : '';
+    const line = `[${finalCategory}] [${scope}] ${maskSensitiveText(message)}${suffix}`;
+    if (level === 'error') console.error(line);
+    else console.warn(line);
+    return line;
 }
 
 function handleError(error, context = {}) {
@@ -38,7 +80,7 @@ function handleError(error, context = {}) {
         const entry = {
             time: new Date().toLocaleTimeString('id-ID', { hour12: false }),
             type: context.level === 'warn' ? 'warn' : 'error',
-            message: `[${scope}] ${error?.message || String(error)}`,
+            message: `[${scope}] ${safeMessage(error, 180)}`,
         };
         context.stats.realtimeLogs.unshift(entry);
         if (context.stats.realtimeLogs.length > 200) context.stats.realtimeLogs.pop();
@@ -49,8 +91,14 @@ function handleError(error, context = {}) {
 }
 
 function warnError(scope, message, error, options = {}) {
-    const suffix = error ? `: ${safeMessage(error, options.maxLength || 120)}` : '';
-    console.warn(`[${scope}] ${message}${suffix}`);
+    return logError({
+        category: options.category,
+        scope,
+        message,
+        error,
+        level: 'warn',
+        maxLength: options.maxLength || 120,
+    });
 }
 
 function createErrorHandler(baseContext = {}) {
@@ -60,6 +108,9 @@ function createErrorHandler(baseContext = {}) {
         },
         warnError(scope, message, error, options = {}) {
             return warnError(scope, message, error, options);
+        },
+        logError(options = {}) {
+            return logError({ ...baseContext, ...options });
         },
         safeMessage,
     };
@@ -72,10 +123,14 @@ function ignoreExpectedError(error, context = {}) {
 }
 
 module.exports = {
+    ERROR_CATEGORY,
     createErrorHandler,
     handleError,
     ignoreExpectedError,
     warnError,
+    logError,
     safeMessage,
     formatError,
+    maskSensitiveText,
+    inferErrorCategory,
 };
