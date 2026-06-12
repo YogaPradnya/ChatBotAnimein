@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const sharp = require('sharp');
 const Groq = require('groq-sdk');
 
 function sleep(ms) {
@@ -171,8 +172,13 @@ function createAiHordeImageService({
             buffer = Buffer.from(base64, 'base64');
         }
 
-        let ext = mimeType.split('/')[1] || 'png';
-        if (ext === 'jpeg') ext = 'jpg';
+        const originalMimeType = mimeType;
+        buffer = await sharp(buffer)
+            .rotate()
+            .jpeg({ quality: 90, mozjpeg: true })
+            .toBuffer();
+        mimeType = 'image/jpeg';
+        const ext = 'jpg';
 
         const tempDir = path.join(projectRoot, 'src', 'temp_images');
         if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
@@ -181,7 +187,7 @@ function createAiHordeImageService({
         fs.writeFileSync(filePath, buffer);
 
         const fileSize = buffer.length;
-        console.log(`[AI HORDE] Image saved: mime=${mimeType}, ext=${ext}, size=${Math.round(fileSize / 1024)}KB`);
+        console.log(`[AI HORDE] Image saved: original=${originalMimeType}, mime=${mimeType}, ext=${ext}, size=${Math.round(fileSize / 1024)}KB`);
 
         return {
             filePath,
