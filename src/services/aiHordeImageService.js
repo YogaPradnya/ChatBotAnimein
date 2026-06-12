@@ -108,7 +108,7 @@ function createAiHordeImageService({
         return data;
     }
 
-    async function submitGeneration(englishPrompt, negativePrompt) {
+    async function submitGeneration(englishPrompt, negativePrompt, options = {}) {
         const payload = {
             prompt: `${englishPrompt} ### ${negativePrompt}`,
             params: {
