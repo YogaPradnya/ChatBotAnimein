@@ -110,6 +110,7 @@ function createAiHordeImageService({
                 height,
                 steps,
                 n: 1,
+                format: 'jpg',
             },
             nsfw: false,
             censor_nsfw: true,
@@ -179,9 +180,13 @@ function createAiHordeImageService({
         const filePath = path.join(tempDir, `horde_${Date.now()}_${Math.floor(Math.random() * 1000)}.${ext}`);
         fs.writeFileSync(filePath, buffer);
 
+        const fileSize = buffer.length;
+        console.log(`[AI HORDE] Image saved: mime=${mimeType}, ext=${ext}, size=${Math.round(fileSize / 1024)}KB`);
+
         return {
             filePath,
             mimeType,
+            sourceUrl: 'ai-horde',
             model: generation.model || '-',
             worker: generation.worker_name || '-',
         };

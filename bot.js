@@ -3243,17 +3243,17 @@ async function sendChatWithImage(bot, imageData, caption, replyTo = '0') {
         });
         
         const apiSuccess = res.data && (
+            res.data.success === true ||
             res.data.status === true ||
             res.data.status === 200 ||
-            res.data.error === false ||
-            Boolean(res.data.message)
+            res.data.error === false
         );
 
         if (apiSuccess) {
-            console.log('[CHAT/IMG] Berhasil kirim gambar via multipart!');
+            console.log(`[CHAT/IMG] Berhasil kirim gambar via multipart (${bot.username}, ${contentType}, ${filename})`);
             return true;
         }
-        console.warn('[CHAT/IMG] API tidak mengembalikan sukses, response:', JSON.stringify(res.data).slice(0,100));
+        console.warn('[CHAT/IMG] API tidak mengembalikan sukses, response:', JSON.stringify(res.data).slice(0,300));
         return false;
     } catch (err) {
         console.warn('[CHAT/IMG] Upload gambar ke chat gagal:', safeMessage(err, 80));
