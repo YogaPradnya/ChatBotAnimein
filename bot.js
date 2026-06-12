@@ -3749,7 +3749,7 @@ async function processMessages(bot, messages) {
                 trackStreak,
                 cleanupTempImage,
                 aiHordeImageService,
-                statusBot: bots.find(item => item.role === 'info' && item.token) || null,
+                statusBot: bots.find(item => item.role === 'info' && item.auth?.userId && item.auth?.userKey) || null,
                 getFilterData: () => FILTER_DATA,
                 stats,
             };

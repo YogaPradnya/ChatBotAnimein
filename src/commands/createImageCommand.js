@@ -72,15 +72,18 @@ async function execute(ctx) {
     let imageData = null;
     try {
         const progressBot = statusBot || bot;
+        console.log(`[GAMBARKAN] Progress dikirim via ${progressBot.username || 'unknown'}`);
         await sendChatMessage(progressBot, `@${senderName} Sedang membuat gambar, tunggu sebentar.`, msg.id);
         imageData = await aiHordeImageService.generateImageWithHorde(prompt);
 
         const translated = imageData.translatedPrompt || prompt;
         const caption = `@${senderName} Gambar selesai dibuat.`;
 
+        console.log(`[GAMBARKAN] Gambar final dikirim via ${bot.username || 'unknown'}`);
         const sent = await sendChatWithImage(bot, imageData, caption, msg.id);
         if (!sent) {
-            await sendChatMessage(bot, formatSimpleError(senderName, 'Gagal kirim gambar.'), msg.id);
+            const errorBot = statusBot || bot;
+            await sendChatMessage(errorBot, formatSimpleError(senderName, 'Gambar berhasil dibuat, tapi gagal dikirim ke chat.'), msg.id);
             return true;
         }
 
@@ -91,9 +94,8 @@ async function execute(ctx) {
         trackStreak(senderName);
     } catch (e) {
         console.warn('[GAMBARKAN] Gagal proses .gambarkan:', safeMessage(e, 180));
-        await sendChatMessage(bot, formatSimpleError(senderName, 'Gagal membuat gambar. Coba lagi nanti.'), msg.id);
-    } finally {
-        if (imageData?.filePath) cleanupTempImage(imageData.filePath);
+        const errorBot = statusBot || bot;
+        await sendChatMessage(errorBot, formatSimpleError(senderName, 'Gagal membuat gambar. Coba lagi nanti.'), msg.id);
     }
 
     return true;
