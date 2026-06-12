@@ -1,3 +1,4 @@
+const { boxHeader } = require('../utils/textStyle');
 const { formatLimitExceeded } = require('../utils/messageFormatter');
 
 async function execute(ctx) {
@@ -60,25 +61,25 @@ async function execute(ctx) {
         try { imgLimit = await getImageLimitStatus(senderName); } catch(e) { handleError(e, { scope: 'PROFIL', detail: 'image limit status', stats, logEmitter }); }
 
         const profileMsg = [
-            `\u250C\u2500\u2500\u2500 \uD83D\uDCCB PROFIL \u2500\u2500\u2500\u2500\u2510`,
-            `\u2502\uD83D\uDC64 @${dn}`,
-            `\u2502\uD83C\uDF96\uFE0F ${gelar || 'Wibu Baru'}`,
-            `\u251C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524`,
-            `\u2502\uD83C\uDFC5 Rank  : #${rank}`,
-            `\u2502\uD83D\uDCCA Level : ${level}`,
-            `\u2502\u2728 ${xpStr}/${reqStr}`,
-            `\u2502 [${bar}] ${percentage}%`,
-            `\u251C\u2500\u2500 \uD83C\uDFAE KUIS \u2500\u2500\u2500\u2500\u2500\u2524`,
-            `\u2502\uD83C\uDFC6 Win:${quizData.wins} WR:${winRate}%`,
-            `\u2502\uD83C\uDFAF Main : ${quizData.participations}`,
-            `\u2502\uD83D\uDCA1 Hint : ${quizData.total_hints_used}`,
-            `\u251C\u2500\u2500 \uD83D\uDD25 STREAK \u2500\u2500\u2500\u2524`,
-            `\u2502\uD83D\uDD25 Now : ${quizData.current_streak} hari`,
-            `\u2502\uD83D\uDC51 Best: ${quizData.best_streak} hari`,
-            `\u251C\u2500\u2500 \uD83D\uDCE6 LIMIT \u2500\u2500\u2500\u2500\u2524`,
-            `\u2502\uD83C\uDF9F\uFE0F Cmd : ${updatedLimit.remaining}/${updatedLimit.limit}`,
-            `\u2502\uD83D\uDDBC\uFE0F Img : ${imgLimit.remaining}/${imgLimit.limit}`,
-            `\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518`,
+            `┌── ${boxHeader('📋 PROFIL')}`,
+            `│👤 @${dn}`,
+            `│🎖️ ${gelar || 'Wibu Baru'}`,
+            `├───────────────────`,
+            `│🏅 Rank  : #${rank}`,
+            `│📊 Level : ${level}`,
+            `│✨ ${xpStr}/${reqStr}`,
+            `│ [${bar}] ${percentage}%`,
+            `├── ${boxHeader('🎮 KUIS')}`,
+            `│\uD83C\uDFC6 Win:${quizData.wins} WR:${winRate}%`,
+            `│\uD83C\uDFAF Main : ${quizData.participations}`,
+            `│💡 Hint : ${quizData.total_hints_used}`,
+            `├── ${boxHeader('🔥 STREAK')}`,
+            `│🔥 Now : ${quizData.current_streak} hari`,
+            `│👑 Best: ${quizData.best_streak} hari`,
+            `├── ${boxHeader('📦 LIMIT')}`,
+            `│🎟️ Cmd : ${updatedLimit.remaining}/${updatedLimit.limit}`,
+            `│🖼️ Img : ${imgLimit.remaining}/${imgLimit.limit}`,
+            `└───────────────────`,
         ].join('\n');
 
         await sendChatMessage(bot, profileMsg, msg.id);

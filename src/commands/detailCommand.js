@@ -67,7 +67,7 @@ async function execute(ctx) {
         const synopsis = cleanText(pickValue(movie.synopsis, movie.synopsis_short, movie.description), 260);
 
         const lines = [
-            '┌── DETAIL ANIME ─────',
+            '┌── 𝗗𝗘𝗧𝗔𝗜𝗟 𝗔𝗡𝗜𝗠𝗘',
             `│ Judul : ${cleanText(title, 34)}`,
             `│ Type  : ${type}`,
             `│ Tahun : ${year}`,
@@ -76,9 +76,9 @@ async function execute(ctx) {
             `│ Score : ${score}`,
             `│ Views : ${views}`,
             `│ Status: ${status}`,
-            '├── SINOPSIS ─────────',
+            '├── 𝗦𝗜𝗡𝗢𝗣𝗦𝗜𝗦',
             `│ ${synopsis}`,
-            '├── EPISODE ──────────',
+            '├── 𝗘𝗣𝗜𝗦𝗢𝗗𝗘',
             `│ Total : ${episodes.length || pickValue(movie.total_episode, movie.episodes)}`,
         ];
 
@@ -87,7 +87,7 @@ async function execute(ctx) {
             lines.push(`│ Terbaru: ${epTitle}`);
         }
 
-        lines.push('└────────────────────');
+        lines.push('└───────────────────');
 
         await sendChatMessage(bot, `@${senderName.substring(0, 10)}\n${lines.join('\n')}`, msg.id);
     } catch (e) {

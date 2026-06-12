@@ -57,6 +57,10 @@ function createEnvConfig() {
         PINTEREST: {
             IMAGE_API_URL: getEnv('PINTEREST_IMAGE_API_URL'),
         },
+        AI_HORDE: {
+            API_KEY: getEnv('AI_HORDE_API_KEY'),
+            CLIENT_AGENT: getEnv('AI_HORDE_CLIENT_AGENT', 'AnimeinBot:1.0'),
+        },
         BOT: {
             POLL_INTERVAL: 9000,
         },

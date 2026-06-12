@@ -1,3 +1,4 @@
+const { boxHeader } = require('../utils/textStyle');
 const { formatCommandUsage } = require('../utils/messageFormatter');
 
 async function execute(ctx) {
@@ -28,22 +29,22 @@ async function execute(ctx) {
 
         const maxItems = Math.min(schedule.length, 10);
         const lines = [
-            `\u250C\u2500\u2500 JADWAL HARI INI \u2500\u2500\u2510`,
+            `┌── ${boxHeader('JADWAL HARI INI')}`,
         ];
 
         for (let i = 0; i < maxItems; i++) {
             const raw = schedule[i];
             const clean = raw.replace(/^-\s*/, '').replace(/\[.*\]/, '').trim();
-            lines.push(`\u2502 ${i + 1}. ${clean.substring(0, 28)}`);
+            lines.push(`│ ${i + 1}. ${clean.substring(0, 28)}`);
         }
 
         if (schedule.length > maxItems) {
-            lines.push(`\u2502 +${schedule.length - maxItems} lainnya`);
+            lines.push(`│ +${schedule.length - maxItems} lainnya`);
         }
 
-        lines.push(`\u251C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524`);
-        lines.push(`\u2502 Total: ${schedule.length} anime`);
-        lines.push(`\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518`);
+        lines.push(`├───────────────────`);
+        lines.push(`│ Total: ${schedule.length} anime`);
+        lines.push(`└───────────────────`);
 
         await sendChatMessage(bot, `@${senderName.substring(0, 10)}\n${lines.join('\n')}`, msg.id);
     } catch (e) {

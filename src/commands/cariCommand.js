@@ -53,11 +53,11 @@ async function execute(ctx) {
 
         const interpretation = results.find(item => item._interpretation)?._interpretation;
         const lines = [
-            '┌── HASIL CARI ──────',
+            '┌── 𝗛𝗔𝗦𝗜𝗟 𝗖𝗔𝗥𝗜',
             `│ Keyword: ${cleanText(query, 26)}`,
         ];
         if (interpretation) lines.push(`│ Tafsir : ${cleanText(interpretation, 26)}`);
-        lines.push('├────────────────────');
+        lines.push('├───────────────────');
 
         results.slice(0, 7).forEach((anime, index) => {
             const title = cleanText(pickValue(anime.title, anime.name), 29);
@@ -69,9 +69,9 @@ async function execute(ctx) {
             if (anime._matchReason) lines.push(`│    Cocok: ${cleanText(anime._matchReason, 23)}`);
         });
 
-        lines.push('├────────────────────');
+        lines.push('├───────────────────');
         lines.push('│ Detail: .detail [judul]');
-        lines.push('└────────────────────');
+        lines.push('└───────────────────');
 
         await sendChatMessage(bot, `@${senderName.substring(0, 10)}\n${lines.join('\n')}`, msg.id);
     } catch (e) {

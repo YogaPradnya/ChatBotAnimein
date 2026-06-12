@@ -1,3 +1,4 @@
+const { boxHeader } = require('../utils/textStyle');
 const { ensureCommandLimit } = require('./helpers');
 
 async function execute(ctx) {
@@ -8,32 +9,32 @@ async function execute(ctx) {
 
     await incrementCommandUsage(senderName);
     const menu = [
-        `\u250C\u2500\u2500 \uD83D\uDCCB MENU \u2500\u2500\u2500\u2500\u2500\u2524`,
-        `\u2502 1. .ai / .rara`,
-        `\u2502 2. .lapor [pesan]`,
-        `\u2502 3. .profil`,
-        `\u2502 4. .cek @user`,
-        `\u2502 5. .rank`,
-        `\u2502 6. .help [topik]`,
-        `\u2502 7. .toko`,
-        `\u2502 8. .beli [nomor]`,
-        `\u2502 9. .kombo`,
-        `\u250210. .meta`,
-        `\u250211. .gambar [key]`,
-        `\u250212. .jadwal`,
-        `\u250213. .hot`,
-        `\u250214. .baru`,
-        `\u250215. .random`,
-        `\u250216. .populer`,
-        `\u250217. .detail [judul]`,
-        `\u250218. .cari [judul]`,
-        `\u250219. .genre [nama]`,
-        `\u250220. .tas`,
-        `\u250221. .limit`,
+        `┌── ${boxHeader('📋 MENU')}`,
+        `│ 1. .ai / .rara`,
+        `│ 2. .lapor [pesan]`,
+        `│ 3. .profil`,
+        `│ 4. .cek @user`,
+        `│ 5. .rank`,
+        `│ 6. .help [topik]`,
+        `│ 7. .toko`,
+        `│ 8. .beli [nomor]`,
+        `│ 9. .kombo`,
+        `│10. .meta`,
+        `│11. .gambar [key]`,
+        `│12. .jadwal`,
+        `│13. .hot`,
+        `│14. .baru`,
+        `│15. .random`,
+        `│16. .populer`,
+        `│17. .detail [judul]`,
+        `│18. .cari [judul]`,
+        `│19. .genre [nama]`,
+        `│20. .tas`,
+        `│21. .limit`,
 
-        `\u251C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524`,
-        `\u2502\u2728 Chatting = +XP`,
-        `\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518`,
+        `├───────────────────`,
+        `│✨ Chatting = +XP`,
+        `└───────────────────`,
     ].join('\n');
     await sendChatMessage(bot, `@${senderName.substring(0, 10)}\n${menu}`, msg.id);
     return true;

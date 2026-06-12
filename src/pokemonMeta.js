@@ -95,16 +95,16 @@ async function fetchBattleMeta(bot, CONFIG, recordPath) {
 function formatMetaMessage(meta) {
     if (!meta) {
         return [
-            `┌── ⚠️ META BATTLE ────`,
+            `┌── ⚠️ 𝗠𝗘𝗧𝗔 𝗕𝗔𝗧𝗧𝗟𝗘`,
             `│ Data tidak tersedia.`,
-            `└──────────────────────`
+            `└───────────────────`
         ].join('\n');
     }
 
     const { sorted, playerDetails } = meta;
 
     const lines = [
-        `┌── 📊 META BATTLE ────`,
+        `┌── 📊 𝗠𝗘𝗧𝗔 𝗕𝗔𝗧𝗧𝗟𝗘`,
         `│ Top 5 Pokemon:`,
     ];
 
@@ -128,7 +128,7 @@ function formatMetaMessage(meta) {
         lines.push(`│ ${row}`);
     });
 
-    lines.push(`└──────────────────────`);
+    lines.push(`└───────────────────`);
 
     return lines.join('\n');
 }

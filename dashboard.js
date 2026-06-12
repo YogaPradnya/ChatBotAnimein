@@ -71,6 +71,7 @@ function getDashboardHTML() {
 <title>Animein.ai Dashboard</title>
 <link rel="icon" type="image/png" href="/favicon.png?v=1">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <style>
   :root {
     --bg: #f8fafc;
@@ -244,11 +245,28 @@ function getDashboardHTML() {
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); 
   }
   .nav-item:hover { background: rgba(255,255,255,0.05); color: #fff; transform: translateX(4px); }
+  .nav-item svg {
+    width: 18px;
+    height: 18px;
+    margin-right: 12px;
+    flex-shrink: 0;
+    stroke-width: 2.2;
+    color: currentColor;
+    filter: drop-shadow(0 0 8px rgba(249, 115, 22, 0));
+    transition: transform 0.2s ease, filter 0.2s ease;
+  }
+  .nav-item:hover svg { transform: scale(1.08); filter: drop-shadow(0 0 10px rgba(249, 115, 22, 0.32)); }
+  .nav-item span {
+    flex: 1;
+    text-align: left;
+    justify-self: flex-start;
+  }
   .nav-item.active { 
     background: var(--accent); 
     color: #fff; 
     box-shadow: 0 4px 12px rgba(249, 115, 22, 0.25); 
   }
+  .nav-item.active svg { filter: drop-shadow(0 0 10px rgba(255,255,255,0.35)); }
   .sidebar-status { padding: 16px 20px; border-top: 1px solid #333; }
   .sidebar-status .s-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 6px; }
   .sidebar-status span { font-size: 12px; color: var(--sidebar-text); font-weight: 600; }
@@ -629,16 +647,17 @@ function getDashboardHTML() {
     <p>Control Panel <span style="font-size: 10px; font-weight: 400; color: var(--muted);">by yoga</span></p>
   </div>
   <nav class="sidebar-nav">
-    <button class="nav-item active" onclick="showPage('dashboard', this); toggleSidebar(false)">Dashboard</button>
-    <button class="nav-item" onclick="showPage('prompt', this); toggleSidebar(false)">Prompt & Knowledge</button>
-    <button class="nav-item" onclick="showPage('kuis', this); toggleSidebar(false)">Kuis & Leaderboard</button>
-    <button class="nav-item" onclick="showPage('filter', this); toggleSidebar(false)">Filter Kata</button>
-    <button class="nav-item" onclick="showPage('model', this); toggleSidebar(false)">Model AI</button>
-    <button class="nav-item" onclick="showPage('gambar', this); toggleSidebar(false)">Limit Manager</button>
-    <button class="nav-item" onclick="showPage('laporan', this); toggleSidebar(false)">Laporan</button>
-    <button class="nav-item" onclick="showPage('banned', this); toggleSidebar(false)">Blokir User</button>
-    <button class="nav-item" onclick="showPage('logs', this); toggleSidebar(false)">Realtime Logs</button>
-    <button class="nav-item" onclick="showPage('api-traffic', this); toggleSidebar(false)">API Monitor</button>
+    <button class="nav-item active" onclick="showPage('dashboard', this); toggleSidebar(false)"><i data-lucide="layout-dashboard"></i><span>Dashboard</span></button>
+    <button class="nav-item" onclick="showPage('prompt', this); toggleSidebar(false)"><i data-lucide="brain-circuit"></i><span>Prompt & Knowledge</span></button>
+    <button class="nav-item" onclick="showPage('kuis', this); toggleSidebar(false)"><i data-lucide="trophy"></i><span>Kuis & Leaderboard</span></button>
+    <button class="nav-item" onclick="showPage('filter', this); toggleSidebar(false)"><i data-lucide="shield-alert"></i><span>Filter Kata</span></button>
+    <button class="nav-item" onclick="showPage('model', this); toggleSidebar(false)"><i data-lucide="bot"></i><span>Model AI</span></button>
+    <button class="nav-item" onclick="showPage('gambar', this); toggleSidebar(false)"><i data-lucide="image"></i><span>Limit Manager</span></button>
+    <button class="nav-item" onclick="showPage('laporan', this); toggleSidebar(false)"><i data-lucide="file-warning"></i><span>Laporan</span></button>
+    <button class="nav-item" onclick="showPage('banned', this); toggleSidebar(false)"><i data-lucide="user-x"></i><span>Blokir User</span></button>
+    <button class="nav-item" onclick="showPage('inspector', this); toggleSidebar(false)"><i data-lucide="id-card"></i><span>User Inspector</span></button>
+    <button class="nav-item" onclick="showPage('logs', this); toggleSidebar(false)"><i data-lucide="terminal"></i><span>Realtime Logs</span></button>
+    <button class="nav-item" onclick="showPage('api-traffic', this); toggleSidebar(false)"><i data-lucide="activity"></i><span>API Monitor</span></button>
   </nav>
   <div class="sidebar-status">
     <span class="s-dot" id="statusDot" style="background:var(--red)"></span>
@@ -948,6 +967,9 @@ function getDashboardHTML() {
             <button class="btn-sm btn-sm-del" onclick="purgeRealtimeLogs()">Purge Logs</button>
           </div>
           <p style="font-size: 12px; color:#94a3b8; margin-top:-8px; margin-bottom:18px;">Memantau console.log, console.warn, dan console.error bot secara realtime.</p>
+          <div class="realtime-log-list" id="realtimeLogList" style="height:auto; flex:1; min-height:480px;">
+            <div style="color:#94a3b8; text-align:center; padding:20px;">Menunggu log...</div>
+          </div>
           <div class="log-send-panel">
             <select id="manualBotSelect" class="log-send-select" aria-label="Pilih bot pengirim">
               <option value="0">Bot AI</option>
@@ -956,9 +978,6 @@ function getDashboardHTML() {
             </select>
             <input type="text" id="manualText" class="log-send-input" placeholder="Ketik pesan untuk dikirim ke chat..." onkeydown="if(event.key==='Enter') sendManual()">
             <button class="log-send-btn" onclick="sendManual()">Kirim</button>
-          </div>
-          <div class="realtime-log-list" id="realtimeLogList" style="height:auto; flex:1; min-height:480px;">
-            <div style="color:#94a3b8; text-align:center; padding:20px;">Menunggu log...</div>
           </div>
        </div>
     </div>
@@ -1114,6 +1133,22 @@ function getDashboardHTML() {
           </table>
         </div>
       </div>
+    </div>
+
+    <!-- PAGE: USER INSPECTOR -->
+    <div class="page" id="page-inspector">
+      <div class="card" style="background:linear-gradient(135deg,#fff7ed 0%,#ffffff 48%,#f8fafc 100%); border-color:#fed7aa;">
+        <div class="card-title">User Profile Inspector</div>
+        <p style="font-size:12px; color:var(--muted); margin-top:-12px; margin-bottom:18px;">Cari username untuk melihat XP, level, limit, status ban global, dan core memory.</p>
+        <div class="control-row" style="align-items:flex-end; flex-wrap:wrap;">
+          <div style="flex:1; min-width:240px;">
+            <label class="form-label">Username</label>
+            <input type="text" id="inspectorUsername" placeholder="contoh: Yogaa atau @Yogaa" onkeydown="if(event.key==='Enter') inspectUser()">
+          </div>
+          <button class="btn-primary" onclick="inspectUser()" style="min-width:130px;">Inspect</button>
+        </div>
+      </div>
+      <div id="userInspectorResult" class="card" style="display:none;"></div>
     </div>
 
     <!-- PAGE: BLOKIR USER -->
@@ -1292,21 +1327,6 @@ function getDashboardHTML() {
             <div id="kuisPageContent"></div>
           </div>
 
-          <!-- Ban Management Card -->
-          <div class="card" style="margin-bottom: 0;">
-            <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
-              <span>🚫 Kelola Ban Kuis</span>
-              <span id="banCount" style="font-size:11px; font-weight:600; color:var(--muted); background:var(--bg); padding:3px 10px; border-radius:20px; border:1px solid var(--border);">0 dibanned</span>
-            </div>
-            <div style="display:flex; gap:8px; margin-bottom:14px;">
-              <input type="text" id="banUsernameInput" placeholder="Username (tanpa @)..." style="flex:1; font-size:12px;">
-              <input type="text" id="banReasonInput" placeholder="Alasan (opsional)..." style="flex:1.5; font-size:12px;">
-              <button class="btn-primary" onclick="banUser()" style="padding:10px 14px; font-size:11px; white-space:nowrap;">🚫 Ban</button>
-            </div>
-            <div id="bannedList" style="display:flex; flex-direction:column; gap:8px; max-height:200px; overflow-y:auto;">
-              <div style="color:var(--muted); font-size:12px; text-align:center; padding:12px;">Memuat daftar ban...</div>
-            </div>
-          </div>
 
           <!-- Quiz Pool Database Card -->
           <div class="card" style="margin-bottom: 0; flex: 1; display: flex; flex-direction: column; min-height: 500px; overflow: hidden; border: 1.5px solid var(--border);">
@@ -1690,7 +1710,7 @@ function getDashboardHTML() {
       target.style.display = 'block';
     }
     el.classList.add('active');
-    const titles = { dashboard: 'Dashboard', model: 'Model AI', prompt: 'Prompt & Knowledge', gambar: 'Limit Manager', laporan: 'Laporan', banned: 'Blokir User', filter: 'Filter Kata', kuis: 'Kuis & Leaderboard', logs: 'Realtime Logs', 'api-traffic': 'API Monitor' };
+    const titles = { dashboard: 'Dashboard', model: 'Model AI', prompt: 'Prompt & Knowledge', gambar: 'Limit Manager', laporan: 'Laporan', banned: 'Blokir User', inspector: 'User Inspector', filter: 'Filter Kata', kuis: 'Kuis & Leaderboard', logs: 'Realtime Logs', 'api-traffic': 'API Monitor' };
     document.getElementById('pageTitle').textContent = titles[id] || id;
     if (id === 'dashboard') refresh();
     if (id === 'prompt') loadPrompt();
@@ -1698,7 +1718,7 @@ function getDashboardHTML() {
     if (id === 'filter') loadFilter();
     if (id === 'gambar') { loadGlobalLimits(); loadCommandLimits(); loadImageLimits(); }
     if (id === 'banned') loadBannedPage();
-    if (id === 'kuis') { loadTitles(); loadUsers(); loadBanned(); loadQuizPool(); }
+    if (id === 'kuis') { loadTitles(); loadUsers(); loadQuizPool(); }
     if (id === 'logs') renderRealtimeLogs();
     if (id === 'model') {
       loadStats();
@@ -2567,6 +2587,111 @@ async function updateStats() {
     }
   }
 
+  async function inspectUser() {
+    const raw = (document.getElementById('inspectorUsername')?.value || '').trim();
+    const username = raw.replace(/^@+/, '').trim();
+    const resultEl = document.getElementById('userInspectorResult');
+    if (!username) return showToast('Isi username dulu.', 'warning');
+    if (!resultEl) return;
+    resultEl.style.display = 'block';
+    resultEl.innerHTML = '<div style="color:var(--muted); text-align:center; padding:20px;">Mengambil data user...</div>';
+    try {
+      const [userRes, cmdRes, imgRes, banRes] = await Promise.all([
+        fetch('/api/users/list?q=' + encodeURIComponent(username)),
+        fetch('/api/limits/commands?q=' + encodeURIComponent(username) + '&limit=5'),
+        fetch('/api/images/limits?q=' + encodeURIComponent(username) + '&limit=5'),
+        fetch('/api/quiz/banned?q=' + encodeURIComponent(username) + '&limit=5'),
+      ]);
+      const [userJson, cmdJson, imgJson, banJson] = await Promise.all([userRes.json(), cmdRes.json(), imgRes.json(), banRes.json()]);
+      const user = (userJson.data || []).find(u => String(u.username || '').toLowerCase() === username.toLowerCase()) || (userJson.data || [])[0] || null;
+      const cmd = (cmdJson.data || []).find(u => String(u.username || '').toLowerCase() === username.toLowerCase()) || null;
+      const img = (imgJson.data || []).find(u => String(u.username || '').toLowerCase() === username.toLowerCase()) || null;
+      const ban = (banJson.banned || []).find(u => String(u.username || '').toLowerCase() === username.toLowerCase()) || null;
+      renderUserInspector(username, user, cmd, img, ban);
+    } catch (e) {
+      resultEl.innerHTML = '<div style="color:var(--red); font-weight:700;">Gagal inspect user: ' + escapeHTML(e.message) + '</div>';
+    }
+  }
+
+  function inspectorMetric(label, value, color = 'var(--text)') {
+    return '<div class="stat-card" style="padding:18px; border-left:4px solid ' + color + ';">' +
+      '<div class="label" style="margin-bottom:6px;">' + label + '</div>' +
+      '<div class="value" style="font-size:22px; color:' + color + ';">' + value + '</div>' +
+    '</div>';
+  }
+
+  function renderUserInspector(username, user, cmd, img, ban) {
+    const resultEl = document.getElementById('userInspectorResult');
+    const displayName = escapeHTML(user?.username || username);
+    const xp = Number(user?.xp || 0).toLocaleString('id-ID');
+    const level = Number(user?.level || 1).toLocaleString('id-ID');
+    const title = user?.custom_title ? escapeHTML(user.custom_title) : '<span style="color:var(--muted);">Belum ada</span>';
+    const coreMemory = user?.core_memory ? escapeHTML(user.core_memory) : 'Tidak ada core memory.';
+    const cmdUsed = Number(cmd?.used_count || 0);
+    const cmdExtra = Number(cmd?.extra_limit || 0);
+    const imgUsed = Number(img?.used_count || 0);
+    const imgExtra = Number(img?.extra_limit || img?.daily_limit || 0);
+    const banStatus = ban ? '<span style="color:var(--red); font-weight:900;">DIBLOKIR</span>' : '<span style="color:var(--green); font-weight:900;">AKTIF</span>';
+    resultEl.innerHTML =
+      '<div class="card-title" style="display:flex; justify-content:space-between; align-items:center; gap:12px;">' +
+        '<span>@' + displayName + '</span>' + banStatus +
+      '</div>' +
+      '<div class="stats-grid" style="margin-bottom:18px;">' +
+        inspectorMetric('XP', xp, 'var(--accent)') +
+        inspectorMetric('Level', level, 'var(--blue)') +
+        inspectorMetric('Command Used', String(cmdUsed), '#8b5cf6') +
+        inspectorMetric('Image Used', String(imgUsed), '#06b6d4') +
+      '</div>' +
+      '<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px; margin-bottom:18px;">' +
+        '<div style="padding:16px; border:1px solid var(--border); border-radius:16px; background:#fff;">' +
+          '<div class="form-label">Profile</div>' +
+          '<div style="font-size:13px; line-height:1.8;"><b>Title:</b> ' + title + '<br><b>Username:</b> @' + displayName + '</div>' +
+        '</div>' +
+        '<div style="padding:16px; border:1px solid var(--border); border-radius:16px; background:#fff;">' +
+          '<div class="form-label">Limits</div>' +
+          '<div style="font-size:13px; line-height:1.8;"><b>CMD Extra:</b> ' + cmdExtra + '<br><b>IMG Limit/Extra:</b> ' + imgExtra + '</div>' +
+        '</div>' +
+        '<div style="padding:16px; border:1px solid var(--border); border-radius:16px; background:#fff;">' +
+          '<div class="form-label">Ban Global</div>' +
+          '<div style="font-size:13px; line-height:1.8;"><b>Status:</b> ' + banStatus + '<br><b>Alasan:</b> ' + (ban?.reason ? escapeHTML(ban.reason) : '-') + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="padding:16px; border:1px solid var(--border); border-radius:16px; background:#f8fafc; margin-bottom:18px;">' +
+        '<div class="form-label">Core Memory</div>' +
+        '<pre style="white-space:pre-wrap; font-size:12px; line-height:1.6; color:var(--text); margin:0; font-family:inherit;">' + coreMemory + '</pre>' +
+      '</div>' +
+      '<div style="display:flex; flex-wrap:wrap; gap:10px;">' +
+        '<button class="btn-sm btn-sm-del" onclick="resetCmdLimit(\\\'' + jsString(username) + '\\\')">Reset Command Limit</button>' +
+        '<button class="btn-sm btn-sm-del" onclick="resetImageLimit(\\\'' + jsString(username) + '\\\')">Reset Image Limit</button>' +
+        (ban
+          ? '<button class="btn-sm btn-sm-edit" onclick="unbanUserFromInspector(\\\'' + jsString(username) + '\\\')">Unblokir Global</button>'
+          : '<button class="btn-sm btn-sm-del" onclick="banUserFromInspector(\\\'' + jsString(username) + '\\\')">Blokir Global</button>') +
+      '</div>';
+  }
+
+  async function banUserFromInspector(username) {
+    const reason = window.prompt('Alasan blokir untuk @' + username + ' (opsional):', '') || '';
+    const ok = await customConfirm('Blokir @' + username + '?', 'Konfirmasi Blokir', 'Blokir');
+    if (!ok) return;
+    const res = await fetch('/api/quiz/ban', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, reason }) });
+    const d = await res.json();
+    if (!d.success) return showToast(d.message || 'Gagal blokir.', 'error');
+    showToast('@' + username + ' berhasil diblokir.', 'success');
+    inspectUser();
+    loadBannedPage();
+  }
+
+  async function unbanUserFromInspector(username) {
+    const ok = await customConfirm('Unblokir @' + username + '?', 'Konfirmasi Unblokir', 'Unblokir');
+    if (!ok) return;
+    const res = await fetch('/api/quiz/unban', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username }) });
+    const d = await res.json();
+    if (!d.success) return showToast(d.message || 'Gagal unblokir.', 'error');
+    showToast('@' + username + ' berhasil diunblokir.', 'success');
+    inspectUser();
+    loadBannedPage();
+  }
+
   async function loadBanned() {
     try {
       const res = await fetch('/api/quiz/banned');
@@ -3093,6 +3218,9 @@ async function updateStats() {
       resetCmdLimit(cmdResetBtn.dataset.username || '');
     }
   });
+  if (window.lucide) {
+    window.lucide.createIcons();
+  }
 </script>
 </body>
 </html>`;

@@ -15,9 +15,9 @@ async function execute(ctx) {
         const res = await userRepo.getLeaderboard(10);
         const medals = ['🥇', '🥈', '🥉'];
         let rankMsg = [
-            `┌── 🏆 LEADERBOARD ────`,
+            `┌── 🏆 𝗟𝗘𝗔𝗗𝗘𝗥𝗕𝗢𝗔𝗥𝗗`,
             `│ Top 10 Animein`,
-            `├─────────────────`,
+            `├───────────────────`,
         ];
         res.rows.forEach((r, i) => {
             const medal = i < 3 ? medals[i] : `${i+1}.`;
@@ -33,7 +33,7 @@ async function execute(ctx) {
             const rowContent = `${medalStr} ${nmStr} ${xpStr} ${lvStr}`;
             rankMsg.push(`│ ${rowContent}`);
         });
-        rankMsg.push(`└─────────────────────`);
+        rankMsg.push(`└───────────────────`);
         await sendChatMessage(bot, rankMsg.join('\n'), msg.id);
     } catch(e) {
         console.error('[RANK ERROR]', e);

@@ -1,3 +1,5 @@
+const { boxHeader } = require('./textStyle');
+
 function displayName(username, maxLength = 10) {
     return String(username || '').replace(/^@/, '').substring(0, maxLength);
 }
@@ -45,9 +47,9 @@ function formatCommandUsage(username, usageText, maxLength = 10) {
 function formatBox(title, lines) {
     const body = Array.isArray(lines) ? lines : String(lines || '').split('\n');
     return [
-        `┌── ${title} ─────────`,
+        `┌── ${boxHeader(title)}`,
         ...body.map(line => `│ ${line}`),
-        `└──────────────────────`,
+        `└───────────────────`,
     ].join('\n');
 }
 

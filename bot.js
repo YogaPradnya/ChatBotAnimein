@@ -33,6 +33,7 @@ const { createInitialQuizState, createQuizService } = require('./src/services/qu
 const { createImageService } = require('./src/services/imageService');
 const { createAnimeinClient } = require('./src/animein/client');
 const { createAiService } = require('./src/services/aiService');
+const { createAiHordeImageService } = require('./src/services/aiHordeImageService');
 const { createAnimeRecommendationService } = require('./src/services/animeRecommendationService');
 const { createDeterministicAnswerRouter } = require('./src/services/deterministicAnswerRouter');
 const { createSettingsRepo } = require('./src/database/settingsRepo');
@@ -96,7 +97,7 @@ const memoryRepo = createMemoryRepo(db);
 const knowledgeRepo = createKnowledgeRepo(settingsRepo, SETTINGS_KEYS);
 const commandRouter = createCommandRouter();
 commandRouter
-    .register([COMMANDS.TEBAK, COMMANDS.GAMBAR, COMMANDS.BELI, COMMANDS.CEK], () => {}, { prefix: true })
+    .register([COMMANDS.TEBAK, COMMANDS.GAMBAR, '.buatkan', COMMANDS.BELI, COMMANDS.CEK], () => {}, { prefix: true })
     .register([
         COMMANDS.HINT,
         COMMANDS.KUIS,
@@ -848,6 +849,12 @@ const imageService = createImageService({
     historyTtlMs: PINTEREST_HISTORY_TTL_MS,
     getPinterestApiUrl: () => CONFIG.PINTEREST_IMAGE_API_URL,
 });
+const aiHordeImageService = createAiHordeImageService({
+    apiKey: CONFIG.AI_HORDE_API_KEY,
+    groqKeys: CONFIG.GROQ_KEYS,
+    projectRoot: __dirname,
+    clientAgent: CONFIG.AI_HORDE_CLIENT_AGENT,
+});
 let IMAGE_DAILY_LIMIT_DEFAULT = LIMITS.DEFAULT_IMAGE_DAILY_LIMIT;
 let CMD_DAILY_LIMIT_DEFAULT = LIMITS.DEFAULT_COMMAND_DAILY_LIMIT;
 
@@ -1145,6 +1152,7 @@ aiService = createAiService({
     hydrateAnimeTitlesForTagCache,
     getAnimeRecommendationService: () => animeRecommendationService,
     rememberAnimeListFromText,
+    saveRecentAnimeList,
 });
 
 /** Deteksi intent user untuk konteks data */
@@ -3740,6 +3748,7 @@ async function processMessages(bot, messages) {
                 trackImageRequest,
                 trackStreak,
                 cleanupTempImage,
+                aiHordeImageService,
                 getFilterData: () => FILTER_DATA,
                 stats,
             };

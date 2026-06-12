@@ -1,3 +1,4 @@
+const { boxHeader } = require('../utils/textStyle');
 const { findKnowledgeByHelpTopic } = require('../database/knowledgeRepo');
 const { formatCommandUsage } = require('../utils/messageFormatter');
 
@@ -16,15 +17,15 @@ async function execute(ctx) {
     let helpMsg = '';
 
     if (helpArg === 'kuis') {
-        helpMsg = wrapInBox('KUIS', 'Kuis otomatis setiap 3 jam.\n\nCommand:\n• .tebak [jawab]\n• .hint (minta clue)\n• .kuis (waktu kuis)\n\nHadiah:\n• +500 XP (maks)\n• Hint: -40 XP\n• Salah: -20 XP');
+        helpMsg = wrapInBox('𝗞𝗨𝗜𝗦', 'Kuis otomatis setiap 3 jam.\n\nCommand:\n• .tebak [jawab]\n• .hint (minta clue)\n• .kuis (waktu kuis)\n\nHadiah:\n• +500 XP (maks)\n• Hint: -40 XP\n• Salah: -20 XP');
     } else if (helpArg === 'gambar') {
-        helpMsg = wrapInBox('GAMBAR', 'Cari gambar dari Pinterest ke chat.\n\nCommand:\n• .gambar [keyword]\n\nLimit: 3 gambar/hari\nBonus: +5 XP/gambar\n\nInfo: Beli limit di .toko (item 3).');
+        helpMsg = wrapInBox('𝗚𝗔𝗠𝗕𝗔𝗥', 'Cari gambar dari Pinterest ke chat.\n\nCommand:\n• .gambar [keyword]\n\nLimit: 3 gambar/hari\nBonus: +5 XP/gambar\n\nInfo: Beli limit di .toko (item 3).');
     } else if (helpArg === 'xp') {
         helpMsg = wrapInBox('XP', 'XP didapat dari:\n• AI Chat   : +10 XP\n• AutoReply : +5 XP\n• Kuis      : +100-500\n• Gambar    : +500 XP\n• Cek Profil: +5 XP\n\nFormula Level:\nXP = 50 * Level^3');
     } else if (helpArg === 'shop' || helpArg === 'toko') {
         helpMsg = wrapInBox('TOKO', 'Toko item Rara.\n\nCommand:\n• .toko - List item\n• .beli [nomor]\n• .beli 1 [gelar]\n\nNote: Pembelian memotong XP kamu.');
     } else if (helpArg === 'kombo' || helpArg === 'combo') {
-        helpMsg = wrapInBox('KOMBO', 'Rekomendasi 3 Pokemon terbaik di tas kamu.\n\nCommand:\n• .kombo / .combo\n\nAturan:\n• Sesuai grade aktif\n• Banned diabaikan\n• Ambil LV tertinggi');
+        helpMsg = wrapInBox('𝗞𝗢𝗠𝗕𝗢', 'Rekomendasi 3 Pokemon terbaik di tas kamu.\n\nCommand:\n• .kombo / .combo\n\nAturan:\n• Sesuai grade aktif\n• Banned diabaikan\n• Ambil LV tertinggi');
     } else if (helpArg === 'profil') {
         helpMsg = wrapInBox('PROFIL', 'Cek statistikmu.\n\nCommand:\n• .profil\n\nTampilan:\n• Rank, Level, XP\n• Statistik kuis\n• Streak harian\n• Sisa limit hari ini');
     } else if (helpArg === 'cek') {
@@ -71,22 +72,22 @@ async function execute(ctx) {
         }
     } else {
         helpMsg = [
-            `\u250C\u2500\u2500 \uD83D\uDCD6 HELP \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`,
-            `\u2502 Ketik: .help [topik]`,
-            `\u251C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`,
-            `\u2502 Topik:`,
-            `\u2502 1. kuis     2. gambar`,
-            `\u2502 3. xp       4. shop`,
-            `\u2502 5. kombo    6. profil`,
-            `\u2502 7. cek      8. rank`,
-            `\u2502 9. streak   10. level`,
-            `\u250211. ai      12. ban`,
-            `\u250213. jadwal  14. hot`,
-            `\u250215. baru    16. random`,
-            `\u250217. populer 18. detail`,
-            `\u250219. cari    20. genre`,
-            `\u250221. tas     22. limit`,
-            `\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`,
+            `┌── ${boxHeader('📖 HELP')}`,
+            `│ Ketik: .help [topik]`,
+            `├───────────────────`,
+            `│ Topik:`,
+            `│ 1. kuis     2. gambar`,
+            `│ 3. xp       4. shop`,
+            `│ 5. kombo    6. profil`,
+            `│ 7. cek      8. rank`,
+            `│ 9. streak   10. level`,
+            `│11. ai      12. ban`,
+            `│13. jadwal  14. hot`,
+            `│15. baru    16. random`,
+            `│17. populer 18. detail`,
+            `│19. cari    20. genre`,
+            `│21. tas     22. limit`,
+            `└───────────────────`,
         ].join('\n');
     }
 

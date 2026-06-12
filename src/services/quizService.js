@@ -1,3 +1,4 @@
+const { boxHeader } = require('../utils/textStyle');
 function createInitialQuizState() {
     return {
         isRunning: false,
@@ -89,16 +90,16 @@ function createQuizService({
 
         const hintRenderers = {
             studio: (si) => {
-                lines.push(`\u2502\uD83C\uDFA8 ${c.studio}`);
-                if (sentences[si]) lines.push(`\u2502${censorSpoiler(sentences[si]).substring(0, 26)}`);
+                lines.push(`│🎨 ${c.studio}`);
+                if (sentences[si]) lines.push(`│${censorSpoiler(sentences[si]).substring(0, 26)}`);
             },
             year_genre: (si) => {
-                lines.push(`\u2502\uD83D\uDCC5 ${c.year} | ${c.genre}`);
-                if (sentences[si]) lines.push(`\u2502${censorSpoiler(sentences[si]).substring(0, 26)}`);
+                lines.push(`│📅 ${c.year} | ${c.genre}`);
+                if (sentences[si]) lines.push(`│${censorSpoiler(sentences[si]).substring(0, 26)}`);
             },
             type: (si) => {
-                lines.push(`\u2502\uD83D\uDCFA Tipe: ${c.type}`);
-                if (sentences[si]) lines.push(`\u2502${censorSpoiler(sentences[si]).substring(0, 26)}`);
+                lines.push(`│📺 Tipe: ${c.type}`);
+                if (sentences[si]) lines.push(`│${censorSpoiler(sentences[si]).substring(0, 26)}`);
             },
         };
 
@@ -106,23 +107,23 @@ function createQuizService({
 
         if (senderName) {
             const dn = senderName.substring(0, 10);
-            lines.push(`\u250C\u2500\u2500 \uD83D\uDCA1 HINT ${level}/5 \u2500\u2500\u2500\u2510`);
-            lines.push(`\u2502\uD83D\uDC64 @${dn}`);
-            lines.push(`\u2502\uD83D\uDCB8 -${penalty} XP`);
-            lines.push(`\u251C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524`);
+            lines.push(`┌── ${boxHeader(`💡 HINT ${level}/5`)}`);
+            lines.push(`│👤 @${dn}`);
+            lines.push(`│💸 -${penalty} XP`);
+            lines.push(`├───────────────────`);
         } else {
-            lines.push(`\u250C\u2500\u2500 \uD83C\uDFAE KUIS \u2500\u2500\u2500\u2500\u2500\u2524`);
-            lines.push(`\u2502\u23F0 Sisa: ${timeStr}`);
-            lines.push(`\u251C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524`);
+            lines.push(`┌── ${boxHeader('🎮 KUIS')}`);
+            lines.push(`│⏰ Sisa: ${timeStr}`);
+            lines.push(`├───────────────────`);
         }
 
-        lines.push(`\u2502\uD83D\uDCDD ${hiddenTitle}`);
-        lines.push(`\u2502   (${title.length} char)`);
-        lines.push(`\u2502\u2B50 Skor: ${c.score}`);
+        lines.push(`│📝 ${hiddenTitle}`);
+        lines.push(`│   (${title.length} char)`);
+        lines.push(`│⭐ Skor: ${c.score}`);
 
         if (level === 0 && !senderName) {
             const introSynopsis = censorSpoiler((sentences[0] || '').substring(0, 50));
-            lines.push(`\u2502\uD83D\uDD0D "${introSynopsis}..."`);
+            lines.push(`│🔍 "${introSynopsis}..."`);
         }
 
         for (let i = 0; i < 3; i++) {
@@ -132,16 +133,16 @@ function createQuizService({
         }
 
         if (level >= 5) {
-            lines.push(`\u2502${censorSpoiler(c.synopsis).substring(0, 26)}`);
+            lines.push(`│${censorSpoiler(c.synopsis).substring(0, 26)}`);
         }
 
-        lines.push(`\u251C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524`);
+        lines.push(`├───────────────────`);
         if (level === 0 && !senderName) {
-            lines.push(`\u2502 .hint = bantuan`);
+            lines.push(`│ .hint = bantuan`);
         } else {
-            lines.push(`\u2502 .tebak [jawaban]`);
+            lines.push(`│ .tebak [jawaban]`);
         }
-        lines.push(`\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518`);
+        lines.push(`└───────────────────`);
 
         return lines.join('\n');
     }
@@ -165,12 +166,12 @@ function createQuizService({
         clearQuizTimers();
 
         const timeoutMsg = [
-            `\u250C\u2500\u2500 \u23F0 HABIS \u2500\u2500\u2500\u2500\u2500\u2524`,
-            `\u2502 Waktu kuis habis!`,
-            `\u2502 Tidak ada pemenang`,
-            `\u251C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524`,
-            `\u2502\u2705 ${activeQuiz.original}`,
-            `\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518`,
+            `┌── ${boxHeader('⏰ HABIS')}`,
+            `│ Waktu kuis habis!`,
+            `│ Tidak ada pemenang`,
+            `├───────────────────`,
+            `│✅ ${activeQuiz.original}`,
+            `└───────────────────`,
         ].join('\n');
 
         await sendChatMessage(bot, timeoutMsg, lastMsgId);

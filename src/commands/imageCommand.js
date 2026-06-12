@@ -34,12 +34,12 @@ async function execute(ctx) {
     const imageQuery = cleanMsg.replace(/^\.gambar\s*/i, '').trim();
     if (!imageQuery) {
         const imgHelp = [
-            `┌── 🖼️ GAMBAR ─────────`,
+            `┌── 🖼️ 𝗚𝗔𝗠𝗕𝗔𝗥`,
             `│ Format:`,
             `│ .gambar [keyword]`,
             `├───────────────────`,
             `│ Cth: .gambar yanami`,
-            `└──────────────────────`,
+            `└───────────────────`,
         ].join('\n');
         await sendChatMessage(bot, formatCommandUsage(senderName, imgHelp), msg.id);
         return true;
@@ -58,7 +58,7 @@ async function execute(ctx) {
     const now = Date.now();
     const remainingMs = imageCommandCooldownMs - (now - getLastImageCommandAt());
     if (remainingMs > 0) {
-        console.log(`[GAMBAR] Cooldown aktif, request dari ${senderName} diabaikan.`);
+        console.log(`[𝗚𝗔𝗠𝗕𝗔𝗥] Cooldown aktif, request dari ${senderName} diabaikan.`);
         return true;
     }
 
@@ -69,7 +69,7 @@ async function execute(ctx) {
             return true;
         }
     } catch (e) {
-        console.warn('[GAMBAR] Gagal cek limit harian:', safeMessage(e, 120));
+        console.warn('[𝗚𝗔𝗠𝗕𝗔𝗥] Gagal cek limit harian:', safeMessage(e, 120));
         await sendChatMessage(bot, formatSimpleError(senderName, 'Gagal cek limit.'), msg.id);
         return true;
     }
@@ -92,7 +92,7 @@ async function execute(ctx) {
             trackStreak(senderName);
         }
     } catch (e) {
-        console.warn('[GAMBAR] Gagal proses .gambar:', safeMessage(e, 120));
+        console.warn('[𝗚𝗔𝗠𝗕𝗔𝗥] Gagal proses .gambar:', safeMessage(e, 120));
         await sendChatMessage(bot, formatSimpleError(senderName, 'Gambar tidak tersedia.'), msg.id);
     } finally {
         if (tempImgData && tempImgData.filePath) {

@@ -52,7 +52,7 @@ function resolveShopRepo(repoOrDb) {
 
 function getShopMessage() {
     const lines = [
-        `┌── 🛒 TOKO RARA ──────`,
+        `┌── 🛒 𝗧𝗢𝗞𝗢 𝗥𝗔𝗥𝗔`,
         `├───────────────────`,
     ];
     SHOP_ITEMS.forEach(item => {
@@ -64,7 +64,7 @@ function getShopMessage() {
     lines.push(`├───────────────────`);
     lines.push(`│ .beli [nomor]`);
     lines.push(`│ Cth: .beli 2`);
-    lines.push(`└──────────────────────`);
+    lines.push(`└───────────────────`);
     return lines.join('\n');
 }
 

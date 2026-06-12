@@ -18,12 +18,12 @@ async function execute(ctx) {
     if (activeQuiz.isRunning) {
         const dn = senderName.substring(0, 10);
         const kuisActiveMsg = [
-            `┌── 🎮 KUIS ───────────`,
+            `┌── 🎮 𝗞𝗨𝗜𝗦`,
             `│ 👤 @${dn}`,
             `│ Kuis berlangsung!`,
             `├───────────────────`,
             `│ .tebak [jawaban]`,
-            `└──────────────────────`,
+            `└───────────────────`,
         ].join('\n');
         await sendChatMessage(bot, kuisActiveMsg, msg.id);
     } else {
@@ -35,12 +35,12 @@ async function execute(ctx) {
             const m = Math.floor((diff % 3600000) / 60000);
             const s = Math.floor((diff % 60000) / 1000);
             const kuisMsg = [
-                `┌── ⏰ KUIS ───────────`,
+                `┌── ⏰ 𝗞𝗨𝗜𝗦`,
                 `│ 👤 @${senderName.substring(0, 10)}`,
                 `├───────────────────`,
                 `│ Kuis berikutnya:`,
                 `│ ⏱️ ${h}j ${m}m ${s}s`,
-                `└──────────────────────`,
+                `└───────────────────`,
             ].join('\n');
             await sendChatMessage(bot, kuisMsg, msg.id);
         }

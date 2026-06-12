@@ -22,12 +22,12 @@ async function execute(ctx) {
     const isiLaporan = cleanMsg.substring(6).trim();
     if (!isiLaporan) {
         const laporHelp = [
-            `┌── 📢 LAPOR ──────────`,
+            `┌── 📢 𝗟𝗔𝗣𝗢𝗥`,
             `│ Format:`,
             `│ .lapor [pesan]`,
             `├───────────────────`,
             `│ Cth: .lapor link ep5`,
-            `└──────────────────────`,
+            `└───────────────────`,
         ].join('\n');
         await sendChatMessage(bot, formatCommandUsage(senderName, laporHelp), msg.id);
         return true;
@@ -35,7 +35,7 @@ async function execute(ctx) {
 
     try {
         await reportRepo.createReport(senderName, isiLaporan);
-        console.log(`[LAPORAN] ${senderName}: ${isiLaporan}`);
+        console.log(`[𝗟𝗔𝗣𝗢𝗥AN] ${senderName}: ${isiLaporan}`);
         await sendChatMessage(bot, `\u2705 @${senderName.substring(0, 10)} Laporan diterima!`, msg.id);
     } catch (e) {
         await sendChatMessage(bot, `\u274C @${senderName.substring(0, 10)} Gagal simpan.`, msg.id);

@@ -132,7 +132,11 @@ function createAiService(deps) {
 
         if (isAnimeDataQuestion(question)) {
             console.log(`[ANIME DATA] Detected anime data question from ${senderName}`);
-            const animeResponse = await handleAnimeDataQuestion(question, animeinSearchAnime);
+            const animeResponse = await handleAnimeDataQuestion(question, animeinSearchAnime, {
+                senderName,
+                senderUserId,
+                saveRecentAnimeList: deps.saveRecentAnimeList,
+            });
             if (animeResponse) {
                 if (typeof rememberAnimeListFromText === 'function') {
                     await rememberAnimeListFromText(animeResponse, senderName, senderUserId, 'AnimeData');

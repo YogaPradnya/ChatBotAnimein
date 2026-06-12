@@ -104,10 +104,10 @@ async function execute(ctx) {
             .slice(0, 5);
 
         const lines = [
-            '┌── TAS POKEMON ─────',
+            '┌── 𝗧𝗔𝗦 𝗣𝗢𝗞𝗘𝗠𝗢𝗡',
             `│ Total : ${pokemon.length}`,
             `│ Grade : ${gradeLine || '-'}`,
-            '├── TOP CP ───────────',
+            '├── 𝗧𝗢𝗣 𝗖𝗣',
         ];
 
         topCp.forEach((p, index) => {
@@ -116,9 +116,9 @@ async function execute(ctx) {
             lines.push(`│    L${getLevel(p)} CP${getCp(p)} ${getGrade(p)}`);
         });
 
-        lines.push('├────────────────────');
+        lines.push('├───────────────────');
         lines.push('│ Kombo: .kombo');
-        lines.push('└────────────────────');
+        lines.push('└───────────────────');
 
         await sendChatMessage(bot, `@${senderName.substring(0, 10)}\n${lines.join('\n')}`, msg.id);
     } catch (e) {

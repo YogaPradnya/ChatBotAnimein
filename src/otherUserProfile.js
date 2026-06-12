@@ -279,7 +279,7 @@ function formatOtherUserProfile(profile) {
 
     const dn = (profile.username || '').substring(0, 10);
     const lines = [
-        `┌── 👤 CEK USER ───────`,
+        `┌── 👤 𝗖𝗘𝗞 𝗨𝗦𝗘𝗥`,
         `│ @${dn}`,
         `├───────────────────`,
     ];
@@ -309,13 +309,13 @@ function formatOtherUserProfile(profile) {
     }
 
     if (profile.battle_point !== undefined || profile.rank !== undefined) {
-        lines.push(`├── ⚔️ BATTLE ───────`);
+        lines.push(`├── ⚔️ 𝗕𝗔𝗧𝗧𝗟𝗘`);
         if (profile.rank !== undefined) lines.push(`│ 🏆 Rank: #${profile.rank}`);
         if (profile.battle_point !== undefined) lines.push(`│ ⚔️ BP  : ${Number(profile.battle_point).toLocaleString('id-ID')}`);
     }
 
     if (profile.medal_count !== undefined || profile.pokemon_count !== undefined || profile.waifu_count !== undefined) {
-        lines.push(`├── 🎮 KOLEKSI ────────`);
+        lines.push(`├── 🎮 𝗞𝗢𝗟𝗘𝗞𝗦𝗜`);
         if (profile.medal_count !== undefined) lines.push(`│ 🏅 Medal : ${Number(profile.medal_count).toLocaleString('id-ID')}`);
         if (profile.pokemon_count !== undefined) lines.push(`│ 🎮 Poke  : ${Number(profile.pokemon_count).toLocaleString('id-ID')}`);
         if (profile.waifu_count !== undefined) lines.push(`│ 💞 Waifu : ${Number(profile.waifu_count).toLocaleString('id-ID')}`);
@@ -326,7 +326,7 @@ function formatOtherUserProfile(profile) {
         lines.push(`│ 📅 Join: ${profile.created_at}`);
     }
 
-    lines.push(`└──────────────────────`);
+    lines.push(`└───────────────────`);
 
     return lines.join('\n');
 }

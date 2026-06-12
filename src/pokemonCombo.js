@@ -268,12 +268,12 @@ async function getPokemonComboMessage(bot, senderName, senderUserId, CONFIG, rec
 
     if (userPokemon.length === 0) {
         return [
-            `┌── ⚠️ KOMBO ──────────`,
+            `┌── ⚠️ 𝗞𝗢𝗠𝗕𝗢`,
             `│ 👤 @${dn}`,
             `├───────────────────`,
             `│ Tidak ada Pokemon`,
             `│ di tas kamu.`,
-            `└──────────────────────`,
+            `└───────────────────`,
         ].join('\n');
     }
 
@@ -302,7 +302,7 @@ async function getPokemonComboMessage(bot, senderName, senderUserId, CONFIG, rec
 
     if (!combo) {
         return [
-            `┌── ⚔️ KOMBO ──────────`,
+            `┌── ⚔️ 𝗞𝗢𝗠𝗕𝗢`,
             `│ 👤 @${dn}`,
             `├───────────────────`,
             `│ Grade : ${gradeStr}`,
@@ -311,7 +311,7 @@ async function getPokemonComboMessage(bot, senderName, senderUserId, CONFIG, rec
             `│ ❌ Kombo tidak tersedia`,
             `│ Min. 3 Pokemon sesuai`,
             `│ grade aktif.`,
-            `└──────────────────────`,
+            `└───────────────────`,
         ].join('\n');
     }
 
@@ -320,20 +320,20 @@ async function getPokemonComboMessage(bot, senderName, senderUserId, CONFIG, rec
     const sN = fullPokemonName(combo.SPD.name);
 
     return [
-        `┌── ⚔️ KOMBO ──────────`,
+        `┌── ⚔️ 𝗞𝗢𝗠𝗕𝗢`,
         `│ 👤 @${dn}`,
         `├───────────────────`,
         `│ Grade : ${gradeStr}`,
         `│ Ban   : ${banStr}`,
         `│ Milik : ${userPokemon.length} | OK: ${eligible.length}`,
-        `├── 💎 TIM ────────────`,
+        `├── 💎 𝗧𝗜𝗠`,
         `│ 🛡️ ${dN}`,
         `│   L${combo.DEF.lv} CP${combo.DEF.cp}`,
         `│ ⚔️ ${aN}`,
         `│   L${combo.ATK.lv} CP${combo.ATK.cp}`,
         `│ ⚡ ${sN}`,
         `│   L${combo.SPD.lv} CP${combo.SPD.cp}`,
-        `└──────────────────────`,
+        `└───────────────────`,
     ].join('\n');
 }
 
@@ -349,24 +349,24 @@ async function getPokemonComboWithTargetMessage(bot, senderName, senderUserId, C
 
     if (userPokemon.length === 0) {
         return [
-            `┌── ⚠️ KOMBO ──────────`,
+            `┌── ⚠️ 𝗞𝗢𝗠𝗕𝗢`,
             `│ 👤 @${dn}`,
             `├───────────────────`,
             `│ Tidak ada Pokemon`,
             `│ di tas kamu.`,
-            `└──────────────────────`,
+            `└───────────────────`,
         ].join('\n');
     }
 
     const targetOwned = userPokemon.filter(p => normalizePokemonName(p.name) === normalizePokemonName(targetLabel));
     if (!targetOwned.length) {
         return [
-            `┌── ⚠️ KOMBO ──────────`,
+            `┌── ⚠️ 𝗞𝗢𝗠𝗕𝗢`,
             `│ 👤 @${dn}`,
             `├───────────────────`,
             `│ Kamu belum punya`,
             `│ ${targetLabel} di tas.`,
-            `└──────────────────────`,
+            `└───────────────────`,
         ].join('\n');
     }
 
@@ -394,7 +394,7 @@ async function getPokemonComboWithTargetMessage(bot, senderName, senderUserId, C
     if (!target) {
         const reason = targetBlocked.includes('banned') ? 'Pokemon target sedang ban.' : 'Pokemon target tidak sesuai grade aktif.';
         return [
-            `┌── ⚔️ KOMBO ──────────`,
+            `┌── ⚔️ 𝗞𝗢𝗠𝗕𝗢`,
             `│ 👤 @${dn}`,
             `├───────────────────`,
             `│ Target: ${targetLabel}`,
@@ -402,13 +402,13 @@ async function getPokemonComboWithTargetMessage(bot, senderName, senderUserId, C
             `│ Ban   : ${banStr}`,
             `├───────────────────`,
             `│ ❌ ${reason}`,
-            `└──────────────────────`,
+            `└───────────────────`,
         ].join('\n');
     }
 
     if (!combo) {
         return [
-            `┌── ⚔️ KOMBO ──────────`,
+            `┌── ⚔️ 𝗞𝗢𝗠𝗕𝗢`,
             `│ 👤 @${dn}`,
             `├───────────────────`,
             `│ Target: ${fullPokemonName(target.name)}`,
@@ -418,26 +418,26 @@ async function getPokemonComboWithTargetMessage(bot, senderName, senderUserId, C
             `│ ❌ Partner kurang`,
             `│ Min. 3 Pokemon sesuai`,
             `│ grade aktif.`,
-            `└──────────────────────`,
+            `└───────────────────`,
         ].join('\n');
     }
 
     return [
-        `┌── ⚔️ KOMBO TARGET ─────`,
+        `┌── ⚔️ 𝗞𝗢𝗠𝗕𝗢 𝗧𝗔𝗥𝗚𝗘𝗧`,
         `│ 👤 @${dn}`,
         `├───────────────────`,
         `│ Target: ${fullPokemonName(target.name)}`,
         `│ Grade : ${gradeStr}`,
         `│ Ban   : ${banStr}`,
         `│ Milik : ${userPokemon.length} | OK: ${eligible.length}`,
-        `├── 💎 TIM ────────────`,
+        `├── 💎 𝗧𝗜𝗠`,
         `│ 🛡️ ${fullPokemonName(combo.DEF.name)}`,
         `│   L${combo.DEF.lv} CP${combo.DEF.cp}`,
         `│ ⚔️ ${fullPokemonName(combo.ATK.name)}`,
         `│   L${combo.ATK.lv} CP${combo.ATK.cp}`,
         `│ ⚡ ${fullPokemonName(combo.SPD.name)}`,
         `│   L${combo.SPD.lv} CP${combo.SPD.cp}`,
-        `└──────────────────────`,
+        `└───────────────────`,
     ].join('\n');
 }
 

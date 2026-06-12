@@ -1,3 +1,4 @@
+const { boxHeader } = require('../utils/textStyle');
 async function execute(ctx) {
     const {
         bot,
@@ -75,28 +76,28 @@ async function execute(ctx) {
             const dn = senderName.substring(0, 10);
             const xpMul = XP_MULTIPLIER > 1 ? `(x${XP_MULTIPLIER})` : '';
             const resultCard = [
-                `\u250C\u2500 \uD83C\uDF89 MENANG! \u2500\u2500\u2500\u2510`,
-                `\u2502\uD83D\uDC64 @${dn}`,
-                `\u2502\u2705 ${activeQuiz.original}`,
-                `\u2502\u2728 +${finalDisplayXP.toLocaleString('id-ID')} XP ${xpMul}`,
-                `\u2502\u274C Salah: ${activeQuiz.wrongGuessCount || 0}x`,
+                `┌── ${boxHeader('🎉 MENANG')}`,
+                `│👤 @${dn}`,
+                `│✅ ${activeQuiz.original}`,
+                `│✨ +${finalDisplayXP.toLocaleString('id-ID')} XP ${xpMul}`,
+                `│❌ Salah: ${activeQuiz.wrongGuessCount || 0}x`,
             ];
 
             if (xpRes.leveledUp) {
                 const gelar = getGelar(xpRes.level, xpRes.custom_title);
                 resultCard.push(
-                    `\u251C\u2500 \u2B06\uFE0F LEVEL UP! \u2500\u2500\u2524`,
-                    `\u2502\uD83D\uDCCA Lv.${xpRes.level}`,
-                    `\u2502\uD83C\uDF96\uFE0F ${gelar || 'Wibu Baru'}`,
+                    `├── ${boxHeader('⬆️ LEVEL UP')}`,
+                    `│📊 Lv.${xpRes.level}`,
+                    `│🎖️ ${gelar || 'Wibu Baru'}`,
                 );
             }
-            resultCard.push(`\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518`);
+            resultCard.push(`└───────────────────`);
 
             await sendChatMessage(bot, resultCard.join('\n'), msg.id);
         } else {
             activeQuiz.wrongGuessCount = (activeQuiz.wrongGuessCount || 0) + 1;
             activeQuiz.wrongGuessers.add(senderName);
-            await sendChatMessage(bot, `\u274C @${senderName.substring(0, 10)} Salah!\n-3 XP | ${activeQuiz.original.length} char`, msg.id);
+            await sendChatMessage(bot, `❌ @${senderName.substring(0, 10)} Salah!\n-3 XP | ${activeQuiz.original.length} char`, msg.id);
             await addXP(senderName, -3);
         }
     } finally {

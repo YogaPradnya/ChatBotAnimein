@@ -1,4 +1,5 @@
 const { formatCommandUsage } = require('../utils/messageFormatter');
+const { boxHeader } = require('../utils/textStyle');
 
 function cleanText(value, maxLength = 34) {
     const text = String(value || '-')
@@ -65,7 +66,7 @@ async function execute(ctx) {
         }
 
         const lines = [
-            `┌── GENRE ${cleanText(match.name.toUpperCase(), 14)} ─────`,
+            `┌── ${boxHeader(`GENRE ${cleanText(match.name.toUpperCase(), 14)}`)}`,
         ];
 
         results.slice(0, 8).forEach((line, index) => {
@@ -73,9 +74,9 @@ async function execute(ctx) {
             lines.push(`│ ${index + 1}. ${cleanText(text, 29)}`);
         });
 
-        lines.push('├────────────────────');
+        lines.push('├───────────────────');
         lines.push('│ Detail: .detail [judul]');
-        lines.push('└────────────────────');
+        lines.push('└───────────────────');
 
         await sendChatMessage(bot, `@${senderName.substring(0, 10)}\n${lines.join('\n')}`, msg.id);
     } catch (e) {

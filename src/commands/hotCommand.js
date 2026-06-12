@@ -1,4 +1,5 @@
 const { formatCommandUsage } = require('../utils/messageFormatter');
+const { boxHeader } = require('../utils/textStyle');
 
 async function execute(ctx) {
     const {
@@ -28,20 +29,20 @@ async function execute(ctx) {
 
         const maxItems = Math.min(data.length, 10);
         const lines = [
-            `\u250C\u2500\u2500 SEDANG HANGAT \u2500\u2500\u2500\u2510`,
+            `┌── ${boxHeader('SEDANG HANGAT')}`,
         ];
 
         for (let i = 0; i < maxItems; i++) {
             const a = data[i];
             const title = (a.title || 'Tanpa judul').substring(0, 22);
-            lines.push(`\u2502 ${i + 1}. ${title}`);
+            lines.push(`│ ${i + 1}. ${title}`);
             const extra = [];
             if (a.views) extra.push(`${a.views}x`);
             if (a.favorites) extra.push(`${a.favorites}`);
-            if (extra.length > 0) lines.push(`\u2502    ${extra.join(' | ')}`);
+            if (extra.length > 0) lines.push(`│    ${extra.join(' | ')}`);
         }
 
-        lines.push(`\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518`);
+        lines.push(`└───────────────────`);
 
         await sendChatMessage(bot, `@${senderName.substring(0, 10)}\n${lines.join('\n')}`, msg.id);
     } catch (e) {

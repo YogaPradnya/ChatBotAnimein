@@ -1,4 +1,5 @@
 const { searchAnime, getAnimeDetail, getAnimeEpisodes } = require('./jikanClient');
+const { boxHeader } = require('./utils/textStyle');
 
 /**
  * Anime Intent Handler
@@ -138,7 +139,7 @@ function normalizeRecommendationItem(item) {
  * @param {object} animeinSearchFn - fungsi search Animein (optional)
  * @returns {Promise<string|null>} - formatted response atau null jika tidak bisa handle
  */
-async function handleAnimeDataQuestion(question, animeinSearchFn = null) {
+async function handleAnimeDataQuestion(question, animeinSearchFn = null, options = {}) {
     const intent = parseIntent(question);
 
     try {
@@ -147,13 +148,13 @@ async function handleAnimeDataQuestion(question, animeinSearchFn = null) {
                 return await handleEpisodeDetail(intent, animeinSearchFn);
             
             case 'recommendation_duration':
-                return await handleRecommendationByDuration(intent);
+                return await handleRecommendationByDuration(intent, animeinSearchFn, options);
             
             case 'shortest_anime':
-                return await handleShortestAnime(intent);
+                return await handleShortestAnime(intent, animeinSearchFn, options);
             
             case 'recommendation':
-                return await handleRecommendation(intent, animeinSearchFn);
+                return await handleRecommendation(intent, animeinSearchFn, options);
             
             case 'anime_detail':
                 return await handleAnimeDetail(intent, animeinSearchFn);
@@ -195,64 +196,72 @@ async function handleEpisodeDetail(intent, animeinSearchFn) {
     return formatEpisodeDetail(anime, targetEpisode);
 }
 
+function normalizeAnimeinRecommendationItems(items) {
+    return (Array.isArray(items) ? items : [])
+        .filter(item => item && (item.id_movie || item.id || item.title || item.name))
+        .map(item => ({
+            ...item,
+            id: item.id || item.id_movie,
+            id_movie: item.id_movie || item.id,
+            title: item.title || item.name,
+        }))
+        .filter(item => item.id_movie && item.title);
+}
+
+function saveTaggableRecommendationList(items, options, source) {
+    if (typeof options?.saveRecentAnimeList !== 'function') return;
+    options.saveRecentAnimeList(options.senderName, options.senderUserId, items, source);
+}
+
+async function getAnimeinRecommendations(keyword, animeinSearchFn, options, source) {
+    if (typeof animeinSearchFn !== 'function') return [];
+    const results = await animeinSearchFn(keyword);
+    const validItems = normalizeAnimeinRecommendationItems(results).slice(0, 10);
+    if (validItems.length) saveTaggableRecommendationList(validItems, options, source);
+    return validItems;
+}
+
 /**
  * Handle rekomendasi by duration
  */
-async function handleRecommendationByDuration(intent) {
+async function handleRecommendationByDuration(intent, animeinSearchFn, options = {}) {
     const targetMin = intent.targetDuration;
-    const minDuration = Math.max(1, targetMin - 5);
-    const maxDuration = targetMin + 5;
-
-    const results = await searchAnime(intent.genre || 'anime', {
-        limit: 10,
-        minDuration,
-        maxDuration
-    });
+    const keyword = intent.genre || `${targetMin} menit anime`;
+    const results = await getAnimeinRecommendations(keyword, animeinSearchFn, options, `animein:duration:${targetMin}`);
 
     if (results.length === 0) {
-        return `Tidak ketemu anime dengan durasi sekitar ${targetMin} menit per episode.`;
+        return `Tidak ketemu anime dari Animein untuk durasi sekitar ${targetMin} menit per episode.`;
     }
 
-    return formatRecommendationList(results.slice(0, 10), `Rekomendasi anime durasi ~${targetMin} menit/episode`);
+    return formatRecommendationList(results, `Rekomendasi anime Animein durasi ~${targetMin} menit/episode`, true);
 }
 
 /**
  * Handle anime tersingkat
  */
-async function handleShortestAnime(intent) {
-    const results = await searchAnime(intent.genre || 'short anime', {
-        limit: 15,
-        maxDuration: 15
-    });
+async function handleShortestAnime(intent, animeinSearchFn, options = {}) {
+    const keyword = intent.genre || 'anime pendek singkat';
+    const results = await getAnimeinRecommendations(keyword, animeinSearchFn, options, 'animein:shortest');
 
     if (results.length === 0) {
-        return 'Tidak ketemu anime pendek/singkat.';
+        return 'Tidak ketemu anime pendek/singkat dari Animein.';
     }
 
-    return formatRecommendationList(results.slice(0, 10), 'Anime tersingkat/pendek');
+    return formatRecommendationList(results, 'Anime pendek/singkat dari Animein', true);
 }
 
 /**
  * Handle rekomendasi umum
  */
-async function handleRecommendation(intent, animeinSearchFn) {
+async function handleRecommendation(intent, animeinSearchFn, options = {}) {
     const keyword = intent.keyword || intent.genre || 'popular anime';
+    const results = await getAnimeinRecommendations(keyword, animeinSearchFn, options, `animein:recommendation:${keyword}`);
 
-    if (animeinSearchFn) {
-        const animeinResults = await animeinSearchFn(keyword);
-        if (animeinResults.length > 0) {
-            return formatRecommendationList(animeinResults.slice(0, 10), `Rekomendasi anime Animein: ${keyword}`);
-        }
-    }
-
-    // Fallback ke Jikan hanya jika Animein tidak mengembalikan hasil.
-    const results = await searchAnime(keyword, { limit: 10 });
-    
     if (results.length === 0) {
-        return `Tidak ketemu rekomendasi anime untuk "${keyword}".`;
+        return `Tidak ketemu rekomendasi anime dari Animein untuk "${keyword}".`;
     }
 
-    return formatRecommendationList(results, `Rekomendasi anime: ${keyword}`);
+    return formatRecommendationList(results, `Rekomendasi anime dari Animein: ${keyword}`, true);
 }
 
 /**
@@ -300,14 +309,20 @@ function formatEpisodeDetail(anime, episode) {
 /**
  * Format recommendation list
  */
-function formatRecommendationList(animeList, title) {
-    const lines = [title, ''];
+function formatRecommendationList(animeList, title, taggable = false) {
+    const lines = [`┌── ${boxHeader(title || 'REKOMENDASI ANIME')}`];
     
     animeList.forEach((anime, idx) => {
         const titleText = normalizeRecommendationItem(anime);
-        if (titleText) lines.push(`${idx + 1}. ${titleText}`);
+        if (titleText) lines.push(`│ ${idx + 1}. ${titleText}`);
     });
 
+    if (taggable && animeList.length) {
+        lines.push('├───────────────────');
+        lines.push(`│ Tag: tag no 1 - ${animeList.length}`);
+    }
+
+    lines.push('└───────────────────');
     return lines.join('\n').trim();
 }
 
