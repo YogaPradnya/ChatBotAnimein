@@ -851,6 +851,7 @@ const imageService = createImageService({
 });
 const aiHordeImageService = createAiHordeImageService({
     apiKey: CONFIG.AI_HORDE_API_KEY,
+    apiKeys: CONFIG.AI_HORDE_API_KEYS,
     groqKeys: CONFIG.GROQ_KEYS,
     projectRoot: __dirname,
     clientAgent: CONFIG.AI_HORDE_CLIENT_AGENT,
@@ -3220,6 +3221,11 @@ const cleanupTempImage = imageService.cleanupTempImage;
 async function sendChatWithImage(bot, imageData, caption, replyTo = '0') {
     if (isAnimeinApiBlocked('Kirim gambar chat')) return false;
     const { filePath, mimeType } = imageData;
+    if (!filePath || !fs.existsSync(filePath)) {
+        console.warn(`[CHAT/IMG] File gambar tidak ditemukan sebelum upload: ${filePath || '-'}`);
+        return false;
+    }
+
     try {
         let ext = mimeType.split('/')[1] || 'jpg';
         if (ext === 'jpeg') ext = 'jpg'; 
@@ -3231,6 +3237,8 @@ async function sendChatWithImage(bot, imageData, caption, replyTo = '0') {
         form.append('id_chat_replay', replyTo);
         form.append('id_user', bot.auth.userId);
         form.append('key_client', bot.auth.userKey);
+        const fileSize = fs.statSync(filePath).size;
+        console.log(`[CHAT/IMG] Uploading ${bot.username} ${contentType} ${Math.round(fileSize / 1024)}KB`);
         form.append('image', fs.createReadStream(filePath), { filename, contentType });
         
         const res = await animeinClient.postForm('/3/2/chat/do', form, {
@@ -3239,7 +3247,7 @@ async function sendChatWithImage(bot, imageData, caption, replyTo = '0') {
                 'Origin': 'https://japi.animein.net',
                 'Referer': 'https://japi.animein.net',
             },
-            timeout: 20000,
+            timeout: 45000,
         });
         
         const apiSuccess = res.data && (
@@ -3260,7 +3268,7 @@ async function sendChatWithImage(bot, imageData, caption, replyTo = '0') {
         return false;
     } finally {
         try {
-            cleanupTempImage(filePath);
+            if (filePath && fs.existsSync(filePath)) cleanupTempImage(filePath);
         } catch (unlinkErr) {
             console.warn('[CHAT/IMG] Gagal menghapus file sementara:', unlinkErr.message);
         }

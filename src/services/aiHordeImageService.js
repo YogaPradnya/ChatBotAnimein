@@ -1,4 +1,5 @@
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const sharp = require('sharp');
 const Groq = require('groq-sdk');
@@ -17,6 +18,7 @@ function sanitizePromptLine(text) {
 
 function createAiHordeImageService({
     apiKey,
+    apiKeys = [],
     groqKeys = [],
     projectRoot,
     timeoutMs = 300000,
@@ -29,8 +31,13 @@ function createAiHordeImageService({
     model = '',
     clientAgent = 'AnimeinBot:1.0',
 }) {
-    const hordeApiKey = apiKey || '0000000000';
+    const hordeApiKeys = [...new Set([...apiKeys, apiKey].filter(Boolean))];
+    if (!hordeApiKeys.length) hordeApiKeys.push('0000000000');
     const groqClients = groqKeys.filter(Boolean).map(key => new Groq({ apiKey: key }));
+
+    function getKeyLabel(index) {
+        return `key ${index + 1}/${hordeApiKeys.length}`;
+    }
 
     async function translatePromptToEnglish(prompt) {
         const rawPrompt = String(prompt || '').trim();
@@ -72,11 +79,11 @@ function createAiHordeImageService({
         return sanitizePromptLine(rawPrompt);
     }
 
-    async function requestJson(url, options = {}) {
+    async function requestJson(url, options = {}, key = hordeApiKeys[0]) {
         const response = await fetch(url, {
             ...options,
             headers: {
-                apikey: hordeApiKey,
+                apikey: key,
                 'Client-Agent': clientAgent,
                 'Content-Type': 'application/json',
                 ...(options.headers || {})
@@ -125,32 +132,39 @@ function createAiHordeImageService({
         return requestJson('https://stablehorde.net/api/v2/generate/async', {
             method: 'POST',
             body: JSON.stringify(payload),
-        });
+        }, options.apiKey);
     }
 
-    async function waitForGeneration(id) {
+    async function waitForGeneration(id, apiKey, keyIndex, maxInitialWaitMs = 20000) {
         const startedAt = Date.now();
+        let lastStatus = null;
 
         while (Date.now() - startedAt < timeoutMs) {
             const status = await requestJson(`https://stablehorde.net/api/v2/generate/check/${id}`, {
                 method: 'GET',
-            });
+            }, apiKey);
+            lastStatus = status;
 
-            console.log(`[AI HORDE] Status ${id}: done=${status.done || 0}, processing=${status.processing || 0}, waiting=${status.waiting || 0}, queue=${status.queue_position ?? '-'}, wait=${status.wait_time ?? '-'}s`);
+            console.log(`[AI HORDE] ${getKeyLabel(keyIndex)} status ${id}: done=${status.done || 0}, processing=${status.processing || 0}, waiting=${status.waiting || 0}, queue=${status.queue_position ?? '-'}, wait=${status.wait_time ?? '-'}s`);
 
-            if (status.done) return status;
+            if (status.done) return { done: true, status };
             if (status.faulted) throw new Error('AI Horde job gagal di worker.');
+
+            const elapsed = Date.now() - startedAt;
+            if (elapsed >= maxInitialWaitMs && Number(status.processing || 0) <= 0 && Number(status.waiting || 0) > 0) {
+                return { done: false, shouldRotate: true, status };
+            }
 
             await sleep(pollIntervalMs);
         }
 
-        throw new Error(`Timeout menunggu AI Horde setelah ${Math.round(timeoutMs / 1000)} detik.`);
+        throw new Error(`Timeout menunggu AI Horde setelah ${Math.round(timeoutMs / 1000)} detik. Status terakhir: ${JSON.stringify(lastStatus || {})}`);
     }
 
-    async function saveGenerationImage(id) {
+    async function saveGenerationImage(id, apiKey) {
         const result = await requestJson(`https://stablehorde.net/api/v2/generate/status/${id}`, {
             method: 'GET',
-        });
+        }, apiKey);
         const generation = result.generations?.[0];
 
         if (!generation?.img) {
@@ -180,7 +194,7 @@ function createAiHordeImageService({
         mimeType = 'image/jpeg';
         const ext = 'jpg';
 
-        const tempDir = path.join(projectRoot, 'src', 'temp_images');
+        const tempDir = path.join(os.tmpdir(), 'animein-temp-images');
         if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
         const filePath = path.join(tempDir, `horde_${Date.now()}_${Math.floor(Math.random() * 1000)}.${ext}`);
@@ -201,22 +215,45 @@ function createAiHordeImageService({
     async function generateImageWithHorde(prompt, options = {}) {
         const negativePrompt = options.negativePrompt || 'low quality, blurry, bad anatomy, watermark, text, cropped, worst quality';
         const translatedPrompt = await translatePromptToEnglish(prompt);
-        const submitResult = await submitGeneration(translatedPrompt, negativePrompt);
+        let lastError = null;
 
-        if (!submitResult.id) {
-            throw new Error('AI Horde tidak mengembalikan job id.');
+        for (let keyIndex = 0; keyIndex < hordeApiKeys.length; keyIndex++) {
+            const apiKeyForJob = hordeApiKeys[keyIndex];
+            try {
+                const submitResult = await submitGeneration(translatedPrompt, negativePrompt, { apiKey: apiKeyForJob });
+
+                if (!submitResult.id) {
+                    throw new Error('AI Horde tidak mengembalikan job id.');
+                }
+
+                console.log(`[AI HORDE] ${getKeyLabel(keyIndex)} job ${submitResult.id}, kudos cost: ${submitResult.kudos || 0}, prompt: ${translatedPrompt}`);
+                const waitResult = await waitForGeneration(submitResult.id, apiKeyForJob, keyIndex, options.rotateAfterMs || 20000);
+
+                if (!waitResult.done && waitResult.shouldRotate && keyIndex < hordeApiKeys.length - 1) {
+                    console.warn(`[AI HORDE] ${getKeyLabel(keyIndex)} masih waiting >20s dan belum processing, pindah ${getKeyLabel(keyIndex + 1)}.`);
+                    continue;
+                }
+
+                if (!waitResult.done) {
+                    console.warn(`[AI HORDE] ${getKeyLabel(keyIndex)} tidak selesai, lanjut tunggu karena tidak ada key lain.`);
+                    await waitForGeneration(submitResult.id, apiKeyForJob, keyIndex, timeoutMs);
+                }
+
+                const imageData = await saveGenerationImage(submitResult.id, apiKeyForJob);
+                return {
+                    ...imageData,
+                    id: submitResult.id,
+                    kudos: submitResult.kudos || 0,
+                    translatedPrompt,
+                };
+            } catch (error) {
+                lastError = error;
+                console.warn(`[AI HORDE] ${getKeyLabel(keyIndex)} gagal: ${error.message}`);
+                if (keyIndex >= hordeApiKeys.length - 1) break;
+            }
         }
 
-        console.log(`[AI HORDE] Job ${submitResult.id}, kudos cost: ${submitResult.kudos || 0}, prompt: ${translatedPrompt}`);
-        await waitForGeneration(submitResult.id);
-
-        const imageData = await saveGenerationImage(submitResult.id);
-        return {
-            ...imageData,
-            id: submitResult.id,
-            kudos: submitResult.kudos || 0,
-            translatedPrompt,
-        };
+        throw lastError || new Error('Semua API key AI Horde gagal membuat gambar.');
     }
 
     return {

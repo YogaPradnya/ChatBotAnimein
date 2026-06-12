@@ -26,6 +26,19 @@ function collectGroqKeys() {
     return keys;
 }
 
+function collectAiHordeKeys() {
+    const keys = [];
+    const multiKeys = getEnv('AI_HORDE_API_KEYS');
+    if (multiKeys) {
+        keys.push(...multiKeys.split(',').map(key => key.trim()).filter(Boolean));
+    }
+
+    const primaryKey = getEnv('AI_HORDE_API_KEY');
+    if (primaryKey) keys.push(primaryKey);
+
+    return [...new Set(keys)];
+}
+
 function createEnvConfig() {
     return {
         ANIMEIN: {
@@ -59,6 +72,7 @@ function createEnvConfig() {
         },
         AI_HORDE: {
             API_KEY: getEnv('AI_HORDE_API_KEY'),
+            API_KEYS: collectAiHordeKeys(),
             CLIENT_AGENT: getEnv('AI_HORDE_CLIENT_AGENT', 'AnimeinBot:1.0'),
         },
         BOT: {
