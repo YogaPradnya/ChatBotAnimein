@@ -21,6 +21,7 @@ async function execute(ctx) {
         cleanupTempImage,
         getFilterData,
         aiHordeImageService,
+        statusBot,
         stats,
     } = ctx;
 
@@ -70,7 +71,8 @@ async function execute(ctx) {
 
     let imageData = null;
     try {
-        await sendChatMessage(bot, `@${senderName} Sedang membuat gambar, tunggu sebentar.`, msg.id);
+        const progressBot = statusBot || bot;
+        await sendChatMessage(progressBot, `@${senderName} Sedang membuat gambar, tunggu sebentar.`, msg.id);
         imageData = await aiHordeImageService.generateImageWithHorde(prompt);
 
         const translated = imageData.translatedPrompt || prompt;
