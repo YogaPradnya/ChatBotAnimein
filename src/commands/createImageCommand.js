@@ -25,16 +25,16 @@ async function execute(ctx) {
     } = ctx;
 
     if (!isImageCommandActive) return true;
-    if (!lowerMsg.startsWith('.buatkan')) return false;
+    if (!lowerMsg.startsWith('.gambarkan')) return false;
 
-    const prompt = cleanMsg.replace(/^\.buatkan\s*/i, '').trim();
+    const prompt = cleanMsg.replace(/^\.gambarkan\s*/i, '').trim();
     if (!prompt) {
         const help = [
-            '┌── 𝗕𝗨𝗔𝗧𝗞𝗔𝗡 𝗚𝗔𝗠𝗕𝗔𝗥',
+            '┌── 𝗚𝗔𝗠𝗕𝗔𝗥𝗞𝗔𝗡',
             '│ Format:',
-            '│ .buatkan [deskripsi gambar]',
+            '│ .gambarkan [deskripsi gambar]',
             '├───────────────────',
-            '│ Cth: .buatkan kucing putih di taman bunga',
+            '│ Cth: .gambarkan kucing putih di taman bunga',
             '└───────────────────',
         ].join('\n');
         await sendChatMessage(bot, formatCommandUsage(senderName, help), msg.id);
@@ -63,7 +63,7 @@ async function execute(ctx) {
             return true;
         }
     } catch (e) {
-        console.warn('[BUATKAN] Gagal cek limit harian:', safeMessage(e, 120));
+        console.warn('[GAMBARKAN] Gagal cek limit harian:', safeMessage(e, 120));
         await sendChatMessage(bot, formatSimpleError(senderName, 'Gagal cek limit.'), msg.id);
         return true;
     }
@@ -88,7 +88,7 @@ async function execute(ctx) {
         trackImageRequest(senderName);
         trackStreak(senderName);
     } catch (e) {
-        console.warn('[BUATKAN] Gagal proses .buatkan:', safeMessage(e, 180));
+        console.warn('[GAMBARKAN] Gagal proses .gambarkan:', safeMessage(e, 180));
         await sendChatMessage(bot, formatSimpleError(senderName, 'Gagal membuat gambar. Coba lagi nanti.'), msg.id);
     } finally {
         if (imageData?.filePath) cleanupTempImage(imageData.filePath);

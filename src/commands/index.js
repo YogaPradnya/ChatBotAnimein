@@ -22,6 +22,7 @@ const cariCommand = require('./cariCommand');
 const genreCommand = require('./genreCommand');
 const tasCommand = require('./tasCommand');
 const limitCommand = require('./limitCommand');
+const createImageCommand = require('./createImageCommand');
 
 
 async function handleKuisCommand(ctx) {
@@ -131,6 +132,10 @@ async function handleInfoCommand(ctx) {
 }
 
 async function handleImageCommand(ctx) {
+    if (ctx.lowerMsg === '.gambarkan' || ctx.lowerMsg.startsWith('.gambarkan ')) {
+        return createImageCommand.execute(ctx);
+    }
+
     return imageCommand.execute(ctx);
 }
 
@@ -159,6 +164,7 @@ module.exports = {
     genreCommand,
     tasCommand,
     limitCommand,
+    createImageCommand,
 
     handleKuisCommand,
     handleInfoCommand,

@@ -97,7 +97,7 @@ const memoryRepo = createMemoryRepo(db);
 const knowledgeRepo = createKnowledgeRepo(settingsRepo, SETTINGS_KEYS);
 const commandRouter = createCommandRouter();
 commandRouter
-    .register([COMMANDS.TEBAK, COMMANDS.GAMBAR, COMMANDS.BELI, COMMANDS.CEK], () => {}, { prefix: true })
+    .register([COMMANDS.TEBAK, COMMANDS.GAMBAR, '.gambarkan', COMMANDS.BELI, COMMANDS.CEK], () => {}, { prefix: true })
     .register([
         COMMANDS.HINT,
         COMMANDS.KUIS,
