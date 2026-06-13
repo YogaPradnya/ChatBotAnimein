@@ -89,7 +89,6 @@ async function execute(ctx) {
                 let tempImgData = null;
                 let finalImageSent = false;
                 try {
-                    await sendChatMessage(bot, `@${senderName} Mencari gambar: ${imageQuery.slice(0, 80)}${imageQuery.length > 80 ? '...' : ''}`, msg.id);
                     const imageUrl = await fetchPinterestImage(imageQuery);
                     tempImgData = await downloadImageToTempFile(imageUrl);
                     const caption = `@${senderName} Ini gambar untuk: ${imageQuery}`;
