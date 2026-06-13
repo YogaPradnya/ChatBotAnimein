@@ -1,3 +1,5 @@
+const { formatAnimeRecommendationTitles } = require('../utils/responseFormatter');
+
 const BOLD_SANS_DIGITS = {
     '𝟬': '0', '𝟭': '1', '𝟮': '2', '𝟯': '3', '𝟰': '4',
     '𝟱': '5', '𝟲': '6', '𝟳': '7', '𝟴': '8', '𝟵': '9',
@@ -61,12 +63,108 @@ function createAiService(deps) {
         getFilterData,
         getAutoReply,
         animeinSearchAnime,
+        animeinSearchAnimeObjects,
+        planAnimeRecommendationWithAI,
+        rerankAnimeRecommendationsWithAI,
         hydrateAnimeTitlesForTagCache,
         getAnimeRecommendationService,
         rememberAnimeListFromText,
         isAnimeRecommendationFollowUp,
         buildFollowUpAnimeRecommendation,
     } = deps;
+
+    function isAnimeRecommendationRequest(text) {
+        return /rekomendasi|rekomen|recommend|saran|saranin|cariin|carikan|kasih\s+anime/i.test(String(text || ''))
+            && /anime/i.test(String(text || ''));
+    }
+
+    function normalizeMovieItem(item) {
+        if (!item || !(item.id_movie || item.id) || !(item.title || item.name)) return null;
+        return {
+            ...item,
+            id: item.id || item.id_movie,
+            id_movie: item.id_movie || item.id,
+            title: item.title || item.name,
+        };
+    }
+
+    function mergeUniqueMovies(groups, limit = 10) {
+        const seen = new Set();
+        const merged = [];
+        for (const item of groups.flat()) {
+            const normalized = normalizeMovieItem(item);
+            if (!normalized) continue;
+            const key = `${normalized.id_movie}:${String(normalized.title).toLowerCase()}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            merged.push({ ...normalized, sourceNo: merged.length + 1 });
+            if (merged.length >= limit) break;
+        }
+        return merged;
+    }
+
+    function planQueriesFromQuestion(question) {
+        return String(question || '')
+            .replace(/^\s*(?:\.ai\b|ai\.|\.rara\b|rara\.|@\w+\b)\s*/i, '')
+            .replace(/\b(rekomendasi|rekomen|recommend|saran|saranin|cariin|carikan|anime)\b/gi, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    async function buildAiPlannedAnimeRecommendation(question, senderName, senderUserId) {
+        if (!isAnimeRecommendationRequest(question) || typeof planAnimeRecommendationWithAI !== 'function') return null;
+        const recommendationService = typeof getAnimeRecommendationService === 'function' ? getAnimeRecommendationService() : null;
+        const plan = await planAnimeRecommendationWithAI(question);
+        if (!plan) return null;
+
+        const requestOptions = recommendationService?.getRecommendationRequestOptions
+            ? recommendationService.getRecommendationRequestOptions(question)
+            : { limit: 10, mode: plan.mode || 'mixed', isSpecific: false, filters: {} };
+        const limit = requestOptions.limit || 10;
+        const genres = recommendationService?.getMatchedGenresFromText
+            ? await recommendationService.getMatchedGenresFromText(`${question} ${(plan.genres || []).join(' ')}`, 5)
+            : [];
+
+        const genreGroups = recommendationService && genres.length && typeof deps.fetchByGenre === 'function'
+            ? await Promise.all(genres.map(genre => deps.fetchByGenre(genre.id, requestOptions.isSpecific, limit, {
+                returnObjects: true,
+                requestText: question,
+                mode: plan.mode || requestOptions.mode,
+            })))
+            : [];
+
+        const rawQuery = planQueriesFromQuestion(question);
+        const searchQueries = [...new Set([
+            ...(plan.searchQueries || []),
+            rawQuery,
+            ...(plan.genres || []),
+        ].map(q => String(q || '').trim()).filter(q => q.length >= 2))].slice(0, 8);
+
+        const searchGroups = typeof animeinSearchAnimeObjects === 'function'
+            ? await Promise.all(searchQueries.map(query => animeinSearchAnimeObjects(query)))
+            : [];
+
+        const candidatePool = mergeUniqueMovies([...genreGroups, ...searchGroups], Math.max(limit * 4, 30));
+        const rerankedMovies = typeof rerankAnimeRecommendationsWithAI === 'function'
+            ? await rerankAnimeRecommendationsWithAI(question, candidatePool, limit)
+            : null;
+        const movies = mergeUniqueMovies([rerankedMovies && rerankedMovies.length ? rerankedMovies : candidatePool], limit);
+        if (!movies.length) return null;
+
+        if (typeof deps.saveRecentAnimeList === 'function') {
+            deps.saveRecentAnimeList(senderName, senderUserId, movies, `ai-plan:${plan.notes || searchQueries[0] || 'recommendation'}`);
+        }
+
+        return {
+            text: formatAnimeRecommendationTitles({
+                genreName: plan.notes || (genres.map(g => g.name).join(' + ') || searchQueries[0] || 'AI Planner'),
+                titles: movies.map(item => item.title || item.name),
+                tagCount: movies.length,
+            }),
+            provider: 'Animein AI Planner',
+            tokens: 0,
+        };
+    }
 
     async function handleInfoMessage(ctx) {
         const {
@@ -124,6 +222,19 @@ function createAiService(deps) {
         }
 
         const recommendationService = typeof getAnimeRecommendationService === 'function' ? getAnimeRecommendationService() : null;
+        const aiPlannedRecommendation = await buildAiPlannedAnimeRecommendation(question, senderName, senderUserId);
+        if (aiPlannedRecommendation) {
+            console.log(`[ANIME RECOMMENDATION] AI planner route hit for ${senderName}`);
+            const sent = await sendChatMessage(bot, `@${senderName}\n${aiPlannedRecommendation.text}`, msg.id);
+            if (sent) {
+                addActivity('anime_recommendation', senderName, question, aiPlannedRecommendation.text, aiPlannedRecommendation.provider || 'Animein AI Planner', 0);
+                await addXP(senderName, 10);
+                trackStreak(senderName);
+                saveChatLog(senderName, question, aiPlannedRecommendation.text, aiPlannedRecommendation.provider || 'Animein AI Planner', aiPlannedRecommendation.tokens || 0);
+            }
+            return true;
+        }
+
         if (recommendationService?.buildDeterministicGenreRecommendation) {
             const deterministicGenreAnswer = await recommendationService.buildDeterministicGenreRecommendation(question, senderName, senderUserId);
             if (deterministicGenreAnswer) {
@@ -143,6 +254,16 @@ function createAiService(deps) {
                 && (await recommendationService.getMatchedGenresFromText(question, 1)).length > 0;
             if (looksLikeGenreRecommendation) {
                 await sendChatMessage(bot, `@${senderName}\nData rekomendasi genre belum bisa diambil. Coba ulang sebentar lagi supaya list bisa disimpan dan tag no tetap aman.`, msg.id);
+                return true;
+            }
+        }
+
+        const looksLikeBroadAnimeRecommendation = /rekomendasi|rekomen|recommend|saran|saranin/i.test(question)
+            && /anime/i.test(question);
+        if (looksLikeBroadAnimeRecommendation && recommendationService?.getMatchedGenresFromText) {
+            const matchedRecommendationGenres = await recommendationService.getMatchedGenresFromText(question, 1);
+            if (matchedRecommendationGenres.length > 0) {
+                await sendChatMessage(bot, `@${senderName}\nData rekomendasi Animein belum bisa diambil untuk tema itu. Coba ulang sebentar lagi, atau pakai tema lain seperti sad, dark, romcom, action, isekai, healing, mystery, sports.`, msg.id);
                 return true;
             }
         }

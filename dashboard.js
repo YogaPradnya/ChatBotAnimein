@@ -578,6 +578,10 @@ function getDashboardHTML() {
   .log-send-select:focus, .log-send-input:focus { border-color:var(--accent) !important; box-shadow:0 0 0 3px rgba(249,115,22,0.18) !important; background:#111827 !important; }
   .log-send-input::placeholder { color:#64748b; }
   .log-send-btn { min-height:44px; border-radius:12px; background:linear-gradient(135deg,var(--accent),var(--accent-hover)); color:#fff; box-shadow:0 10px 24px rgba(249,115,22,0.22); }
+  #page-logs.page.active { display:flex !important; flex-direction:column; height:100%; min-height:0; overflow:hidden; }
+  #page-logs .log-card { flex:1; min-height:0 !important; height:100% !important; margin-bottom:0; }
+  #page-logs .realtime-log-list { flex:1; min-height:0 !important; padding-bottom:18px; scroll-padding-bottom:18px; }
+  #page-logs .log-send-panel { margin-top:10px; margin-bottom:0; }
   .bot-status-mini { display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:12px; }
   .bot-status-mini-item { padding:16px; border:1px solid var(--border); border-radius:14px; background:linear-gradient(135deg,#fff7ed 0%,#fff 70%); }
   .bot-status-mini-label { font-size:11px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px; }
@@ -961,13 +965,13 @@ function getDashboardHTML() {
 
     <!-- PAGE: REALTIME LOGS -->
     <div class="page" id="page-logs">
-       <div class="card log-card" style="height: 100%; min-height: 620px; display:flex; flex-direction:column; overflow:hidden;">
+       <div class="card log-card" style="height: 100%; min-height: 0; display:flex; flex-direction:column; overflow:hidden;">
           <div class="card-title" style="flex-shrink:0; gap:12px;">
             <span><span class="live-dot"></span>Realtime System Logs</span>
             <button class="btn-sm btn-sm-del" onclick="purgeRealtimeLogs()">Purge Logs</button>
           </div>
-          <p style="font-size: 12px; color:#94a3b8; margin-top:-8px; margin-bottom:18px;">Memantau console.log, console.warn, dan console.error bot secara realtime.</p>
-          <div class="realtime-log-list" id="realtimeLogList" style="height:auto; flex:1; min-height:480px;">
+          <p style="font-size: 12px; color:#94a3b8; margin-top:-8px; margin-bottom:18px; flex-shrink:0;">Memantau console.log, console.warn, dan console.error bot secara realtime.</p>
+          <div class="realtime-log-list" id="realtimeLogList" style="height:auto; flex:1; min-height:0;">
             <div style="color:#94a3b8; text-align:center; padding:20px;">Menunggu log...</div>
           </div>
           <div class="log-send-panel">

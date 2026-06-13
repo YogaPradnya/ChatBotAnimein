@@ -31,7 +31,22 @@ async function execute(ctx) {
         activeQuiz.hintsRevealed++;
         trackQuizStat(senderName, 'total_hints_used');
 
-        const hintMsg = buildHintMessage(activeQuiz.hintsRevealed, senderName, penalty);
+        const aiHint = typeof ctx.generateQuizHintWithAI === 'function'
+            ? await ctx.generateQuizHintWithAI(activeQuiz, activeQuiz.hintsRevealed)
+            : null;
+        const hintMsg = aiHint
+            ? [
+                `┌── 𝗛𝗜𝗡𝗧 𝗔𝗜 ${activeQuiz.hintsRevealed}/5`,
+                `│👤 @${senderName.substring(0, 10)}`,
+                `│💸 -${penalty} XP`,
+                `├───────────────────`,
+                `│${aiHint}`,
+                `│📌 ${activeQuiz.clues?.year || '?'} | ${activeQuiz.clues?.genre || '?'} | ${activeQuiz.clues?.type || '?'}`,
+                `├───────────────────`,
+                `│ .tebak [jawaban]`,
+                `└───────────────────`,
+            ].join('\n')
+            : buildHintMessage(activeQuiz.hintsRevealed, senderName, penalty);
         await sendChatMessage(bot, hintMsg, msg.id);
     }
     return true;

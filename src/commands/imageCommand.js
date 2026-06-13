@@ -1,6 +1,8 @@
 const { safeMessage } = require('../services/errorHandler');
 const { formatCommandUsage, formatImageLimitExceeded, formatSimpleError } = require('../utils/messageFormatter');
 const { validateImagePrompt } = require('../utils/contentFilter');
+const { enqueueImageJob } = require('../utils/imageJobQueue');
+const { resolveImagePromptFromHistory, setImagePromptHistory } = require('../utils/imagePromptHistory');
 
 async function execute(ctx) {
     const {
@@ -31,7 +33,13 @@ async function execute(ctx) {
     if (!isImageCommandActive) return true;
     if (!lowerMsg.startsWith('.gambar')) return false;
 
-    const imageQuery = cleanMsg.replace(/^\.gambar\s*/i, '').trim();
+    const rawImageQuery = cleanMsg.replace(/^\.gambar\s*/i, '').trim();
+    const resolvedQuery = resolveImagePromptFromHistory(senderName, rawImageQuery, 'gambar');
+    if (!resolvedQuery) {
+        await sendChatMessage(bot, formatSimpleError(senderName, 'Belum ada keyword gambar sebelumnya untuk diulang.'), msg.id);
+        return true;
+    }
+    const imageQuery = resolvedQuery.prompt;
     if (!imageQuery) {
         const imgHelp = [
             `┌── 🖼️ 𝗚𝗔𝗠𝗕𝗔𝗥`,
@@ -74,30 +82,61 @@ async function execute(ctx) {
         return true;
     }
 
-    let tempImgData = null;
     try {
-        const imageUrl = await fetchPinterestImage(imageQuery);
-        tempImgData = await downloadImageToTempFile(imageUrl);
-        const caption = `@${senderName} Ini gambar untuk: ${imageQuery}`;
-        const sent = await sendChatWithImage(bot, tempImgData, caption, msg.id);
+        await enqueueImageJob(
+            senderName,
+            async () => {
+                let tempImgData = null;
+                let finalImageSent = false;
+                try {
+                    await sendChatMessage(bot, `@${senderName} Mencari gambar: ${imageQuery.slice(0, 80)}${imageQuery.length > 80 ? '...' : ''}`, msg.id);
+                    const imageUrl = await fetchPinterestImage(imageQuery);
+                    tempImgData = await downloadImageToTempFile(imageUrl);
+                    const caption = `@${senderName} Ini gambar untuk: ${imageQuery}`;
+                    const sent = await sendChatWithImage(bot, tempImgData, caption, msg.id);
+                    finalImageSent = !!sent;
 
-        if (!sent) {
-            await sendChatMessage(bot, formatSimpleError(senderName, 'Gagal kirim.'), msg.id);
-        } else {
-            setLastImageCommandAt(Date.now());
-            const usage = await incrementImageLimitUsage(senderName);
-            addActivity('image', senderName, `${imageQuery} (${usage.used}/${usage.limit})`, imageUrl, 'PinterestAPI', 0);
-            await addXP(senderName, 10);
-            trackImageRequest(senderName);
-            trackStreak(senderName);
-        }
+                    if (!sent) {
+                        await sendChatMessage(bot, formatSimpleError(senderName, 'Gagal kirim.'), msg.id);
+                    } else {
+                        setLastImageCommandAt(Date.now());
+                        try {
+                            const usage = await incrementImageLimitUsage(senderName);
+                            setImagePromptHistory(senderName, { type: 'gambar', prompt: imageQuery, originalPrompt: rawImageQuery || imageQuery });
+                            addActivity('image', senderName, `${imageQuery} (${usage.used}/${usage.limit})`, imageUrl, 'PinterestAPI', 0);
+                            await addXP(senderName, 10);
+                            trackImageRequest(senderName);
+                            trackStreak(senderName);
+                        } catch (postSendErr) {
+                            console.warn('[𝗚𝗔𝗠𝗕𝗔𝗥] Post-send warning:', safeMessage(postSendErr, 120));
+                        }
+                    }
+                } catch (e) {
+                    if (finalImageSent) {
+                        console.warn('[𝗚𝗔𝗠𝗕𝗔𝗥] Post-send warning:', safeMessage(e, 120));
+                        return true;
+                    }
+                    console.warn('[𝗚𝗔𝗠𝗕𝗔𝗥] Gagal proses .gambar:', safeMessage(e, 120));
+                    await sendChatMessage(bot, formatSimpleError(senderName, 'Gambar tidak tersedia.'), msg.id);
+                    return true;
+                } finally {
+                    if (tempImgData && tempImgData.filePath) {
+                        cleanupTempImage(tempImgData.filePath);
+                    }
+                }
+                return true;
+            },
+            async (position) => {
+                await sendChatMessage(bot, `@${senderName} Request gambar masuk antrean. Posisi: ${position}.`, msg.id);
+            }
+        );
     } catch (e) {
-        console.warn('[𝗚𝗔𝗠𝗕𝗔𝗥] Gagal proses .gambar:', safeMessage(e, 120));
-        await sendChatMessage(bot, formatSimpleError(senderName, 'Gambar tidak tersedia.'), msg.id);
-    } finally {
-        if (tempImgData && tempImgData.filePath) {
-            cleanupTempImage(tempImgData.filePath);
+        if (e?.code === 'IMAGE_JOB_ALREADY_ACTIVE') {
+            await sendChatMessage(bot, `@${senderName} Request gambar kamu sebelumnya masih diproses. Tunggu selesai dulu.`, msg.id);
+            return true;
         }
+        console.warn('[𝗚𝗔𝗠𝗕𝗔𝗥] Queue error:', safeMessage(e, 120));
+        await sendChatMessage(bot, formatSimpleError(senderName, 'Gagal memasukkan request gambar ke antrean.'), msg.id);
     }
     return true;
 }

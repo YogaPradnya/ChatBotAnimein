@@ -1151,6 +1151,10 @@ aiService = createAiService({
     getFilterData: () => FILTER_DATA,
     getAutoReply: () => AUTO_REPLY,
     animeinSearchAnime: searchAnime,
+    animeinSearchAnimeObjects: searchAnimeObjects,
+    planAnimeRecommendationWithAI,
+    rerankAnimeRecommendationsWithAI,
+    fetchByGenre,
     hydrateAnimeTitlesForTagCache,
     getAnimeRecommendationService: () => animeRecommendationService,
     rememberAnimeListFromText,
@@ -1883,6 +1887,21 @@ async function fetchAnimeDetailByQuery(query) {
 
 /** Cari anime berdasarkan kata kunci */
 async function searchAnime(query) {
+    const objects = await searchAnimeObjects(query);
+    return objects.map(a => {
+        let info = `- ${a.title}`;
+        if (a.synonyms) info += ` (Alt: ${a.synonyms})`;
+        const jam = formatAnimeinTime(a.key_time || a.time || a.release_time || a.updated_at);
+        info += ` [Update: ${a.day || '?'}, Jam: ${jam || '?'}, Views: ${a.views || '?'}, Studio: ${a.studio || '?'}, Tahun: ${a.year || '?'}]`;
+        if (a.synopsis) {
+            const syn = a.synopsis.slice(0, 150) + '...';
+            info += `\n  Konteks Internal: ${syn}`;
+        }
+        return info;
+    });
+}
+
+async function searchAnimeObjects(query) {
     if (isAnimeinApiBlocked('Search anime')) return [];
     try {
         const res = await animeinClient.get('/3/2/explore/movie', {
@@ -1891,17 +1910,14 @@ async function searchAnime(query) {
             timeout: 8000,
         });
         const raw = res.data?.data?.movie || [];
-        return raw.map(a => {
-            let info = `- ${a.title}`;
-            if (a.synonyms) info += ` (Alt: ${a.synonyms})`;
-            const jam = formatAnimeinTime(a.key_time || a.time || a.release_time || a.updated_at);
-            info += ` [Update: ${a.day || '?'}, Jam: ${jam || '?'}, Views: ${a.views || '?'}, Studio: ${a.studio || '?'}, Tahun: ${a.year || '?'}]`;
-            if (a.synopsis) {
-                const syn = a.synopsis.slice(0, 150) + '...';
-                info += `\n  Konteks Internal: ${syn}`;
-            }
-            return info;
-        });
+        return raw
+            .filter(a => a && (a.id_movie || a.id) && (a.title || a.name))
+            .map(a => ({
+                ...a,
+                id: a.id || a.id_movie,
+                id_movie: a.id_movie || a.id,
+                title: a.title || a.name,
+            }));
     } catch (e) {
         console.warn('[ANIMEIN] Gagal search anime:', safeMessage(e, 60));
         return [];
@@ -2763,6 +2779,164 @@ async function askGroq(index, userMessage, senderName, contextData = '', chatHis
     return { text: answer || '', tokens };
 }
 
+function parsePlannerJson(raw) {
+    const text = String(raw || '').trim();
+    const jsonText = text.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]
+        || text.match(/\{[\s\S]*\}/)?.[0]
+        || text;
+    try {
+        return JSON.parse(jsonText);
+    } catch {
+        return null;
+    }
+}
+
+async function planAnimeRecommendationWithAI(userMessage) {
+    if (!groqClients.length) return null;
+    const genreNames = (await fetchGenresList()).map(g => g.name).slice(0, 80).join(', ');
+    const client = groqClients[0];
+    const prompt = `Kamu adalah planner pencarian rekomendasi anime untuk database Animein.
+Tugasmu HANYA menerjemahkan permintaan user menjadi JSON query. Jangan mengarang judul anime.
+Genre resmi yang tersedia: ${genreNames}
+
+Aturan output:
+- Balas JSON valid saja, tanpa markdown.
+- genres: pilih 0-5 genre dari daftar resmi jika cocok.
+- searchQueries: 3-6 keyword pendek untuk mencari di Animein. Gunakan bahasa Indonesia/Inggris yang luas.
+- excludeTerms: kata yang harus dihindari jika user meminta tanpa/minim sesuatu.
+- mode: mixed | rating | views_high | views_low.
+- notes: ringkasan maksud user maksimal 8 kata.
+
+Contoh output:
+{"genres":["drama","romance"],"searchQueries":["sad anime","drama romance","tragic romance","tearjerker anime"],"excludeTerms":[],"mode":"mixed","notes":"anime sedih emosional"}
+
+User: ${JSON.stringify(userMessage)}`;
+
+    try {
+        const res = await client.chat.completions.create({
+            model: 'llama-3.1-8b-instant',
+            messages: [{ role: 'system', content: prompt }],
+            max_tokens: 350,
+            temperature: 0.2,
+        });
+        const plan = parsePlannerJson(res.choices?.[0]?.message?.content || '');
+        if (!plan || typeof plan !== 'object') return null;
+        return {
+            genres: Array.isArray(plan.genres) ? plan.genres.map(String).slice(0, 5) : [],
+            searchQueries: Array.isArray(plan.searchQueries) ? plan.searchQueries.map(String).filter(Boolean).slice(0, 6) : [],
+            excludeTerms: Array.isArray(plan.excludeTerms) ? plan.excludeTerms.map(String).slice(0, 8) : [],
+            mode: ['mixed', 'rating', 'views_high', 'views_low'].includes(plan.mode) ? plan.mode : 'mixed',
+            notes: String(plan.notes || '').slice(0, 80),
+        };
+    } catch (err) {
+        console.warn('[AI RECOMMENDATION PLANNER] gagal:', safeMessage(err, 80));
+        return null;
+    }
+}
+async function generateQuizHintWithAI(activeQuiz, level = 1) {
+    if (!groqClients.length || !activeQuiz?.isRunning) return null;
+    const title = String(activeQuiz.original || '').trim();
+    const clues = activeQuiz.clues || {};
+    if (!title || !clues.synopsis) return null;
+
+    const titleWords = title.toLowerCase().split(/\s+/).filter(word => word.length > 2);
+    const prompt = `Kamu adalah pembuat hint kuis anime.
+Gunakan HANYA data Animein yang diberikan. Jangan pakai pengetahuan luar.
+Jangan sebut judul anime, potongan judul, alternative title, nama karakter utama yang terlalu jelas, atau spoiler besar.
+Buat hint Bahasa Indonesia 1-2 baris, makin membantu sesuai level hint.
+Balas teks hint saja, tanpa markdown.
+
+DATA ANIMEIN:
+Judul rahasia: ${title}
+Level hint: ${level}/5
+Studio: ${clues.studio || '?'}
+Genre: ${clues.genre || '?'}
+Tahun: ${clues.year || '?'}
+Tipe: ${clues.type || '?'}
+Score: ${clues.score || '?'}
+Sinopsis: ${String(clues.synopsis || '').slice(0, 900)}`;
+
+    try {
+        const res = await groqClients[0].chat.completions.create({
+            model: 'llama-3.1-8b-instant',
+            messages: [{ role: 'system', content: prompt }],
+            max_tokens: 120,
+            temperature: 0.35,
+        });
+        let hint = String(res.choices?.[0]?.message?.content || '')
+            .replace(/```[\s\S]*?```/g, '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 220);
+        if (!hint) return null;
+
+        const lowerHint = hint.toLowerCase();
+        if (lowerHint.includes(title.toLowerCase())) return null;
+        if (titleWords.some(word => lowerHint.includes(word))) return null;
+        return hint;
+    } catch (err) {
+        console.warn('[AI QUIZ HINT] gagal:', safeMessage(err, 80));
+        return null;
+    }
+}
+
+async function rerankAnimeRecommendationsWithAI(userMessage, candidates, limit = 10) {
+    if (!groqClients.length || !Array.isArray(candidates) || candidates.length <= 1) return null;
+    const compactCandidates = candidates.slice(0, 40).map((item, index) => ({
+        index: index + 1,
+        title: item.title || item.name || '',
+        genre: item.genre || item.genres || item.genre_name || '',
+        year: item.year || item.release_year || '',
+        type: item.type || item.movie_type || '',
+        score: item.score || item.rating || item.star || '',
+        synopsis: String(item.synopsis || item.description || '').replace(/\s+/g, ' ').slice(0, 260),
+    }));
+
+    const prompt = `Kamu adalah reranker rekomendasi anime untuk database Animein.
+User meminta: ${JSON.stringify(userMessage)}
+
+Tugas:
+- Pilih maksimal ${limit} kandidat PALING relevan dari daftar kandidat Animein.
+- Jangan menambah judul baru.
+- Jangan memilih hanya karena populer; prioritaskan kecocokan intent user.
+- Jika user meminta mood/trope spesifik seperti sad ending, dark, romcom, healing, sports, mystery, gore, isekai, pilih yang paling mendekati tema itu.
+- Jika kandidat tidak sempurna, tetap pilih yang paling mendekati dan buang yang jelas tidak cocok.
+- Output JSON valid saja.
+
+KANDIDAT:
+${JSON.stringify(compactCandidates)}
+
+Format output:
+{"selectedIndexes":[1,2,3],"reason":"ringkas"}`;
+
+    try {
+        const res = await groqClients[0].chat.completions.create({
+            model: 'llama-3.1-8b-instant',
+            messages: [{ role: 'system', content: prompt }],
+            max_tokens: 220,
+            temperature: 0.15,
+        });
+        const parsed = parsePlannerJson(res.choices?.[0]?.message?.content || '');
+        const indexes = Array.isArray(parsed?.selectedIndexes)
+            ? parsed.selectedIndexes.map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= compactCandidates.length)
+            : [];
+        if (!indexes.length) return null;
+        const picked = [];
+        const used = new Set();
+        for (const idx of indexes) {
+            if (used.has(idx)) continue;
+            used.add(idx);
+            const item = candidates[idx - 1];
+            if (item) picked.push(item);
+            if (picked.length >= limit) break;
+        }
+        console.log(`[ANIME RECOMMENDATION][RERANK] selected=${picked.length}/${candidates.length} reason="${String(parsed?.reason || '').slice(0, 80)}"`);
+        return picked;
+    } catch (err) {
+        console.warn('[ANIME RECOMMENDATION][RERANK] gagal:', safeMessage(err, 80));
+        return null;
+    }
+}
 
 function detectOwnProfileStatQuestion(text) {
     const lower = String(text || '').toLowerCase();
@@ -2912,7 +3086,9 @@ function getRecentAnimeListKey(senderName, senderUserId) {
 function saveRecentAnimeList(senderName, senderUserId, items, source = '') {
     const keys = getRecentAnimeListKeys(senderName, senderUserId);
     if (!keys.length || !Array.isArray(items) || items.length === 0) return;
-    const normalizedItems = items.filter(Boolean);
+    const normalizedItems = items
+        .map((item, index) => item ? { ...item, sourceNo: item.sourceNo || index + 1 } : null)
+        .filter(Boolean);
     const entry = {
         items: normalizedItems,
         source,
@@ -2921,7 +3097,7 @@ function saveRecentAnimeList(senderName, senderUserId, items, source = '') {
     keys.forEach(key => cache.recentAnimeLists.set(key, entry));
     console.log(`[TAG ANIME] cache saved keys="${keys.join(',')}" source="${source}" count=${normalizedItems.length}`);
     normalizedItems.slice(0, 10).forEach((item, index) => {
-        console.log(`[TAG ANIME] cache item no=${index + 1} title="${item.title || item.name || '-'}" id_movie=${item.id_movie || item.id || '-'}`);
+        console.log(`[TAG ANIME] cache item no=${item.sourceNo || index + 1} title="${item.title || item.name || '-'}" id_movie=${item.id_movie || item.id || '-'}`);
     });
 }
 
@@ -3554,16 +3730,84 @@ function extractAnimeTagNumber(text) {
 
 function getReplyText(msg = {}) {
     return String(
-        msg.replay_text
+        msg.text_replay
+        || msg.text_reply
+        || msg.replay_text
         || msg.reply_text
         || msg.quoted_text
         || msg.quotedText
-        || msg.reply?.text
+        || msg.replay_message
+        || msg.reply_message
+        || msg.chat_replay
+        || msg.replay_chat
         || msg.replay?.text
+        || msg.replay?.message
+        || msg.replay?.chat
+        || msg.replay?.content
+        || msg.replay?.caption
+        || msg.reply?.text
+        || msg.reply?.message
+        || msg.reply?.chat
+        || msg.reply?.content
+        || msg.reply?.caption
         || msg.quoted?.text
+        || msg.quoted?.message
+        || msg.quoted?.chat
+        || msg.quoted?.content
+        || msg.quoted?.caption
         || msg.message?.reply_text
+        || msg.message?.replay_text
+        || msg.message?.text
         || ''
     );
+}
+
+function previewReplayValue(value) {
+    if (value === null || value === undefined) return String(value);
+    if (typeof value === 'string') return value.slice(0, 160).replace(/\s+/g, ' ').trim();
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    if (typeof value === 'object') {
+        const keys = Object.keys(value).slice(0, 12);
+        const summary = {};
+        for (const key of keys) {
+            const child = value[key];
+            if (child === null || child === undefined) summary[key] = child;
+            else if (typeof child === 'object') summary[key] = `[object keys: ${Object.keys(child).slice(0, 8).join(',')}]`;
+            else summary[key] = String(child).slice(0, 120).replace(/\s+/g, ' ').trim();
+        }
+        return JSON.stringify(summary).slice(0, 500);
+    }
+    return String(value).slice(0, 160);
+}
+
+function logReplayDiagnostics(msg = {}) {
+    const keys = Object.keys(msg || {});
+    const replayLikeKeys = keys.filter(key => /replay|reply|quote/i.test(key));
+    console.warn(`[TAG ANIME][REPLAY DEBUG] msg_keys="${keys.slice(0, 60).join(',')}"`);
+    console.warn(`[TAG ANIME][REPLAY DEBUG] replay_like_keys="${replayLikeKeys.join(',') || '-'}"`);
+
+    const paths = [
+        ['text_replay', msg.text_replay],
+        ['text_reply', msg.text_reply],
+        ['replay_text', msg.replay_text],
+        ['reply_text', msg.reply_text],
+        ['quoted_text', msg.quoted_text],
+        ['quotedText', msg.quotedText],
+        ['replay_message', msg.replay_message],
+        ['reply_message', msg.reply_message],
+        ['chat_replay', msg.chat_replay],
+        ['replay_chat', msg.replay_chat],
+        ['replay', msg.replay],
+        ['reply', msg.reply],
+        ['quoted', msg.quoted],
+        ['message', msg.message],
+    ];
+
+    for (const [pathName, value] of paths) {
+        if (value === undefined || value === null || value === '') continue;
+        const type = Array.isArray(value) ? 'array' : typeof value;
+        console.warn(`[TAG ANIME][REPLAY DEBUG] ${pathName} type=${type} preview="${previewReplayValue(value)}"`);
+    }
 }
 
 function extractTitleFromNumberedList(text, targetNo) {
@@ -3571,39 +3815,135 @@ function extractTitleFromNumberedList(text, targetNo) {
     return titles[targetNo - 1] || '';
 }
 
+function normalizeNumberedListText(text) {
+    return normalizeBoldSansDigits(text)
+        .replace(/[┃│|]+/g, '\n')
+        .replace(/[┌└├┬┴┼─━═]+/g, '\n')
+        .replace(/\r/g, '\n')
+        .replace(/\n{2,}/g, '\n');
+}
+
+function cleanAnimeTitleFromList(value) {
+    return String(value || '')
+        .replace(/\s*\[(?:Rating|Update|Jam|Views|Studio|Tahun|Skor|Score)[^\]]*\].*$/i, '')
+        .replace(/\s*\([^)]*(?:Alt|Rating|Update|Jam|Views|Studio|Tahun)[^)]*\).*$/i, '')
+        .replace(/\b(?:Tag|Data tag|Kalau mau tag|Genre)\b.*$/i, '')
+        .replace(/^[-•]\s*/, '')
+        .trim();
+}
+
 function extractNumberedAnimeTitles(text, maxItems = 10) {
-    const lines = String(text || '').split(/\r?\n/);
+    const normalizedText = normalizeNumberedListText(text);
+    const lines = normalizedText.split(/\n+/);
     const titles = [];
+
     for (const line of lines) {
-        const normalizedLine = normalizeBoldSansDigits(line);
-        const match = normalizedLine.match(/^\s*(\d{1,2})\s*[.):-]\s*(.+)$/i);
+        const match = line.match(/^\s*(\d{1,2})\s*[.):-]\s*(.+)$/i);
         if (!match) continue;
         const no = Number(match[1]);
         if (!Number.isInteger(no) || no < 1 || no > maxItems) continue;
-        const title = match[2]
-            .replace(/\s*\[(?:Rating|Update|Jam|Views|Studio|Tahun|Skor|Score)[^\]]*\].*$/i, '')
-            .replace(/\s*\([^)]*(?:Alt|Rating|Update|Jam|Views|Studio|Tahun)[^)]*\).*$/i, '')
-            .replace(/^[-•]\s*/, '')
-            .trim();
+        const title = cleanAnimeTitleFromList(match[2]);
         if (title) titles[no - 1] = title;
     }
-    return titles.filter(Boolean).slice(0, maxItems);
+
+    if (!titles.some(Boolean)) {
+        const inlinePattern = /(?:^|\s)(\d{1,2})\s*[.):-]\s*([^\n]+?)(?=\s+\d{1,2}\s*[.):-]|$)/gi;
+        let match;
+        while ((match = inlinePattern.exec(normalizedText)) !== null) {
+            const no = Number(match[1]);
+            if (!Number.isInteger(no) || no < 1 || no > maxItems) continue;
+            const title = cleanAnimeTitleFromList(match[2]);
+            if (title) titles[no - 1] = title;
+        }
+    }
+
+    return titles.slice(0, maxItems);
+}
+
+function selectAnimeByTagNumber(items, tagNumber) {
+    if (!Array.isArray(items) || !Number.isInteger(tagNumber) || tagNumber < 1) return null;
+    return items.find(item => Number(item?.sourceNo) === tagNumber) || items[tagNumber - 1] || null;
+}
+
+async function resolveAnimeTitleForTagWithAI(rawTitle, contextText = '') {
+    const fallbackTitle = cleanAnimeTitleFromList(rawTitle);
+    if (!fallbackTitle || !groqClients.length) {
+        return fallbackTitle ? { title: fallbackTitle, altQueries: [] } : null;
+    }
+
+    const prompt = `Kamu adalah resolver judul anime untuk fitur tag Animein.
+Tugasmu membersihkan teks mentah menjadi judul anime utama dan query alternatif.
+Jangan mengarang jika teks tidak jelas. Jangan output selain JSON valid.
+
+Aturan:
+- title: judul anime paling mungkin dari rawTitle.
+- altQueries: 0-4 query alternatif umum, boleh judul Inggris/Jepang jika sangat umum.
+- Buang nomor list, rating, genre, karakter box, metadata, dan teks instruksi.
+- Jangan buat ID anime. ID akan dicari oleh Animein.
+
+RAW_TITLE: ${JSON.stringify(String(rawTitle || '').slice(0, 300))}
+CONTEXT: ${JSON.stringify(String(contextText || '').slice(0, 600))}
+
+Output JSON contoh:
+{"title":"Kimetsu no Yaiba","altQueries":["Demon Slayer","Kimetsu no Yaiba anime"]}`;
+
+    try {
+        const res = await groqClients[0].chat.completions.create({
+            model: 'llama-3.1-8b-instant',
+            messages: [{ role: 'system', content: prompt }],
+            max_tokens: 160,
+            temperature: 0.1,
+        });
+        const parsed = parsePlannerJson(res.choices?.[0]?.message?.content || '');
+        const title = cleanAnimeTitleFromList(parsed?.title || fallbackTitle);
+        const altQueries = Array.isArray(parsed?.altQueries)
+            ? parsed.altQueries.map(q => cleanAnimeTitleFromList(q)).filter(Boolean).slice(0, 4)
+            : [];
+        if (!title) return { title: fallbackTitle, altQueries: [] };
+        console.log(`[TAG ANIME][AI RESOLVE] raw="${String(rawTitle).slice(0, 80)}" -> title="${title}" alt=${altQueries.length}`);
+        return { title, altQueries };
+    } catch (err) {
+        console.warn('[TAG ANIME][AI RESOLVE] gagal:', safeMessage(err, 80));
+        return { title: fallbackTitle, altQueries: [] };
+    }
 }
 
 async function hydrateAnimeTitlesForTagCache(titles, senderName, senderUserId, source = 'ai-list') {
-    const cleanTitles = [...new Set((titles || []).map(t => String(t || '').trim()).filter(Boolean))].slice(0, 10);
-    if (!cleanTitles.length) return [];
+    const titleEntries = (Array.isArray(titles) ? titles : [])
+        .map((title, index) => ({ title: String(title || '').trim(), sourceNo: index + 1 }))
+        .filter(item => item.title)
+        .slice(0, 10);
+    if (!titleEntries.length) return [];
 
     const hydrated = [];
-    for (let index = 0; index < cleanTitles.length; index++) {
-        const title = cleanTitles[index];
-        const candidates = await fetchAnimeTagCandidates(title, 4);
-        const selected = candidates.find(item => isStrongAnimeTitleMatch(title, item.title || item.name));
+    for (let index = 0; index < titleEntries.length; index++) {
+        const { title, sourceNo } = titleEntries[index];
+        const resolved = await resolveAnimeTitleForTagWithAI(title, Array.isArray(titles) ? titles.join('\n') : '');
+        const queryList = [...new Set([
+            resolved?.title,
+            ...(resolved?.altQueries || []),
+            title,
+        ].map(q => String(q || '').trim()).filter(Boolean))];
+
+        let selected = null;
+        let selectedQuery = '';
+        let topTitle = 'none';
+        for (const query of queryList) {
+            const candidates = await fetchAnimeTagCandidates(query, 5);
+            topTitle = candidates[0]?.title || candidates[0]?.name || topTitle;
+            selected = candidates.find(item => isStrongAnimeTitleMatch(query, item.title || item.name))
+                || candidates.find(item => isStrongAnimeTitleMatch(resolved?.title || title, item.title || item.name));
+            if (selected && (selected.id || selected.id_movie)) {
+                selectedQuery = query;
+                break;
+            }
+        }
+
         if (selected && (selected.id || selected.id_movie)) {
-            hydrated[index] = { ...selected, requestedTitle: title };
+            hydrated.push({ ...selected, requestedTitle: title, resolvedTitle: resolved?.title || title, sourceNo });
+            console.log(`[TAG ANIME] Hydrated no=${sourceNo} raw="${title}" query="${selectedQuery}" -> "${selected.title || selected.name}"`);
         } else {
-            const topTitle = candidates[0]?.title || candidates[0]?.name || 'none';
-            console.warn(`[TAG ANIME] Skip hydrate mismatch: no=${index + 1}, requested="${title}", top="${topTitle}"`);
+            console.warn(`[TAG ANIME] Skip hydrate mismatch: no=${sourceNo}, requested="${title}", resolved="${resolved?.title || '-'}", top="${topTitle}"`);
         }
     }
 
@@ -3637,7 +3977,7 @@ async function handleAnimeTagInstruction(ctx) {
     const tagNumber = extractAnimeTagNumber(cleanMsg);
     if (tagNumber > 0) {
         const recent = getRecentAnimeList(senderName, senderUserId);
-        const selected = recent?.items?.[tagNumber - 1];
+        const selected = selectAnimeByTagNumber(recent?.items, tagNumber);
         if (!selected) {
             const listMemory = getRecentAnimeListText(senderName, senderUserId);
             const memoryTitle = listMemory?.titles?.[tagNumber - 1];
@@ -3655,8 +3995,9 @@ async function handleAnimeTagInstruction(ctx) {
             const replyText = getReplyText(msg);
             const replyTitles = extractNumberedAnimeTitles(replyText);
             if (replyTitles.length) {
+                console.log(`[TAG ANIME] parsed reply titles count=${replyTitles.filter(Boolean).length}, requested_no=${tagNumber}`);
                 const hydrated = await hydrateAnimeTitlesForTagCache(replyTitles, senderName, senderUserId, 'reply-list');
-                const hydratedSelected = hydrated[tagNumber - 1];
+                const hydratedSelected = selectAnimeByTagNumber(hydrated, tagNumber);
                 if (hydratedSelected) return sendAnimeTag(bot, msg, hydratedSelected, `reply-no:${tagNumber}`);
             }
 
@@ -3671,7 +4012,9 @@ async function handleAnimeTagInstruction(ctx) {
                 const topTitle = candidates[0]?.title || candidates[0]?.name || 'none';
                 console.warn(`[TAG ANIME] Reply title mismatch: requested="${replyTitle}", top="${topTitle}"`);
             }
-            console.warn(`[TAG ANIME] cache kosong dan replay tidak bisa dipakai. no=${tagNumber}, replay_len=${replyText.length}, replay_preview="${safeMessage(replyText, 120)}"`);
+            const replyPreview = replyText ? previewReplayValue(replyText) : '';
+            console.warn(`[TAG ANIME] cache kosong dan replay tidak bisa dipakai. no=${tagNumber}, replay_len=${replyText.length}, replay_preview="${replyPreview}"`);
+            logReplayDiagnostics(msg);
             await sendChatMessage(bot, wrapInBox('TAG ANIME', `List rekomendasi belum ada atau nomor ${tagNumber} tidak tersedia.`), msg.id);
             return true;
         }
@@ -3783,6 +4126,7 @@ async function processMessages(bot, messages) {
                 getItemCount,
                 useItem,
                 buildHintMessage,
+                generateQuizHintWithAI,
                 get nextQuizTime() { return nextQuizTime; },
             };
             if (await commands.handleKuisCommand(kuisCommandContext)) continue;

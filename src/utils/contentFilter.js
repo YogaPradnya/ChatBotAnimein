@@ -61,6 +61,14 @@ const IMAGE_PROMPT_BLOCKLIST = [
     // Kekerasan ekstrem
     'gore', 'mutilasi', 'penggal', 'darah berlebihan', 'mayat', 'bunuh diri',
     'pembunuhan', 'penyiksaan', 'terorisme', 'bom bunuh diri',
+
+    // Safety tambahan untuk image generation
+    'loli', 'lolicon', 'shota', 'shotacon', 'anak kecil seksi', 'bocil seksi',
+    'minor nude', 'underage', 'child porn', 'cp', 'telanjang anak',
+    'rape', 'pemerkosaan', 'diperkosa', 'forced sex', 'sexual assault',
+    'incest', 'bestiality', 'zoophilia', 'necrophilia',
+    'deepfake', 'fake nude', 'telanjangin artis', 'public figure nude',
+    'darah muncrat', 'usus keluar', 'kepala putus', 'tubuh hancur',
 ];
 
 function validateImagePrompt(prompt, extraWords = []) {
