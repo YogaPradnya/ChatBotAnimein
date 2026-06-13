@@ -35,6 +35,7 @@ const { createAnimeinClient } = require('./src/animein/client');
 const { createAiService } = require('./src/services/aiService');
 const { createAiHordeImageService } = require('./src/services/aiHordeImageService');
 const { createAnimeRecommendationService } = require('./src/services/animeRecommendationService');
+const { formatAnimeRecommendationTitles } = require('./src/utils/responseFormatter');
 const { createDeterministicAnswerRouter } = require('./src/services/deterministicAnswerRouter');
 const { createSettingsRepo } = require('./src/database/settingsRepo');
 const { createUserRepo } = require('./src/database/userRepo');
@@ -1154,6 +1155,8 @@ aiService = createAiService({
     getAnimeRecommendationService: () => animeRecommendationService,
     rememberAnimeListFromText,
     saveRecentAnimeList,
+    isAnimeRecommendationFollowUp,
+    buildFollowUpAnimeRecommendation,
 });
 
 /** Deteksi intent user untuk konteks data */
@@ -2966,6 +2969,51 @@ async function rememberAnimeListFromText(text, senderName, senderUserId, source 
     return hydrateAnimeTitlesForTagCache(titles, senderName, senderUserId, `list-memory:${source}`);
 }
 
+function isAnimeRecommendationFollowUp(text) {
+    return /\b(ada\s+yang\s+lain|yang\s+lain|lainnya|ada\s+lagi|apa\s+lagi|apalagi|selain\s+itu|next|lanjut|rekomendasi\s+lain|anime\s+lain)\b/i.test(String(text || ''));
+}
+
+async function buildFollowUpAnimeRecommendation(senderName, senderUserId) {
+    const recent = getRecentAnimeList(senderName, senderUserId);
+    const listMemory = getRecentAnimeListText(senderName, senderUserId);
+    const previousTitles = [
+        ...(recent?.items || []).map(item => item.title || item.name),
+        ...(listMemory?.titles || []),
+    ].filter(Boolean);
+    if (!previousTitles.length) return null;
+
+    const previousKeys = new Set(previousTitles.map(normalizeAnimeKey));
+    const pools = await Promise.all([
+        fetchAnimeinList('popular'),
+        fetchAnimeinList('hot'),
+        fetchAnimeinList('random'),
+    ]);
+    const seen = new Set();
+    const candidates = [];
+    for (const item of pools.flat()) {
+        const title = item?.title || item?.name;
+        const idMovie = item?.id_movie || item?.id;
+        const key = normalizeAnimeKey(title);
+        if (!title || !idMovie || previousKeys.has(key) || seen.has(key)) continue;
+        seen.add(key);
+        candidates.push({ ...item, title, name: title, id_movie: idMovie, id: idMovie });
+        if (candidates.length >= 10) break;
+    }
+    if (!candidates.length) return null;
+
+    saveRecentAnimeList(senderName, senderUserId, candidates, 'follow-up-recommendation');
+    const titles = candidates.map(item => item.title || item.name).slice(0, 10);
+    return {
+        text: formatAnimeRecommendationTitles({
+            genreName: 'Lanjutan Animein',
+            titles,
+            tagCount: titles.length,
+        }),
+        provider: 'Animein Follow-up',
+        tokens: 0,
+    };
+}
+
 async function resolveAnimeFromTitleStrict(title) {
     const candidates = await fetchAnimeTagCandidates(title, 6);
     const selected = candidates.find(item => isStrongAnimeTitleMatch(title, item.title || item.name));
@@ -3153,8 +3201,8 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
     let history = [];
     
     // Ambil riwayat pendek agar konteks obrolan tetap nyambung tanpa boros token.
-    const dbHistory = await getHistoryFromDB(senderName, 4); 
-    history = dbHistory.messages.slice(-6); // Maksimal 6 message terakhir
+    const dbHistory = await getHistoryFromDB(senderName, 8); 
+    history = dbHistory.messages.slice(-12); // Maksimal 12 message terakhir / sekitar 6 percakapan
     const lastTime = dbHistory.lastTime;
     
     // 1. Reset context jika idle > 10 menit
@@ -3490,8 +3538,17 @@ function extractAnimeTagQuery(text) {
         .replace(/\s+/g, ' ');
 }
 
+function normalizeBoldSansDigits(text) {
+    const digitMap = {
+        '𝟬': '0', '𝟭': '1', '𝟮': '2', '𝟯': '3', '𝟰': '4',
+        '𝟱': '5', '𝟲': '6', '𝟳': '7', '𝟴': '8', '𝟵': '9',
+    };
+    return String(text || '').replace(/[𝟬-𝟵]/gu, char => digitMap[char] || char);
+}
+
 function extractAnimeTagNumber(text) {
-    const match = String(text || '').match(/(?:^|\s)tag\s+(?:anime\s+)?no\s*(\d{1,2})(?:\s|$)/i);
+    const normalized = normalizeBoldSansDigits(text);
+    const match = normalized.match(/(?:^|\s)tag\s+(?:anime\s+)?no\s*(\d{1,2})(?:\s|$)/i);
     return match ? Number(match[1]) : 0;
 }
 
@@ -3518,7 +3575,8 @@ function extractNumberedAnimeTitles(text, maxItems = 10) {
     const lines = String(text || '').split(/\r?\n/);
     const titles = [];
     for (const line of lines) {
-        const match = line.match(/^\s*(\d{1,2})\s*[.):-]\s*(.+)$/i);
+        const normalizedLine = normalizeBoldSansDigits(line);
+        const match = normalizedLine.match(/^\s*(\d{1,2})\s*[.):-]\s*(.+)$/i);
         if (!match) continue;
         const no = Number(match[1]);
         if (!Number.isInteger(no) || no < 1 || no > maxItems) continue;

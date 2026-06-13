@@ -1,5 +1,14 @@
+const BOLD_SANS_DIGITS = {
+    '𝟬': '0', '𝟭': '1', '𝟮': '2', '𝟯': '3', '𝟰': '4',
+    '𝟱': '5', '𝟲': '6', '𝟳': '7', '𝟴': '8', '𝟵': '9',
+};
+
+function normalizeBoldSansDigits(text) {
+    return String(text || '').replace(/[𝟬-𝟵]/gu, char => BOLD_SANS_DIGITS[char] || char);
+}
+
 function extractAnimeTagRequest(text) {
-    const lower = String(text || '').toLowerCase();
+    const lower = normalizeBoldSansDigits(text).toLowerCase();
     const match = lower.match(/\btag(?:\s+anime)?\s+(?:no|nomor|number|#)?\s*(\d{1,2})\b/);
     return match ? parseInt(match[1], 10) : null;
 }
@@ -8,7 +17,8 @@ function extractNumberedAnimeTitles(text, maxItems = 10) {
     const lines = String(text || '').split(/\r?\n/);
     const titles = [];
     for (const line of lines) {
-        const match = line.match(/^\s*(\d{1,2})\s*[.):-]\s*(.+)$/i);
+        const normalizedLine = normalizeBoldSansDigits(line);
+        const match = normalizedLine.match(/^\s*(\d{1,2})\s*[.):-]\s*(.+)$/i);
         if (!match) continue;
         const no = Number(match[1]);
         if (!Number.isInteger(no) || no < 1 || no > maxItems) continue;
@@ -54,6 +64,8 @@ function createAiService(deps) {
         hydrateAnimeTitlesForTagCache,
         getAnimeRecommendationService,
         rememberAnimeListFromText,
+        isAnimeRecommendationFollowUp,
+        buildFollowUpAnimeRecommendation,
     } = deps;
 
     async function handleInfoMessage(ctx) {
@@ -93,15 +105,19 @@ function createAiService(deps) {
         const question = cleanText || 'panggil rara?';
 
         const tagNo = extractAnimeTagRequest(question);
-        if (tagNo && msg.replay_text) {
-            const title = extractTitleFromNumberedList(msg.replay_text, tagNo);
-            if (title) {
-                const tag = toAnimeHashtag(title);
-                const sent = await sendChatMessage(bot, `@${senderName} ${tag}`, msg.id);
+        if (tagNo) return false;
+
+        if (typeof isAnimeRecommendationFollowUp === 'function' && isAnimeRecommendationFollowUp(question)) {
+            const followUpRecommendation = typeof buildFollowUpAnimeRecommendation === 'function'
+                ? await buildFollowUpAnimeRecommendation(senderName, senderUserId)
+                : null;
+            if (followUpRecommendation) {
+                const sent = await sendChatMessage(bot, `@${senderName}\n${followUpRecommendation.text}`, msg.id);
                 if (sent) {
-                    addActivity('anime_tag', senderName, question, tag, 'AnimeTag', 0);
+                    addActivity('anime_recommendation', senderName, question, followUpRecommendation.text, followUpRecommendation.provider || 'Animein Follow-up', 0);
                     await addXP(senderName, 10);
                     trackStreak(senderName);
+                    saveChatLog(senderName, question, followUpRecommendation.text, followUpRecommendation.provider || 'Animein Follow-up', followUpRecommendation.tokens || 0);
                 }
                 return true;
             }
@@ -117,6 +133,7 @@ function createAiService(deps) {
                     addActivity('anime_recommendation', senderName, question, deterministicGenreAnswer.text, deterministicGenreAnswer.provider || 'Animein Genre', 0);
                     await addXP(senderName, 10);
                     trackStreak(senderName);
+                    saveChatLog(senderName, question, deterministicGenreAnswer.text, deterministicGenreAnswer.provider || 'Animein Genre', deterministicGenreAnswer.tokens || 0);
                 }
                 return true;
             }
@@ -146,6 +163,7 @@ function createAiService(deps) {
                     addActivity('anime_data', senderName, question, animeResponse, 'AnimeData', 0);
                     await addXP(senderName, 10);
                     trackStreak(senderName);
+                    saveChatLog(senderName, question, animeResponse, 'AnimeData', 0);
                 } else {
                     console.warn(`[ANIME DATA] Gagal kirim response anime data ke ${senderName}`);
                 }
