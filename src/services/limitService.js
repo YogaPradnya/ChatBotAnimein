@@ -32,17 +32,19 @@ function createLimitService({
             }
 
             const row = res.rows[0];
+            const extraLimit = Number(row.extra_limit || 0);
             if (row.usage_date !== today) {
                 await limitRepo.upsertCommandLimit({
                     username,
                     usageDate: today,
                     usedCount: 0,
-                    extraLimit: 0,
+                    extraLimit,
                 });
-                return { used: 0, limit: defaultLimit, remaining: defaultLimit };
+                const totalLimit = defaultLimit + extraLimit;
+                return { used: 0, limit: totalLimit, remaining: totalLimit };
             }
 
-            const totalLimit = defaultLimit + Number(row.extra_limit || 0);
+            const totalLimit = defaultLimit + extraLimit;
             const used = Number(row.used_count || 0);
             return { used, limit: totalLimit, remaining: Math.max(0, totalLimit - used) };
         } catch (e) {

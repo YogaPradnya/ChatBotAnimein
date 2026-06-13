@@ -684,10 +684,10 @@ function startDashboard(scope) {
                 let used = Number(row.used_count || 0);
                 let extra = Number(row.extra_limit || 0);
                 let usageDate = row.usage_date || today;
-                // Reset jika tanggal sudah lewat
+                // Reset harian hanya pemakaian, extra limit tetap permanen
                 if (usageDate !== today) {
                     used = 0;
-                    extra = 0;
+                    usageDate = today;
                 }
                 const totalLimit = CMD_DAILY_LIMIT_DEFAULT + extra;
                 return {
@@ -756,7 +756,7 @@ function startDashboard(scope) {
         try {
             const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).toISOString().slice(0, 10);
             await db.execute({
-                sql: "UPDATE command_limits SET usage_date = ?, used_count = 0, extra_limit = 0, updated_at = CURRENT_TIMESTAMP WHERE username = ?",
+                sql: "UPDATE command_limits SET usage_date = ?, used_count = 0, updated_at = CURRENT_TIMESTAMP WHERE username = ?",
                 args: [today, username]
             });
             console.log(`[DASHBOARD] Pemakaian cmd @${username} direset.`);

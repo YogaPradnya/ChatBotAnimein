@@ -25,10 +25,10 @@ function createLimitRepo(db) {
                   VALUES (?, ?, 0, ?)
                   ON CONFLICT(username) DO UPDATE SET
                   used_count = CASE WHEN usage_date = ? THEN used_count ELSE 0 END,
-                  extra_limit = CASE WHEN usage_date = ? THEN extra_limit + ? ELSE ? END,
+                  extra_limit = extra_limit + ?,
                   usage_date = ?,
                   updated_at = CURRENT_TIMESTAMP`,
-            args: [username, usageDate, amount, usageDate, usageDate, amount, amount, usageDate],
+            args: [username, usageDate, amount, usageDate, amount, usageDate],
         });
     }
 
@@ -47,10 +47,10 @@ function createLimitRepo(db) {
                   VALUES (?, ?, 1, 0)
                   ON CONFLICT(username) DO UPDATE SET
                   used_count = CASE WHEN usage_date = ? THEN used_count + 1 ELSE 1 END,
-                  extra_limit = CASE WHEN usage_date = ? THEN extra_limit ELSE 0 END,
+                  extra_limit = extra_limit,
                   usage_date = ?,
                   updated_at = CURRENT_TIMESTAMP`,
-            args: [username, usageDate, usageDate, usageDate, usageDate],
+            args: [username, usageDate, usageDate, usageDate],
         });
     }
 
