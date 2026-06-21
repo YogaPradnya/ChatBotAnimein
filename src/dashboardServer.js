@@ -361,9 +361,21 @@ function startDashboard(scope) {
 
     app.post('/api/quiz/ban', async (req, res) => {
         const { userId, user_id, username, reason } = req.body;
-        const targetUserId = userId || user_id;
-        if (!targetUserId) return res.json({ success: false, message: 'User ID wajib diisi' });
+        let targetUserId = userId || user_id;
         const u = String(username || '').replace(/^@/, '').trim();
+        if (!targetUserId && u) {
+            try {
+                const row = await db.execute({ sql: "SELECT user_id FROM user_stats WHERE username = ?", args: [u] });
+                if (row.rows.length > 0) {
+                    targetUserId = row.rows[0].user_id;
+                } else {
+                    targetUserId = u;
+                }
+            } catch (e) {
+                targetUserId = u;
+            }
+        }
+        if (!targetUserId) return res.json({ success: false, message: 'User ID atau Username wajib diisi' });
         try {
             await db.execute({
                 sql: "INSERT OR REPLACE INTO quiz_banned (user_id, username, reason) VALUES (?, ?, ?)",
@@ -378,13 +390,27 @@ function startDashboard(scope) {
     });
 
     app.post('/api/quiz/unban', async (req, res) => {
-        const { userId, user_id } = req.body;
-        const targetUserId = userId || user_id;
-        if (!targetUserId) return res.json({ success: false, message: 'User ID wajib diisi' });
+        const { userId, user_id, username } = req.body;
+        let targetUserId = userId || user_id;
+        const u = String(username || '').replace(/^@/, '').trim();
+        if (!targetUserId && u) {
+            try {
+                const row = await db.execute({ sql: "SELECT user_id FROM user_stats WHERE username = ?", args: [u] });
+                if (row.rows.length > 0) {
+                    targetUserId = row.rows[0].user_id;
+                } else {
+                    targetUserId = u;
+                }
+            } catch (e) {
+                targetUserId = u;
+            }
+        }
+        if (!targetUserId) return res.json({ success: false, message: 'User ID atau Username wajib diisi' });
         try {
-            await db.execute({ sql: "DELETE FROM quiz_banned WHERE user_id = ?", args: [String(targetUserId)] });
+            await db.execute({ sql: "DELETE FROM quiz_banned WHERE user_id = ? OR username = ?", args: [String(targetUserId), u] });
             bannedUsers.delete(String(targetUserId));
-            console.log(`[BAN] User ID ${targetUserId} di-unban dari kuis.`);
+            if (u) bannedUsers.delete(u);
+            console.log(`[BAN] User ID ${targetUserId} / @${u} di-unban dari kuis.`);
             res.json({ success: true });
         } catch(e) {
             res.json({ success: false, message: e.message });

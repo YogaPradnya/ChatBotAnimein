@@ -2671,19 +2671,19 @@ async function updateStats() {
         '<pre style="white-space:pre-wrap; font-size:12px; line-height:1.6; color:var(--text); margin:0; font-family:inherit;">' + coreMemory + '</pre>' +
       '</div>' +
       '<div style="display:flex; flex-wrap:wrap; gap:10px;">' +
-        '<button class="btn-sm btn-sm-del" onclick="resetCmdLimit(\\\'' + jsString(username) + '\\\')">Reset Command Limit</button>' +
-        '<button class="btn-sm btn-sm-del" onclick="resetImageLimit(\\\'' + jsString(username) + '\\\')">Reset Image Limit</button>' +
+        '<button class="btn-sm btn-sm-del" onclick="resetCmdLimit(\'' + jsString(username) + '\', \'' + jsString(user?.user_id || '') + '\')">Reset Command Limit</button>' +
+        '<button class="btn-sm btn-sm-del" onclick="resetImageLimit(\'' + jsString(username) + '\', \'' + jsString(user?.user_id || '') + '\')">Reset Image Limit</button>' +
         (ban
-          ? '<button class="btn-sm btn-sm-edit" onclick="unbanUserFromInspector(\\\'' + jsString(username) + '\\\')">Unblokir Global</button>'
-          : '<button class="btn-sm btn-sm-del" onclick="banUserFromInspector(\\\'' + jsString(username) + '\\\')">Blokir Global</button>') +
+          ? '<button class="btn-sm btn-sm-edit" onclick="unbanUserFromInspector(\'' + jsString(username) + '\', \'' + jsString(user?.user_id || '') + '\')">Unblokir Global</button>'
+          : '<button class="btn-sm btn-sm-del" onclick="banUserFromInspector(\'' + jsString(username) + '\', \'' + jsString(user?.user_id || '') + '\')">Blokir Global</button>') +
       '</div>';
   }
 
-  async function banUserFromInspector(username) {
+  async function banUserFromInspector(username, userId = '') {
     const reason = window.prompt('Alasan blokir untuk @' + username + ' (opsional):', '') || '';
     const ok = await customConfirm('Blokir @' + username + '?', 'Konfirmasi Blokir', 'Blokir');
     if (!ok) return;
-    const res = await fetch('/api/quiz/ban', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, reason }) });
+    const res = await fetch('/api/quiz/ban', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId, username, reason }) });
     const d = await res.json();
     if (!d.success) return showToast(d.message || 'Gagal blokir.', 'error');
     showToast('@' + username + ' berhasil diblokir.', 'success');
@@ -2691,10 +2691,10 @@ async function updateStats() {
     loadBannedPage();
   }
 
-  async function unbanUserFromInspector(username) {
+  async function unbanUserFromInspector(username, userId = '') {
     const ok = await customConfirm('Unblokir @' + username + '?', 'Konfirmasi Unblokir', 'Unblokir');
     if (!ok) return;
-    const res = await fetch('/api/quiz/unban', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username }) });
+    const res = await fetch('/api/quiz/unban', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId, username }) });
     const d = await res.json();
     if (!d.success) return showToast(d.message || 'Gagal unblokir.', 'error');
     showToast('@' + username + ' berhasil diunblokir.', 'success');
@@ -2722,7 +2722,7 @@ async function updateStats() {
             \${b.reason ? \`<div style="font-size:11px; color:var(--muted);">Alasan: \${escapeHTML(b.reason)}</div>\` : ''}
             <div style="font-size:10px; color:var(--muted);">\${b.banned_at ? new Date(b.banned_at).toLocaleString('id-ID') : ''}</div>
           </div>
-          <button onclick="unbanUser('\${jsString(b.username)}')" style="padding:5px 12px; font-size:11px; font-weight:700; background:var(--accent); color:#fff; border:none; border-radius:8px; cursor:pointer;">Unban</button>
+          <button onclick="unbanUser('\${jsString(b.username)}', '\${jsString(b.user_id || '')}')" style="padding:5px 12px; font-size:11px; font-weight:700; background:var(--accent); color:#fff; border:none; border-radius:8px; cursor:pointer;">Unban</button>
         </div>\`
       ).join('');
     } catch(e) {}
@@ -2752,12 +2752,12 @@ async function updateStats() {
     else showToast('Gagal: ' + (d.message || 'Error'), 'error');
   }
 
-  async function unbanUser(username) {
+  async function unbanUser(username, userId = '') {
     const ok = await customConfirm('Unban @' + username + '? Mereka bisa main kuis lagi.', 'Konfirmasi Unban', 'Unban');
     if (!ok) return;
     const res = await fetch('/api/quiz/unban', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username })
+      body: JSON.stringify({ userId, username })
     });
     const d = await res.json();
     if (d.success) { loadBanned(); loadBannedPage(); }
@@ -2793,7 +2793,7 @@ async function updateStats() {
           '<td style="font-weight:700;">@' + escapeHTML(b.username) + '</td>' +
           '<td style="color:var(--muted); font-size:12px;">' + (b.reason ? escapeHTML(b.reason) : '<span style="opacity:0.5;">-</span>') + '</td>' +
           '<td style="font-size:12px;">' + date + '</td>' +
-          '<td><button class="btn-sm btn-sm-del" onclick="unbanUserFromPage(\\\'' + jsString(b.username) + '\\\')">Unblokir</button></td>' +
+          '<td><button class="btn-sm btn-sm-del" onclick="unbanUserFromPage(\\\'' + jsString(b.username) + '\\\', \\\'' + jsString(b.user_id || '') + '\\\')">Unblokir</button></td>' +
         '</tr>';
       }).join('');
     } catch(e) {
@@ -2818,12 +2818,12 @@ async function updateStats() {
     loadBannedPage();
   }
 
-  async function unbanUserFromPage(username) {
+  async function unbanUserFromPage(username, userId = '') {
     const ok = await customConfirm('Unblokir @' + username + '? User ini akan bisa mengakses semua fitur bot kembali.', 'Konfirmasi Unblokir', 'Unblokir');
     if (!ok) return;
     const res = await fetch('/api/quiz/unban', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username })
+      body: JSON.stringify({ userId, username })
     });
     const d = await res.json();
     if (d.success) { showToast('@' + username + ' berhasil diunblokir.', 'success'); loadBannedPage(); loadBanned(); }
