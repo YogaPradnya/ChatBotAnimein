@@ -2672,10 +2672,10 @@ async function updateStats() {
       '</div>' +
       '<div style="display:flex; flex-wrap:wrap; gap:10px;">' +
         '<button class="btn-sm btn-sm-del cmd-limit-reset" data-username="' + escapeAttr(username) + '" data-userid="' + escapeAttr(user?.user_id || '') + '">Reset Command Limit</button>' +
-        '<button class="btn-sm btn-sm-del" onclick="resetImageLimit(\'' + jsString(username) + '\', \'' + jsString(user?.user_id || '') + '\')">Reset Image Limit</button>' +
+        '<button class="btn-sm btn-sm-del image-limit-reset" data-username="' + escapeAttr(username) + '" data-userid="' + escapeAttr(user?.user_id || '') + '">Reset Image Limit</button>' +
         (ban
-          ? '<button class="btn-sm btn-sm-edit" onclick="unbanUserFromInspector(\'' + jsString(username) + '\', \'' + jsString(user?.user_id || '') + '\')">Unblokir Global</button>'
-          : '<button class="btn-sm btn-sm-del" onclick="banUserFromInspector(\'' + jsString(username) + '\', \'' + jsString(user?.user_id || '') + '\')">Blokir Global</button>') +
+          ? '<button class="btn-sm btn-sm-edit inspector-unban" data-username="' + escapeAttr(username) + '" data-userid="' + escapeAttr(user?.user_id || '') + '">Unblokir Global</button>'
+          : '<button class="btn-sm btn-sm-del inspector-ban" data-username="' + escapeAttr(username) + '" data-userid="' + escapeAttr(user?.user_id || '') + '">Blokir Global</button>') +
       '</div>';
   }
 
@@ -3230,6 +3230,20 @@ async function updateStats() {
     const cmdResetBtn = event.target.closest('.cmd-limit-reset');
     if (cmdResetBtn) {
       resetCmdLimit(cmdResetBtn.dataset.username || '', cmdResetBtn.dataset.userid || '');
+      return;
+    }
+
+    // Inspector ban buttons
+    const inspectorBanBtn = event.target.closest('.inspector-ban');
+    if (inspectorBanBtn) {
+      banUserFromInspector(inspectorBanBtn.dataset.username || '', inspectorBanBtn.dataset.userid || '');
+      return;
+    }
+
+    const inspectorUnbanBtn = event.target.closest('.inspector-unban');
+    if (inspectorUnbanBtn) {
+      unbanUserFromInspector(inspectorUnbanBtn.dataset.username || '', inspectorUnbanBtn.dataset.userid || '');
+      return;
     }
   });
   if (window.lucide) {
