@@ -2671,7 +2671,7 @@ async function updateStats() {
         '<pre style="white-space:pre-wrap; font-size:12px; line-height:1.6; color:var(--text); margin:0; font-family:inherit;">' + coreMemory + '</pre>' +
       '</div>' +
       '<div style="display:flex; flex-wrap:wrap; gap:10px;">' +
-        '<button class="btn-sm btn-sm-del" onclick="resetCmdLimit(\'' + jsString(username) + '\', \'' + jsString(user?.user_id || '') + '\')">Reset Command Limit</button>' +
+        '<button class="btn-sm btn-sm-del cmd-limit-reset" data-username="' + escapeAttr(username) + '" data-userid="' + escapeAttr(user?.user_id || '') + '">Reset Command Limit</button>' +
         '<button class="btn-sm btn-sm-del" onclick="resetImageLimit(\'' + jsString(username) + '\', \'' + jsString(user?.user_id || '') + '\')">Reset Image Limit</button>' +
         (ban
           ? '<button class="btn-sm btn-sm-edit" onclick="unbanUserFromInspector(\'' + jsString(username) + '\', \'' + jsString(user?.user_id || '') + '\')">Unblokir Global</button>'
