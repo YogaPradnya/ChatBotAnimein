@@ -2,12 +2,12 @@ const { boxHeader } = require('../utils/textStyle');
 const { ensureCommandLimit } = require('./helpers');
 
 async function execute(ctx) {
-    const { bot, msg, senderName, sendChatMessage, incrementCommandUsage } = ctx;
+    const { bot, msg, senderName, senderUserId, sendChatMessage, incrementCommandUsage } = ctx;
 
     if (bot.isCooldown) return true;
     if (!(await ensureCommandLimit(ctx))) return true;
 
-    await incrementCommandUsage(senderName);
+    await incrementCommandUsage(senderUserId, senderName);
     const menu = [
         `┌── ${boxHeader('📋 MENU')}`,
         `│ 1. .ai / .rara`,

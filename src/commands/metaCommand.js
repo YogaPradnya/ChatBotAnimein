@@ -5,7 +5,7 @@ async function execute(ctx) {
     const {
         bot,
         msg,
-        senderName,
+        senderName, senderUserId,
         sendChatMessage,
         incrementCommandUsage,
         fetchBattleMeta,
@@ -17,7 +17,7 @@ async function execute(ctx) {
     if (bot.isCooldown) return true;
     if (!(await ensureCommandLimit(ctx))) return true;
 
-    await incrementCommandUsage(senderName);
+    await incrementCommandUsage(senderUserId, senderName);
     try {
         const meta = await fetchBattleMeta(bot, CONFIG, recordPath);
         const metaMsg = formatMetaMessage(meta);

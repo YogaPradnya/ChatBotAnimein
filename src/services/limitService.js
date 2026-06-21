@@ -1,7 +1,3 @@
-function cleanUsername(username) {
-    return String(username || '').replace(/^@/, '').trim();
-}
-
 function createLimitService({
     limitRepo,
     getJakartaDateKey,
@@ -17,16 +13,16 @@ function createLimitService({
         return { used: 0, limit, remaining: limit };
     }
 
-    function defaultImageStatus(username, usageDate) {
+    function defaultImageStatus(userId, username, usageDate) {
         const limit = getDefaultImageLimit();
-        return { username, usageDate, used: 0, limit, remaining: limit };
+        return { userId, username, usageDate, used: 0, limit, remaining: limit };
     }
 
-    async function checkCommandLimit(username) {
+    async function checkCommandLimit(userId, username) {
         const today = getJakartaDateKey();
         const defaultLimit = getDefaultCommandLimit();
         try {
-            const res = await limitRepo.getCommandLimit(username);
+            const res = await limitRepo.getCommandLimit(userId);
             if (res.rows.length === 0) {
                 return { used: 0, limit: defaultLimit, remaining: defaultLimit };
             }
@@ -35,6 +31,7 @@ function createLimitService({
             const extraLimit = Number(row.extra_limit || 0);
             if (row.usage_date !== today) {
                 await limitRepo.upsertCommandLimit({
+                    userId,
                     username,
                     usageDate: today,
                     usedCount: 0,
@@ -53,28 +50,29 @@ function createLimitService({
         }
     }
 
-    async function incrementCommandUsage(username) {
+    async function incrementCommandUsage(userId, username) {
         const today = getJakartaDateKey();
         try {
-            await limitRepo.incrementCommandUsage(username, today);
+            await limitRepo.incrementCommandUsage(userId, username, today);
         } catch (e) {
             handleError(e, { scope: 'CMD LIMIT', detail: 'increment usage', stats, logEmitter });
         }
     }
 
-    async function getImageLimitStatus(username) {
-        const usernameClean = cleanUsername(username);
+    async function getImageLimitStatus(userId, username) {
+        const usernameClean = String(username || '').replace(/^@/, '').trim();
+        const userIdStr = String(userId || '');
         const today = getJakartaDateKey();
         const defaultLimit = getDefaultImageLimit();
 
-        if (!usernameClean || !isDatabaseEnabled()) {
-            return defaultImageStatus(usernameClean, today);
+        if (!userIdStr || !isDatabaseEnabled()) {
+            return defaultImageStatus(userIdStr, usernameClean, today);
         }
 
-        const result = await limitRepo.getImageLimit(usernameClean);
+        const result = await limitRepo.getImageLimit(userIdStr);
         if (result.rows.length === 0) {
-            await limitRepo.createImageLimit(usernameClean, today, defaultLimit);
-            return defaultImageStatus(usernameClean, today);
+            await limitRepo.createImageLimit(userIdStr, usernameClean, today, defaultLimit);
+            return defaultImageStatus(userIdStr, usernameClean, today);
         }
 
         const row = result.rows[0];
@@ -86,16 +84,17 @@ function createLimitService({
         if (usageDate !== today) {
             used = 0;
             usageDate = today;
-            await limitRepo.resetImageLimitUsage(usernameClean, today);
+            await limitRepo.resetImageLimitUsage(userIdStr, today);
         }
 
-        return { username: usernameClean, usageDate, used, limit, remaining: Math.max(0, limit - used) };
+        return { userId: userIdStr, username: usernameClean, usageDate, used, limit, remaining: Math.max(0, limit - used) };
     }
 
-    async function incrementImageLimitUsage(username) {
-        const status = await getImageLimitStatus(username);
+    async function incrementImageLimitUsage(userId, username) {
+        const status = await getImageLimitStatus(userId, username);
         const nextUsed = status.used + 1;
         await limitRepo.upsertImageLimitUsage({
+            userId: status.userId,
             username: status.username,
             usageDate: status.usageDate,
             usedCount: nextUsed,

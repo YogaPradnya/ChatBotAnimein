@@ -4,7 +4,7 @@ async function execute(ctx) {
     const {
         bot,
         msg,
-        senderName,
+        senderName, senderUserId,
         sendChatMessage,
         checkCommandLimit,
         incrementCommandUsage,
@@ -12,12 +12,12 @@ async function execute(ctx) {
     } = ctx;
 
     if (bot.isCooldown) return true;
-    const cmdLimitShop = await checkCommandLimit(senderName);
+    const cmdLimitShop = await checkCommandLimit(senderUserId, senderName);
     if (cmdLimitShop.remaining <= 0) {
         await sendChatMessage(bot, formatLimitExceeded(senderName, cmdLimitShop.limit), msg.id);
         return true;
     }
-    await incrementCommandUsage(senderName);
+    await incrementCommandUsage(senderUserId, senderName);
     const shopMsg = getShopMessage();
     await sendChatMessage(bot, `@${senderName}\n${shopMsg}`, msg.id);
     return true;

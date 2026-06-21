@@ -23,7 +23,7 @@ async function execute(ctx) {
     if (bot.isCooldown) return true;
     if (!(await ensureCommandLimit(ctx))) return true;
 
-    await incrementCommandUsage(senderName);
+    await incrementCommandUsage(senderUserId, senderName);
     try {
         let targetId = senderUserId;
         if (!targetId) {

@@ -1,90 +1,94 @@
 function createLimitRepo(db) {
-    async function getCommandLimit(username) {
+    async function getCommandLimit(userId) {
         return db.execute({
-            sql: 'SELECT usage_date, used_count, extra_limit FROM command_limits WHERE username = ?',
-            args: [username],
+            sql: 'SELECT usage_date, used_count, extra_limit FROM command_limits WHERE user_id = ?',
+            args: [userId],
         });
     }
 
-    async function upsertCommandLimit({ username, usageDate, usedCount, extraLimit }) {
+    async function upsertCommandLimit({ userId, username, usageDate, usedCount, extraLimit }) {
         return db.execute({
-            sql: `INSERT INTO command_limits (username, usage_date, used_count, extra_limit)
-                  VALUES (?, ?, ?, ?)
-                  ON CONFLICT(username) DO UPDATE SET
+            sql: `INSERT INTO command_limits (user_id, username, usage_date, used_count, extra_limit)
+                  VALUES (?, ?, ?, ?, ?)
+                  ON CONFLICT(user_id) DO UPDATE SET
+                  username = excluded.username,
                   usage_date = excluded.usage_date,
                   used_count = excluded.used_count,
                   extra_limit = excluded.extra_limit,
                   updated_at = CURRENT_TIMESTAMP`,
-            args: [username, usageDate, usedCount, extraLimit],
+            args: [userId, username, usageDate, usedCount, extraLimit],
         });
     }
 
-    async function addCommandExtraLimit(username, usageDate, amount) {
+    async function addCommandExtraLimit(userId, username, usageDate, amount) {
         return db.execute({
-            sql: `INSERT INTO command_limits (username, usage_date, used_count, extra_limit)
-                  VALUES (?, ?, 0, ?)
-                  ON CONFLICT(username) DO UPDATE SET
+            sql: `INSERT INTO command_limits (user_id, username, usage_date, used_count, extra_limit)
+                  VALUES (?, ?, ?, 0, ?)
+                  ON CONFLICT(user_id) DO UPDATE SET
                   used_count = CASE WHEN usage_date = ? THEN used_count ELSE 0 END,
                   extra_limit = extra_limit + ?,
                   usage_date = ?,
+                  username = ?,
                   updated_at = CURRENT_TIMESTAMP`,
-            args: [username, usageDate, amount, usageDate, amount, usageDate],
+            args: [userId, username, usageDate, amount, usageDate, amount, usageDate, username],
         });
     }
 
-    async function addImageExtraLimit(username, usageDate, dailyLimit, amount) {
+    async function addImageExtraLimit(userId, username, usageDate, dailyLimit, amount) {
         return db.execute({
-            sql: `INSERT INTO image_limits (username, usage_date, used_count, daily_limit)
-                  VALUES (?, ?, 0, ?)
-                  ON CONFLICT(username) DO UPDATE SET daily_limit = daily_limit + ?`,
-            args: [username, usageDate, dailyLimit + amount, amount],
+            sql: `INSERT INTO image_limits (user_id, username, usage_date, used_count, daily_limit)
+                  VALUES (?, ?, ?, 0, ?)
+                  ON CONFLICT(user_id) DO UPDATE SET daily_limit = daily_limit + ?, username = ?`,
+            args: [userId, username, usageDate, dailyLimit + amount, amount, username],
         });
     }
 
-    async function incrementCommandUsage(username, usageDate) {
+    async function incrementCommandUsage(userId, username, usageDate) {
         return db.execute({
-            sql: `INSERT INTO command_limits (username, usage_date, used_count, extra_limit)
-                  VALUES (?, ?, 1, 0)
-                  ON CONFLICT(username) DO UPDATE SET
+            sql: `INSERT INTO command_limits (user_id, username, usage_date, used_count, extra_limit)
+                  VALUES (?, ?, ?, 1, 0)
+                  ON CONFLICT(user_id) DO UPDATE SET
                   used_count = CASE WHEN usage_date = ? THEN used_count + 1 ELSE 1 END,
                   extra_limit = extra_limit,
                   usage_date = ?,
+                  username = ?,
                   updated_at = CURRENT_TIMESTAMP`,
-            args: [username, usageDate, usageDate, usageDate],
+            args: [userId, username, usageDate, usageDate, usageDate, username],
         });
     }
 
-    async function getImageLimit(username) {
+    async function getImageLimit(userId) {
         return db.execute({
-            sql: 'SELECT username, usage_date, used_count, daily_limit FROM image_limits WHERE username = ?',
-            args: [username],
+            sql: 'SELECT user_id, username, usage_date, used_count, daily_limit FROM image_limits WHERE user_id = ?',
+            args: [userId],
         });
     }
 
-    async function createImageLimit(username, usageDate, dailyLimit) {
+    async function createImageLimit(userId, username, usageDate, dailyLimit) {
         return db.execute({
-            sql: 'INSERT INTO image_limits (username, usage_date, used_count, daily_limit) VALUES (?, ?, 0, ?)',
-            args: [username, usageDate, dailyLimit],
+            sql: 'INSERT INTO image_limits (user_id, username, usage_date, used_count, daily_limit) VALUES (?, ?, ?, 0, ?)',
+            args: [userId, username, usageDate, dailyLimit],
         });
     }
 
-    async function resetImageLimitUsage(username, usageDate) {
+    async function resetImageLimitUsage(userId, usageDate) {
         return db.execute({
-            sql: 'UPDATE image_limits SET usage_date = ?, used_count = 0, updated_at = CURRENT_TIMESTAMP WHERE username = ?',
-            args: [usageDate, username],
+            sql: 'UPDATE image_limits SET usage_date = ?, used_count = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?',
+            args: [usageDate, userId],
         });
     }
 
-    async function upsertImageLimitUsage({ username, usageDate, usedCount, dailyLimit }) {
+    async function upsertImageLimitUsage({ userId, username, usageDate, usedCount, dailyLimit }) {
         return db.execute({
-            sql: `INSERT INTO image_limits (username, usage_date, used_count, daily_limit, updated_at)
-                  VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-                  ON CONFLICT(username) DO UPDATE SET
+            sql: `INSERT INTO image_limits (user_id, username, usage_date, used_count, daily_limit, updated_at)
+                  VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                  ON CONFLICT(user_id) DO UPDATE SET
+                  username = ?,
                   usage_date = ?,
                   used_count = ?,
                   daily_limit = ?,
                   updated_at = CURRENT_TIMESTAMP`,
-            args: [username, usageDate, usedCount, dailyLimit, usageDate, usedCount, dailyLimit],
+            args: [userId, username, usageDate, usedCount, dailyLimit, username, usageDate, usedCount, dailyLimit],
         });
     }
 

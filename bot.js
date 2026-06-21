@@ -174,7 +174,8 @@ async function initDB() {
         `);
         await db.execute(`
             CREATE TABLE IF NOT EXISTS image_limits (
-                username TEXT PRIMARY KEY,
+                user_id TEXT PRIMARY KEY,
+                username TEXT NOT NULL DEFAULT '',
                 usage_date TEXT NOT NULL,
                 used_count INTEGER DEFAULT 0,
                 daily_limit INTEGER DEFAULT 5,
@@ -183,7 +184,8 @@ async function initDB() {
         `);
         await db.execute(`
             CREATE TABLE IF NOT EXISTS command_limits (
-                username TEXT PRIMARY KEY,
+                user_id TEXT PRIMARY KEY,
+                username TEXT NOT NULL DEFAULT '',
                 usage_date TEXT NOT NULL,
                 used_count INTEGER DEFAULT 0,
                 extra_limit INTEGER DEFAULT 0,
@@ -194,45 +196,26 @@ async function initDB() {
         await db.execute(`ALTER TABLE quiz_pool ADD COLUMN last_used_at INTEGER DEFAULT 0`).catch(e => ignoreExpectedError(e, { scope: 'DB MIGRATION', detail: 'quiz_pool.last_used_at' }));
         await db.execute(`
             CREATE TABLE IF NOT EXISTS user_stats (
-                username TEXT PRIMARY KEY,
+                user_id TEXT PRIMARY KEY,
+                username TEXT NOT NULL DEFAULT '',
                 xp INTEGER DEFAULT 0,
                 level INTEGER DEFAULT 1,
                 custom_title TEXT DEFAULT NULL
             )
         `);
-        // Pastikan kolom baru ada
-        await db.execute(`ALTER TABLE user_stats ADD COLUMN custom_title TEXT DEFAULT NULL`).catch(e => ignoreExpectedError(e, { scope: 'DB MIGRATION', detail: 'user_stats.custom_title' }));
-        
         await db.execute(`
             CREATE TABLE IF NOT EXISTS user_memories (
-                username TEXT PRIMARY KEY,
+                user_id TEXT PRIMARY KEY,
+                username TEXT NOT NULL DEFAULT '',
                 content TEXT DEFAULT '',
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         `);
 
-        // Migrasi data lama dari user_stats ke user_memories jika ada
-        try {
-            const hasOldMemRes = await db.execute("SELECT username, core_memory FROM user_stats WHERE core_memory IS NOT NULL AND core_memory != ''");
-            if (hasOldMemRes.rows.length > 0) {
-                console.log(`[MIGRATION] Pindah ${hasOldMemRes.rows.length} memori ke tabel user_memories...`);
-                for (const row of hasOldMemRes.rows) {
-                    await db.execute({
-                        sql: "INSERT OR IGNORE INTO user_memories (username, content) VALUES (?, ?)",
-                        args: [row.username, row.core_memory]
-                    });
-                }
-                // Hapus kolom lama (opsional, tapi di SQLite ribet, jadikan kosong saja)
-                await db.execute("UPDATE user_stats SET core_memory = ''");
-            }
-        } catch(e) {
-            // Kolom core_memory mungkin sudah tidak ada atau error lain, aman diabaikan
-            ignoreExpectedError(e, { scope: 'DB MIGRATION', detail: 'legacy core_memory' });
-        }
-
         await db.execute(`
             CREATE TABLE IF NOT EXISTS quiz_banned (
-                username TEXT PRIMARY KEY,
+                user_id TEXT PRIMARY KEY,
+                username TEXT NOT NULL DEFAULT '',
                 reason TEXT DEFAULT '',
                 banned_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
@@ -241,7 +224,8 @@ async function initDB() {
         // Tabel statistik kuis per user
         await db.execute(`
             CREATE TABLE IF NOT EXISTS user_quiz_stats (
-                username TEXT PRIMARY KEY,
+                user_id TEXT PRIMARY KEY,
+                username TEXT NOT NULL DEFAULT '',
                 wins INTEGER DEFAULT 0,
                 participations INTEGER DEFAULT 0,
                 total_hints_used INTEGER DEFAULT 0,
@@ -251,6 +235,62 @@ async function initDB() {
                 last_active_date TEXT DEFAULT NULL
             )
         `);
+
+        // === MIGRASI: username PK -> user_id PK ===
+        try {
+            const schemaCheck = await db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='user_stats'");
+            const currentSql = schemaCheck.rows.length > 0 ? String(schemaCheck.rows[0].sql) : '';
+            if (currentSql && !currentSql.includes('user_id')) {
+                console.log('[MIGRATION] Migrasi schema username -> user_id dimulai...');
+
+                // 1. user_stats
+                await db.execute(`CREATE TABLE user_stats_v2 (user_id TEXT PRIMARY KEY, username TEXT NOT NULL DEFAULT '', xp INTEGER DEFAULT 0, level INTEGER DEFAULT 1, custom_title TEXT DEFAULT NULL)`);
+                try { await db.execute(`INSERT INTO user_stats_v2 (user_id, username, xp, level, custom_title) SELECT username, username, xp, level, custom_title FROM user_stats`); } catch(e) { console.warn('[MIGRATION] user_stats copy:', e.message); }
+                await db.execute('DROP TABLE user_stats');
+                await db.execute('ALTER TABLE user_stats_v2 RENAME TO user_stats');
+
+                // 2. user_quiz_stats
+                await db.execute(`CREATE TABLE user_quiz_stats_v2 (user_id TEXT PRIMARY KEY, username TEXT NOT NULL DEFAULT '', wins INTEGER DEFAULT 0, participations INTEGER DEFAULT 0, total_hints_used INTEGER DEFAULT 0, total_images INTEGER DEFAULT 0, current_streak INTEGER DEFAULT 0, best_streak INTEGER DEFAULT 0, last_active_date TEXT DEFAULT NULL)`);
+                try { await db.execute(`INSERT INTO user_quiz_stats_v2 (user_id, username, wins, participations, total_hints_used, total_images, current_streak, best_streak, last_active_date) SELECT username, username, wins, participations, total_hints_used, total_images, current_streak, best_streak, last_active_date FROM user_quiz_stats`); } catch(e) { console.warn('[MIGRATION] user_quiz_stats copy:', e.message); }
+                await db.execute('DROP TABLE user_quiz_stats');
+                await db.execute('ALTER TABLE user_quiz_stats_v2 RENAME TO user_quiz_stats');
+
+                // 3. user_memories
+                await db.execute(`CREATE TABLE user_memories_v2 (user_id TEXT PRIMARY KEY, username TEXT NOT NULL DEFAULT '', content TEXT DEFAULT '', updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
+                try { await db.execute(`INSERT INTO user_memories_v2 (user_id, username, content, updated_at) SELECT username, username, content, updated_at FROM user_memories`); } catch(e) { console.warn('[MIGRATION] user_memories copy:', e.message); }
+                await db.execute('DROP TABLE user_memories');
+                await db.execute('ALTER TABLE user_memories_v2 RENAME TO user_memories');
+
+                // 4. user_inventory
+                await db.execute(`CREATE TABLE user_inventory_v2 (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, username TEXT NOT NULL DEFAULT '', item_type TEXT NOT NULL, item_value TEXT DEFAULT '', quantity INTEGER DEFAULT 0, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
+                try { await db.execute(`INSERT INTO user_inventory_v2 (user_id, username, item_type, item_value, quantity, updated_at) SELECT username, username, item_type, item_value, quantity, updated_at FROM user_inventory`); } catch(e) { console.warn('[MIGRATION] user_inventory copy:', e.message); }
+                await db.execute('DROP TABLE IF EXISTS user_inventory');
+                await db.execute('ALTER TABLE user_inventory_v2 RENAME TO user_inventory');
+                await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_user_type ON user_inventory (user_id, item_type)');
+
+                // 5. command_limits
+                await db.execute(`CREATE TABLE command_limits_v2 (user_id TEXT PRIMARY KEY, username TEXT NOT NULL DEFAULT '', usage_date TEXT NOT NULL, used_count INTEGER DEFAULT 0, extra_limit INTEGER DEFAULT 0, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
+                try { await db.execute(`INSERT INTO command_limits_v2 (user_id, username, usage_date, used_count, extra_limit, updated_at) SELECT username, username, usage_date, used_count, extra_limit, updated_at FROM command_limits`); } catch(e) { console.warn('[MIGRATION] command_limits copy:', e.message); }
+                await db.execute('DROP TABLE command_limits');
+                await db.execute('ALTER TABLE command_limits_v2 RENAME TO command_limits');
+
+                // 6. image_limits
+                await db.execute(`CREATE TABLE image_limits_v2 (user_id TEXT PRIMARY KEY, username TEXT NOT NULL DEFAULT '', usage_date TEXT NOT NULL, used_count INTEGER DEFAULT 0, daily_limit INTEGER DEFAULT 5, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
+                try { await db.execute(`INSERT INTO image_limits_v2 (user_id, username, usage_date, used_count, daily_limit, updated_at) SELECT username, username, usage_date, used_count, daily_limit, updated_at FROM image_limits`); } catch(e) { console.warn('[MIGRATION] image_limits copy:', e.message); }
+                await db.execute('DROP TABLE image_limits');
+                await db.execute('ALTER TABLE image_limits_v2 RENAME TO image_limits');
+
+                // 7. quiz_banned
+                await db.execute(`CREATE TABLE quiz_banned_v2 (user_id TEXT PRIMARY KEY, username TEXT NOT NULL DEFAULT '', reason TEXT DEFAULT '', banned_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
+                try { await db.execute(`INSERT INTO quiz_banned_v2 (user_id, username, reason, banned_at) SELECT username, username, reason, banned_at FROM quiz_banned`); } catch(e) { console.warn('[MIGRATION] quiz_banned copy:', e.message); }
+                await db.execute('DROP TABLE quiz_banned');
+                await db.execute('ALTER TABLE quiz_banned_v2 RENAME TO quiz_banned');
+
+                console.log('[MIGRATION] Migrasi user_id selesai!');
+            }
+        } catch (e) {
+            console.error('[MIGRATION] Gagal migrasi user_id:', e.message);
+        }
 
         // Inisialisasi tabel shop/inventory
         await initShopTables(shopRepo);
@@ -372,7 +412,9 @@ async function initDB() {
 
         // Load Banned Users from DB
         const bannedRes = await banRepo.listBannedUsers();
-        bannedRes.rows.forEach(r => bannedUsers.add(r.username.toLowerCase()));
+        bannedRes.rows.forEach(r => {
+            bannedUsers.add(String(r.user_id));
+        });
         console.log(`[BAN] Loaded ${bannedUsers.size} banned users.`);
 
         console.log("[DB] Turso Database connected & Tables ready.");
@@ -384,9 +426,9 @@ async function initDB() {
 
 
 // --- OPTIMIZATION CACHE ---
-const USER_STATS_CACHE = {};     // { username: { xp, level, custom_title, core_memory } }
-const USER_CHAT_COUNT = {};      // { username: count_since_last_memory_update }
-const XP_PENDING_UPDATES = {};    // { username: total_xp_to_add }
+const USER_STATS_CACHE = {};     // { user_id: { username, xp, level, custom_title, core_memory } }
+const USER_CHAT_COUNT = {};      // { user_id: count_since_last_memory_update }
+const XP_PENDING_UPDATES = {};    // { user_id: total_xp_to_add }
 const SHALLOW_AI_CACHE = [];     // Array of { query, answer, timestamp }
 
 // Flush XP Buffering to DB every 60 seconds
@@ -397,10 +439,10 @@ setInterval(async () => {
     try {
         console.log(`[SYNC] Flushing XP & Memory updates for ${pendingCount} users...`);
         const batch = [];
-        for (const [user, amount] of Object.entries(XP_PENDING_UPDATES)) {
-            const stats = USER_STATS_CACHE[user];
-            if (stats) {
-                batch.push(runtimeRepo.buildUserStatsUpsert(user, stats));
+        for (const [userId, amount] of Object.entries(XP_PENDING_UPDATES)) {
+            const userStats = USER_STATS_CACHE[userId];
+            if (userStats) {
+                batch.push(runtimeRepo.buildUserStatsUpsert(userId, userStats.username || '', userStats));
             }
         }
         if (batch.length > 0) {
@@ -409,10 +451,10 @@ setInterval(async () => {
 
         // Sync Memory separately to dedicated table
         const memoryBatch = [];
-        for (const [user, amount] of Object.entries(XP_PENDING_UPDATES)) {
-            const stats = USER_STATS_CACHE[user];
-            if (stats && stats.core_memory) {
-                memoryBatch.push(memoryRepo.buildUpsertBatch(user, stats.core_memory));
+        for (const [userId, amount] of Object.entries(XP_PENDING_UPDATES)) {
+            const userStats = USER_STATS_CACHE[userId];
+            if (userStats && userStats.core_memory) {
+                memoryBatch.push(memoryRepo.buildUpsertBatch(userId, userStats.username || '', userStats.core_memory));
             }
         }
         if (memoryBatch.length > 0) {
@@ -431,11 +473,11 @@ setInterval(async () => {
  * EXTRA PSIKIATRI: Ekstraksi Memori Inti (Solution 3)
  * Mengubah percakapan menjadi poin-poin memori singkat agar hemat token.
  */
-async function updateUserMemory(username, chatHistory) {
+async function updateUserMemory(userId, username, chatHistory) {
     if (chatHistory.length < 4) return;
     
     try {
-        const stats = USER_STATS_CACHE[username];
+        const stats = USER_STATS_CACHE[userId];
         if (!stats) return;
 
         // Ambil hanya 5 pesan terakhir untuk rangkuman (Hemat Token)
@@ -465,34 +507,47 @@ INSTRUKSI:
 
         const newMemory = res.choices[0].message.content.trim();
         stats.core_memory = newMemory;
-        XP_PENDING_UPDATES[username] = (XP_PENDING_UPDATES[username] || 0) + 0; // Trigger sync
+        XP_PENDING_UPDATES[userId] = (XP_PENDING_UPDATES[userId] || 0) + 0; // Trigger sync
         console.log(`[CORE MEMORY] Updated for ${username}: ${newMemory}`);
     } catch (e) {
         console.error(`[CORE MEMORY] Gagal update memori ${username}:`, e.message);
     }
 }
-async function addXP(username, amount) {
+/** Hitung level berdasarkan total XP. Formula: level L butuh 50 * L^3 XP. */
+function calcLevelFromXP(xp) {
+    let level = 1;
+    while (xp >= Math.floor(50 * Math.pow(level, 3))) {
+        level++;
+    }
+    return level;
+}
+
+async function addXP(userId, username, amount) {
     if (!CONFIG.TURSO_URL) return { leveledUp: false, level: 1, xp: 0 };
     try {
         // 1. Check Cache First
-        let userStat = USER_STATS_CACHE[username];
+        let userStat = USER_STATS_CACHE[userId];
         
         if (!userStat) {
             // Load stats and join with memories
-            const res = await runtimeRepo.getUserStatsWithMemory(username);
+            const res = await runtimeRepo.getUserStatsWithMemory(userId);
 
             if (res.rows.length > 0) {
                 userStat = { 
+                    username: res.rows[0].username || username,
                     xp: res.rows[0].xp, 
                     level: res.rows[0].level, 
                     custom_title: res.rows[0].custom_title, 
                     core_memory: res.rows[0].core_memory || '' 
                 };
             } else {
-                userStat = { xp: 0, level: 1, custom_title: null, core_memory: '' };
+                userStat = { username, xp: 0, level: 1, custom_title: null, core_memory: '' };
             }
-            USER_STATS_CACHE[username] = userStat;
+            USER_STATS_CACHE[userId] = userStat;
         }
+
+        // Update username di cache (handle rename)
+        userStat.username = username;
 
         // 2. Calculate New Stats (Memory Only)
         const multiplier = (XP_MULTIPLIER > 1 && amount > 0) ? XP_MULTIPLIER : 1;
@@ -500,19 +555,14 @@ async function addXP(username, amount) {
         
         const oldLevel = userStat.level;
         userStat.xp = Math.max(0, userStat.xp + finalAmount);
-        
-        let reqXP = Math.floor(50 * Math.pow(userStat.level, 3));
-        while(userStat.xp >= reqXP) {
-            userStat.level++;
-            reqXP = Math.floor(50 * Math.pow(userStat.level, 3));
-        }
+        userStat.level = calcLevelFromXP(userStat.xp);
         
         const leveledUp = userStat.level > oldLevel;
 
         // 3. Buffer for DB Sync (Point 2)
-        XP_PENDING_UPDATES[username] = (XP_PENDING_UPDATES[username] || 0) + finalAmount;
+        XP_PENDING_UPDATES[userId] = (XP_PENDING_UPDATES[userId] || 0) + finalAmount;
         
-        console.log(`[XP Buffer] ${username} +${finalAmount} -> Total: ${userStat.xp} (Lvl: ${userStat.level})`);
+        console.log(`[XP Buffer] ${username}(${userId}) +${finalAmount} -> Total: ${userStat.xp} (Lvl: ${userStat.level})`);
         
         return { leveledUp, level: userStat.level, xp: userStat.xp, custom_title: userStat.custom_title };
     } catch (e) {
@@ -874,13 +924,13 @@ function fmtXP(xp) {
 // Timezone functions sudah dipindah ke src/utils.js (getJakartaDateKey, getAnimeinDayName, etc.)
 
 /** Track daily streak user (dipanggil setiap kali user berinteraksi) */
-async function trackStreak(username) {
+async function trackStreak(userId, username) {
     if (!CONFIG.TURSO_URL) return;
     const today = getJakartaDateKey();
     try {
-        const res = await streakRepo.getUserStreak(username);
+        const res = await streakRepo.getUserStreak(userId);
         if (res.rows.length === 0) {
-            await streakRepo.createInitialStreak(username, today);
+            await streakRepo.createInitialStreak(userId, username, today);
             return;
         }
         const row = res.rows[0];
@@ -894,27 +944,27 @@ async function trackStreak(username) {
         let newStreak = diffDays === 1 ? (Number(row.current_streak) + 1) : 1;
         const newBest = Math.max(newStreak, Number(row.best_streak));
 
-        await streakRepo.updateUserStreak(username, newStreak, newBest, today);
+        await streakRepo.updateUserStreak(userId, newStreak, newBest, today);
     } catch (e) {
         console.warn(`[STREAK] Gagal track streak ${username}:`, e.message);
     }
 }
 
 /** Track quiz participation dan win */
-async function trackQuizStat(username, field, amount = 1) {
+async function trackQuizStat(userId, username, field, amount = 1) {
     if (!CONFIG.TURSO_URL) return;
     try {
-        await streakRepo.incrementQuizStat(username, field, amount);
+        await streakRepo.incrementQuizStat(userId, username, field, amount);
     } catch (e) {
         console.warn(`[QUIZ STATS] Gagal track ${field} ${username}:`, e.message);
     }
 }
 
 /** Track image request count */
-async function trackImageRequest(username) {
+async function trackImageRequest(userId, username) {
     if (!CONFIG.TURSO_URL) return;
     try {
-        await streakRepo.incrementImageRequest(username);
+        await streakRepo.incrementImageRequest(userId, username);
     } catch (e) {
         console.warn(`[IMAGE STATS] Gagal track gambar ${username}:`, e.message);
     }
@@ -4064,7 +4114,7 @@ async function processMessages(bot, messages) {
         const lowerMsg = cleanMsg.toLowerCase();
 
         // --- GLOBAL BAN CHECK (berlaku untuk semua bot) ---
-        if (bannedUsers.has(senderName.toLowerCase())) {
+        if (senderUserId && bannedUsers.has(String(senderUserId))) {
             // Hanya balas 1x jika mereka coba pakai command dari bot yang relevan
             if (bot.role === 'kuis' && (lowerMsg === '.tebak' || lowerMsg.startsWith('.tebak ') || lowerMsg === '.hint')) {
                 await sendChatMessage(bot, `🚫 @${senderName.substring(0, 10)} Diblokir.`, msg.id);
@@ -4141,6 +4191,7 @@ async function processMessages(bot, messages) {
                 bot,
                 msg,
                 senderName,
+                senderUserId,
                 cleanMsg,
                 lowerMsg,
                 sendChatMessage,
@@ -4178,6 +4229,7 @@ async function processMessages(bot, messages) {
                 bot,
                 msg,
                 senderName,
+                senderUserId,
                 cleanMsg,
                 lowerMsg,
                 sendChatMessage,

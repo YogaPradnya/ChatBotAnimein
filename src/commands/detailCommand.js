@@ -22,7 +22,7 @@ async function execute(ctx) {
     const {
         bot,
         msg,
-        senderName,
+        senderName, senderUserId,
         cleanMsg,
         sendChatMessage,
         checkCommandLimit,
@@ -38,12 +38,12 @@ async function execute(ctx) {
         return true;
     }
 
-    const cmdLimit = await checkCommandLimit(senderName);
+    const cmdLimit = await checkCommandLimit(senderUserId, senderName);
     if (cmdLimit.remaining <= 0) {
         await sendChatMessage(bot, formatCommandUsage(senderName, 'Limit habis.'), msg.id);
         return true;
     }
-    await incrementCommandUsage(senderName);
+    await incrementCommandUsage(senderUserId, senderName);
 
     try {
         const result = await fetchAnimeDetailByQuery(query);

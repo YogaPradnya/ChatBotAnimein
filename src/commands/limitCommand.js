@@ -5,7 +5,7 @@ async function execute(ctx) {
     const {
         bot,
         msg,
-        senderName,
+        senderName, senderUserId,
         sendChatMessage,
         checkCommandLimit,
         getImageLimitStatus,
@@ -17,10 +17,10 @@ async function execute(ctx) {
     if (bot.isCooldown) return true;
 
     try {
-        const cmdLimit = await checkCommandLimit(senderName);
+        const cmdLimit = await checkCommandLimit(senderUserId, senderName);
         let imgLimit = { used: 0, limit: 0, remaining: 0 };
         try {
-            imgLimit = await getImageLimitStatus(senderName);
+            imgLimit = await getImageLimitStatus(senderUserId, senderName);
         } catch (e) {
             handleError(e, { scope: 'LIMIT CMD', detail: 'image limit status', stats, logEmitter });
         }

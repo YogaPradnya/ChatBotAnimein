@@ -5,7 +5,7 @@ async function execute(ctx) {
         bot,
         bots,
         msg,
-        senderName,
+        senderName, senderUserId,
         cleanMsg,
         sendChatMessage,
         checkCommandLimit,
@@ -20,7 +20,7 @@ async function execute(ctx) {
 
     if (bot.isCooldown) return true;
     try {
-        const cmdLimit = await checkCommandLimit(senderName);
+        const cmdLimit = await checkCommandLimit(senderUserId, senderName);
         if (cmdLimit.remaining <= 0) {
             await sendChatMessage(bot, formatLimitExceeded(senderName, cmdLimit.limit, { warning: true }), msg.id);
             return true;
@@ -32,7 +32,7 @@ async function execute(ctx) {
             return true;
         }
 
-        await incrementCommandUsage(senderName);
+        await incrementCommandUsage(senderUserId, senderName);
         const profile = await fetchOtherUserProfile(
             targetUsername,
             bots[0],
@@ -44,7 +44,7 @@ async function execute(ctx) {
         const profileMsg = formatOtherUserProfile(profile);
         await sendChatMessage(bot, `@${senderName}\n${profileMsg}`, msg.id);
         if (!profile.error) {
-            await addXP(senderName, 5);
+            await addXP(senderUserId, senderName, 5);
         }
     } catch(e) {
         console.error("[CEK PROFIL ERROR]", e);

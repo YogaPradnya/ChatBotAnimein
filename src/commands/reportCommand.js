@@ -4,7 +4,7 @@ async function execute(ctx) {
     const {
         bot,
         msg,
-        senderName,
+        senderName, senderUserId,
         sendChatMessage,
         checkCommandLimit,
         incrementCommandUsage,
@@ -12,12 +12,12 @@ async function execute(ctx) {
         cleanMsg,
     } = ctx;
 
-    const cmdLimit = await checkCommandLimit(senderName);
+    const cmdLimit = await checkCommandLimit(senderUserId, senderName);
     if (cmdLimit.remaining <= 0) {
         await sendChatMessage(bot, formatLimitExceeded(senderName, cmdLimit.limit), msg.id);
         return true;
     }
-    await incrementCommandUsage(senderName);
+    await incrementCommandUsage(senderUserId, senderName);
 
     const isiLaporan = cleanMsg.substring(6).trim();
     if (!isiLaporan) {

@@ -5,6 +5,7 @@ async function execute(ctx) {
         bot,
         msg,
         senderName,
+        senderUserId,
         cleanMsg,
         shopRepo,
         sendChatMessage,
@@ -20,12 +21,12 @@ async function execute(ctx) {
     } = ctx;
 
     if (bot.isCooldown) return true;
-    const cmdLimitBeli = await checkCommandLimit(senderName);
+    const cmdLimitBeli = await checkCommandLimit(senderUserId, senderName);
     if (cmdLimitBeli.remaining <= 0) {
         await sendChatMessage(bot, formatLimitExceeded(senderName, cmdLimitBeli.limit), msg.id);
         return true;
     }
-    await incrementCommandUsage(senderName);
+    await incrementCommandUsage(senderUserId, senderName);
 
     try {
         const beliArgs = cleanMsg.substring(6).trim();
@@ -50,32 +51,42 @@ async function execute(ctx) {
             return true;
         }
 
-        const xpRes = await userRepo.getUserXP(senderName);
+        const xpRes = await userRepo.getUserXP(senderUserId);
         const dbXP = xpRes.rows.length > 0 ? Number(xpRes.rows[0].xp) : 0;
-        const cachedXP = USER_STATS_CACHE[senderName]?.xp;
+        const cachedXP = USER_STATS_CACHE[senderUserId]?.xp;
         const currentXP = Number.isFinite(Number(cachedXP)) ? Number(cachedXP) : dbXP;
-        const result = await buyItem(shopRepo, senderName, itemId, currentXP, { titleName, quantity: buyQuantity });
+        const result = await buyItem(shopRepo, senderUserId, senderName, itemId, currentXP, { titleName, quantity: buyQuantity });
 
         if (result.success) {
             const nextXP = Math.max(0, currentXP - result.xpDeducted);
-            await userRepo.setUserXP(senderName, nextXP);
 
-            if (USER_STATS_CACHE[senderName]) {
-                USER_STATS_CACHE[senderName].xp = nextXP;
+            // Hitung ulang level berdasarkan XP baru (bisa turun)
+            const calcLevel = (xp) => {
+                let lv = 1;
+                while (xp >= Math.floor(50 * Math.pow(lv, 3))) lv++;
+                return lv;
+            };
+            const nextLevel = calcLevel(nextXP);
+
+            await userRepo.setUserXP(senderUserId, senderName, nextXP, nextLevel);
+
+            if (USER_STATS_CACHE[senderUserId]) {
+                USER_STATS_CACHE[senderUserId].xp = nextXP;
+                USER_STATS_CACHE[senderUserId].level = nextLevel;
             }
             if (ctx.XP_PENDING_UPDATES) {
-                delete ctx.XP_PENDING_UPDATES[senderName];
+                delete ctx.XP_PENDING_UPDATES[senderUserId];
             }
 
-            if (itemId === 1 && USER_STATS_CACHE[senderName]) {
-                USER_STATS_CACHE[senderName].custom_title = titleName;
+            if (itemId === 1 && USER_STATS_CACHE[senderUserId]) {
+                USER_STATS_CACHE[senderUserId].custom_title = titleName;
             }
 
             if (itemId === 3) {
                 const today = getJakartaDateKey();
                 const extraLimit = 3 * buyQuantity;
                 try {
-                    await limitRepo.addImageExtraLimit(senderName, today, IMAGE_DAILY_LIMIT_DEFAULT, extraLimit);
+                    await limitRepo.addImageExtraLimit(senderUserId, senderName, today, IMAGE_DAILY_LIMIT_DEFAULT, extraLimit);
                 } catch (e) {
                     console.warn("[SHOP] Gagal update image limit:", e.message);
                 }
@@ -84,7 +95,7 @@ async function execute(ctx) {
             if (itemId === 4) {
                 const today = getJakartaDateKey();
                 try {
-                    await limitRepo.addCommandExtraLimit(senderName, today, buyQuantity);
+                    await limitRepo.addCommandExtraLimit(senderUserId, senderName, today, buyQuantity);
                 } catch (e) {
                     console.warn("[SHOP] Gagal update cmd limit:", e.message);
                 }

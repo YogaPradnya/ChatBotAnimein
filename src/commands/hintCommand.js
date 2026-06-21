@@ -3,7 +3,7 @@ async function execute(ctx) {
         bot,
         msg,
         db,
-        senderName,
+        senderName, senderUserId,
         sendChatMessage,
         activeQuiz,
         getItemCount,
@@ -19,17 +19,17 @@ async function execute(ctx) {
     } else if (activeQuiz.hintsRevealed >= 5) {
         await sendChatMessage(bot, `📌 @${senderName.substring(0, 10)} Hint sudah habis.`, msg.id);
     } else {
-        const freeHints = await getItemCount(db, senderName, 'free_hint');
+        const freeHints = await getItemCount(db, senderUserId, 'free_hint');
         let penalty = 0;
         if (freeHints > 0) {
-            await useItem(db, senderName, 'free_hint', 1);
+            await useItem(db, senderUserId, 'free_hint', 1);
             console.log(`[SHOP] ${senderName} menggunakan free hint (sisa: ${freeHints - 1})`);
         } else {
             penalty = Math.floor(Math.random() * 5) + 1;
-            await addXP(senderName, -penalty);
+            await addXP(senderUserId, senderName, -penalty);
         }
         activeQuiz.hintsRevealed++;
-        trackQuizStat(senderName, 'total_hints_used');
+        trackQuizStat(senderUserId, senderName, 'total_hints_used');
 
         const aiHint = typeof ctx.generateQuizHintWithAI === 'function'
             ? await ctx.generateQuizHintWithAI(activeQuiz, activeQuiz.hintsRevealed)

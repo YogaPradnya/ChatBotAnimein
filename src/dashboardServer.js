@@ -350,7 +350,7 @@ function startDashboard(scope) {
             const total = Number(countRes.rows[0]?.total || 0);
 
             const rows = await db.execute({
-                sql: `SELECT username, reason, banned_at FROM quiz_banned${whereSql} ORDER BY banned_at DESC LIMIT ? OFFSET ?`,
+                sql: `SELECT user_id, username, reason, banned_at FROM quiz_banned${whereSql} ORDER BY banned_at DESC LIMIT ? OFFSET ?`,
                 args: [...args, limit, offset]
             });
             res.json({ success: true, banned: rows.rows, pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) }, q });
@@ -360,16 +360,17 @@ function startDashboard(scope) {
     });
 
     app.post('/api/quiz/ban', async (req, res) => {
-        const { username, reason } = req.body;
-        if (!username) return res.json({ success: false, message: 'Username wajib diisi' });
-        const u = username.replace(/^@/, '').trim();
+        const { userId, user_id, username, reason } = req.body;
+        const targetUserId = userId || user_id;
+        if (!targetUserId) return res.json({ success: false, message: 'User ID wajib diisi' });
+        const u = String(username || '').replace(/^@/, '').trim();
         try {
             await db.execute({
-                sql: "INSERT OR REPLACE INTO quiz_banned (username, reason) VALUES (?, ?)",
-                args: [u, reason || '']
+                sql: "INSERT OR REPLACE INTO quiz_banned (user_id, username, reason) VALUES (?, ?, ?)",
+                args: [String(targetUserId), u, reason || '']
             });
-            bannedUsers.add(u.toLowerCase());
-            console.log(`[BAN] ${u} dibanned dari kuis. Alasan: ${reason || '-'}`);
+            bannedUsers.add(String(targetUserId));
+            console.log(`[BAN] ${u}(${targetUserId}) dibanned dari kuis. Alasan: ${reason || '-'}`);
             res.json({ success: true });
         } catch(e) {
             res.json({ success: false, message: e.message });
@@ -377,13 +378,13 @@ function startDashboard(scope) {
     });
 
     app.post('/api/quiz/unban', async (req, res) => {
-        const { username } = req.body;
-        if (!username) return res.json({ success: false, message: 'Username wajib diisi' });
-        const u = username.replace(/^@/, '').trim();
+        const { userId, user_id } = req.body;
+        const targetUserId = userId || user_id;
+        if (!targetUserId) return res.json({ success: false, message: 'User ID wajib diisi' });
         try {
-            await db.execute({ sql: "DELETE FROM quiz_banned WHERE username = ?", args: [u] });
-            bannedUsers.delete(u.toLowerCase());
-            console.log(`[BAN] ${u} di-unban dari kuis.`);
+            await db.execute({ sql: "DELETE FROM quiz_banned WHERE user_id = ?", args: [String(targetUserId)] });
+            bannedUsers.delete(String(targetUserId));
+            console.log(`[BAN] User ID ${targetUserId} di-unban dari kuis.`);
             res.json({ success: true });
         } catch(e) {
             res.json({ success: false, message: e.message });
@@ -461,7 +462,7 @@ function startDashboard(scope) {
     app.post('/api/users/reset-all', async (req, res) => {
         try {
             console.log("[DASHBOARD] Resetting all users XP and Level...");
-            await db.execute("UPDATE user_stats SET xp = 0, level = 1, custom_title = NULL");
+            await db.execute("UPDATE user_stats SET xp = 0, level = 1");
             await db.execute("DELETE FROM user_memories");
             
             // Clear cache
@@ -540,14 +541,15 @@ function startDashboard(scope) {
             const total = Number(countRes.rows[0]?.total || 0);
 
             const rows = await db.execute({
-                sql: `SELECT username, usage_date, used_count, daily_limit, updated_at FROM image_limits${whereSql} ORDER BY updated_at DESC, username ASC LIMIT ? OFFSET ?`,
+                sql: `SELECT user_id, username, usage_date, used_count, daily_limit, updated_at FROM image_limits${whereSql} ORDER BY updated_at DESC, username ASC LIMIT ? OFFSET ?`,
                 args: [...args, limit, offset]
             });
             const data = [];
 
             for (const row of rows.rows) {
-                const status = await getImageLimitStatus(row.username);
+                const status = await getImageLimitStatus(row.user_id, row.username);
                 data.push({
+                    user_id: status.userId,
                     username: status.username,
                     usage_date: status.usageDate,
                     used_count: status.used,
@@ -565,14 +567,15 @@ function startDashboard(scope) {
 
     app.post('/api/images/limits/update', async (req, res) => {
         const username = String(req.body.username || '').replace(/^@/, '').trim();
+        const userId = String(req.body.userId || req.body.user_id || '').trim();
         const dailyLimit = parseInt(req.body.dailyLimit, 10);
         const usedCountRaw = req.body.usedCount;
-        if (!username || Number.isNaN(dailyLimit) || dailyLimit < 0) {
-            return res.status(400).json({ success: false, message: 'Username dan limit wajib valid.' });
+        if (!userId || !username || Number.isNaN(dailyLimit) || dailyLimit < 0) {
+            return res.status(400).json({ success: false, message: 'User ID, Username dan limit wajib valid.' });
         }
 
         try {
-            const status = await getImageLimitStatus(username);
+            const status = await getImageLimitStatus(userId, username);
             let usedCount = status.used;
             if (usedCountRaw !== undefined && usedCountRaw !== '') {
                 const parsedUsed = parseInt(usedCountRaw, 10);
@@ -583,12 +586,12 @@ function startDashboard(scope) {
             }
 
             await db.execute({
-                sql: "INSERT INTO image_limits (username, usage_date, used_count, daily_limit, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(username) DO UPDATE SET usage_date = excluded.usage_date, used_count = excluded.used_count, daily_limit = excluded.daily_limit, updated_at = CURRENT_TIMESTAMP",
-                args: [status.username, status.usageDate, usedCount, dailyLimit]
+                sql: "INSERT INTO image_limits (user_id, username, usage_date, used_count, daily_limit, updated_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET username = excluded.username, usage_date = excluded.usage_date, used_count = excluded.used_count, daily_limit = excluded.daily_limit, updated_at = CURRENT_TIMESTAMP",
+                args: [status.userId, status.username, status.usageDate, usedCount, dailyLimit]
             });
             const remaining = Math.max(0, dailyLimit - usedCount);
-            console.log(`[DASHBOARD] Limit gambar @${status.username}: ${usedCount}/${dailyLimit} (sisa ${remaining})`);
-            res.json({ success: true, data: { username: status.username, usage_date: status.usageDate, used_count: usedCount, daily_limit: dailyLimit, remaining } });
+            console.log(`[DASHBOARD] Limit gambar @${status.username}(${status.userId}): ${usedCount}/${dailyLimit} (sisa ${remaining})`);
+            res.json({ success: true, data: { user_id: status.userId, username: status.username, usage_date: status.usageDate, used_count: usedCount, daily_limit: dailyLimit, remaining } });
         } catch (e) {
             res.status(500).json({ success: false, message: e.message });
         }
@@ -596,15 +599,16 @@ function startDashboard(scope) {
 
     app.post('/api/images/limits/reset', async (req, res) => {
         const username = String(req.body.username || '').replace(/^@/, '').trim();
-        if (!username) return res.status(400).json({ success: false, message: 'Username wajib diisi.' });
+        const userId = String(req.body.userId || req.body.user_id || '').trim();
+        if (!userId) return res.status(400).json({ success: false, message: 'User ID wajib diisi.' });
 
         try {
-            const status = await getImageLimitStatus(username);
+            const status = await getImageLimitStatus(userId, username);
             await db.execute({
-                sql: "UPDATE image_limits SET usage_date = ?, used_count = 0, updated_at = CURRENT_TIMESTAMP WHERE username = ?",
-                args: [status.usageDate, username]
+                sql: "UPDATE image_limits SET usage_date = ?, used_count = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+                args: [status.usageDate, userId]
             });
-            console.log(`[DASHBOARD] Pemakaian gambar @${username} direset.`);
+            console.log(`[DASHBOARD] Pemakaian gambar @${username}(${userId}) direset.`);
             res.json({ success: true });
         } catch (e) {
             res.status(500).json({ success: false, message: e.message });
@@ -676,7 +680,7 @@ function startDashboard(scope) {
             const total = Number(countRes.rows[0]?.total || 0);
 
             const rows = await db.execute({
-                sql: `SELECT username, usage_date, used_count, extra_limit, updated_at FROM command_limits${whereSql} ORDER BY updated_at DESC, username ASC LIMIT ? OFFSET ?`,
+                sql: `SELECT user_id, username, usage_date, used_count, extra_limit, updated_at FROM command_limits${whereSql} ORDER BY updated_at DESC, username ASC LIMIT ? OFFSET ?`,
                 args: [...args, limit, offset]
             });
 
@@ -691,6 +695,7 @@ function startDashboard(scope) {
                 }
                 const totalLimit = CMD_DAILY_LIMIT_DEFAULT + extra;
                 return {
+                    user_id: row.user_id,
                     username: row.username,
                     usage_date: usageDate,
                     used_count: used,
@@ -710,17 +715,18 @@ function startDashboard(scope) {
 
     app.post('/api/limits/commands/update', async (req, res) => {
         const username = String(req.body.username || '').replace(/^@/, '').trim();
+        const userId = String(req.body.userId || req.body.user_id || '').trim();
         const extraLimit = parseInt(req.body.extraLimit, 10);
         const usedCountRaw = req.body.usedCount;
-        if (!username || Number.isNaN(extraLimit) || extraLimit < 0) {
-            return res.status(400).json({ success: false, message: 'Username dan extra limit wajib valid.' });
+        if (!userId || !username || Number.isNaN(extraLimit) || extraLimit < 0) {
+            return res.status(400).json({ success: false, message: 'User ID, Username dan extra limit wajib valid.' });
         }
 
         try {
             const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).toISOString().slice(0, 10);
             let usedCount = 0;
             // Ambil data existing
-            const existing = await db.execute({ sql: "SELECT usage_date, used_count FROM command_limits WHERE username = ?", args: [username] });
+            const existing = await db.execute({ sql: "SELECT usage_date, used_count FROM command_limits WHERE user_id = ?", args: [userId] });
             if (existing.rows.length > 0 && existing.rows[0].usage_date === today) {
                 usedCount = Number(existing.rows[0].used_count || 0);
             }
@@ -731,19 +737,20 @@ function startDashboard(scope) {
             }
 
             await db.execute({
-                sql: `INSERT INTO command_limits (username, usage_date, used_count, extra_limit)
-                      VALUES (?, ?, ?, ?)
-                      ON CONFLICT(username) DO UPDATE SET
+                sql: `INSERT INTO command_limits (user_id, username, usage_date, used_count, extra_limit)
+                      VALUES (?, ?, ?, ?, ?)
+                      ON CONFLICT(user_id) DO UPDATE SET
+                      username = excluded.username,
                       usage_date = excluded.usage_date,
                       used_count = excluded.used_count,
                       extra_limit = excluded.extra_limit,
                       updated_at = CURRENT_TIMESTAMP`,
-                args: [username, today, usedCount, extraLimit]
+                args: [userId, username, today, usedCount, extraLimit]
             });
             const totalLimit = CMD_DAILY_LIMIT_DEFAULT + extraLimit;
             const remaining = Math.max(0, totalLimit - usedCount);
-            console.log(`[DASHBOARD] Limit cmd @${username}: ${usedCount}/${totalLimit} (extra: ${extraLimit}, sisa: ${remaining})`);
-            res.json({ success: true, data: { username, usage_date: today, used_count: usedCount, extra_limit: extraLimit, total_limit: totalLimit, remaining } });
+            console.log(`[DASHBOARD] Limit cmd @${username}(${userId}): ${usedCount}/${totalLimit} (extra: ${extraLimit}, sisa: ${remaining})`);
+            res.json({ success: true, data: { user_id: userId, username, usage_date: today, used_count: usedCount, extra_limit: extraLimit, total_limit: totalLimit, remaining } });
         } catch (e) {
             res.status(500).json({ success: false, message: e.message });
         }
@@ -751,15 +758,16 @@ function startDashboard(scope) {
 
     app.post('/api/limits/commands/reset', async (req, res) => {
         const username = String(req.body.username || '').replace(/^@/, '').trim();
-        if (!username) return res.status(400).json({ success: false, message: 'Username wajib diisi.' });
+        const userId = String(req.body.userId || req.body.user_id || '').trim();
+        if (!userId) return res.status(400).json({ success: false, message: 'User ID wajib diisi.' });
 
         try {
             const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).toISOString().slice(0, 10);
             await db.execute({
-                sql: "UPDATE command_limits SET usage_date = ?, used_count = 0, updated_at = CURRENT_TIMESTAMP WHERE username = ?",
-                args: [today, username]
+                sql: "UPDATE command_limits SET usage_date = ?, used_count = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+                args: [today, userId]
             });
-            console.log(`[DASHBOARD] Pemakaian cmd @${username} direset.`);
+            console.log(`[DASHBOARD] Pemakaian cmd @${username}(${userId}) direset.`);
             res.json({ success: true });
         } catch (e) {
             res.status(500).json({ success: false, message: e.message });
@@ -977,19 +985,36 @@ function startDashboard(scope) {
     });
 
     app.post('/api/users/update-xp', async (req, res) => {
-        const { username, xp, level, custom_title } = req.body;
+        const { userId, user_id, username, xp, level, custom_title } = req.body;
+        const targetUserId = userId || user_id;
         try {
             const finalTitle = custom_title === "" ? null : custom_title;
-            await db.execute({ 
-                sql: "UPDATE user_stats SET xp = ?, level = ?, custom_title = ? WHERE username = ?", 
-                args: [xp, level, finalTitle, username] 
-            });
+            if (targetUserId) {
+                await db.execute({ 
+                    sql: "UPDATE user_stats SET xp = ?, level = ?, custom_title = ?, username = ? WHERE user_id = ?", 
+                    args: [xp, level, finalTitle, username, String(targetUserId)] 
+                });
 
-            // Update cache agar tidak ditimpa oleh Sync Interval (Bug Fix)
-            if (USER_STATS_CACHE[username]) {
-                USER_STATS_CACHE[username].xp = parseInt(xp);
-                USER_STATS_CACHE[username].level = parseInt(level);
-                USER_STATS_CACHE[username].custom_title = finalTitle;
+                if (USER_STATS_CACHE[targetUserId]) {
+                    USER_STATS_CACHE[targetUserId].username = username;
+                    USER_STATS_CACHE[targetUserId].xp = parseInt(xp);
+                    USER_STATS_CACHE[targetUserId].level = parseInt(level);
+                    USER_STATS_CACHE[targetUserId].custom_title = finalTitle;
+                }
+            } else {
+                // Fallback for safety
+                await db.execute({ 
+                    sql: "UPDATE user_stats SET xp = ?, level = ?, custom_title = ? WHERE username = ?", 
+                    args: [xp, level, finalTitle, username] 
+                });
+
+                // Find by username in cache
+                const cachedId = Object.keys(USER_STATS_CACHE).find(k => USER_STATS_CACHE[k]?.username === username);
+                if (cachedId) {
+                    USER_STATS_CACHE[cachedId].xp = parseInt(xp);
+                    USER_STATS_CACHE[cachedId].level = parseInt(level);
+                    USER_STATS_CACHE[cachedId].custom_title = finalTitle;
+                }
             }
 
             res.json({ success: true });

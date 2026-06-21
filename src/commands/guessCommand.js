@@ -3,7 +3,7 @@ async function execute(ctx) {
     const {
         bot,
         msg,
-        senderName,
+        senderName, senderUserId,
         lowerMsg,
         sendChatMessage,
         activeQuiz,
@@ -39,8 +39,8 @@ async function execute(ctx) {
 
     activeQuiz.isProcessingAnswer = true;
     try {
-        trackQuizStat(senderName, 'participations');
-        trackStreak(senderName);
+        trackQuizStat(senderUserId, senderName, 'participations');
+        trackStreak(senderUserId, senderName);
         const norm = (s) => (s || '').normalize('NFKC').normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
         const normTitle = norm(activeQuiz.original);
         const normAnswer = norm(answer);
@@ -69,9 +69,9 @@ async function execute(ctx) {
             const penaltyWrong = (activeQuiz.wrongGuessCount || 0) * 20;
             const xpEarned = Math.max(100, baseXP - penaltyHint - penaltyWrong);
 
-            const xpRes = await addXP(senderName, xpEarned);
+            const xpRes = await addXP(senderUserId, senderName, xpEarned);
             const finalDisplayXP = (XP_MULTIPLIER > 1 && xpEarned > 0) ? xpEarned * XP_MULTIPLIER : xpEarned;
-            trackQuizStat(senderName, 'wins');
+            trackQuizStat(senderUserId, senderName, 'wins');
 
             const dn = senderName.substring(0, 10);
             const xpMul = XP_MULTIPLIER > 1 ? `(x${XP_MULTIPLIER})` : '';
@@ -98,7 +98,7 @@ async function execute(ctx) {
             activeQuiz.wrongGuessCount = (activeQuiz.wrongGuessCount || 0) + 1;
             activeQuiz.wrongGuessers.add(senderName);
             await sendChatMessage(bot, `❌ @${senderName.substring(0, 10)} Salah!\n-3 XP | ${activeQuiz.original.length} char`, msg.id);
-            await addXP(senderName, -3);
+            await addXP(senderUserId, senderName, -3);
         }
     } finally {
         activeQuiz.isProcessingAnswer = false;

@@ -1,16 +1,16 @@
 const { formatLimitExceeded } = require('../utils/messageFormatter');
 
 async function execute(ctx) {
-    const { bot, msg, senderName, sendChatMessage, checkCommandLimit, incrementCommandUsage, userRepo, fmtXP, padVisual } = ctx;
+    const { bot, msg, senderName, senderUserId, sendChatMessage, checkCommandLimit, incrementCommandUsage, userRepo, fmtXP, padVisual } = ctx;
 
     if (bot.isCooldown) return true;
     try {
-        const cmdLimit = await checkCommandLimit(senderName);
+        const cmdLimit = await checkCommandLimit(senderUserId, senderName);
         if (cmdLimit.remaining <= 0) {
             await sendChatMessage(bot, formatLimitExceeded(senderName, cmdLimit.limit, { shortMention: true, warning: true }), msg.id);
             return true;
         }
-        await incrementCommandUsage(senderName);
+        await incrementCommandUsage(senderUserId, senderName);
 
         const res = await userRepo.getLeaderboard(10);
         const medals = ['🥇', '🥈', '🥉'];

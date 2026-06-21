@@ -866,6 +866,7 @@ function getDashboardHTML() {
           <div style="flex:1; min-width:160px;">
             <label class="form-label">Username</label>
             <input type="text" id="cmdLimitUsername" placeholder="contoh: YogaPradnya">
+            <input type="hidden" id="cmdLimitUserId">
           </div>
           <div style="width:120px;">
             <label class="form-label">Extra Limit</label>
@@ -920,6 +921,7 @@ function getDashboardHTML() {
           <div style="flex:1; min-width:160px;">
             <label class="form-label">Username</label>
             <input type="text" id="imageLimitUsername" placeholder="contoh: YogaPradnya">
+            <input type="hidden" id="imageLimitUserId">
           </div>
           <div style="width:120px;">
             <label class="form-label">Limit / Hari</label>
@@ -1473,6 +1475,7 @@ function getDashboardHTML() {
     </div>
     
     <input type="hidden" id="editUserUsername">
+    <input type="hidden" id="editUserUserId">
     
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
       <div class="form-group">
@@ -2533,18 +2536,20 @@ async function updateStats() {
         const title = getUserTitle(u.level, u.custom_title);
         const safeTitle = jsString(u.custom_title || '');
         const safeUsername = jsString(u.username);
+        const safeUserId = jsString(u.user_id || '');
         return \`<tr>
           <td style="font-weight:700; color:var(--muted); text-align:center;">\${i+1}</td>
           <td style="font-weight:700; color:var(--accent); font-size:13px;">@\${escapeHTML(u.username)}<div style="font-size:10px; color:var(--muted); font-weight:500;">\${escapeHTML(title)}</div></td>
           <td style="text-align:center;"><span class="prov-tag" style="background:var(--accent); color:#fff; border:none; padding:2px 6px;">Lv \${u.level}</span></td>
           <td style="font-weight:600; font-size:11px; white-space:nowrap;">\${(u.xp||0).toLocaleString('id-ID')}<br>\${req.toLocaleString('id-ID')}</td>
-          <td class="td-actions"><button class="btn-sm btn-sm-edit" onclick="editUserStats('\${safeUsername}', \${u.level}, \${u.xp}, '\${safeTitle}')">Edit</button></td>
+          <td class="td-actions"><button class="btn-sm btn-sm-edit" onclick="editUserStats('\${safeUsername}', \${u.level}, \${u.xp}, '\${safeTitle}', '\${safeUserId}')">Edit</button></td>
           </tr>\`;
       }).join('');
     } catch(e) {}
   }
-  function editUserStats(user, level, xp, customTitle = '') {
+  function editUserStats(user, level, xp, customTitle = '', userId = '') {
     document.getElementById('editUserUsername').value = user;
+    document.getElementById('editUserUserId').value = userId;
     document.getElementById('editUserTitle').textContent = user;
     document.getElementById('editUserLevel').value = level;
     document.getElementById('editUserXP').value = xp;
@@ -2558,6 +2563,7 @@ async function updateStats() {
   function closeUserModal() { document.getElementById('userModal').classList.remove('open'); }
   async function saveUserStats() {
     const data = {
+      userId: document.getElementById('editUserUserId').value,
       username: document.getElementById('editUserUsername').value,
       level: parseInt(document.getElementById('editUserLevel').value),
       xp: parseInt(document.getElementById('editUserXP').value),
@@ -2987,8 +2993,8 @@ async function updateStats() {
           '<td><strong>' + total + '</strong></td>' +
           '<td><span style="background:' + badgeColor + '; color:#fff; padding:4px 10px; border-radius:999px; font-size:11px; font-weight:800;">' + remaining + '</span></td>' +
           '<td class="td-actions">' +
-            '<button class="btn-sm btn-sm-edit cmd-limit-edit" data-username="' + escapeAttr(row.username || '') + '" data-extra="' + extra + '" data-used="' + used + '">Edit</button>' +
-            '<button class="btn-sm btn-sm-del cmd-limit-reset" data-username="' + escapeAttr(row.username || '') + '">Reset</button>' +
+            '<button class="btn-sm btn-sm-edit cmd-limit-edit" data-username="' + escapeAttr(row.username || '') + '" data-userid="' + escapeAttr(row.user_id || '') + '" data-extra="' + extra + '" data-used="' + used + '">Edit</button>' +
+            '<button class="btn-sm btn-sm-del cmd-limit-reset" data-username="' + escapeAttr(row.username || '') + '" data-userid="' + escapeAttr(row.user_id || '') + '">Reset</button>' +
           '</td>' +
         '</tr>';
       }).join('');
@@ -3032,14 +3038,16 @@ async function updateStats() {
     loadCommandLimits(1);
   }
 
-  function fillCmdLimitForm(username, extra, used) {
+  function fillCmdLimitForm(username, extra, used, userId = '') {
     document.getElementById('cmdLimitUsername').value = username || '';
+    document.getElementById('cmdLimitUserId').value = userId || '';
     document.getElementById('cmdLimitExtra').value = extra ?? 0;
     document.getElementById('cmdLimitUsed').value = used ?? 0;
   }
 
   async function saveCmdLimit() {
     const username = document.getElementById('cmdLimitUsername').value.trim();
+    const userId = document.getElementById('cmdLimitUserId').value.trim();
     const extraLimit = document.getElementById('cmdLimitExtra').value;
     const usedCount = document.getElementById('cmdLimitUsed').value;
     if (!username) return showToast('Username wajib diisi.', 'warning');
@@ -3048,7 +3056,7 @@ async function updateStats() {
     const res = await fetch('/api/limits/commands/update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, extraLimit, usedCount })
+      body: JSON.stringify({ userId, username, extraLimit, usedCount })
     });
     const d = await res.json();
     if (!d.success) return showToast(d.message || 'Gagal simpan.', 'error');
@@ -3056,13 +3064,13 @@ async function updateStats() {
     loadCommandLimits();
   }
 
-  async function resetCmdLimit(username) {
+  async function resetCmdLimit(username, userId = '') {
     const ok = await customConfirm('Reset pemakaian command @' + username + ' menjadi 0?', 'Reset Limit CMD', 'Reset');
     if (!ok) return;
     const res = await fetch('/api/limits/commands/reset', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username })
+      body: JSON.stringify({ userId, username })
     });
     const d = await res.json();
     if (!d.success) return showToast(d.message || 'Gagal reset.', 'error');
@@ -3105,8 +3113,8 @@ async function updateStats() {
           '<td><strong>' + limit + '</strong></td>' +
           '<td><span style="background:' + badgeColor + '; color:#fff; padding:4px 10px; border-radius:999px; font-size:11px; font-weight:800;">' + remaining + '</span></td>' +
           '<td class="td-actions">' +
-            '<button class="btn-sm btn-sm-edit image-limit-edit" data-username="' + escapeAttr(row.username || '') + '" data-limit="' + limit + '" data-used="' + used + '">Edit</button>' +
-            '<button class="btn-sm btn-sm-del image-limit-reset" data-username="' + escapeAttr(row.username || '') + '">Reset</button>' +
+            '<button class="btn-sm btn-sm-edit image-limit-edit" data-username="' + escapeAttr(row.username || '') + '" data-userid="' + escapeAttr(row.user_id || '') + '" data-limit="' + limit + '" data-used="' + used + '">Edit</button>' +
+            '<button class="btn-sm btn-sm-del image-limit-reset" data-username="' + escapeAttr(row.username || '') + '" data-userid="' + escapeAttr(row.user_id || '') + '">Reset</button>' +
           '</td>' +
         '</tr>';
       }).join('');
@@ -3150,14 +3158,16 @@ async function updateStats() {
     loadImageLimits(1);
   }
 
-  function fillImageLimitForm(username, limit, used) {
+  function fillImageLimitForm(username, limit, used, userId = '') {
     document.getElementById('imageLimitUsername').value = username || '';
+    document.getElementById('imageLimitUserId').value = userId || '';
     document.getElementById('imageLimitDaily').value = limit ?? 5;
     document.getElementById('imageLimitUsed').value = used ?? 0;
   }
 
   async function saveImageLimit() {
     const username = document.getElementById('imageLimitUsername').value.trim();
+    const userId = document.getElementById('imageLimitUserId').value.trim();
     const dailyLimit = document.getElementById('imageLimitDaily').value;
     const usedCount = document.getElementById('imageLimitUsed').value;
     if (!username) return showToast('Username wajib diisi.', 'warning');
@@ -3166,7 +3176,7 @@ async function updateStats() {
     const res = await fetch('/api/images/limits/update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, dailyLimit, usedCount })
+      body: JSON.stringify({ userId, username, dailyLimit, usedCount })
     });
     const d = await res.json();
     if (!d.success) return showToast(d.message || 'Gagal simpan limit.', 'error');
@@ -3174,13 +3184,13 @@ async function updateStats() {
     loadImageLimits();
   }
 
-  async function resetImageLimit(username) {
+  async function resetImageLimit(username, userId = '') {
     const ok = await customConfirm('Reset pemakaian gambar @' + username + ' menjadi 0 untuk hari ini?', 'Reset Limit Gambar', 'Reset');
     if (!ok) return;
     const res = await fetch('/api/images/limits/reset', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username })
+      body: JSON.stringify({ userId, username })
     });
     const d = await res.json();
     if (!d.success) return showToast(d.message || 'Gagal reset limit.', 'error');
@@ -3200,26 +3210,26 @@ async function updateStats() {
     // Image limit buttons
     const editBtn = event.target.closest('.image-limit-edit');
     if (editBtn) {
-      fillImageLimitForm(editBtn.dataset.username || '', Number(editBtn.dataset.limit || 0), Number(editBtn.dataset.used || 0));
+      fillImageLimitForm(editBtn.dataset.username || '', Number(editBtn.dataset.limit || 0), Number(editBtn.dataset.used || 0), editBtn.dataset.userid || '');
       return;
     }
 
     const resetBtn = event.target.closest('.image-limit-reset');
     if (resetBtn) {
-      resetImageLimit(resetBtn.dataset.username || '');
+      resetImageLimit(resetBtn.dataset.username || '', resetBtn.dataset.userid || '');
       return;
     }
 
     // Command limit buttons
     const cmdEditBtn = event.target.closest('.cmd-limit-edit');
     if (cmdEditBtn) {
-      fillCmdLimitForm(cmdEditBtn.dataset.username || '', Number(cmdEditBtn.dataset.extra || 0), Number(cmdEditBtn.dataset.used || 0));
+      fillCmdLimitForm(cmdEditBtn.dataset.username || '', Number(cmdEditBtn.dataset.extra || 0), Number(cmdEditBtn.dataset.used || 0), cmdEditBtn.dataset.userid || '');
       return;
     }
 
     const cmdResetBtn = event.target.closest('.cmd-limit-reset');
     if (cmdResetBtn) {
-      resetCmdLimit(cmdResetBtn.dataset.username || '');
+      resetCmdLimit(cmdResetBtn.dataset.username || '', cmdResetBtn.dataset.userid || '');
     }
   });
   if (window.lucide) {

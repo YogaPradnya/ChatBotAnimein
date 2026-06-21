@@ -76,13 +76,13 @@ async function initShopTables(repoOrDb) {
 /**
  * Dapatkan jumlah item tertentu yang dimiliki user.
  */
-async function getItemCount(repoOrDb, username, itemType) {
+async function getItemCount(repoOrDb, userId, itemType) {
     const shopRepo = resolveShopRepo(repoOrDb);
     try {
-        const res = await shopRepo.getItemCount(username, itemType);
+        const res = await shopRepo.getItemCount(userId, itemType);
         return res.rows.length > 0 ? Number(res.rows[0].quantity) : 0;
     } catch (e) {
-        console.warn(`[SHOP] Gagal cek inventory ${username}/${itemType}:`, e.message);
+        console.warn(`[SHOP] Gagal cek inventory ${userId}/${itemType}:`, e.message);
         return 0;
     }
 }
@@ -90,13 +90,13 @@ async function getItemCount(repoOrDb, username, itemType) {
 /**
  * Tambah item ke inventory user.
  */
-async function addItem(repoOrDb, username, itemType, amount = 1, itemValue = '') {
+async function addItem(repoOrDb, userId, username, itemType, amount = 1, itemValue = '') {
     const shopRepo = resolveShopRepo(repoOrDb);
     try {
-        await shopRepo.addItem(username, itemType, amount, itemValue);
+        await shopRepo.addItem(userId, username, itemType, amount, itemValue);
         return true;
     } catch (e) {
-        console.warn(`[SHOP] Gagal tambah item ${itemType} ke ${username}:`, e.message);
+        console.warn(`[SHOP] Gagal tambah item ${itemType} ke ${username}(${userId}):`, e.message);
         return false;
     }
 }
@@ -105,15 +105,15 @@ async function addItem(repoOrDb, username, itemType, amount = 1, itemValue = '')
  * Gunakan (kurangi) item dari inventory.
  * Return true jika berhasil (item cukup), false jika gagal.
  */
-async function useItem(repoOrDb, username, itemType, amount = 1) {
+async function useItem(repoOrDb, userId, itemType, amount = 1) {
     const shopRepo = resolveShopRepo(repoOrDb);
-    const current = await getItemCount(shopRepo, username, itemType);
+    const current = await getItemCount(shopRepo, userId, itemType);
     if (current < amount) return false;
     try {
-        await shopRepo.useItem(username, itemType, amount);
+        await shopRepo.useItem(userId, itemType, amount);
         return true;
     } catch (e) {
-        console.warn(`[SHOP] Gagal gunakan item ${itemType} dari ${username}:`, e.message);
+        console.warn(`[SHOP] Gagal gunakan item ${itemType} dari ${userId}:`, e.message);
         return false;
     }
 }
@@ -122,7 +122,7 @@ async function useItem(repoOrDb, username, itemType, amount = 1) {
  * Proses pembelian item.
  * Mengembalikan { success, message, xpDeducted }.
  */
-async function buyItem(repoOrDb, username, itemId, userXP, extraArgs = {}) {
+async function buyItem(repoOrDb, userId, username, itemId, userXP, extraArgs = {}) {
     const shopRepo = resolveShopRepo(repoOrDb);
     const item = SHOP_ITEMS.find(i => i.id === itemId);
     if (!item) {
@@ -165,7 +165,7 @@ async function buyItem(repoOrDb, username, itemId, userXP, extraArgs = {}) {
 
         try {
             // Set custom title langsung di user_stats
-            await shopRepo.setCustomTitle(username, titleName);
+            await shopRepo.setCustomTitle(userId, username, titleName);
 
             return { success: true, message: `Title berhasil diubah menjadi: ${titleName}`, xpDeducted: totalPrice };
         } catch (e) {
@@ -175,7 +175,7 @@ async function buyItem(repoOrDb, username, itemId, userXP, extraArgs = {}) {
 
     // Consumable items
     const totalQuantity = (item.quantity || 1) * quantity;
-    const added = await addItem(shopRepo, username, item.type, totalQuantity);
+    const added = await addItem(shopRepo, userId, username, item.type, totalQuantity);
     if (!added) {
         return { success: false, message: 'Gagal menambahkan item ke inventory.' };
     }

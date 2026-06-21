@@ -6,7 +6,7 @@ async function execute(ctx) {
     const {
         bot,
         msg,
-        senderName,
+        senderName, senderUserId,
         lowerMsg,
         sendChatMessage,
         wrapInBox,

@@ -8,7 +8,7 @@ async function execute(ctx) {
     const {
         bot,
         msg,
-        senderName,
+        senderName, senderUserId,
         cleanMsg,
         lowerMsg,
         sendChatMessage,
@@ -66,7 +66,7 @@ async function execute(ctx) {
     }
 
     try {
-        const limitStatus = await getImageLimitStatus(senderName);
+        const limitStatus = await getImageLimitStatus(senderUserId, senderName);
         if (limitStatus.remaining <= 0) {
             await sendChatMessage(bot, formatImageLimitExceeded(senderName, limitStatus.limit), msg.id);
             return true;
@@ -102,12 +102,12 @@ async function execute(ctx) {
                     }
 
                     try {
-                        const usage = await incrementImageLimitUsage(senderName);
+                        const usage = await incrementImageLimitUsage(senderUserId, senderName);
                         setImagePromptHistory(senderName, { type: 'gambarkan', prompt, originalPrompt: rawPrompt || prompt });
                         addActivity('image', senderName, `${prompt} -> ${translated} (${usage.used}/${usage.limit})`, `AI Horde ${imageData.model || ''}`, 'AIHorde', 0);
-                        await addXP(senderName, 10);
-                        trackImageRequest(senderName);
-                        trackStreak(senderName);
+                        await addXP(senderUserId, senderName, 10);
+                        trackImageRequest(senderUserId, senderName);
+                        trackStreak(senderUserId, senderName);
                     } catch (postSendErr) {
                         console.warn('[GAMBARKAN] Post-send warning:', safeMessage(postSendErr, 160));
                     }

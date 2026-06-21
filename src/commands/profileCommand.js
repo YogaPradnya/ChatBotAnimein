@@ -5,7 +5,7 @@ async function execute(ctx) {
     const {
         bot,
         msg,
-        senderName,
+        senderName, senderUserId,
         sendChatMessage,
         checkCommandLimit,
         incrementCommandUsage,
@@ -20,14 +20,14 @@ async function execute(ctx) {
 
     if (bot.isCooldown) return true;
     try {
-        const cmdLimit = await checkCommandLimit(senderName);
+        const cmdLimit = await checkCommandLimit(senderUserId, senderName);
         if (cmdLimit.remaining <= 0) {
             await sendChatMessage(bot, formatLimitExceeded(senderName, cmdLimit.limit, { warning: true }), msg.id);
             return true;
         }
-        await incrementCommandUsage(senderName);
+        await incrementCommandUsage(senderUserId, senderName);
 
-        const res = await userRepo.getUserProfileWithRank(senderName);
+        const res = await userRepo.getUserProfileWithRank(senderUserId);
         let userData;
         if (res.rows.length > 0) {
             userData = res.rows[0];
@@ -38,11 +38,11 @@ async function execute(ctx) {
 
         let quizData = { wins: 0, participations: 0, total_hints_used: 0, total_images: 0, current_streak: 0, best_streak: 0 };
         try {
-            const qRes = await userRepo.getQuizStats(senderName);
+            const qRes = await userRepo.getQuizStats(senderUserId);
             if (qRes.rows.length > 0) quizData = qRes.rows[0];
         } catch (e) { console.warn("[PROFIL] Quiz stats query failed:", e.message); }
 
-        const updatedLimit = await checkCommandLimit(senderName);
+        const updatedLimit = await checkCommandLimit(senderUserId, senderName);
         const {xp, level, custom_title, rank} = userData;
         const gelar = getGelar(level, custom_title);
         const reqXP = Math.floor(50 * Math.pow(level, 3));
@@ -58,7 +58,7 @@ async function execute(ctx) {
         const reqStr = reqXP.toLocaleString('id-ID');
 
         let imgLimit = { used: 0, limit: IMAGE_DAILY_LIMIT_DEFAULT, remaining: IMAGE_DAILY_LIMIT_DEFAULT };
-        try { imgLimit = await getImageLimitStatus(senderName); } catch(e) { handleError(e, { scope: 'PROFIL', detail: 'image limit status', stats, logEmitter }); }
+        try { imgLimit = await getImageLimitStatus(senderUserId, senderName); } catch(e) { handleError(e, { scope: 'PROFIL', detail: 'image limit status', stats, logEmitter }); }
 
         const profileMsg = [
             `┌── ${boxHeader('📋 PROFIL')}`,

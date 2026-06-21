@@ -186,7 +186,7 @@ function createAiService(deps) {
         if (matchedAuto) {
             await sendChatMessage(bot, `@${senderName} ${matchedAuto.answer}`, msg.id);
             addActivity('text', senderName, cleanText, matchedAuto.answer, 'AutoReply', 0);
-            await addXP(senderName, 5);
+            await addXP(senderUserId, senderName, 5);
             return true;
         }
 
@@ -213,8 +213,8 @@ function createAiService(deps) {
                 const sent = await sendChatMessage(bot, `@${senderName}\n${followUpRecommendation.text}`, msg.id);
                 if (sent) {
                     addActivity('anime_recommendation', senderName, question, followUpRecommendation.text, followUpRecommendation.provider || 'Animein Follow-up', 0);
-                    await addXP(senderName, 10);
-                    trackStreak(senderName);
+                    await addXP(senderUserId, senderName, 10);
+                    trackStreak(senderUserId, senderName);
                     saveChatLog(senderName, question, followUpRecommendation.text, followUpRecommendation.provider || 'Animein Follow-up', followUpRecommendation.tokens || 0);
                 }
                 return true;
@@ -228,8 +228,8 @@ function createAiService(deps) {
             const sent = await sendChatMessage(bot, `@${senderName}\n${aiPlannedRecommendation.text}`, msg.id);
             if (sent) {
                 addActivity('anime_recommendation', senderName, question, aiPlannedRecommendation.text, aiPlannedRecommendation.provider || 'Animein AI Planner', 0);
-                await addXP(senderName, 10);
-                trackStreak(senderName);
+                await addXP(senderUserId, senderName, 10);
+                trackStreak(senderUserId, senderName);
                 saveChatLog(senderName, question, aiPlannedRecommendation.text, aiPlannedRecommendation.provider || 'Animein AI Planner', aiPlannedRecommendation.tokens || 0);
             }
             return true;
@@ -242,8 +242,8 @@ function createAiService(deps) {
                 const sent = await sendChatMessage(bot, `@${senderName}\n${deterministicGenreAnswer.text}`, msg.id);
                 if (sent) {
                     addActivity('anime_recommendation', senderName, question, deterministicGenreAnswer.text, deterministicGenreAnswer.provider || 'Animein Genre', 0);
-                    await addXP(senderName, 10);
-                    trackStreak(senderName);
+                    await addXP(senderUserId, senderName, 10);
+                    trackStreak(senderUserId, senderName);
                     saveChatLog(senderName, question, deterministicGenreAnswer.text, deterministicGenreAnswer.provider || 'Animein Genre', deterministicGenreAnswer.tokens || 0);
                 }
                 return true;
@@ -282,8 +282,8 @@ function createAiService(deps) {
                 const sent = await sendChatMessage(bot, `@${senderName}\n${animeResponse}`, msg.id);
                 if (sent) {
                     addActivity('anime_data', senderName, question, animeResponse, 'AnimeData', 0);
-                    await addXP(senderName, 10);
-                    trackStreak(senderName);
+                    await addXP(senderUserId, senderName, 10);
+                    trackStreak(senderUserId, senderName);
                     saveChatLog(senderName, question, animeResponse, 'AnimeData', 0);
                 } else {
                     console.warn(`[ANIME DATA] Gagal kirim response anime data ke ${senderName}`);
@@ -309,8 +309,8 @@ function createAiService(deps) {
             const titles = extractNumberedAnimeTitles(aiText);
             if (titles.length) hydrateAnimeTitlesForTagCache(titles, senderName, senderUserId, 'ai-fallback-list').catch(err => console.warn('[TAG ANIME] Gagal hydrate AI list:', err.message));
         }
-        await addXP(senderName, 10);
-        trackStreak(senderName);
+        await addXP(senderUserId, senderName, 10);
+        trackStreak(senderUserId, senderName);
         saveChatLog(senderName, question, aiText, provider, tokens);
         return true;
     }

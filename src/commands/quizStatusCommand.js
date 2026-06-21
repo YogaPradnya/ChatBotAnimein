@@ -4,7 +4,7 @@ async function execute(ctx) {
     const {
         bot,
         msg,
-        senderName,
+        senderName, senderUserId,
         sendChatMessage,
         incrementCommandUsage,
         activeQuiz,
@@ -14,7 +14,7 @@ async function execute(ctx) {
     if (bot.isCooldown) return true;
     if (!(await ensureCommandLimit(ctx))) return true;
 
-    await incrementCommandUsage(senderName);
+    await incrementCommandUsage(senderUserId, senderName);
     if (activeQuiz.isRunning) {
         const dn = senderName.substring(0, 10);
         const kuisActiveMsg = [

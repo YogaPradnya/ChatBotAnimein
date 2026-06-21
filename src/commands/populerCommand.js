@@ -5,7 +5,7 @@ async function execute(ctx) {
     const {
         bot,
         msg,
-        senderName,
+        senderName, senderUserId,
         sendChatMessage,
         checkCommandLimit,
         incrementCommandUsage,
@@ -13,12 +13,12 @@ async function execute(ctx) {
     } = ctx;
 
     if (bot.isCooldown) return true;
-    const cmdLimit = await checkCommandLimit(senderName);
+    const cmdLimit = await checkCommandLimit(senderUserId, senderName);
     if (cmdLimit.remaining <= 0) {
         await sendChatMessage(bot, formatCommandUsage(senderName, 'Limit habis.'), msg.id);
         return true;
     }
-    await incrementCommandUsage(senderName);
+    await incrementCommandUsage(senderUserId, senderName);
 
     try {
         const data = await fetchAnimeinList('popular');
