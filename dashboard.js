@@ -694,46 +694,7 @@ function getDashboardHTML() {
           <span class="btp-off" style="background:#e5e7eb; color:#9ca3af;">ON</span>
         </div>
       </div>
-      <div class="bot-toggle-wrap" style="gap:10px; padding-right:5px; background: #fff; border-radius:14px; border: 1px solid var(--border);">
-        <span class="bot-toggle-lbl" style="margin:0 0 0 12px;">XP Event <span id="xpTimer" style="font-size:10px; color:var(--accent); font-weight:800; margin-left:4px;"></span></span>
-        <div style="display:flex; align-items:center; gap:8px;">
-          <select id="xpMultiplierSelect" style="padding:6px 8px; border-radius:10px; border:1px solid #e2e8f0; background:#f8fafc; font-size:11px; font-weight:800; outline:none; cursor:pointer; color:var(--accent);">
-            <option value="2">x2</option>
-            <option value="4">x4</option>
-            <option value="8">x8</option>
-          </select>
-          <div style="display:flex; align-items:center; gap:4px;">
-            <input type="number" id="xpDurationInput" value="60" min="1" style="width:45px; padding:6px 0; border-radius:10px; border:1px solid #cbd5e1; font-size:12px; font-weight:700; outline:none; text-align:center; background:#fff;">
-            <span style="font-size:10px; color:var(--muted); font-weight:800; min-width:20px;">min</span>
-          </div>
-          <div class="bot-toggle-pill" id="xpTogglePill" onclick="toggleXPEvent()" style="margin-left:4px;">
-            <span class="btp-on">ON</span>
-            <span class="btp-off">OFF</span>
-          </div>
-        </div>
-      </div>
-      <div class="bot-toggle-wrap">
-        <span class="bot-toggle-lbl">Bot AI</span>
-        <div class="bot-toggle-pill" id="botInfoTogglePill" onclick="toggleBot('info')">
-          <span class="btp-on">ON</span>
-          <span class="btp-off">OFF</span>
-        </div>
-      </div>
-      <div class="bot-toggle-wrap">
-        <span class="bot-toggle-lbl">Bot Gambar</span>
-        <div class="bot-toggle-pill" id="imageCommandTogglePill" onclick="toggleImageCommand()">
-          <span class="btp-on">ON</span>
-          <span class="btp-off">OFF</span>
-        </div>
-      </div>
-      <div class="bot-toggle-wrap">
-        <span class="bot-toggle-lbl">Bot Kuis</span>
-        <div class="bot-toggle-pill" id="botKuisTogglePill" onclick="toggleBot('kuis')">
-          <span class="btp-on">ON</span>
-          <span class="btp-off">OFF</span>
-        </div>
-      </div>
-      <button class="btn-sm btn-sm-del" onclick="clearCache()">Clear Cache</button>
+
     </div>
   </div>
 
@@ -788,17 +749,35 @@ function getDashboardHTML() {
             <div class="card-title">Status Bot Chat</div>
             <p style="font-size:12px; color:var(--muted); margin-top:-8px; margin-bottom:16px;">Panel kirim pesan manual sudah dipindahkan ke Realtime Logs agar monitoring dan aksi admin berada di satu tempat.</p>
             <div class="bot-status-mini">
-              <div class="bot-status-mini-item">
-                <div class="bot-status-mini-label">Bot AI</div>
-                <div class="bot-status-mini-value" id="miniBotAiStatus">Memuat...</div>
+              <div class="bot-status-mini-item" style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                  <div class="bot-status-mini-label">Bot AI</div>
+                  <div class="bot-status-mini-value" id="miniBotAiStatus" style="font-size:12px; margin-top:2px;">Memuat...</div>
+                </div>
+                <div class="bot-toggle-pill" id="botInfoTogglePill" onclick="toggleBot('info')">
+                  <span class="btp-on">ON</span>
+                  <span class="btp-off">OFF</span>
+                </div>
               </div>
-              <div class="bot-status-mini-item">
-                <div class="bot-status-mini-label">Bot Kuis</div>
-                <div class="bot-status-mini-value" id="miniBotKuisStatus">Memuat...</div>
+              <div class="bot-status-mini-item" style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                  <div class="bot-status-mini-label">Bot Kuis</div>
+                  <div class="bot-status-mini-value" id="miniBotKuisStatus" style="font-size:12px; margin-top:2px;">Memuat...</div>
+                </div>
+                <div class="bot-toggle-pill" id="botKuisTogglePill" onclick="toggleBot('kuis')">
+                  <span class="btp-on">ON</span>
+                  <span class="btp-off">OFF</span>
+                </div>
               </div>
-              <div class="bot-status-mini-item">
-                <div class="bot-status-mini-label">Bot Gambar</div>
-                <div class="bot-status-mini-value" id="miniBotImageStatus">Memuat...</div>
+              <div class="bot-status-mini-item" style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                  <div class="bot-status-mini-label">Bot Gambar</div>
+                  <div class="bot-status-mini-value" id="miniBotImageStatus" style="font-size:12px; margin-top:2px;">Memuat...</div>
+                </div>
+                <div class="bot-toggle-pill" id="imageCommandTogglePill" onclick="toggleImageCommand()">
+                  <span class="btp-on">ON</span>
+                  <span class="btp-off">OFF</span>
+                </div>
               </div>
             </div>
           </div>
@@ -822,7 +801,7 @@ function getDashboardHTML() {
 
     <!-- PAGE: EKONOMI & TOKO -->
     <div class="page" id="page-ekonomi">
-      <div class="card" style="background: linear-gradient(135deg, #fef08a 0%, #ffffff 50%, #eff6ff 100%); border-color: #fef08a; padding: 24px; margin-bottom: 24px;">
+      <div class="card" style="background: #ffffff; border: 1px solid var(--border); padding: 24px; margin-bottom: 24px;">
         <div class="card-title">Sistem Ekonomi & Toko Rara</div>
         <p style="font-size: 13px; color: var(--muted); margin-bottom: 20px;">Kelola parameter ekonomi, tingkat pendapatan XP, status event multiplier XP, serta harga barang di Toko Rara secara realtime.</p>
         
