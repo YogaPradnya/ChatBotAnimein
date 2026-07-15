@@ -1019,7 +1019,7 @@ async function updateStats() {
       renderTitlesList();
 
       tbody.innerHTML = d.data.map((u, i) => {
-        const req = Math.floor(50 * Math.pow(u.level, 3));
+        const req = Math.floor(20 * Math.pow(u.level, 3));
         const title = getUserTitle(u.level, u.custom_title);
         const safeTitle = jsString(u.custom_title || '');
         const safeUsername = jsString(u.username);

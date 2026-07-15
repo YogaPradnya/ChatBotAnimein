@@ -79,6 +79,13 @@ const SETTINGS_KEYS = {
     CMD_DAILY_LIMIT_DEFAULT: 'cmd_daily_limit_default',
     IMAGE_DAILY_LIMIT_DEFAULT: 'image_daily_limit_default',
     AVAILABLE_TITLES: 'available_titles',
+    BASE_XP_RATE: 'base_xp_rate',
+    IS_DISCOUNT_EVENT: 'is_discount_event',
+    DISCOUNT_PERCENT: 'discount_percent',
+    PRICE_CUSTOM_TITLE: 'price_custom_title',
+    PRICE_HINT_PACK: 'price_hint_pack',
+    PRICE_EXTRA_IMAGE: 'price_extra_image',
+    PRICE_EXTRA_LIMIT: 'price_extra_limit',
 };
 
 module.exports = {

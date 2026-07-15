@@ -116,9 +116,11 @@ async function handleInfoCommand(ctx) {
         return populerCommand.execute(ctx);
     }
 
+    /*
     if (lowerMsg === '.detail' || lowerMsg.startsWith('.detail ')) {
         return detailCommand.execute(ctx);
     }
+    */
 
     if (lowerMsg === '.cari' || lowerMsg.startsWith('.cari ')) {
         return cariCommand.execute(ctx);

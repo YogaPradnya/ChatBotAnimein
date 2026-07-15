@@ -45,7 +45,7 @@ async function execute(ctx) {
         const updatedLimit = await checkCommandLimit(senderUserId, senderName);
         const {xp, level, custom_title, rank} = userData;
         const gelar = getGelar(level, custom_title);
-        const reqXP = Math.floor(50 * Math.pow(level, 3));
+        const reqXP = Math.floor(20 * Math.pow(level, 3));
         const percentage = Math.min(100, Math.floor((xp / reqXP) * 100));
         const barW = 10;
         const filled = Math.floor((percentage / 100) * barW);

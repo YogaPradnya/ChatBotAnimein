@@ -48,10 +48,8 @@ async function execute(ctx) {
         helpMsg = wrapInBox('RANDOM', 'Rekomendasi anime acak.\n\nCommand:\n- .random\n\n3 anime dipilih secara acak.');
     } else if (helpArg === 'populer') {
         helpMsg = wrapInBox('POPULER', 'Anime paling populer.\n\nCommand:\n- .populer\n\nSumber: Animein Popular');
-    } else if (helpArg === 'detail') {
-        helpMsg = wrapInBox('DETAIL', 'Lihat detail anime dari database Animein.\n\nCommand:\n- .detail [judul]\n\nContoh:\n- .detail one piece\n\nData: judul, type, tahun, studio, genre, sinopsis, dan episode.');
     } else if (helpArg === 'cari') {
-        helpMsg = wrapInBox('CARI', 'Cari anime dari database Animein.\n\nCommand:\n- .cari [judul]\n\nContoh:\n- .cari one piece\n\nGunakan .detail [judul] untuk melihat info lengkap.');
+        helpMsg = wrapInBox('CARI', 'Cari anime dari database Animein.\n\nCommand:\n- .cari [judul]\n\nContoh:\n- .cari one piece');
     } else if (helpArg === 'genre') {
         helpMsg = wrapInBox('GENRE', 'Cari rekomendasi anime berdasarkan genre.\n\nCommand:\n- .genre [nama]\n\nContoh:\n- .genre action\n- .genre romance\n\nData diambil dari Animein Explore.');
     } else if (helpArg === 'tas') {
@@ -84,9 +82,9 @@ async function execute(ctx) {
             `│11. ai      12. ban`,
             `│13. jadwal  14. hot`,
             `│15. baru    16. random`,
-            `│17. populer 18. detail`,
-            `│19. cari    20. genre`,
-            `│21. tas     22. limit`,
+            `│17. populer 18. cari`,
+            `│19. genre   20. tas`,
+            `│21. limit`,
             `└───────────────────`,
         ].join('\n');
     }

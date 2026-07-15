@@ -223,7 +223,8 @@ function getDashboardHTML() {
   input[type=number] { -moz-appearance: textfield; }
 
   /* SIDEBAR */
-  .sidebar { width: 240px; background: var(--sidebar); height: 100vh; display: flex; flex-direction: column; flex-shrink: 0; overflow-y: auto; border-right: 1px solid rgba(255,255,255,0.05); }
+  .sidebar { width: 240px; background: var(--sidebar); height: 100vh; display: flex; flex-direction: column; flex-shrink: 0; overflow-y: auto; border-right: 1px solid rgba(255,255,255,0.05); transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1), left 0.3s ease; }
+  .sidebar.closed-desktop { margin-left: -240px; }
   .sidebar-brand { padding: 32px 24px; border-bottom: 1px solid rgba(255,255,255,0.05); }
   .sidebar-brand h1 { font-size: 16px; font-weight: 800; color: #fff; letter-spacing: 0.1em; }
   .sidebar-brand p { font-size: 11px; color: var(--sidebar-text); margin-top: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
@@ -288,7 +289,7 @@ function getDashboardHTML() {
   }
   .topbar h2 { font-size: 18px; font-weight: 800; color: var(--text); letter-spacing: -0.01em; }
   .topbar-actions { display: flex; gap: 10px; align-items: center; }
-  .menu-toggle { display: none; background: none; border: none; font-size: 24px; cursor: pointer; color: var(--text); padding: 0; margin-right: 15px; }
+  .menu-toggle { display: block; background: none; border: none; font-size: 24px; cursor: pointer; color: var(--text); padding: 0; margin-right: 15px; }
 
   .content { padding: 25px 30px; flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
 
@@ -654,6 +655,7 @@ function getDashboardHTML() {
     <button class="nav-item active" onclick="showPage('dashboard', this); toggleSidebar(false)"><i data-lucide="layout-dashboard"></i><span>Dashboard</span></button>
     <button class="nav-item" onclick="showPage('prompt', this); toggleSidebar(false)"><i data-lucide="brain-circuit"></i><span>Prompt & Knowledge</span></button>
     <button class="nav-item" onclick="showPage('kuis', this); toggleSidebar(false)"><i data-lucide="trophy"></i><span>Kuis & Leaderboard</span></button>
+    <button class="nav-item" onclick="showPage('ekonomi', this); toggleSidebar(false)"><i data-lucide="coins"></i><span>Ekonomi & Toko</span></button>
     <button class="nav-item" onclick="showPage('filter', this); toggleSidebar(false)"><i data-lucide="shield-alert"></i><span>Filter Kata</span></button>
     <button class="nav-item" onclick="showPage('model', this); toggleSidebar(false)"><i data-lucide="bot"></i><span>Model AI</span></button>
     <button class="nav-item" onclick="showPage('gambar', this); toggleSidebar(false)"><i data-lucide="image"></i><span>Limit Manager</span></button>
@@ -816,6 +818,115 @@ function getDashboardHTML() {
             </div>
           </div>
         </div>
+    </div>
+
+    <!-- PAGE: EKONOMI & TOKO -->
+    <div class="page" id="page-ekonomi">
+      <div class="card" style="background: linear-gradient(135deg, #fef08a 0%, #ffffff 50%, #eff6ff 100%); border-color: #fef08a; padding: 24px; margin-bottom: 24px;">
+        <div class="card-title">Sistem Ekonomi & Toko Rara</div>
+        <p style="font-size: 13px; color: var(--muted); margin-bottom: 20px;">Kelola parameter ekonomi, tingkat pendapatan XP, status event multiplier XP, serta harga barang di Toko Rara secara realtime.</p>
+        
+        <div class="two-col" style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+          <!-- Left Column: XP & Event Config -->
+          <div>
+            <div class="card" style="margin-bottom: 20px; padding: 20px; border: 1px solid var(--border); box-shadow: var(--shadow-sm);">
+              <h3 style="font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 16px;">Pengaturan Pendapatan & Event XP</h3>
+              
+              <div style="margin-bottom: 16px;">
+                <label class="form-label" style="font-weight: 600; font-size: 12px; margin-bottom: 6px; display: block;">Base XP Rate (Persentase)</label>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <input type="number" id="ecoBaseXpRate" value="60" min="1" max="1000" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); width: 100px; font-weight: 700; outline: none; background: #fff;">
+                  <span style="font-weight: 600; color: var(--muted); font-size: 13px;">% dari default</span>
+                </div>
+                <small style="color: var(--muted); font-size: 11px; display: block; margin-top: 4px;">Persentase pendapatan base XP player (default: 60% setelah dikurangi 40%).</small>
+              </div>
+
+              <div style="border-top: 1px solid var(--border); padding-top: 16px; margin-bottom: 16px;">
+                <h4 style="font-size: 12px; font-weight: 700; margin-bottom: 12px; color: var(--accent);">Event Double/Multi XP</h4>
+                <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                  <div style="flex: 1; min-width: 120px;">
+                    <label class="form-label" style="font-size: 11px; margin-bottom: 4px; display: block;">XP Multiplier</label>
+                    <select id="ecoXpMultiplier" style="width: 100%; padding: 8px; border-radius: 8px; border: 1px solid var(--border); font-weight: 700; outline: none; background: #fff;">
+                      <option value="2">x2 XP</option>
+                      <option value="4">x4 XP</option>
+                      <option value="8">x8 XP</option>
+                    </select>
+                  </div>
+                  <div style="flex: 1; min-width: 120px;">
+                    <label class="form-label" style="font-size: 11px; margin-bottom: 4px; display: block;">Durasi Event</label>
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                      <input type="number" id="ecoXpDuration" value="60" min="1" style="width: 70px; padding: 8px; border-radius: 8px; border: 1px solid var(--border); font-weight: 700; text-align: center; outline: none; background: #fff;">
+                      <span style="font-size: 11px; color: var(--muted);">menit</span>
+                    </div>
+                  </div>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 16px;">
+                  <span style="font-size: 12px; font-weight: 600;">Status Event Multi XP</span>
+                  <button id="ecoXpToggleBtn" class="btn-sm" onclick="triggerEcoXpEvent()" style="background: var(--muted); color: white; padding: 6px 16px; font-weight: 700; border-radius: 8px; border: none; cursor: pointer; transition: background 0.2s;">OFF</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="card" style="padding: 20px; border: 1px solid var(--border); box-shadow: var(--shadow-sm);">
+              <h3 style="font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 16px;">Event Diskon Toko Rara</h3>
+              <div style="margin-bottom: 16px;">
+                <label class="form-label" style="font-weight: 600; font-size: 12px; margin-bottom: 6px; display: block;">Persentase Diskon</label>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <input type="number" id="ecoDiscountPercent" value="50" min="1" max="99" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); width: 100px; font-weight: 700; outline: none; background: #fff;">
+                  <span style="font-weight: 600; color: var(--muted); font-size: 13px;">% diskon</span>
+                </div>
+                <small style="color: var(--muted); font-size: 11px; display: block; margin-top: 4px;">Persentase potongan harga seluruh item di Toko Rara.</small>
+              </div>
+              
+              <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--border); padding-top: 16px;">
+                <span style="font-size: 12px; font-weight: 600;">Status Event Diskon Toko</span>
+                <button id="ecoDiscountToggleBtn" class="btn-sm" onclick="triggerEcoDiscountEvent()" style="background: var(--muted); color: white; padding: 6px 16px; font-weight: 700; border-radius: 8px; border: none; cursor: pointer; transition: background 0.2s;">OFF</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Column: Shop Prices Config -->
+          <div>
+            <div class="card" style="padding: 20px; border: 1px solid var(--border); box-shadow: var(--shadow-sm); height: 100%;">
+              <h3 style="font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 16px;">Harga Dasar Item Toko</h3>
+              
+              <div style="margin-bottom: 16px;">
+                <label class="form-label" style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">Custom Title (Base Price)</label>
+                <div style="display: flex; align-items: center;">
+                  <input type="number" id="priceCustomTitle" value="6500" min="0" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); width: 100%; font-weight: 700; outline: none; background: #fff;">
+                  <span style="margin-left: 8px; font-size: 12px; color: var(--muted); font-weight: 600; min-width: 25px;">XP</span>
+                </div>
+              </div>
+
+              <div style="margin-bottom: 16px;">
+                <label class="form-label" style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">Hint Pack (x3) (Base Price)</label>
+                <div style="display: flex; align-items: center;">
+                  <input type="number" id="priceHintPack" value="1800" min="0" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); width: 100%; font-weight: 700; outline: none; background: #fff;">
+                  <span style="margin-left: 8px; font-size: 12px; color: var(--muted); font-weight: 600; min-width: 25px;">XP</span>
+                </div>
+              </div>
+
+              <div style="margin-bottom: 16px;">
+                <label class="form-label" style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">Extra Gambar (+3) (Base Price)</label>
+                <div style="display: flex; align-items: center;">
+                  <input type="number" id="priceExtraImage" value="3000" min="0" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); width: 100%; font-weight: 700; outline: none; background: #fff;">
+                  <span style="margin-left: 8px; font-size: 12px; color: var(--muted); font-weight: 600; min-width: 25px;">XP</span>
+                </div>
+              </div>
+
+              <div style="margin-bottom: 24px;">
+                <label class="form-label" style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">Extra Limit (+1) (Base Price)</label>
+                <div style="display: flex; align-items: center;">
+                  <input type="number" id="priceExtraLimit" value="2500" min="0" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); width: 100%; font-weight: 700; outline: none; background: #fff;">
+                  <span style="margin-left: 8px; font-size: 12px; color: var(--muted); font-weight: 600; min-width: 25px;">XP</span>
+                </div>
+              </div>
+
+              <button class="btn-primary" onclick="saveEkonomiSettings()" style="width: 100%; padding: 12px; font-weight: 700; border-radius: 10px; background: var(--accent); color: white; border: none; cursor: pointer; transition: background 0.2s; box-shadow: var(--shadow);">Simpan Seluruh Pengaturan</button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- PAGE: LIMIT MANAGER -->
@@ -1717,7 +1828,7 @@ function getDashboardHTML() {
       target.style.display = 'block';
     }
     el.classList.add('active');
-    const titles = { dashboard: 'Dashboard', model: 'Model AI', prompt: 'Prompt & Knowledge', gambar: 'Limit Manager', laporan: 'Laporan', banned: 'Blokir User', inspector: 'User Inspector', filter: 'Filter Kata', kuis: 'Kuis & Leaderboard', logs: 'Realtime Logs', 'api-traffic': 'API Monitor' };
+    const titles = { dashboard: 'Dashboard', model: 'Model AI', prompt: 'Prompt & Knowledge', gambar: 'Limit Manager', laporan: 'Laporan', banned: 'Blokir User', inspector: 'User Inspector', filter: 'Filter Kata', kuis: 'Kuis & Leaderboard', logs: 'Realtime Logs', 'api-traffic': 'API Monitor', ekonomi: 'Ekonomi & Toko' };
     document.getElementById('pageTitle').textContent = titles[id] || id;
     if (id === 'dashboard') refresh();
     if (id === 'prompt') loadPrompt();
@@ -1727,6 +1838,7 @@ function getDashboardHTML() {
     if (id === 'banned') loadBannedPage();
     if (id === 'kuis') { loadTitles(); loadUsers(); loadQuizPool(); }
     if (id === 'logs') renderRealtimeLogs();
+    if (id === 'ekonomi') loadEkonomiSettings();
     if (id === 'model') {
       loadStats();
     }
@@ -1735,12 +1847,20 @@ function getDashboardHTML() {
   function toggleSidebar(force) {
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebarOverlay');
+    const isMobile = window.innerWidth <= 768;
     if (force === false) {
         sidebar.classList.remove('active');
         overlay.classList.remove('active');
     } else {
-        sidebar.classList.toggle('active');
-        overlay.classList.toggle('active');
+        if (isMobile) {
+            sidebar.classList.toggle('active');
+            overlay.classList.toggle('active');
+            sidebar.classList.remove('closed-desktop');
+        } else {
+            sidebar.classList.toggle('closed-desktop');
+            sidebar.classList.remove('active');
+            overlay.classList.remove('active');
+        }
     }
 }
 
@@ -2388,19 +2508,24 @@ async function updateStats() {
     });
     loadTitles();
   }
-  function updateModalTitleDropdown() {
+  function updateModalTitleDropdown(selectedTitle = '') {
     const sel = document.getElementById('editUserTitleSelect');
     if (!sel) return;
-    const currentVal = sel.value;
+    const currentVal = selectedTitle || sel.value;
     
     let html = '<option value="">(Tanpa Gelar Kustom)</option>';
     html += '<optgroup label="System Titles (Auto Fallback)">';
     html += DEFAULT_TITLES.map(t => \`<option value="\${escapeHTML(t)}">\${escapeHTML(t)}</option>\`).join('');
     html += '</optgroup>';
     
-    if (availableTitles.length > 0) {
+    let customList = [...availableTitles];
+    if (currentVal && !DEFAULT_TITLES.includes(currentVal) && !customList.includes(currentVal)) {
+      customList.push(currentVal);
+    }
+    
+    if (customList.length > 0) {
       html += '<optgroup label="Custom Titles">';
-      html += availableTitles.map(t => \`<option value="\${escapeHTML(t)}">\${escapeHTML(t)}</option>\`).join('');
+      html += customList.map(t => \`<option value="\${escapeHTML(t)}">\${escapeHTML(t)}</option>\`).join('');
       html += '</optgroup>';
     }
     
@@ -2532,7 +2657,7 @@ async function updateStats() {
       renderTitlesList();
 
       tbody.innerHTML = d.data.map((u, i) => {
-        const req = Math.floor(50 * Math.pow(u.level, 3));
+        const req = Math.floor(20 * Math.pow(u.level, 3));
         const title = getUserTitle(u.level, u.custom_title);
         const safeTitle = jsString(u.custom_title || '');
         const safeUsername = jsString(u.username);
@@ -2554,7 +2679,7 @@ async function updateStats() {
     document.getElementById('editUserLevel').value = level;
     document.getElementById('editUserXP').value = xp;
     
-    updateModalTitleDropdown();
+    updateModalTitleDropdown(customTitle);
     const sel = document.getElementById('editUserTitleSelect');
     sel.value = customTitle;
     
@@ -3246,6 +3371,118 @@ async function updateStats() {
       return;
     }
   });
+  async function loadEkonomiSettings() {
+    try {
+      const res = await fetch('/api/economy/settings');
+      const d = await res.json();
+      if (d.success) {
+        document.getElementById('ecoBaseXpRate').value = d.settings.baseXpRate || 60;
+        document.getElementById('ecoXpMultiplier').value = d.settings.xpMultiplier || 2;
+        document.getElementById('ecoXpDuration').value = d.settings.xpDuration || 60;
+        document.getElementById('ecoDiscountPercent').value = d.settings.discountPercent || 50;
+        
+        document.getElementById('priceCustomTitle').value = d.settings.priceCustomTitle || 6500;
+        document.getElementById('priceHintPack').value = d.settings.priceHintPack || 1800;
+        document.getElementById('priceExtraImage').value = d.settings.priceExtraImage || 3000;
+        document.getElementById('priceExtraLimit').value = d.settings.priceExtraLimit || 2500;
+
+        const xpBtn = document.getElementById('ecoXpToggleBtn');
+        if (d.settings.isDoubleXP) {
+          xpBtn.textContent = 'ON';
+          xpBtn.style.background = 'var(--green)';
+        } else {
+          xpBtn.textContent = 'OFF';
+          xpBtn.style.background = 'var(--muted)';
+        }
+
+        const discBtn = document.getElementById('ecoDiscountToggleBtn');
+        if (d.settings.isDiscountEvent) {
+          discBtn.textContent = 'ON';
+          discBtn.style.background = 'var(--green)';
+        } else {
+          discBtn.textContent = 'OFF';
+          discBtn.style.background = 'var(--muted)';
+        }
+      }
+    } catch(e) {
+      showToast('Gagal memuat pengaturan ekonomi.', 'error');
+    }
+  }
+
+  async function triggerEcoXpEvent() {
+    const isXpOn = document.getElementById('ecoXpToggleBtn').textContent === 'ON';
+    const multiplier = document.getElementById('ecoXpMultiplier').value;
+    const duration = document.getElementById('ecoXpDuration').value;
+
+    const res = await fetch('/api/economy/toggle-xp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active: !isXpOn, multiplier, duration })
+    });
+    const d = await res.json();
+    if (d.success) {
+      showToast('Status Event Multi XP berhasil diperbarui!', 'success');
+      loadEkonomiSettings();
+      refresh();
+    } else {
+      showToast('Gagal mengubah event XP.', 'error');
+    }
+  }
+
+  async function triggerEcoDiscountEvent() {
+    const isDiscOn = document.getElementById('ecoDiscountToggleBtn').textContent === 'ON';
+    const percent = document.getElementById('ecoDiscountPercent').value;
+
+    const res = await fetch('/api/economy/toggle-discount', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active: !isDiscOn, percent })
+    });
+    const d = await res.json();
+    if (d.success) {
+      showToast('Status Event Diskon berhasil diperbarui!', 'success');
+      loadEkonomiSettings();
+    } else {
+      showToast('Gagal mengubah event diskon.', 'error');
+    }
+  }
+
+  async function saveEkonomiSettings() {
+    const data = {
+      baseXpRate: parseInt(document.getElementById('ecoBaseXpRate').value),
+      priceCustomTitle: parseInt(document.getElementById('priceCustomTitle').value),
+      priceHintPack: parseInt(document.getElementById('priceHintPack').value),
+      priceExtraImage: parseInt(document.getElementById('priceExtraImage').value),
+      priceExtraLimit: parseInt(document.getElementById('priceExtraLimit').value),
+    };
+
+    if (Object.values(data).some(isNaN)) {
+      return showToast('Semua kolom harus diisi dengan angka valid!', 'warning');
+    }
+
+    try {
+      const res = await fetch('/api/economy/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      const d = await res.json();
+      if (d.success) {
+        showToast('Seluruh pengaturan ekonomi berhasil disimpan!', 'success');
+        loadEkonomiSettings();
+      } else {
+        showToast('Gagal menyimpan pengaturan: ' + d.error, 'error');
+      }
+    } catch(e) {
+      showToast('Gagal menyimpan pengaturan ekonomi.', 'error');
+    }
+  }
+
+  window.loadEkonomiSettings = loadEkonomiSettings;
+  window.triggerEcoXpEvent = triggerEcoXpEvent;
+  window.triggerEcoDiscountEvent = triggerEcoDiscountEvent;
+  window.saveEkonomiSettings = saveEkonomiSettings;
+
   if (window.lucide) {
     window.lucide.createIcons();
   }

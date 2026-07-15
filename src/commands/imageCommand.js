@@ -103,7 +103,6 @@ async function execute(ctx) {
                             const usage = await incrementImageLimitUsage(senderUserId, senderName);
                             setImagePromptHistory(senderName, { type: 'gambar', prompt: imageQuery, originalPrompt: rawImageQuery || imageQuery });
                             addActivity('image', senderName, `${imageQuery} (${usage.used}/${usage.limit})`, imageUrl, 'PinterestAPI', 0);
-                            await addXP(senderUserId, senderName, 10);
                             trackImageRequest(senderUserId, senderName);
                             trackStreak(senderUserId, senderName);
                         } catch (postSendErr) {

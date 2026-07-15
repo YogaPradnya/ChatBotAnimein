@@ -105,7 +105,6 @@ async function execute(ctx) {
                         const usage = await incrementImageLimitUsage(senderUserId, senderName);
                         setImagePromptHistory(senderName, { type: 'gambarkan', prompt, originalPrompt: rawPrompt || prompt });
                         addActivity('image', senderName, `${prompt} -> ${translated} (${usage.used}/${usage.limit})`, `AI Horde ${imageData.model || ''}`, 'AIHorde', 0);
-                        await addXP(senderUserId, senderName, 10);
                         trackImageRequest(senderUserId, senderName);
                         trackStreak(senderUserId, senderName);
                     } catch (postSendErr) {

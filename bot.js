@@ -410,6 +410,30 @@ async function initDB() {
         }
         console.log(`[LIMITS] CMD Default: ${CMD_DAILY_LIMIT_DEFAULT}/hari, IMG Default: ${IMAGE_DAILY_LIMIT_DEFAULT}/hari`);
 
+        // Load Economy Settings from DB
+        const baseXpVal = await settingsRepo.get(SETTINGS_KEYS.BASE_XP_RATE);
+        if (baseXpVal !== null) global.baseXpRate = parseInt(baseXpVal) || 60;
+        
+        const isDiscVal = await settingsRepo.get(SETTINGS_KEYS.IS_DISCOUNT_EVENT);
+        if (isDiscVal !== null) global.isDiscountEvent = isDiscVal === 'true';
+
+        const discPercentVal = await settingsRepo.get(SETTINGS_KEYS.DISCOUNT_PERCENT);
+        if (discPercentVal !== null) global.discountPercent = parseInt(discPercentVal) || 50;
+
+        const prTitleVal = await settingsRepo.get(SETTINGS_KEYS.PRICE_CUSTOM_TITLE);
+        if (prTitleVal !== null) global.priceCustomTitle = parseInt(prTitleVal) || 6500;
+
+        const prHintVal = await settingsRepo.get(SETTINGS_KEYS.PRICE_HINT_PACK);
+        if (prHintVal !== null) global.priceHintPack = parseInt(prHintVal) || 1800;
+
+        const prImageVal = await settingsRepo.get(SETTINGS_KEYS.PRICE_EXTRA_IMAGE);
+        if (prImageVal !== null) global.priceExtraImage = parseInt(prImageVal) || 3000;
+
+        const prLimitVal = await settingsRepo.get(SETTINGS_KEYS.PRICE_EXTRA_LIMIT);
+        if (prLimitVal !== null) global.priceExtraLimit = parseInt(prLimitVal) || 2500;
+
+        console.log(`[ECONOMY] Loaded Base XP Rate: ${global.baseXpRate}%, Discount Event: ${global.isDiscountEvent} (${global.discountPercent}%)`);
+
         // Load Banned Users from DB
         const bannedRes = await banRepo.listBannedUsers();
         bannedRes.rows.forEach(r => {
@@ -516,7 +540,7 @@ INSTRUKSI:
 /** Hitung level berdasarkan total XP. Formula: level L butuh 50 * L^3 XP. */
 function calcLevelFromXP(xp) {
     let level = 1;
-    while (xp >= Math.floor(50 * Math.pow(level, 3))) {
+    while (xp >= Math.floor(20 * Math.pow(level, 3))) {
         level++;
     }
     return level;
@@ -550,8 +574,9 @@ async function addXP(userId, username, amount) {
         userStat.username = username;
 
         // 2. Calculate New Stats (Memory Only)
-        const multiplier = (XP_MULTIPLIER > 1 && amount > 0) ? XP_MULTIPLIER : 1;
-        const finalAmount = amount * multiplier;
+        const baseAmount = amount > 0 ? Math.floor(amount * (baseXpRate / 100)) : amount;
+        const multiplier = (XP_MULTIPLIER > 1 && baseAmount > 0) ? XP_MULTIPLIER : 1;
+        const finalAmount = baseAmount * multiplier;
         
         const oldLevel = userStat.level;
         userStat.xp = Math.max(0, userStat.xp + finalAmount);
@@ -799,6 +824,13 @@ let XP_MULTIPLIER = 1;
 let doubleXPTimeout = null;
 let doubleXPEndTime = 0;
 let QUIZ_FILTER = 'all';
+global.baseXpRate = 60;
+global.isDiscountEvent = false;
+global.discountPercent = 50;
+global.priceCustomTitle = 6500;
+global.priceHintPack = 1800;
+global.priceExtraImage = 3000;
+global.priceExtraLimit = 2500;
 
 
 const stats = {
@@ -4396,6 +4428,20 @@ const runtimeState = {
     set CMD_DAILY_LIMIT_DEFAULT(value) { CMD_DAILY_LIMIT_DEFAULT = value; },
     get IMAGE_DAILY_LIMIT_DEFAULT() { return IMAGE_DAILY_LIMIT_DEFAULT; },
     set IMAGE_DAILY_LIMIT_DEFAULT(value) { IMAGE_DAILY_LIMIT_DEFAULT = value; },
+    get baseXpRate() { return global.baseXpRate; },
+    set baseXpRate(value) { global.baseXpRate = value; },
+    get isDiscountEvent() { return global.isDiscountEvent; },
+    set isDiscountEvent(value) { global.isDiscountEvent = value; },
+    get discountPercent() { return global.discountPercent; },
+    set discountPercent(value) { global.discountPercent = value; },
+    get priceCustomTitle() { return global.priceCustomTitle; },
+    set priceCustomTitle(value) { global.priceCustomTitle = value; },
+    get priceHintPack() { return global.priceHintPack; },
+    set priceHintPack(value) { global.priceHintPack = value; },
+    get priceExtraImage() { return global.priceExtraImage; },
+    set priceExtraImage(value) { global.priceExtraImage = value; },
+    get priceExtraLimit() { return global.priceExtraLimit; },
+    set priceExtraLimit(value) { global.priceExtraLimit = value; },
 };
 
 startDashboard({
@@ -4423,6 +4469,8 @@ startDashboard({
     cacheRepo,
     chatRepo,
     statsRepo,
+    settingsRepo,
+    settingsKeys: SETTINGS_KEYS,
     login,
 });
 startBot();

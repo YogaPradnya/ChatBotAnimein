@@ -63,7 +63,7 @@ async function execute(ctx) {
             // Hitung ulang level berdasarkan XP baru (bisa turun)
             const calcLevel = (xp) => {
                 let lv = 1;
-                while (xp >= Math.floor(50 * Math.pow(lv, 3))) lv++;
+                while (xp >= Math.floor(20 * Math.pow(lv, 3))) lv++;
                 return lv;
             };
             const nextLevel = calcLevel(nextXP);

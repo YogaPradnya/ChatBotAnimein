@@ -74,8 +74,6 @@ async function execute(ctx) {
             lines.push(`│ ${index + 1}. ${cleanText(text, 29)}`);
         });
 
-        lines.push('├───────────────────');
-        lines.push('│ Detail: .detail [judul]');
         lines.push('└───────────────────');
 
         await sendChatMessage(bot, `@${senderName.substring(0, 10)}\n${lines.join('\n')}`, msg.id);

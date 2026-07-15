@@ -10,7 +10,7 @@ const SHOP_ITEMS = [
         id: 1,
         name: 'Custom Title',
         description: 'Pilih gelar kustom',
-        price: 5000,
+        price: 6500,
         type: 'custom_title',
         consumable: false,
     },
@@ -18,7 +18,7 @@ const SHOP_ITEMS = [
         id: 2,
         name: 'Hint Pack (x3)',
         description: '3 hint gratis kuis',
-        price: 300,
+        price: 1800,
         type: 'free_hint',
         consumable: true,
         quantity: 3,
@@ -27,7 +27,7 @@ const SHOP_ITEMS = [
         id: 3,
         name: 'Extra Gambar (+3)',
         description: '+3 limit gambar',
-        price: 1500,
+        price: 3000,
         type: 'extra_image',
         consumable: true,
         quantity: 3,
@@ -36,7 +36,7 @@ const SHOP_ITEMS = [
         id: 4,
         name: 'Extra Limit (+1)',
         description: '+1 limit hari ini',
-        price: 1000,
+        price: 2500,
         type: 'extra_cmd_limit',
         consumable: true,
         quantity: 1,
@@ -50,15 +50,33 @@ function resolveShopRepo(repoOrDb) {
     return createShopRepo(repoOrDb);
 }
 
+function getItemPrice(item) {
+    let basePrice = item.price;
+    if (global.priceCustomTitle !== undefined) {
+        if (item.type === 'custom_title') basePrice = global.priceCustomTitle;
+        if (item.type === 'free_hint') basePrice = global.priceHintPack;
+        if (item.type === 'extra_image') basePrice = global.priceExtraImage;
+        if (item.type === 'extra_cmd_limit') basePrice = global.priceExtraLimit;
+    }
+    
+    if (global.isDiscountEvent) {
+        const factor = (100 - (global.discountPercent || 50)) / 100;
+        return Math.floor(basePrice * factor);
+    }
+    return basePrice;
+}
+
 function getShopMessage() {
     const lines = [
         `┌── 🛒 𝗧𝗢𝗞𝗢 𝗥𝗔𝗥𝗔`,
         `├───────────────────`,
     ];
     SHOP_ITEMS.forEach(item => {
-        const p = item.price.toLocaleString('id-ID');
+        const finalPrice = getItemPrice(item);
+        const p = finalPrice.toLocaleString('id-ID');
+        const discountTag = global.isDiscountEvent ? ` (🎁 DISKON ${global.discountPercent}%)` : '';
         lines.push(`│ ${item.id}. ${item.name}`);
-        lines.push(`│   ${p} XP`);
+        lines.push(`│   ${p} XP${discountTag}`);
         lines.push(`│   ${item.description}`);
     });
     lines.push(`├───────────────────`);
@@ -138,7 +156,7 @@ async function buyItem(repoOrDb, userId, username, itemId, userXP, extraArgs = {
         return { success: false, message: 'Custom Title tidak bisa dibeli dalam jumlah banyak.' };
     }
 
-    const totalPrice = item.price * quantity;
+    const totalPrice = getItemPrice(item) * quantity;
     if (userXP < totalPrice) {
         return {
             success: false,

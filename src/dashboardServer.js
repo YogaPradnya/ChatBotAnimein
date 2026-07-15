@@ -97,6 +97,22 @@ function createRuntime(scope) {
         get cacheRepo() { return scope.cacheRepo; },
         get chatRepo() { return scope.chatRepo; },
         get statsRepo() { return scope.statsRepo; },
+        get settingsRepo() { return scope.settingsRepo; },
+        get settingsKeys() { return scope.settingsKeys; },
+        get baseXpRate() { return state.baseXpRate; },
+        set baseXpRate(value) { state.baseXpRate = value; },
+        get isDiscountEvent() { return state.isDiscountEvent; },
+        set isDiscountEvent(value) { state.isDiscountEvent = value; },
+        get discountPercent() { return state.discountPercent; },
+        set discountPercent(value) { state.discountPercent = value; },
+        get priceCustomTitle() { return state.priceCustomTitle; },
+        set priceCustomTitle(value) { state.priceCustomTitle = value; },
+        get priceHintPack() { return state.priceHintPack; },
+        set priceHintPack(value) { state.priceHintPack = value; },
+        get priceExtraImage() { return state.priceExtraImage; },
+        set priceExtraImage(value) { state.priceExtraImage = value; },
+        get priceExtraLimit() { return state.priceExtraLimit; },
+        set priceExtraLimit(value) { state.priceExtraLimit = value; },
         get login() { return scope.login; },
     };
 }
@@ -641,6 +657,137 @@ function startDashboard(scope) {
         }
     });
 
+    // --- ECONOMY & SHOP SETTINGS ---
+    app.get('/api/economy/settings', async (req, res) => {
+        try {
+            res.json({
+                success: true,
+                settings: {
+                    baseXpRate,
+                    isDoubleXP: XP_MULTIPLIER > 1,
+                    xpMultiplier: XP_MULTIPLIER,
+                    xpDuration: doubleXPEndTime > Date.now() ? Math.round((doubleXPEndTime - Date.now()) / 60000) : 0,
+                    isDiscountEvent,
+                    discountPercent,
+                    priceCustomTitle,
+                    priceHintPack,
+                    priceExtraImage,
+                    priceExtraLimit
+                }
+            });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
+    app.post('/api/economy/save', async (req, res) => {
+        const { baseXpRate: bx, priceCustomTitle: pct, priceHintPack: php, priceExtraImage: pei, priceExtraLimit: pel } = req.body || {};
+        try {
+            if (bx !== undefined) {
+                baseXpRate = parseInt(bx, 10);
+                await settingsRepo.set(settingsKeys.BASE_XP_RATE, baseXpRate);
+            }
+            if (pct !== undefined) {
+                priceCustomTitle = parseInt(pct, 10);
+                await settingsRepo.set(settingsKeys.PRICE_CUSTOM_TITLE, priceCustomTitle);
+            }
+            if (php !== undefined) {
+                priceHintPack = parseInt(php, 10);
+                await settingsRepo.set(settingsKeys.PRICE_HINT_PACK, priceHintPack);
+            }
+            if (pei !== undefined) {
+                priceExtraImage = parseInt(pei, 10);
+                await settingsRepo.set(settingsKeys.PRICE_EXTRA_IMAGE, priceExtraImage);
+            }
+            if (pel !== undefined) {
+                priceExtraLimit = parseInt(pel, 10);
+                await settingsRepo.set(settingsKeys.PRICE_EXTRA_LIMIT, priceExtraLimit);
+            }
+
+            console.log(`[DASHBOARD] Economy settings updated -> Base XP: ${baseXpRate}%, CustomTitle: ${priceCustomTitle}, HintPack: ${priceHintPack}, ExtraImg: ${priceExtraImage}, ExtraLimit: ${priceExtraLimit}`);
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
+    app.post('/api/economy/toggle-xp', async (req, res) => {
+        const { active, duration, multiplier } = req.body || {};
+        try {
+            if (active) {
+                XP_MULTIPLIER = parseInt(multiplier) || 2;
+                const durationMin = parseInt(duration) || 60;
+                const durationMs = durationMin * 60 * 1000;
+                doubleXPEndTime = Date.now() + durationMs;
+
+                if (doubleXPTimeout) clearTimeout(doubleXPTimeout);
+                doubleXPTimeout = setTimeout(() => {
+                    stopDoubleXP();
+                }, durationMs);
+
+                console.log(`[EVENT] XP x${XP_MULTIPLIER} ENABLED for ${durationMin} minutes.`);
+                
+                const msg = [
+                    `╭━━ 🎊 *EVENT AKTIF* 🎊 ━━╮`,
+                    `┃ 🚀 *BONUS XP x${XP_MULTIPLIER} AKTIF!*`,
+                    `┃`,
+                    `┃ Semua kuis & interaksi memberikan`,
+                    `┃ hadiah XP *${XP_MULTIPLIER}x lipat*! 🔥`,
+                    `┣━━━━━━━━━━━━━━━━━━━┫`,
+                    `┃ ⏳ Durasi : ${durationMin} menit`,
+                    `┃ ✨ Ayo kumpulin XP sebanyaknya!`,
+                    `╰━━━━━━━━━━━━━━━━━━━╯`
+                ].join('\n');
+                sendChatMessage(bots[1], msg).catch(e => console.error("[BROADCAST ERROR]:", e.message));
+            } else {
+                stopDoubleXP();
+            }
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
+    app.post('/api/economy/toggle-discount', async (req, res) => {
+        const { active, percent } = req.body || {};
+        try {
+            isDiscountEvent = !!active;
+            discountPercent = parseInt(percent) || 50;
+
+            await settingsRepo.set(settingsKeys.IS_DISCOUNT_EVENT, isDiscountEvent);
+            await settingsRepo.set(settingsKeys.DISCOUNT_PERCENT, discountPercent);
+
+            console.log(`[EVENT] Toko Rara Discount Event updated -> Active: ${isDiscountEvent}, Discount: ${discountPercent}%`);
+
+            if (isDiscountEvent) {
+                const msg = [
+                    `╭━━ 🛒 *DISKON TOKO RARA* 🛒 ━━╮`,
+                    `┃ 🎉 *EVENT DISKON AKTIF!*`,
+                    `┃`,
+                    `┃ Seluruh item di Toko Rara diskon sebesar`,
+                    `┃ *${discountPercent}%* dari harga normal! 🔥`,
+                    `┣━━━━━━━━━━━━━━━━━━━┫`,
+                    `┃ ✨ Ketik *.toko* untuk melihat harga baru!`,
+                    `╰━━━━━━━━━━━━━━━━━━━╯`
+                ].join('\n');
+                sendChatMessage(bots[1], msg).catch(e => console.error("[BROADCAST ERROR]:", e.message));
+            } else {
+                const msg = [
+                    `╭━━ 🏁 *DISKON SELESAI* 🏁 ━━╮`,
+                    `┃ *EVENT DISKON TELAH BERAKHIR!*`,
+                    `┃`,
+                    `┃ Harga item di Toko Rara telah kembali normal.`,
+                    `╰━━━━━━━━━━━━━━━━━━━╯`
+                ].join('\n');
+                sendChatMessage(bots[1], msg).catch(e => console.error("[BROADCAST ERROR]:", e.message));
+            }
+
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
     // --- GLOBAL LIMIT SETTINGS ---
     app.get('/api/limits/global', async (req, res) => {
         try {
@@ -966,17 +1113,28 @@ function startDashboard(scope) {
             
             // Get available titles for the dropdown
             const titleRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'available_titles'" });
-            const titles = titleRes.rows.length > 0 ? JSON.parse(titleRes.rows[0].value) : [];
+            let titles = titleRes.rows.length > 0 ? JSON.parse(titleRes.rows[0].value) : [];
+            
+            // Merge with actually owned custom titles from user_stats
+            const userTitlesRes = await db.execute({ sql: "SELECT DISTINCT custom_title FROM user_stats WHERE custom_title IS NOT NULL AND custom_title != ''" });
+            const userTitles = userTitlesRes.rows.map(r => r.custom_title);
+            const mergedTitles = Array.from(new Set([...titles, ...userTitles]));
 
-            res.json({ success: true, data: result.rows, availableTitles: titles });
+            res.json({ success: true, data: result.rows, availableTitles: mergedTitles });
         } catch (e) { res.status(500).json({ success: false, error: e.message }); }
     });
 
     app.get('/api/titles', async (req, res) => {
         try {
             const result = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'available_titles'" });
-            const titles = result.rows.length > 0 ? JSON.parse(result.rows[0].value) : [];
-            res.json({ success: true, titles });
+            let titles = result.rows.length > 0 ? JSON.parse(result.rows[0].value) : [];
+            
+            // Merge with actually owned custom titles from user_stats
+            const userTitlesRes = await db.execute({ sql: "SELECT DISTINCT custom_title FROM user_stats WHERE custom_title IS NOT NULL AND custom_title != ''" });
+            const userTitles = userTitlesRes.rows.map(r => r.custom_title);
+            const mergedTitles = Array.from(new Set([...titles, ...userTitles]));
+
+            res.json({ success: true, titles: mergedTitles });
         } catch (e) { res.json({ success: false, error: e.message }); }
     });
 
