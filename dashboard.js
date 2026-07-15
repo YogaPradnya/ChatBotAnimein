@@ -805,7 +805,7 @@ function getDashboardHTML() {
         <div class="card-title">Sistem Ekonomi & Toko Rara</div>
         <p style="font-size: 13px; color: var(--muted); margin-bottom: 20px;">Kelola parameter ekonomi, tingkat pendapatan XP, status event multiplier XP, serta harga barang di Toko Rara secara realtime.</p>
         
-        <div class="two-col" style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+        <div class="two-col">
           <!-- Left Column: XP & Event Config -->
           <div>
             <div class="card" style="margin-bottom: 20px; padding: 20px; border: 1px solid var(--border); box-shadow: var(--shadow-sm);">
