@@ -4147,10 +4147,6 @@ async function processMessages(bot, messages) {
 
         // --- GLOBAL BAN CHECK (berlaku untuk semua bot) ---
         if (senderUserId && bannedUsers.has(String(senderUserId))) {
-            // Hanya balas 1x jika mereka coba pakai command dari bot yang relevan
-            if (bot.role === 'kuis' && (lowerMsg === '.tebak' || lowerMsg.startsWith('.tebak ') || lowerMsg === '.hint')) {
-                await sendChatMessage(bot, `🚫 @${senderName.substring(0, 10)} Diblokir.`, msg.id);
-            }
             continue;
         }
         
