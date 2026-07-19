@@ -826,6 +826,8 @@ let doubleXPEndTime = 0;
 let QUIZ_FILTER = 'all';
 global.baseXpRate = 60;
 global.isDiscountEvent = false;
+global.discountEndTime = 0;
+let discountTimeout = null;
 global.discountPercent = 50;
 global.priceCustomTitle = 6500;
 global.priceHintPack = 1800;
@@ -4428,6 +4430,10 @@ const runtimeState = {
     set baseXpRate(value) { global.baseXpRate = value; },
     get isDiscountEvent() { return global.isDiscountEvent; },
     set isDiscountEvent(value) { global.isDiscountEvent = value; },
+    get discountEndTime() { return global.discountEndTime; },
+    set discountEndTime(value) { global.discountEndTime = value; },
+    get discountTimeout() { return discountTimeout; },
+    set discountTimeout(value) { discountTimeout = value; },
     get discountPercent() { return global.discountPercent; },
     set discountPercent(value) { global.discountPercent = value; },
     get priceCustomTitle() { return global.priceCustomTitle; },

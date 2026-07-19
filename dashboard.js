@@ -850,9 +850,13 @@ function getDashboardHTML() {
               <h3 style="font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 16px;">Event Diskon Toko Rara</h3>
               <div style="margin-bottom: 16px;">
                 <label class="form-label" style="font-weight: 600; font-size: 12px; margin-bottom: 6px; display: block;">Persentase Diskon</label>
-                <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
                   <input type="number" id="ecoDiscountPercent" value="50" min="1" max="99" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); width: 100px; font-weight: 700; outline: none; background: #fff;">
                   <span style="font-weight: 600; color: var(--muted); font-size: 13px;">% diskon</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <input type="number" id="ecoDiscountDuration" value="60" min="1" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); width: 100px; font-weight: 700; outline: none; background: #fff;">
+                  <span style="font-weight: 600; color: var(--muted); font-size: 13px;">menit durasi</span>
                 </div>
                 <small style="color: var(--muted); font-size: 11px; display: block; margin-top: 4px;">Persentase potongan harga seluruh item di Toko Rara.</small>
               </div>
@@ -3359,6 +3363,7 @@ async function updateStats() {
         document.getElementById('ecoXpMultiplier').value = d.settings.xpMultiplier || 2;
         document.getElementById('ecoXpDuration').value = d.settings.xpDuration || 60;
         document.getElementById('ecoDiscountPercent').value = d.settings.discountPercent || 50;
+        document.getElementById('ecoDiscountDuration').value = d.settings.discountDuration || 60;
         
         document.getElementById('priceCustomTitle').value = d.settings.priceCustomTitle || 6500;
         document.getElementById('priceHintPack').value = d.settings.priceHintPack || 1800;
@@ -3411,11 +3416,12 @@ async function updateStats() {
   async function triggerEcoDiscountEvent() {
     const isDiscOn = document.getElementById('ecoDiscountToggleBtn').textContent === 'ON';
     const percent = document.getElementById('ecoDiscountPercent').value;
+    const duration = document.getElementById('ecoDiscountDuration').value;
 
     const res = await fetch('/api/economy/toggle-discount', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ active: !isDiscOn, percent })
+      body: JSON.stringify({ active: !isDiscOn, percent, duration })
     });
     const d = await res.json();
     if (d.success) {

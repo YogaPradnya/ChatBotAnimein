@@ -248,6 +248,16 @@ function startDashboard(scope) {
         sendChatMessage(bots[1], msg).catch(e => console.error("[BROADCAST ERROR]:", e.message));
     }
 
+    function stopDiscountEvent() {
+        if (!isDiscountEvent) return;
+        isDiscountEvent = false;
+        state.discountEndTime = 0;
+        if (state.discountTimeout) clearTimeout(state.discountTimeout);
+        state.discountTimeout = null;
+        settingsRepo.set(settingsKeys.IS_DISCOUNT_EVENT, false).catch(() => {});
+        console.log(`[EVENT] Toko Rara Discount Event ENDED.`);
+    }
+
     app.post('/api/filter/add', async (req, res) => {
         const { word } = req.body;
         if (!word) return res.json({ success: false });
@@ -668,6 +678,7 @@ function startDashboard(scope) {
                     xpMultiplier: XP_MULTIPLIER,
                     xpDuration: doubleXPEndTime > Date.now() ? Math.round((doubleXPEndTime - Date.now()) / 60000) : 0,
                     isDiscountEvent,
+                    discountDuration: state.discountEndTime > Date.now() ? Math.round((state.discountEndTime - Date.now()) / 60000) : 0,
                     discountPercent,
                     priceCustomTitle,
                     priceHintPack,
@@ -749,31 +760,49 @@ function startDashboard(scope) {
     });
 
     app.post('/api/economy/toggle-discount', async (req, res) => {
-        const { active, percent } = req.body || {};
+        const { active, percent, duration } = req.body || {};
         try {
-            isDiscountEvent = !!active;
-            discountPercent = parseInt(percent) || 50;
+            if (active) {
+                isDiscountEvent = true;
+                discountPercent = parseInt(percent) || 50;
+                const durationMin = parseInt(duration) || 60;
+                const durationMs = durationMin * 60 * 1000;
+                state.discountEndTime = Date.now() + durationMs;
 
-            await settingsRepo.set(settingsKeys.IS_DISCOUNT_EVENT, isDiscountEvent);
-            await settingsRepo.set(settingsKeys.DISCOUNT_PERCENT, discountPercent);
+                if (state.discountTimeout) clearTimeout(state.discountTimeout);
+                state.discountTimeout = setTimeout(() => {
+                    stopDiscountEvent();
+                    const msg = [
+                        `╭━━ 🏁 *DISKON SELESAI* 🏁 `,
+                        `┃ *EVENT DISKON TELAH BERAKHIR!*`,
+                        `┃`,
+                        `┃ Harga item di Toko Rara telah kembali normal.`,
+                        `╰━━━━━━━━━━━━━━━━━━━╯`
+                    ].join('\n');
+                    sendChatMessage(bots[1], msg).catch(e => console.error("[BROADCAST ERROR]:", e.message));
+                }, durationMs);
 
-            console.log(`[EVENT] Toko Rara Discount Event updated -> Active: ${isDiscountEvent}, Discount: ${discountPercent}%`);
+                await settingsRepo.set(settingsKeys.IS_DISCOUNT_EVENT, isDiscountEvent);
+                await settingsRepo.set(settingsKeys.DISCOUNT_PERCENT, discountPercent);
 
-            if (isDiscountEvent) {
+                console.log(`[EVENT] Toko Rara Discount Event updated -> Active: ${isDiscountEvent}, Discount: ${discountPercent}%, Duration: ${durationMin}m`);
+
                 const msg = [
-                    `╭━━ 🛒 *DISKON TOKO RARA* 🛒 ━━╮`,
+                    `╭━━ 🛒 *DISKON TOKO RARA* 🛒 `,
                     `┃ 🎉 *EVENT DISKON AKTIF!*`,
                     `┃`,
                     `┃ Seluruh item di Toko Rara diskon sebesar`,
                     `┃ *${discountPercent}%* dari harga normal! 🔥`,
                     `┣━━━━━━━━━━━━━━━━━━━┫`,
+                    `┃ ⏳ Durasi : ${durationMin} menit`,
                     `┃ ✨ Ketik *.toko* untuk melihat harga baru!`,
                     `╰━━━━━━━━━━━━━━━━━━━╯`
                 ].join('\n');
                 sendChatMessage(bots[1], msg).catch(e => console.error("[BROADCAST ERROR]:", e.message));
             } else {
+                stopDiscountEvent();
                 const msg = [
-                    `╭━━ 🏁 *DISKON SELESAI* 🏁 ━━╮`,
+                    `╭━━ 🏁 *DISKON SELESAI* 🏁 `,
                     `┃ *EVENT DISKON TELAH BERAKHIR!*`,
                     `┃`,
                     `┃ Harga item di Toko Rara telah kembali normal.`,

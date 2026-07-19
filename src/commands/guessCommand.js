@@ -45,6 +45,15 @@ async function execute(ctx) {
         const normTitle = norm(activeQuiz.original);
         const normAnswer = norm(answer);
 
+        if (!activeQuiz.lastUserGuesses) activeQuiz.lastUserGuesses = {};
+        if (activeQuiz.lastUserGuesses[senderUserId] === normAnswer) {
+            activeQuiz.isRunning = false;
+            clearQuizTimers();
+            await sendChatMessage(bot, `⚠️ @${senderName.substring(0, 10)} Terdeteksi spam jawaban yang sama!\nKuis langsung dibatalkan (Hangus).`, msg.id);
+            return true;
+        }
+        activeQuiz.lastUserGuesses[senderUserId] = normAnswer;
+
         const titleWords = normTitle.split(/\s+/).filter(w => w.length > 2);
         const userWords = normAnswer.split(/\s+/).filter(w => w.length > 2);
 
