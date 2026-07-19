@@ -4327,7 +4327,9 @@ async function startBot() {
     setInterval(async () => {
         if (isSystemOff) return; // KILL SWITCH
         for (const bot of bots) {
-            if (bot.role === 'image' && !isImageCommandActive) continue;
+            if (bot.role === 'image' && !isImageCommandActive) { bot.isFirstRun = true; continue; }
+            if (bot.role === 'info' && !isBotInfoActive) { bot.isFirstRun = true; continue; }
+            if (bot.role === 'kuis' && !isBotKuisActive) { bot.isFirstRun = true; continue; }
             if (!bot.auth.userId) continue;
             
             const data = await fetchMessages(bot);
