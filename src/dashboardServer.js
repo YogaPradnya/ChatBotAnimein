@@ -1132,10 +1132,10 @@ function startDashboard(scope) {
     app.get('/api/users/list', async (req, res) => {
         const q = req.query.q || '';
         try {
-            let sql = "SELECT * FROM user_stats ORDER BY level DESC, xp DESC LIMIT 100";
+            let sql = "SELECT s.*, m.content as core_memory FROM user_stats s LEFT JOIN user_memories m ON s.user_id = m.user_id ORDER BY s.level DESC, s.xp DESC LIMIT 100";
             let args = [];
             if (q) {
-                sql = "SELECT * FROM user_stats WHERE username LIKE ? ORDER BY level DESC, xp DESC LIMIT 100";
+                sql = "SELECT s.*, m.content as core_memory FROM user_stats s LEFT JOIN user_memories m ON s.user_id = m.user_id WHERE s.username LIKE ? ORDER BY s.level DESC, s.xp DESC LIMIT 100";
                 args = [`%${q}%`];
             }
             const result = await db.execute({ sql, args });

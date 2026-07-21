@@ -661,7 +661,7 @@ function getDashboardHTML() {
     <button class="nav-item" onclick="showPage('gambar', this); toggleSidebar(false)"><i data-lucide="image"></i><span>Limit Manager</span></button>
     <button class="nav-item" onclick="showPage('laporan', this); toggleSidebar(false)"><i data-lucide="file-warning"></i><span>Laporan</span></button>
     <button class="nav-item" onclick="showPage('banned', this); toggleSidebar(false)"><i data-lucide="user-x"></i><span>Blokir User</span></button>
-    <button class="nav-item" onclick="showPage('inspector', this); toggleSidebar(false)"><i data-lucide="id-card"></i><span>User Inspector</span></button>
+    <button class="nav-item" onclick="showPage('inspector', this); toggleSidebar(false)"><i data-lucide="id-card"></i><span>Cek & Setting Data User</span></button>
     <button class="nav-item" onclick="showPage('logs', this); toggleSidebar(false)"><i data-lucide="terminal"></i><span>Realtime Logs</span></button>
     <button class="nav-item" onclick="showPage('api-traffic', this); toggleSidebar(false)"><i data-lucide="activity"></i><span>API Monitor</span></button>
   </nav>
@@ -1238,14 +1238,14 @@ function getDashboardHTML() {
     <!-- PAGE: USER INSPECTOR -->
     <div class="page" id="page-inspector">
       <div class="card" style="background:linear-gradient(135deg,#fff7ed 0%,#ffffff 48%,#f8fafc 100%); border-color:#fed7aa;">
-        <div class="card-title">User Profile Inspector</div>
-        <p style="font-size:12px; color:var(--muted); margin-top:-12px; margin-bottom:18px;">Cari username untuk melihat XP, level, limit, status ban global, dan core memory.</p>
+        <div class="card-title">Cek & Setting Data User</div>
+        <p style="font-size:12px; color:var(--muted); margin-top:-12px; margin-bottom:18px;">Cari username untuk melihat XP, level, limit, status ban, dan mengelola data personal user.</p>
         <div class="control-row" style="align-items:flex-end; flex-wrap:wrap;">
           <div style="flex:1; min-width:240px;">
             <label class="form-label">Username</label>
             <input type="text" id="inspectorUsername" placeholder="contoh: Yogaa atau @Yogaa" onkeydown="if(event.key==='Enter') inspectUser()">
           </div>
-          <button class="btn-primary" onclick="inspectUser()" style="min-width:130px;">Inspect</button>
+          <button class="btn-primary" onclick="inspectUser()" style="min-width:130px;">Cek User</button>
         </div>
       </div>
       <div id="userInspectorResult" class="card" style="display:none;"></div>
@@ -1811,7 +1811,7 @@ function getDashboardHTML() {
       target.style.display = 'block';
     }
     el.classList.add('active');
-    const titles = { dashboard: 'Dashboard', model: 'Model AI', prompt: 'Prompt & Knowledge', gambar: 'Limit Manager', laporan: 'Laporan', banned: 'Blokir User', inspector: 'User Inspector', filter: 'Filter Kata', kuis: 'Kuis & Leaderboard', logs: 'Realtime Logs', 'api-traffic': 'API Monitor', ekonomi: 'Ekonomi & Toko' };
+    const titles = { dashboard: 'Dashboard', model: 'Model AI', prompt: 'Prompt & Knowledge', gambar: 'Limit Manager', laporan: 'Laporan', banned: 'Blokir User', inspector: 'Cek & Setting Data User', filter: 'Filter Kata', kuis: 'Kuis & Leaderboard', logs: 'Realtime Logs', 'api-traffic': 'API Monitor', ekonomi: 'Ekonomi & Toko' };
     document.getElementById('pageTitle').textContent = titles[id] || id;
     if (id === 'dashboard') refresh();
     if (id === 'prompt') loadPrompt();
@@ -2744,12 +2744,13 @@ async function updateStats() {
     const xp = Number(user?.xp || 0).toLocaleString('id-ID');
     const level = Number(user?.level || 1).toLocaleString('id-ID');
     const title = user?.custom_title ? escapeHTML(user.custom_title) : '<span style="color:var(--muted);">Belum ada</span>';
-    const coreMemory = user?.core_memory ? escapeHTML(user.core_memory) : 'Tidak ada core memory.';
+    const coreMemory = user?.core_memory || '';
     const cmdUsed = Number(cmd?.used_count || 0);
     const cmdExtra = Number(cmd?.extra_limit || 0);
     const imgUsed = Number(img?.used_count || 0);
     const imgExtra = Number(img?.extra_limit || img?.daily_limit || 0);
     const banStatus = ban ? '<span style="color:var(--red); font-weight:900;">DIBLOKIR</span>' : '<span style="color:var(--green); font-weight:900;">AKTIF</span>';
+    const userId = escapeAttr(user?.user_id || '');
     resultEl.innerHTML =
       '<div class="card-title" style="display:flex; justify-content:space-between; align-items:center; gap:12px;">' +
         '<span>@' + displayName + '</span>' + banStatus +
@@ -2775,15 +2776,18 @@ async function updateStats() {
         '</div>' +
       '</div>' +
       '<div style="padding:16px; border:1px solid var(--border); border-radius:16px; background:#f8fafc; margin-bottom:18px;">' +
-        '<div class="form-label">Core Memory</div>' +
-        '<pre style="white-space:pre-wrap; font-size:12px; line-height:1.6; color:var(--text); margin:0; font-family:inherit;">' + coreMemory + '</pre>' +
+        '<div class="form-label" style="margin-bottom:8px;">Data Personal (digunakan AI saat ngobrol)</div>' +
+        '<p style="font-size:11px; color:var(--muted); margin-bottom:10px;">Data ini hanya bisa diatur oleh user sendiri via command <b>.data</b> di chat. Admin hanya bisa melihat.</p>' +
+        (coreMemory
+          ? '<pre style="white-space:pre-wrap; font-size:13px; line-height:1.8; color:var(--text); margin:0; font-family:inherit; padding:12px; background:#fff; border:1px solid var(--border); border-radius:10px;">' + escapeHTML(coreMemory) + '</pre>'
+          : '<div style="padding:12px; background:#fff; border:1px solid var(--border); border-radius:10px; color:var(--muted); font-size:13px; font-style:italic;">Belum ada data personal.</div>') +
       '</div>' +
       '<div style="display:flex; flex-wrap:wrap; gap:10px;">' +
-        '<button class="btn-sm btn-sm-del cmd-limit-reset" data-username="' + escapeAttr(username) + '" data-userid="' + escapeAttr(user?.user_id || '') + '">Reset Command Limit</button>' +
-        '<button class="btn-sm btn-sm-del image-limit-reset" data-username="' + escapeAttr(username) + '" data-userid="' + escapeAttr(user?.user_id || '') + '">Reset Image Limit</button>' +
+        '<button class="btn-sm btn-sm-del cmd-limit-reset" data-username="' + escapeAttr(username) + '" data-userid="' + userId + '">Reset Command Limit</button>' +
+        '<button class="btn-sm btn-sm-del image-limit-reset" data-username="' + escapeAttr(username) + '" data-userid="' + userId + '">Reset Image Limit</button>' +
         (ban
-          ? '<button class="btn-sm btn-sm-edit inspector-unban" data-username="' + escapeAttr(username) + '" data-userid="' + escapeAttr(user?.user_id || '') + '">Unblokir Global</button>'
-          : '<button class="btn-sm btn-sm-del inspector-ban" data-username="' + escapeAttr(username) + '" data-userid="' + escapeAttr(user?.user_id || '') + '">Blokir Global</button>') +
+          ? '<button class="btn-sm btn-sm-edit inspector-unban" data-username="' + escapeAttr(username) + '" data-userid="' + userId + '">Unblokir Global</button>'
+          : '<button class="btn-sm btn-sm-del inspector-ban" data-username="' + escapeAttr(username) + '" data-userid="' + userId + '">Blokir Global</button>') +
       '</div>';
   }
 

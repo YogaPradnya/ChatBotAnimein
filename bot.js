@@ -504,9 +504,17 @@ async function updateUserMemory(userId, username, chatHistory) {
         const stats = USER_STATS_CACHE[userId];
         if (!stats) return;
 
+        // Jika user sudah mengisi data manual via .data, jangan timpa
+        const existingMemory = stats.core_memory || '';
+        const manualLines = existingMemory.split('\n').filter(l => l.trim());
+        if (manualLines.length > 0) {
+            console.log(`[CORE MEMORY] Skip auto-update untuk ${username}: user sudah set data manual (${manualLines.length} items).`);
+            return;
+        }
+
         // Ambil hanya 5 pesan terakhir untuk rangkuman (Hemat Token)
         const recentChat = chatHistory.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n');
-        const oldMemory = stats.core_memory || 'Belum ada memori.';
+        const oldMemory = existingMemory || 'Belum ada memori.';
 
         const memoryPrompt = `Tugas: Perbarui "Core Memory" (Profil Ringkas) untuk user @${username} berdasarkan percakapan terbaru.
 Core Memory Lama: ${oldMemory}
@@ -2815,15 +2823,15 @@ function polishAiAnswer(answer, userMessage, replyText = '') {
 }
 
 /** Groq (Llama 3.1) - kualitas lebih baik */
-async function askGroq(index, userMessage, senderName, contextData = '', chatHistory = [], replyText = '') {
+async function askGroq(index, userMessage, senderName, contextData = '', chatHistory = [], replyText = '', senderUserId = null) {
     const client = groqClients[index];
     const stat = stats.otak[index];
     
     stat.requests++;
     
     // Inject CORE MEMORY (Solution 3)
-    const userStats = USER_STATS_CACHE[senderName];
-    const coreMemory = (userStats && userStats.core_memory) ? `\n[CORE MEMORY @${senderName}]: ${userStats.core_memory}` : '';
+    const userStats = USER_STATS_CACHE[senderUserId];
+    const coreMemory = (userStats && userStats.core_memory) ? `\n[DATA PERSONAL @${senderName}]: ${userStats.core_memory}` : '';
     
     const systemContent = `${personalizeSystemPrompt(SYSTEM_PROMPT, senderName)}${coreMemory}${contextData}`;
     const replyContext = sanitizeReplyContext(replyText);
@@ -3488,13 +3496,13 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
 
         try {
             // Update Core Memory setiap 5 interaksi (Hemat Token)
-            USER_CHAT_COUNT[senderName] = (USER_CHAT_COUNT[senderName] || 0) + 1;
-            if (USER_CHAT_COUNT[senderName] >= 5) {
-                USER_CHAT_COUNT[senderName] = 0;
-                updateUserMemory(senderName, history);
+            USER_CHAT_COUNT[senderUserId || senderName] = (USER_CHAT_COUNT[senderUserId || senderName] || 0) + 1;
+            if (USER_CHAT_COUNT[senderUserId || senderName] >= 5) {
+                USER_CHAT_COUNT[senderUserId || senderName] = 0;
+                updateUserMemory(senderUserId || senderName, senderName, history);
             }
 
-            const { text, tokens } = await askGroq(i, userMessage, senderName, finalContext, history, replyText);
+            const { text, tokens } = await askGroq(i, userMessage, senderName, finalContext, history, replyText, senderUserId);
             const finalText = polishAiAnswer(text, userMessage, replyText);
             if (finalText) {
                 stats.lastUsedGroq = i;
@@ -4060,11 +4068,52 @@ async function handleAnimeTagInstruction(ctx) {
 
     const tagNumber = extractAnimeTagNumber(cleanMsg);
     if (tagNumber > 0) {
+        // PRIORITAS 1: Cek apakah ada pesan reply (replyText)
+        const replyText = getReplyText(msg);
+        if (replyText) {
+            // Cek apakah pesan reply berisi list judul anime bernomor (misal rekomendasi baru)
+            const replyTitles = extractNumberedAnimeTitles(replyText);
+            if (replyTitles.length) {
+                console.log(`[TAG ANIME] [REPLAY] parsed reply titles count=${replyTitles.filter(Boolean).length}, requested_no=${tagNumber}`);
+                const hydrated = await hydrateAnimeTitlesForTagCache(replyTitles, senderName, senderUserId, 'reply-list');
+                const hydratedSelected = selectAnimeByTagNumber(hydrated, tagNumber);
+                if (hydratedSelected) return sendAnimeTag(bot, msg, hydratedSelected, `reply-no:${tagNumber}`);
+            }
+
+            // Cek apakah pesan reply berupa format baris tunggal / satu judul
+            const replyTitle = extractTitleFromNumberedList(replyText, tagNumber);
+            if (replyTitle) {
+                const candidates = await fetchAnimeTagCandidates(replyTitle, 6);
+                const replySelected = candidates.find(item => isStrongAnimeTitleMatch(replyTitle, item.title || item.name));
+                if (replySelected) {
+                    saveRecentAnimeList(senderName, senderUserId, [replySelected], `reply:${replyTitle}`);
+                    return sendAnimeTag(bot, msg, { ...replySelected, requestedTitle: replyTitle }, `reply-no:${tagNumber}`);
+                }
+                const topTitle = candidates[0]?.title || candidates[0]?.name || 'none';
+                console.warn(`[TAG ANIME] [REPLAY] Reply title mismatch: requested="${replyTitle}", top="${topTitle}"`);
+            }
+        }
+
+        // PRIORITAS 2: Cek cache global user jika tidak ada reply / reply tidak valid
         const recent = getRecentAnimeList(senderName, senderUserId);
-        const selected = selectAnimeByTagNumber(recent?.items, tagNumber);
-        if (!selected) {
-            const listMemory = getRecentAnimeListText(senderName, senderUserId);
-            const memoryTitle = listMemory?.titles?.[tagNumber - 1];
+        const listMemory = getRecentAnimeListText(senderName, senderUserId);
+
+        // Jika ada list memory teks mentah yang LEBIH BARU daripada cache terhydrasi,
+        // artinya cache terhydrasi saat ini adalah cache LAMA dari rekomendasi sebelumnya yang belum selesai terhydrasi.
+        const isRecentStale = recent && listMemory && listMemory.savedAt > recent.savedAt;
+
+        if (recent && !isRecentStale) {
+            const selected = selectAnimeByTagNumber(recent.items, tagNumber);
+            if (selected) {
+                const selectedTitle = selected.title || selected.name || '';
+                console.log(`[TAG ANIME] cache select no=${tagNumber}, source="${recent.source || '-'}", title="${selectedTitle}", requested="${selected.requestedTitle || selectedTitle}"`);
+                return sendAnimeTag(bot, msg, selected, `no:${tagNumber}`);
+            }
+        }
+
+        // PRIORITAS 3: Fallback ke teks memori global
+        if (listMemory) {
+            const memoryTitle = listMemory.titles?.[tagNumber - 1];
             if (memoryTitle) {
                 const memorySelected = await resolveAnimeFromTitleStrict(memoryTitle);
                 if (memorySelected) {
@@ -4075,36 +4124,13 @@ async function handleAnimeTagInstruction(ctx) {
                     return sendAnimeTag(bot, msg, memorySelected, `list-memory-no:${tagNumber}`);
                 }
             }
-
-            const replyText = getReplyText(msg);
-            const replyTitles = extractNumberedAnimeTitles(replyText);
-            if (replyTitles.length) {
-                console.log(`[TAG ANIME] parsed reply titles count=${replyTitles.filter(Boolean).length}, requested_no=${tagNumber}`);
-                const hydrated = await hydrateAnimeTitlesForTagCache(replyTitles, senderName, senderUserId, 'reply-list');
-                const hydratedSelected = selectAnimeByTagNumber(hydrated, tagNumber);
-                if (hydratedSelected) return sendAnimeTag(bot, msg, hydratedSelected, `reply-no:${tagNumber}`);
-            }
-
-            const replyTitle = extractTitleFromNumberedList(replyText, tagNumber);
-            if (replyTitle) {
-                const candidates = await fetchAnimeTagCandidates(replyTitle, 6);
-                const replySelected = candidates.find(item => isStrongAnimeTitleMatch(replyTitle, item.title || item.name));
-                if (replySelected) {
-                    saveRecentAnimeList(senderName, senderUserId, [replySelected], `reply:${replyTitle}`);
-                    return sendAnimeTag(bot, msg, { ...replySelected, requestedTitle: replyTitle }, `reply-no:${tagNumber}`);
-                }
-                const topTitle = candidates[0]?.title || candidates[0]?.name || 'none';
-                console.warn(`[TAG ANIME] Reply title mismatch: requested="${replyTitle}", top="${topTitle}"`);
-            }
-            const replyPreview = replyText ? previewReplayValue(replyText) : '';
-            console.warn(`[TAG ANIME] cache kosong dan replay tidak bisa dipakai. no=${tagNumber}, replay_len=${replyText.length}, replay_preview="${replyPreview}"`);
-            logReplayDiagnostics(msg);
-            await sendChatMessage(bot, wrapInBox('TAG ANIME', `List rekomendasi belum ada atau nomor ${tagNumber} tidak tersedia.`), msg.id);
-            return true;
         }
-        const selectedTitle = selected.title || selected.name || '';
-        console.log(`[TAG ANIME] cache select no=${tagNumber}, source="${recent?.source || '-'}", title="${selectedTitle}", requested="${selected.requestedTitle || selectedTitle}"`);
-        return sendAnimeTag(bot, msg, selected, `no:${tagNumber}`);
+
+        const replyPreview = replyText ? previewReplayValue(replyText) : '';
+        console.warn(`[TAG ANIME] cache kosong dan replay tidak bisa dipakai. no=${tagNumber}, replay_len=${replyText ? replyText.length : 0}, replay_preview="${replyPreview}"`);
+        logReplayDiagnostics(msg);
+        await sendChatMessage(bot, wrapInBox('TAG ANIME', `List rekomendasi belum ada atau nomor ${tagNumber} tidak tersedia.`), msg.id);
+        return true;
     }
 
     const query = extractAnimeTagQuery(cleanMsg);
@@ -4274,6 +4300,8 @@ async function processMessages(bot, messages) {
                 fetchAnimeDetailByQuery,
                 fetchGenresList,
                 fetchByGenre,
+                USER_STATS_CACHE,
+                XP_PENDING_UPDATES
             };
             if (await handleAnimeTagInstruction(infoCommandContext)) continue;
             if (await commands.handleInfoCommand(infoCommandContext)) continue;

@@ -23,7 +23,7 @@ const genreCommand = require('./genreCommand');
 const tasCommand = require('./tasCommand');
 const limitCommand = require('./limitCommand');
 const createImageCommand = require('./createImageCommand');
-
+const dataCommand = require('./dataCommand');
 
 // Cooldown global untuk .hint (30 detik)
 const HINT_COOLDOWN_MS = 30 * 1000;
@@ -153,6 +153,10 @@ async function handleInfoCommand(ctx) {
 
     if (lowerMsg === '.genre' || lowerMsg.startsWith('.genre ')) {
         return genreCommand.execute(ctx);
+    }
+
+    if (lowerMsg === '.data' || lowerMsg.startsWith('.data ')) {
+        return dataCommand.execute(ctx);
     }
 
     return false;
