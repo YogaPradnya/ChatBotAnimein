@@ -477,8 +477,8 @@ setInterval(async () => {
         const memoryBatch = [];
         for (const [userId, amount] of Object.entries(XP_PENDING_UPDATES)) {
             const userStats = USER_STATS_CACHE[userId];
-            if (userStats && userStats.core_memory) {
-                memoryBatch.push(memoryRepo.buildUpsertBatch(userId, userStats.username || '', userStats.core_memory));
+            if (userStats && userStats.core_memory !== undefined) {
+                memoryBatch.push(memoryRepo.buildUpsertBatch(userId, userStats.username || '', userStats.core_memory || ''));
             }
         }
         if (memoryBatch.length > 0) {
@@ -2831,7 +2831,17 @@ async function askGroq(index, userMessage, senderName, contextData = '', chatHis
     
     // Inject CORE MEMORY (Solution 3)
     const userStats = USER_STATS_CACHE[senderUserId];
-    const coreMemory = (userStats && userStats.core_memory) ? `\n[DATA PERSONAL @${senderName}]: ${userStats.core_memory}` : '';
+    let coreMemory = '';
+    if (userStats && userStats.core_memory) {
+        const memoryLines = userStats.core_memory.split('\n').filter(l => l.trim());
+        if (memoryLines.length > 0) {
+            coreMemory = `\n\n=== INFORMASI PENTING TENTANG USER @${senderName} ===\n` +
+                         `Kamu sedang berbicara dengan @${senderName}. Kamu WAJIB menyelaraskan jawabanmu dengan fakta & preferensi personal user di bawah ini:\n` +
+                         memoryLines.map(line => `- ${line}`).join('\n') +
+                         `\nInstruksi: Posisikan dirimu dan sesuaikan ingatanmu dengan informasi di atas saat merespon @${senderName}. Jangan menyangkal data tersebut.\n` +
+                         `==================================================\n\n`;
+        }
+    }
     
     const systemContent = `${personalizeSystemPrompt(SYSTEM_PROMPT, senderName)}${coreMemory}${contextData}`;
     const replyContext = sanitizeReplyContext(replyText);
