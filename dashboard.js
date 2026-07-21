@@ -625,12 +625,18 @@ function getDashboardHTML() {
     #page-prompt.dash-flex .knowledge-col { height: auto; margin-top: 20px; }
     
     .page { height: auto !important; overflow: visible !important; }
-    .table-wrap { border-radius: 8px; margin: 0 -10px; width: calc(100% + 20px); }
+    .table-wrap { border-radius: 8px; margin: 0 -10px; width: calc(100% + 20px); overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
     th, td { padding: 8px 10px; font-size: 11px; }
     .td-key { max-width: 150px; word-break: break-all; white-space: normal; }
     .btn-sm-edit { padding: 4px 8px; font-size: 10px; }
     
     .topbar-actions .bot-toggle-wrap { display: none !important; } 
+  }
+
+  @media (max-width: 480px) {
+    .stats-grid { grid-template-columns: 1fr; gap: 10px; }
+    .stat-card { padding: 14px; }
+    .stat-card .value { font-size: 20px; }
   }
 
   @media (max-width: 480px) {
@@ -3311,11 +3317,11 @@ async function updateStats() {
   }
 
   function escapeHtml(value) {
-    return String(value).replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
+    return escapeHTML(value);
   }
 
   function escapeAttr(value) {
-    return escapeHtml(value).replace(/&quot;/g, '&quot;');
+    return escapeHTML(value);
   }
 
   document.addEventListener('click', function(event) {
