@@ -6,13 +6,33 @@ async function execute(ctx) {
         senderUserId,
         sendChatMessage,
         cleanMsg,
-        USER_STATS_CACHE
+        USER_STATS_CACHE,
+        runtimeRepo
     } = ctx;
 
-    // Pastikan user ada di cache
+    // Pastikan user ada di cache — load dari database jika belum ada
     if (!USER_STATS_CACHE[senderUserId]) {
-        // Fallback jika belum ter-load (akan diload otomatis oleh fungsi lain nanti, tapi kita coba set basic dulu)
-        USER_STATS_CACHE[senderUserId] = { username: senderName, xp: 0, level: 1, custom_title: null, core_memory: '' };
+        try {
+            if (runtimeRepo) {
+                const res = await runtimeRepo.getUserStatsWithMemory(senderUserId);
+                if (res.rows.length > 0) {
+                    USER_STATS_CACHE[senderUserId] = {
+                        username: res.rows[0].username || senderName,
+                        xp: res.rows[0].xp,
+                        level: res.rows[0].level,
+                        custom_title: res.rows[0].custom_title,
+                        core_memory: res.rows[0].core_memory || ''
+                    };
+                } else {
+                    USER_STATS_CACHE[senderUserId] = { username: senderName, xp: 0, level: 1, custom_title: null, core_memory: '' };
+                }
+            } else {
+                USER_STATS_CACHE[senderUserId] = { username: senderName, xp: 0, level: 1, custom_title: null, core_memory: '' };
+            }
+        } catch (e) {
+            console.error(`[DATA CMD] Gagal load stats untuk ${senderName}:`, e.message);
+            USER_STATS_CACHE[senderUserId] = { username: senderName, xp: 0, level: 1, custom_title: null, core_memory: '' };
+        }
     }
 
     const args = cleanMsg.split(' ').slice(1).join(' ').trim();
@@ -31,6 +51,7 @@ async function execute(ctx) {
 
     if (args.toLowerCase() === 'reset') {
         USER_STATS_CACHE[senderUserId].core_memory = '';
+        USER_STATS_CACHE[senderUserId]._hasManualData = false;
         if (ctx.XP_PENDING_UPDATES) ctx.XP_PENDING_UPDATES[senderUserId] = (ctx.XP_PENDING_UPDATES[senderUserId] || 0) + 0;
         await sendChatMessage(bot, `✅ @${senderName.substring(0, 10)} Semua data pribadimu telah direset.`, msg.id);
         return true;
@@ -45,6 +66,7 @@ async function execute(ctx) {
         }
         memoryLines.splice(num - 1, 1);
         USER_STATS_CACHE[senderUserId].core_memory = memoryLines.join('\n');
+        USER_STATS_CACHE[senderUserId]._hasManualData = memoryLines.length > 0;
         if (ctx.XP_PENDING_UPDATES) ctx.XP_PENDING_UPDATES[senderUserId] = (ctx.XP_PENDING_UPDATES[senderUserId] || 0) + 0;
         await sendChatMessage(bot, `✅ Data nomor ${num} berhasil dihapus.`, msg.id);
         return true;
@@ -63,6 +85,7 @@ async function execute(ctx) {
 
     memoryLines.push(args);
     USER_STATS_CACHE[senderUserId].core_memory = memoryLines.join('\n');
+    USER_STATS_CACHE[senderUserId]._hasManualData = true;
     if (ctx.XP_PENDING_UPDATES) ctx.XP_PENDING_UPDATES[senderUserId] = (ctx.XP_PENDING_UPDATES[senderUserId] || 0) + 0;
 
     await sendChatMessage(bot, `✅ @${senderName.substring(0, 10)} Data berhasil ditambahkan ke list nomor ${memoryLines.length}!`, msg.id);

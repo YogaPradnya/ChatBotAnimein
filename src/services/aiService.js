@@ -215,7 +215,7 @@ function createAiService(deps) {
                     addActivity('anime_recommendation', senderName, question, followUpRecommendation.text, followUpRecommendation.provider || 'Animein Follow-up', 0);
                     await addXP(senderUserId, senderName, 10);
                     trackStreak(senderUserId, senderName);
-                    saveChatLog(senderName, question, followUpRecommendation.text, followUpRecommendation.provider || 'Animein Follow-up', followUpRecommendation.tokens || 0);
+                    saveChatLog(senderUserId, senderName, question, followUpRecommendation.text, followUpRecommendation.provider || 'Animein Follow-up', followUpRecommendation.tokens || 0);
                 }
                 return true;
             }
@@ -230,7 +230,7 @@ function createAiService(deps) {
                 addActivity('anime_recommendation', senderName, question, aiPlannedRecommendation.text, aiPlannedRecommendation.provider || 'Animein AI Planner', 0);
                 await addXP(senderUserId, senderName, 10);
                 trackStreak(senderUserId, senderName);
-                saveChatLog(senderName, question, aiPlannedRecommendation.text, aiPlannedRecommendation.provider || 'Animein AI Planner', aiPlannedRecommendation.tokens || 0);
+                saveChatLog(senderUserId, senderName, question, aiPlannedRecommendation.text, aiPlannedRecommendation.provider || 'Animein AI Planner', aiPlannedRecommendation.tokens || 0);
             }
             return true;
         }
@@ -244,7 +244,7 @@ function createAiService(deps) {
                     addActivity('anime_recommendation', senderName, question, deterministicGenreAnswer.text, deterministicGenreAnswer.provider || 'Animein Genre', 0);
                     await addXP(senderUserId, senderName, 10);
                     trackStreak(senderUserId, senderName);
-                    saveChatLog(senderName, question, deterministicGenreAnswer.text, deterministicGenreAnswer.provider || 'Animein Genre', deterministicGenreAnswer.tokens || 0);
+                    saveChatLog(senderUserId, senderName, question, deterministicGenreAnswer.text, deterministicGenreAnswer.provider || 'Animein Genre', deterministicGenreAnswer.tokens || 0);
                 }
                 return true;
             }
@@ -284,7 +284,7 @@ function createAiService(deps) {
                     addActivity('anime_data', senderName, question, animeResponse, 'AnimeData', 0);
                     await addXP(senderUserId, senderName, 10);
                     trackStreak(senderUserId, senderName);
-                    saveChatLog(senderName, question, animeResponse, 'AnimeData', 0);
+                    saveChatLog(senderUserId, senderName, question, animeResponse, 'AnimeData', 0);
                 } else {
                     console.warn(`[ANIME DATA] Gagal kirim response anime data ke ${senderName}`);
                 }
@@ -311,7 +311,7 @@ function createAiService(deps) {
         }
         await addXP(senderUserId, senderName, 10);
         trackStreak(senderUserId, senderName);
-        saveChatLog(senderName, question, aiText, provider, tokens);
+        saveChatLog(senderUserId, senderName, question, aiText, provider, tokens);
         return true;
     }
 

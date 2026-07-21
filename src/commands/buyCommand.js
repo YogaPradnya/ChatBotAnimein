@@ -46,8 +46,14 @@ async function execute(ctx) {
             }
         }
 
-        if (isNaN(itemId)) {
-            await sendChatMessage(bot, formatCommandUsage(senderName, '.beli [nomor]\nKetik .toko utk daftar.'), msg.id);
+        if (isNaN(itemId) || buyQuantity < 1) {
+            await sendChatMessage(bot, formatCommandUsage(senderName, '.beli [nomor]\n.beli [nomor] - [jumlah]\nKetik .toko utk daftar.'), msg.id);
+            return true;
+        }
+
+        // Validasi: custom title (item 1) butuh nama title
+        if (itemId === 1 && !titleName) {
+            await sendChatMessage(bot, formatCommandUsage(senderName, '.beli 1 [nama gelar]\nCth: .beli 1 Wibu Sejati'), msg.id);
             return true;
         }
 

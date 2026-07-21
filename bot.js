@@ -130,6 +130,7 @@ async function initDB() {
         await db.execute(`
             CREATE TABLE IF NOT EXISTS chat_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT,
                 username TEXT,
                 pertanyaan TEXT,
                 jawaban TEXT,
@@ -138,6 +139,7 @@ async function initDB() {
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         `);
+        await db.execute(`ALTER TABLE chat_logs ADD COLUMN user_id TEXT`).catch(e => ignoreExpectedError(e, { scope: 'DB MIGRATION', detail: 'chat_logs.user_id' }));
         await db.execute(`
             CREATE TABLE IF NOT EXISTS response_cache (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -505,16 +507,17 @@ async function updateUserMemory(userId, username, chatHistory) {
         if (!stats) return;
 
         // Jika user sudah mengisi data manual via .data, jangan timpa
-        const existingMemory = stats.core_memory || '';
-        const manualLines = existingMemory.split('\n').filter(l => l.trim());
-        if (manualLines.length > 0) {
-            console.log(`[CORE MEMORY] Skip auto-update untuk ${username}: user sudah set data manual (${manualLines.length} items).`);
+        if (stats._hasManualData) {
+            console.log(`[CORE MEMORY] Skip auto-update untuk ${username}: user sudah set data manual.`);
             return;
         }
 
+        // Safety check: pastikan groqClients tersedia
+        if (!groqClients || groqClients.length === 0) return;
+
         // Ambil hanya 5 pesan terakhir untuk rangkuman (Hemat Token)
         const recentChat = chatHistory.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n');
-        const oldMemory = existingMemory || 'Belum ada memori.';
+        const oldMemory = stats.core_memory || 'Belum ada memori.';
 
         const memoryPrompt = `Tugas: Perbarui "Core Memory" (Profil Ringkas) untuk user @${username} berdasarkan percakapan terbaru.
 Core Memory Lama: ${oldMemory}
@@ -536,6 +539,12 @@ INSTRUKSI:
             max_tokens: 150,
             temperature: 0.3
         });
+
+        // Safety check: pastikan response memiliki choices
+        if (!res.choices || res.choices.length === 0 || !res.choices[0].message) {
+            console.warn(`[CORE MEMORY] Response kosong dari Groq untuk ${username}.`);
+            return;
+        }
 
         const newMemory = res.choices[0].message.content.trim();
         stats.core_memory = newMemory;
@@ -639,10 +648,11 @@ const expireQuiz = quizService.expireQuiz;
 const startQuiz = quizService.startQuiz;
 
 
-async function saveChatLog(username, question, answer, provider, tokens) {
+async function saveChatLog(userId, username, question, answer, provider, tokens) {
     if (!CONFIG.TURSO_URL) return;
     try {
         await chatRepo.insertChatLog({
+            userId,
             username,
             question,
             answer,
@@ -664,8 +674,7 @@ async function checkCache(question) {
     if (Math.random() < 0.1) return null;
 
     try {
-        const result = await cacheRepo.findResponseByQuestionKey(key);
-        
+        const result = await cacheRepo.findCacheByQuestionKey(key);
         if (result.rows.length > 0) {
             let answerData = result.rows[0].answer;
             let variations = [];
@@ -2860,15 +2869,30 @@ async function askGroq(index, userMessage, senderName, contextData = '', chatHis
         temperature: 0.75,
     }).withResponse();
 
+    // Safety check: pastikan response memiliki choices yang valid
+    if (!completion.choices || completion.choices.length === 0 || !completion.choices[0].message) {
+        console.warn(`[GROQ] Otak #${index+1} mengembalikan response kosong untuk ${senderName}.`);
+        stat.errors++;
+        stat.lastError = 'Empty choices from API';
+        return { text: '', tokens: 0 };
+    }
+
     const answer = completion.choices[0].message.content;
 
     if (response && response.headers) {
-        stat.remainingReqs = response.headers.get('x-ratelimit-remaining-requests') || '?';
-        let rTokens = response.headers.get('x-ratelimit-remaining-tokens');
-        if (rTokens) {
-            stat.remainingTokensDay = parseInt(rTokens).toLocaleString('id-ID');
-        } else {
-            stat.remainingTokensDay = '?';
+        try {
+            const getHeader = typeof response.headers.get === 'function'
+                ? (key) => response.headers.get(key)
+                : (key) => response.headers[key];
+            stat.remainingReqs = getHeader('x-ratelimit-remaining-requests') || '?';
+            let rTokens = getHeader('x-ratelimit-remaining-tokens');
+            if (rTokens) {
+                stat.remainingTokensDay = parseInt(rTokens).toLocaleString('id-ID');
+            } else {
+                stat.remainingTokensDay = '?';
+            }
+        } catch (_) {
+            // Abaikan error parsing header
         }
     }
 
@@ -3479,7 +3503,7 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
     let history = [];
     
     // Ambil riwayat pendek agar konteks obrolan tetap nyambung tanpa boros token.
-    const dbHistory = await getHistoryFromDB(senderName, 8); 
+    const dbHistory = await getHistoryFromDB(senderUserId, senderName, 8); 
     history = dbHistory.messages.slice(-12); // Maksimal 12 message terakhir / sekitar 6 percakapan
     const lastTime = dbHistory.lastTime;
     
@@ -3524,8 +3548,22 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
         } catch (err) {
             stat.errors++;
             stat.lastError = err.message.slice(0, 100);
-            if (err.message.includes('429') || err.status === 429) {
+            const errStatus = err.status || 0;
+            const errMsg = err.message || '';
+
+            if (errMsg.includes('429') || errStatus === 429) {
+                // Rate limit: cooldown standar
                 stat.cooldownUntil = nowLoop + CONFIG.GROQ_COOLDOWN;
+            } else if (errStatus === 401 || errStatus === 403) {
+                // API key invalid/expired: cooldown panjang (10 menit)
+                stat.cooldownUntil = nowLoop + 600000;
+                console.error(`[GROQ] Otak #${i+1} API key invalid/expired. Cooldown 10 menit.`);
+            } else if (errStatus >= 500) {
+                // Server error (500, 502, 503): cooldown standar
+                stat.cooldownUntil = nowLoop + CONFIG.GROQ_COOLDOWN;
+            } else if (errStatus === 400) {
+                // Bad request (context too long, dll): cooldown pendek (30 detik)
+                stat.cooldownUntil = nowLoop + 30000;
             }
         }
     }
@@ -4311,7 +4349,8 @@ async function processMessages(bot, messages) {
                 fetchGenresList,
                 fetchByGenre,
                 USER_STATS_CACHE,
-                XP_PENDING_UPDATES
+                XP_PENDING_UPDATES,
+                runtimeRepo
             };
             if (await handleAnimeTagInstruction(infoCommandContext)) continue;
             if (await commands.handleInfoCommand(infoCommandContext)) continue;
@@ -4364,30 +4403,34 @@ async function startBot() {
     // Main Polling Loop
     setInterval(async () => {
         if (isSystemOff) return; // KILL SWITCH
-        for (const bot of bots) {
-            if (bot.role === 'image' && !isImageCommandActive) { bot.isFirstRun = true; continue; }
-            if (bot.role === 'info' && !isBotInfoActive) { bot.isFirstRun = true; continue; }
-            if (bot.role === 'kuis' && !isBotKuisActive) { bot.isFirstRun = true; continue; }
-            if (!bot.auth.userId) continue;
-            
-            const data = await fetchMessages(bot);
-            if (!data) continue;
+        try {
+            for (const bot of bots) {
+                if (bot.role === 'image' && !isImageCommandActive) { bot.isFirstRun = true; continue; }
+                if (bot.role === 'info' && !isBotInfoActive) { bot.isFirstRun = true; continue; }
+                if (bot.role === 'kuis' && !isBotKuisActive) { bot.isFirstRun = true; continue; }
+                if (!bot.auth.userId) continue;
+                
+                const data = await fetchMessages(bot);
+                if (!data) continue;
 
-            const messages = (data.data && Array.isArray(data.data.chat)) ? data.data.chat : [];
+                const messages = (data.data && Array.isArray(data.data.chat)) ? data.data.chat : [];
 
-            if (bot.isFirstRun) {
-                for (const msg of messages) {
-                    const id = parseInt(msg.id || 0);
-                    if (id > bot.lastMessageId) bot.lastMessageId = id;
+                if (bot.isFirstRun) {
+                    for (const msg of messages) {
+                        const id = parseInt(msg.id || 0);
+                        if (id > bot.lastMessageId) bot.lastMessageId = id;
+                    }
+                    console.log(`[${bot.username}] Baseline ID: ${bot.lastMessageId}.`);
+                    bot.isFirstRun = false;
+                    continue;
                 }
-                console.log(`[${bot.username}] Baseline ID: ${bot.lastMessageId}.`);
-                bot.isFirstRun = false;
-                continue;
-            }
 
-            if (messages.length > 0) {
-                await processMessages(bot, messages);
+                if (messages.length > 0) {
+                    await processMessages(bot, messages);
+                }
             }
+        } catch (e) {
+            console.error('[POLLING] Error pada polling loop:', e.message);
         }
     }, CONFIG.POLL_INTERVAL);
 
@@ -4431,6 +4474,63 @@ function resetAutoQuizTimer() {
 
 
 process.on('uncaughtException', (err) => { console.error('Uncaught Exception:', err.message); });
+process.on('unhandledRejection', (reason) => { console.error('Unhandled Rejection:', reason); });
+
+// --- GRACEFUL SHUTDOWN: Flush semua data pending sebelum exit ---
+let isShuttingDown = false;
+async function gracefulShutdown(signal) {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    console.log(`\n[SHUTDOWN] Menerima sinyal ${signal}. Menyimpan data sebelum exit...`);
+
+    try {
+        // 1. Flush XP & Stats pending ke database
+        const pendingCount = Object.keys(XP_PENDING_UPDATES).length;
+        if (pendingCount > 0 && CONFIG.TURSO_URL) {
+            console.log(`[SHUTDOWN] Flushing ${pendingCount} user XP & Memory ke database...`);
+            const batch = [];
+            for (const [userId] of Object.entries(XP_PENDING_UPDATES)) {
+                const userStats = USER_STATS_CACHE[userId];
+                if (userStats) {
+                    batch.push(runtimeRepo.buildUserStatsUpsert(userId, userStats.username || '', userStats));
+                }
+            }
+            if (batch.length > 0) {
+                await runtimeRepo.batchWrite(batch);
+            }
+
+            // Flush memory
+            const memoryBatch = [];
+            for (const [userId] of Object.entries(XP_PENDING_UPDATES)) {
+                const userStats = USER_STATS_CACHE[userId];
+                if (userStats && userStats.core_memory !== undefined) {
+                    memoryBatch.push(memoryRepo.buildUpsertBatch(userId, userStats.username || '', userStats.core_memory || ''));
+                }
+            }
+            if (memoryBatch.length > 0) {
+                await runtimeRepo.batchWrite(memoryBatch);
+            }
+            console.log(`[SHUTDOWN] Berhasil menyimpan ${batch.length} user stats dan ${memoryBatch.length} memori.`);
+        } else {
+            console.log('[SHUTDOWN] Tidak ada data pending yang perlu disimpan.');
+        }
+
+        // 2. Bersihkan timer/interval
+        if (autoQuizInterval) clearInterval(autoQuizInterval);
+        if (startupQuizFetchTimer) clearTimeout(startupQuizFetchTimer);
+        if (doubleXPTimeout) clearTimeout(doubleXPTimeout);
+        if (discountTimeout) clearTimeout(discountTimeout);
+
+    } catch (e) {
+        console.error('[SHUTDOWN] Gagal menyimpan data:', e.message);
+    }
+
+    console.log('[SHUTDOWN] Selesai. Bot dimatikan.');
+    process.exit(0);
+}
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 const runtimeState = {
     get FILTER_DATA() { return FILTER_DATA; },

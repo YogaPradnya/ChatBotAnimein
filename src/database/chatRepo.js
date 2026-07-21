@@ -1,15 +1,21 @@
 function createChatRepo(db) {
-    async function insertChatLog({ username, question, answer, provider, tokens }) {
+    async function insertChatLog({ userId, username, question, answer, provider, tokens }) {
         return db.execute({
-            sql: 'INSERT INTO chat_logs (username, pertanyaan, jawaban, provider, tokens) VALUES (?, ?, ?, ?, ?)',
-            args: [username, question, answer, provider, tokens],
+            sql: 'INSERT INTO chat_logs (user_id, username, pertanyaan, jawaban, provider, tokens) VALUES (?, ?, ?, ?, ?, ?)',
+            args: [userId || null, username || '', question, answer, provider, tokens],
         });
     }
 
-    async function getRecentUserHistory(username, limit) {
+    async function getRecentUserHistory(userId, username, limit) {
+        if (userId) {
+            return db.execute({
+                sql: 'SELECT pertanyaan, jawaban, timestamp FROM chat_logs WHERE user_id = ? OR (user_id IS NULL AND username = ?) ORDER BY id DESC LIMIT ?',
+                args: [String(userId), String(username || ''), limit],
+            });
+        }
         return db.execute({
             sql: 'SELECT pertanyaan, jawaban, timestamp FROM chat_logs WHERE username = ? ORDER BY id DESC LIMIT ?',
-            args: [username, limit],
+            args: [String(username || ''), limit],
         });
     }
 

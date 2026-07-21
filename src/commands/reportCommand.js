@@ -17,7 +17,6 @@ async function execute(ctx) {
         await sendChatMessage(bot, formatLimitExceeded(senderName, cmdLimit.limit), msg.id);
         return true;
     }
-    await incrementCommandUsage(senderUserId, senderName);
 
     const isiLaporan = cleanMsg.substring(6).trim();
     if (!isiLaporan) {
@@ -32,6 +31,8 @@ async function execute(ctx) {
         await sendChatMessage(bot, formatCommandUsage(senderName, laporHelp), msg.id);
         return true;
     }
+
+    await incrementCommandUsage(senderUserId, senderName);
 
     try {
         await reportRepo.createReport(senderName, isiLaporan);
