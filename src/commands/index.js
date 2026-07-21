@@ -25,9 +25,34 @@ const limitCommand = require('./limitCommand');
 const createImageCommand = require('./createImageCommand');
 
 
-async function handleKuisCommand(ctx) {
-    const { lowerMsg } = ctx;
+// Cooldown global untuk .hint (30 detik)
+const HINT_COOLDOWN_MS = 30 * 1000;
+let lastHintTime = 0;
 
+async function handleKuisCommand(ctx) {
+    const { lowerMsg, activeQuiz } = ctx;
+
+    // === SAAT KUIS AKTIF: Hanya proses .tebak dan .hint ===
+    if (activeQuiz && activeQuiz.isRunning) {
+        if (lowerMsg === '.tebak' || lowerMsg.startsWith('.tebak ')) {
+            return guessCommand.execute(ctx);
+        }
+
+        if (lowerMsg === '.hint') {
+            // Cek cooldown 30 detik, jika masih cooldown abaikan total
+            const now = Date.now();
+            if (now - lastHintTime < HINT_COOLDOWN_MS) {
+                return true; // Abaikan tanpa balasan
+            }
+            lastHintTime = now;
+            return hintCommand.execute(ctx);
+        }
+
+        // Semua command lain diabaikan saat kuis aktif
+        return false;
+    }
+
+    // === SAAT TIDAK ADA KUIS: Proses semua command normal ===
     if (lowerMsg === '.tebak' || lowerMsg.startsWith('.tebak ')) {
         return guessCommand.execute(ctx);
     }
