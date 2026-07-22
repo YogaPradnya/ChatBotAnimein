@@ -122,6 +122,27 @@ function ignoreExpectedError(error, context = {}) {
     }
 }
 
+async function executeWithRetry(fn, { retries = 3, delayMs = 1000, scope = 'RETRY' } = {}) {
+    let lastError;
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            return await fn();
+        } catch (err) {
+            lastError = err;
+            if (attempt === retries) break;
+            const category = inferErrorCategory(err);
+            if (category === ERROR_CATEGORY.NETWORK || category === ERROR_CATEGORY.RATE_LIMIT) {
+                const waitTime = delayMs * Math.pow(2, attempt - 1);
+                logError({ scope, message: `Percobaan ${attempt} gagal, mencoba ulang (${attempt}/${retries}) dalam ${waitTime}ms`, error: err, level: 'warn' });
+                await new Promise(res => setTimeout(res, waitTime));
+            } else {
+                throw err;
+            }
+        }
+    }
+    throw lastError;
+}
+
 module.exports = {
     ERROR_CATEGORY,
     createErrorHandler,
@@ -133,4 +154,5 @@ module.exports = {
     formatError,
     maskSensitiveText,
     inferErrorCategory,
+    executeWithRetry,
 };

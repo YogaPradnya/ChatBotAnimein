@@ -60,6 +60,13 @@ function createCacheRepo(db) {
         return db.execute('SELECT COUNT(*) as count FROM response_cache');
     }
 
+    async function pruneExpiredCache(daysToKeep = 7) {
+        return db.execute({
+            sql: "DELETE FROM response_cache WHERE datetime(created_at) < datetime('now', '-' || ? || ' days')",
+            args: [String(daysToKeep)],
+        });
+    }
+
     return {
         findResponseByQuestionKey,
         getAnswerByQuestionKey,
@@ -71,6 +78,7 @@ function createCacheRepo(db) {
         updateCacheById,
         deleteCacheById,
         countCache,
+        pruneExpiredCache,
     };
 }
 
