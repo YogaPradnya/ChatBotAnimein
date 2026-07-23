@@ -4,7 +4,7 @@
   "description": "Chatbot for AnimeinWeb powered by Gemini AI",
   "main": "bot.js",
   "scripts": {
-    "check": "node --check bot.js && node --check dashboard.js && node --check src/bootstrap.js && node --check src/pipeline/messagePipeline.js && node --check src/services/streakService.js && node --check src/database/cacheRepo.js && node --check src/config.js && node --check src/utils.js && node --check src/pokemon.js && node --check src/dashboardServer.js && node src/checkDashboardInline.js",
+    "check": "node --check bot.js && node --check dashboard.js && node --check src/bootstrap.js && node --check src/pipeline/messagePipeline.js && node --check src/services/streakService.js && node --check src/services/animeNotifService.js && node --check src/database/cacheRepo.js && node --check src/config.js && node --check src/utils.js && node --check src/pokemon.js && node --check src/dashboardServer.js && node src/checkDashboardInline.js",
     "test": "node --test tests/*.test.js",
     "start": "node bot.js"
   },

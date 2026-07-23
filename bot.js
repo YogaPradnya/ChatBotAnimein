@@ -55,6 +55,7 @@ const { createMemoryRepo } = require('./src/database/memoryRepo');
 const { createKnowledgeRepo, normalizeKnowledgeList, findKnowledgeByHelpTopic, buildKnowledgeContext } = require('./src/database/knowledgeRepo');
 const commands = require('./src/commands');
 const { formatEvolutionContext, getEvolutionByQuery } = require('./src/data/pokemonEvolutions');
+const { startAnimeNotifPoller } = require('./src/services/animeNotifService');
 
 warnMissingConfig();
 
@@ -395,13 +396,20 @@ async function initDB() {
         }
         console.log(`[GAMBAR] Bot Gambar: ${isImageCommandActive ? 'ON' : 'OFF'}`);
 
+        const botNotifValue = await settingsRepo.get(SETTINGS_KEYS.IS_BOT_NOTIF_ACTIVE);
+        isBotNotifActive = botNotifValue !== null ? botNotifValue === 'true' : true;
+        if (botNotifValue === null) {
+            await settingsRepo.set(SETTINGS_KEYS.IS_BOT_NOTIF_ACTIVE, isBotNotifActive);
+        }
+        console.log(`[NOTIF] Bot Notifikasi: ${isBotNotifActive ? 'ON' : 'OFF'}`);
+
         if (isSystemOff && (isBotInfoActive || isBotKuisActive)) {
             isBotInfoActive = false;
             isBotKuisActive = false;
             await settingsRepo.set(SETTINGS_KEYS.IS_BOT_INFO_ACTIVE, isBotInfoActive);
             await settingsRepo.set(SETTINGS_KEYS.IS_BOT_KUIS_ACTIVE, isBotKuisActive);
         }
-        console.log(`[BOT STATE] Info: ${isBotInfoActive ? 'ON' : 'OFF'}, Kuis: ${isBotKuisActive ? 'ON' : 'OFF'}`);
+        console.log(`[BOT STATE] Info: ${isBotInfoActive ? 'ON' : 'OFF'}, Kuis: ${isBotKuisActive ? 'ON' : 'OFF'}, Notif: ${isBotNotifActive ? 'ON' : 'OFF'}`);
 
         // Load Global Limit Defaults from DB
         const cmdLimitValue = await settingsRepo.get(SETTINGS_KEYS.CMD_DAILY_LIMIT_DEFAULT);
@@ -837,6 +845,7 @@ let isBotInfoActive = false;  // Bot AI (info)
 let isBotKuisActive = false;  // Bot Kuis (game)
 let isSystemOff = false;      // Global Kill Switch
 let isImageCommandActive = true; // Switch bot gambar (AnimeinIMG)
+let isBotNotifActive = true; // Switch bot notifikasi (AnimeinNotif)
 const IMAGE_COMMAND_COOLDOWN_MS = 0;
 let lastImageCommandAt = 0;
 let XP_MULTIPLIER = 1;
@@ -1151,7 +1160,8 @@ Instruksi AI: Jika user nanya "siapa pokemon terkuat, dewa, paling OP, terhebat"
 let bots = [
     { username: CONFIG.USERNAME, password: CONFIG.PASSWORD, role: 'info', auth: { userId: null, userKey: null }, lastMessageId: 0, isFirstRun: true, isCooldown: false, reauthCooldownUntil: 0, lastFetchError: null },
     { username: CONFIG.KUIS_USERNAME, password: CONFIG.PASSWORD, role: 'kuis', auth: { userId: null, userKey: null }, lastMessageId: 0, isFirstRun: true, isCooldown: false, reauthCooldownUntil: 0, lastFetchError: null },
-    { username: CONFIG.IMG_USERNAME, password: CONFIG.PASSWORD, role: 'image', auth: { userId: null, userKey: null }, lastMessageId: 0, isFirstRun: true, isCooldown: false, reauthCooldownUntil: 0, lastFetchError: null }
+    { username: CONFIG.IMG_USERNAME, password: CONFIG.PASSWORD, role: 'image', auth: { userId: null, userKey: null }, lastMessageId: 0, isFirstRun: true, isCooldown: false, reauthCooldownUntil: 0, lastFetchError: null },
+    { username: CONFIG.NOTIF_USERNAME, password: CONFIG.PASSWORD, role: 'notif', auth: { userId: null, userKey: null }, lastMessageId: 0, isFirstRun: true, isCooldown: false, reauthCooldownUntil: 0, lastFetchError: null }
 ];
 
 // isGlobalCooldown dihapus, diganti per-bot property
@@ -3647,8 +3657,9 @@ async function login(bot, forceApiLogin = false) {
         const isAI = bot.username === CONFIG.USERNAME;
         const isKuis = bot.username === CONFIG.KUIS_USERNAME;
         const isImage = bot.username === CONFIG.IMG_USERNAME;
-        const preUserId = isAI ? CONFIG.AI_USER_ID : (isKuis ? CONFIG.KUIS_USER_ID : (isImage ? CONFIG.IMG_USER_ID : null));
-        const preKeyClient = isAI ? CONFIG.AI_KEY_CLIENT : (isKuis ? CONFIG.KUIS_KEY_CLIENT : (isImage ? CONFIG.IMG_KEY_CLIENT : null));
+        const isNotif = bot.username === CONFIG.NOTIF_USERNAME;
+        const preUserId = isAI ? CONFIG.AI_USER_ID : (isKuis ? CONFIG.KUIS_USER_ID : (isImage ? CONFIG.IMG_USER_ID : (isNotif ? CONFIG.NOTIF_USER_ID : null)));
+        const preKeyClient = isAI ? CONFIG.AI_KEY_CLIENT : (isKuis ? CONFIG.KUIS_KEY_CLIENT : (isImage ? CONFIG.IMG_KEY_CLIENT : (isNotif ? CONFIG.NOTIF_KEY_CLIENT : null)));
         
         if (!forceApiLogin && preUserId && preKeyClient) {
             bot.auth.userId = preUserId;
@@ -4385,6 +4396,25 @@ async function startBot() {
     console.log(`Bot aktif! Info: ${bots[0].username}, Kuis: ${bots[1].username}`);
     console.log(`Dashboard: http://localhost:${CONFIG.DASHBOARD_PORT}`);
 
+    // Inisialisasi Anime Notification Poller
+    const notifBot = bots.find(b => b.role === 'notif');
+    if (notifBot) {
+        startAnimeNotifPoller({
+            animeinClient,
+            sendNotifCallback: async (messageText) => {
+                if (isSystemOff || !isBotNotifActive) return;
+                if (!notifBot.auth.userId || !notifBot.auth.userKey) {
+                    await login(notifBot);
+                }
+                if (notifBot.auth.userId && notifBot.auth.userKey) {
+                    await sendChatMessage(notifBot, messageText);
+                    console.log(`[ANIME_NOTIF] Notifikasi rilis anime terkirim via ${notifBot.username}.`);
+                }
+            },
+            intervalMs: 15000
+        });
+    }
+
     // Jadwal Microfetch: tunggu 30 menit setelah startup, lalu refresh setiap 1 jam
     if (!isSystemOff) {
         console.log("[STARTUP] Fetch anime akan dimulai dalam 30 menit...");
@@ -4407,6 +4437,7 @@ async function startBot() {
         if (isSystemOff) return; // KILL SWITCH
         try {
             for (const bot of bots) {
+                if (bot.role === 'notif') { bot.isFirstRun = true; continue; }
                 if (bot.role === 'image' && !isImageCommandActive) { bot.isFirstRun = true; continue; }
                 if (bot.role === 'info' && !isBotInfoActive) { bot.isFirstRun = true; continue; }
                 if (bot.role === 'kuis' && !isBotKuisActive) { bot.isFirstRun = true; continue; }
@@ -4545,6 +4576,8 @@ const runtimeState = {
     set isSystemOff(value) { isSystemOff = value; },
     get isImageCommandActive() { return isImageCommandActive; },
     set isImageCommandActive(value) { isImageCommandActive = value; },
+    get isBotNotifActive() { return isBotNotifActive; },
+    set isBotNotifActive(value) { isBotNotifActive = value; },
     get XP_MULTIPLIER() { return XP_MULTIPLIER; },
     set XP_MULTIPLIER(value) { XP_MULTIPLIER = value; },
     get doubleXPTimeout() { return doubleXPTimeout; },

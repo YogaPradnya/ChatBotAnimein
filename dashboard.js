@@ -785,6 +785,16 @@ function getDashboardHTML() {
                   <span class="btp-off">OFF</span>
                 </div>
               </div>
+              <div class="bot-status-mini-item" style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                  <div class="bot-status-mini-label">Bot Notifikasi</div>
+                  <div class="bot-status-mini-value" id="miniBotNotifStatus" style="font-size:12px; margin-top:2px;">Memuat...</div>
+                </div>
+                <div class="bot-toggle-pill" id="botNotifTogglePill" onclick="toggleBot('notif')">
+                  <span class="btp-on">ON</span>
+                  <span class="btp-off">OFF</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1705,7 +1715,7 @@ function getDashboardHTML() {
       refresh();
       return;
     }
-    render({ ...stats, isBotInfoActive: d.isBotInfoActive, isBotKuisActive: d.isBotKuisActive, isSystemOff: d.isSystemOff });
+    render({ ...stats, isBotInfoActive: d.isBotInfoActive, isBotKuisActive: d.isBotKuisActive, isImageCommandActive: d.isImageCommandActive, isBotNotifActive: d.isBotNotifActive, isSystemOff: d.isSystemOff });
   }
 
   async function toggleSystem() {
@@ -1875,9 +1885,11 @@ async function updateStats() {
     const isBotInfoOn = d.isBotInfoActive !== undefined ? d.isBotInfoActive : d.isBotActive;
     const isBotKuisOn = d.isBotKuisActive !== undefined ? d.isBotKuisActive : false;
     const isImageCommandOn = d.isImageCommandActive !== undefined ? d.isImageCommandActive : true;
+    const isBotNotifOn = d.isBotNotifActive !== undefined ? d.isBotNotifActive : true;
     const infoPill = document.getElementById('botInfoTogglePill');
     const kuisPill = document.getElementById('botKuisTogglePill');
     const imagePill = document.getElementById('imageCommandTogglePill');
+    const notifPill = document.getElementById('botNotifTogglePill');
     if (infoPill) {
       if (isBotInfoOn) infoPill.classList.add('is-on'); else infoPill.classList.remove('is-on');
     }
@@ -1887,12 +1899,17 @@ async function updateStats() {
     if (imagePill) {
       if (isImageCommandOn) imagePill.classList.add('is-on'); else imagePill.classList.remove('is-on');
     }
+    if (notifPill) {
+      if (isBotNotifOn) notifPill.classList.add('is-on'); else notifPill.classList.remove('is-on');
+    }
     const miniAi = document.getElementById('miniBotAiStatus');
     const miniKuis = document.getElementById('miniBotKuisStatus');
     const miniImage = document.getElementById('miniBotImageStatus');
+    const miniNotif = document.getElementById('miniBotNotifStatus');
     if (miniAi) { miniAi.textContent = isBotInfoOn ? 'Aktif' : 'Nonaktif'; miniAi.style.color = isBotInfoOn ? 'var(--green)' : 'var(--red)'; }
     if (miniKuis) { miniKuis.textContent = isBotKuisOn ? 'Aktif' : 'Nonaktif'; miniKuis.style.color = isBotKuisOn ? 'var(--green)' : 'var(--red)'; }
     if (miniImage) { miniImage.textContent = isImageCommandOn ? 'Aktif' : 'Nonaktif'; miniImage.style.color = isImageCommandOn ? 'var(--green)' : 'var(--red)'; }
+    if (miniNotif) { miniNotif.textContent = isBotNotifOn ? 'Aktif' : 'Nonaktif'; miniNotif.style.color = isBotNotifOn ? 'var(--green)' : 'var(--red)'; }
 
     isSystemOff = d.isSystemOff || false;
     const sysPill = document.getElementById('systemTogglePill');

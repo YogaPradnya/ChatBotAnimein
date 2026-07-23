@@ -76,6 +76,7 @@ const SETTINGS_KEYS = {
     IS_BOT_INFO_ACTIVE: 'is_bot_info_active',
     IS_BOT_KUIS_ACTIVE: 'is_bot_kuis_active',
     IS_IMAGE_COMMAND_ACTIVE: 'is_image_command_active',
+    IS_BOT_NOTIF_ACTIVE: 'is_bot_notif_active',
     CMD_DAILY_LIMIT_DEFAULT: 'cmd_daily_limit_default',
     IMAGE_DAILY_LIMIT_DEFAULT: 'image_daily_limit_default',
     AVAILABLE_TITLES: 'available_titles',

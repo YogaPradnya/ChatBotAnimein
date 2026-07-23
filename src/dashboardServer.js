@@ -68,6 +68,8 @@ function createRuntime(scope) {
         set isSystemOff(value) { state.isSystemOff = value; },
         get isImageCommandActive() { return state.isImageCommandActive; },
         set isImageCommandActive(value) { state.isImageCommandActive = value; },
+        get isBotNotifActive() { return state.isBotNotifActive; },
+        set isBotNotifActive(value) { state.isBotNotifActive = value; },
         get XP_MULTIPLIER() { return state.XP_MULTIPLIER; },
         set XP_MULTIPLIER(value) { state.XP_MULTIPLIER = value; },
         get doubleXPTimeout() { return state.doubleXPTimeout; },
@@ -462,6 +464,7 @@ function startDashboard(scope) {
                 isBotInfoActive,
                 isBotKuisActive,
                 isImageCommandActive,
+                isBotNotifActive,
                 isSystemOff,
                 isDoubleXP: XP_MULTIPLIER > 1,
                 xpMultiplier: XP_MULTIPLIER,
@@ -532,7 +535,14 @@ function startDashboard(scope) {
         if (blockWhenSystemOff(res, 'Toggle bot')) return;
         const { role } = req.body;
         try {
-            if (role === 'kuis') {
+            if (role === 'notif') {
+                isBotNotifActive = !isBotNotifActive;
+                await db.execute({
+                    sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('is_bot_notif_active', ?)",
+                    args: [String(isBotNotifActive)]
+                });
+                console.log(`[DASHBOARD] Bot Notif: ${isBotNotifActive ? 'ON' : 'OFF'}`);
+            } else if (role === 'kuis') {
                 isBotKuisActive = !isBotKuisActive;
                 await db.execute({
                     sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('is_bot_kuis_active', ?)",
@@ -547,7 +557,7 @@ function startDashboard(scope) {
                 });
                 console.log(`[DASHBOARD] Bot Info: ${isBotInfoActive ? 'ON' : 'OFF'}`);
             }
-            res.json({ success: true, isBotInfoActive, isBotKuisActive, isImageCommandActive, isSystemOff });
+            res.json({ success: true, isBotInfoActive, isBotKuisActive, isImageCommandActive, isBotNotifActive, isSystemOff });
         } catch (e) {
             res.status(500).json({ success: false, message: e.message });
         }
