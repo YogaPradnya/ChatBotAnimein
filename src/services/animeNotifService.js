@@ -37,21 +37,27 @@ function formatAnimeNotifMessage(item) {
     const genre = Array.isArray(item.genres) ? item.genres.join(', ') : (item.genre || '-');
     const synopsis = item.synopsis || item.description || 'Tidak ada deskripsi.';
 
-    const truncatedSynopsis = synopsis.length > 200 
-        ? synopsis.substring(0, 197) + '...' 
+    const truncatedSynopsis = synopsis.length > 180 
+        ? synopsis.substring(0, 177) + '...' 
         : synopsis;
 
-    return `[NOTIFIKASI UPDATE ANIME]
+    const synopsisLines = truncatedSynopsis.split('\n').map(l => l.trim()).filter(Boolean);
 
-Judul: ${title}
-Episode Update: Episode ${episode}
-Rating/Score: ${rating}
-Genre: ${genre}
+    let msg = `┌── UPDATE ANIME ──────────────────\n`;
+    msg += `│ Judul   : ${title}\n`;
+    msg += `│ Episode : Episode ${episode}\n`;
+    msg += `│ Rating  : ${rating}\n`;
+    msg += `│ Genre   : ${genre}\n`;
+    msg += `│ \n`;
+    msg += `│ Sinopsis:\n`;
+    for (const line of synopsisLines) {
+        msg += `│ ${line}\n`;
+    }
+    msg += `│ \n`;
+    msg += `│ Nonton sekarang di Animein!\n`;
+    msg += `└──────────────────────────────────`;
 
-Sinopsis:
-${truncatedSynopsis}
-
-Nonton sekarang di Animein!`;
+    return msg;
 }
 
 /**
@@ -92,6 +98,15 @@ async function checkAnimeUpdates({ animeinClient, sendNotifCallback }) {
         for (const item of recentList) {
             if (!item || (!item.id && !item.slug && !item.title && !item.name && !item.movie)) continue;
             
+            // Filter hari: pastikan item cocok dengan hari WIB saat ini jika memiliki properti hari
+            const itemDay = item.day || item.hari || item.day_name || null;
+            if (itemDay) {
+                const normalizedItemDay = String(itemDay).trim().toUpperCase();
+                if (normalizedItemDay !== todayName && normalizedItemDay !== 'TODAY' && normalizedItemDay !== 'HARI INI') {
+                    continue;
+                }
+            }
+
             const title = item.title || item.name || item.movie || 'Anime';
             const episode = item.episode || item.eps || item.episode_now || item.latest_episode || item.last_episode || 'new';
             const itemId = String(item.id || item.slug || `${title}_eps_${episode}`);
