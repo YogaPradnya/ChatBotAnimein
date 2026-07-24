@@ -18,6 +18,7 @@ async function execute(ctx) {
         imageCommandCooldownMs,
         getImageLimitStatus,
         fetchPinterestImage,
+        fetchAndDownloadPinterestImage,
         downloadImageToTempFile,
         sendChatWithImage,
         incrementImageLimitUsage,
@@ -89,8 +90,15 @@ async function execute(ctx) {
                 let tempImgData = null;
                 let finalImageSent = false;
                 try {
-                    const imageUrl = await fetchPinterestImage(imageQuery);
-                    tempImgData = await downloadImageToTempFile(imageUrl);
+                    let imageUrl = '';
+                    if (typeof fetchAndDownloadPinterestImage === 'function') {
+                        tempImgData = await fetchAndDownloadPinterestImage(imageQuery);
+                        imageUrl = tempImgData?.sourceUrl || '';
+                    } else {
+                        imageUrl = await fetchPinterestImage(imageQuery);
+                        tempImgData = await downloadImageToTempFile(imageUrl);
+                    }
+
                     const caption = `@${senderName} Ini gambar untuk: ${imageQuery}`;
                     const sent = await sendChatWithImage(bot, tempImgData, caption, msg.id);
                     finalImageSent = !!sent;
@@ -114,7 +122,7 @@ async function execute(ctx) {
                         console.warn('[𝗚𝗔𝗠𝗕𝗔𝗥] Post-send warning:', safeMessage(e, 120));
                         return true;
                     }
-                    console.warn('[𝗚𝗔𝗠𝗕𝗔𝗥] Gagal proses .gambar:', safeMessage(e, 120));
+                    console.warn('[𝗚𝗔𝗠𝗕𝗔𝗥] Gagal proses .gambar:', safeMessage(e, 200), e?.cause ? `(Cause: ${safeMessage(e.cause, 100)})` : '');
                     await sendChatMessage(bot, formatSimpleError(senderName, 'Gambar tidak tersedia.'), msg.id);
                     return true;
                 } finally {

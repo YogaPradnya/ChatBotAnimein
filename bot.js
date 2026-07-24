@@ -806,12 +806,13 @@ async function addToCache(question, answer, domain = 'general') {
     }
 }
 
-async function getHistoryFromDB(username, limit = 5) { 
+async function getHistoryFromDB(userId, username, limit = 5) { 
     if (!CONFIG.TURSO_URL) return { messages: [], lastTime: null };
     try {
-        const result = await chatRepo.getRecentUserHistory(username, limit);
+        const numericLimit = typeof limit === 'number' && limit > 0 ? limit : (parseInt(limit, 10) || 5);
+        const result = await chatRepo.getRecentUserHistory(userId, username, numericLimit);
         
-        if (result.rows.length === 0) return { messages: [], lastTime: null };
+        if (!result?.rows || result.rows.length === 0) return { messages: [], lastTime: null };
 
         const lastTime = new Date(result.rows[0].timestamp + "Z").getTime(); // Ditambah Z agar dianggap UTC
         
@@ -4392,6 +4393,7 @@ async function processMessages(bot, messages) {
                 imageCommandCooldownMs: IMAGE_COMMAND_COOLDOWN_MS,
                 getImageLimitStatus,
                 fetchPinterestImage,
+                fetchAndDownloadPinterestImage,
                 downloadImageToTempFile,
                 sendChatWithImage,
                 incrementImageLimitUsage,

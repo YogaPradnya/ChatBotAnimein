@@ -16,10 +16,27 @@ function createImageService({
         endpoint.searchParams.set(isUrl ? 'url' : 'query', trimmed);
         endpoint.searchParams.set('limit', '25');
 
-        const res = await axios.get(endpoint.toString(), {
-            headers: { 'Accept': 'application/json, text/plain, */*' },
-            timeout: 20000,
-        });
+        let res = null;
+        let apiErr = null;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+                res = await axios.get(endpoint.toString(), {
+                    headers: { 'Accept': 'application/json, text/plain, */*' },
+                    timeout: 20000,
+                });
+                if (res && res.data) break;
+            } catch (err) {
+                apiErr = err;
+                console.warn(`[IMAGE_SERVICE] Pinterest API search gagal (percobaan ${attempt}/3):`, err.message);
+                if (attempt < 3) {
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+            }
+        }
+
+        if (!res || !res.data) {
+            throw apiErr || new Error('Gagal menghubungi Pinterest API setelah 3x percobaan');
+        }
 
         const data = res.data;
         if (data?.status === 'error') {
@@ -150,8 +167,76 @@ function createImageService({
         }
     }
 
+    async function fetchAndDownloadPinterestImage(queryOrUrl, maxAttempts = 5) {
+        const apiUrl = getPinterestApiUrl();
+        const trimmed = String(queryOrUrl || '').trim();
+        const isUrl = /^https?:\/\//i.test(trimmed);
+        const endpoint = new URL(apiUrl);
+        endpoint.searchParams.set(isUrl ? 'url' : 'query', trimmed);
+        endpoint.searchParams.set('limit', '25');
+
+        let res = null;
+        let apiErr = null;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+                res = await axios.get(endpoint.toString(), {
+                    headers: { 'Accept': 'application/json, text/plain, */*' },
+                    timeout: 20000,
+                });
+                if (res && res.data) break;
+            } catch (err) {
+                apiErr = err;
+                console.warn(`[IMAGE_SERVICE] Pinterest API search gagal (percobaan ${attempt}/3):`, err.message);
+                if (attempt < 3) {
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+            }
+        }
+
+        if (!res || !res.data) {
+            throw apiErr || new Error('Gagal menghubungi Pinterest API setelah 3x percobaan');
+        }
+
+        const data = res.data;
+        if (data?.status === 'error') {
+            throw new Error(data.message || 'Pinterest API error');
+        }
+
+        const imageUrls = [...new Set(collectImageUrls(data))];
+        if (!imageUrls.length) {
+            throw new Error('Tidak ada URL gambar ditemukan dari Pinterest API');
+        }
+
+        const historyKey = getPinterestHistoryKey(trimmed);
+        const now = Date.now();
+        const usedUrls = pruneExpiredPinterestHistory(historyKey, now);
+        let candidates = imageUrls.filter(url => !usedUrls.has(url));
+
+        if (!candidates.length) {
+            candidates = [...imageUrls];
+        }
+
+        const shuffled = candidates.sort(() => Math.random() - 0.5);
+
+        let lastErr = null;
+        for (let i = 0; i < Math.min(shuffled.length, maxAttempts); i++) {
+            const candidateUrl = shuffled[i];
+            try {
+                const downloaded = await downloadImageToTempFile(candidateUrl);
+                rememberPinterestImage(historyKey, candidateUrl, now);
+                return downloaded;
+            } catch (err) {
+                lastErr = err;
+                console.warn(`[IMAGE_SERVICE] Gagal download candidate ${i + 1}/${maxAttempts} (${candidateUrl}):`, err.message);
+            }
+        }
+
+        throw lastErr || new Error('Gagal mengunduh gambar setelah beberapa percobaannya.');
+    }
+
     return {
         fetchPinterestImage,
+        fetchAndDownloadPinterestImage,
         pickUnusedPinterestImage,
         getPinterestHistoryKey,
         pruneExpiredPinterestHistory,
