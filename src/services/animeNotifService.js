@@ -40,7 +40,7 @@ function isItemNew(item) {
         return true;
     }
 
-    const textFields = [item.badge, item.status, item.label, item.tag, item.type, item.is_new, item.new];
+    const textFields = [item.time, item.badge, item.status, item.label, item.tag, item.type, item.is_new, item.new];
     for (const val of textFields) {
         if (typeof val === 'string') {
             const normalized = val.trim().toUpperCase();
