@@ -1,12 +1,49 @@
 const axios = require('axios');
+const Groq = require('groq-sdk');
 const { formatCommandUsage } = require('../utils/messageFormatter');
 const { boxHeader } = require('../utils/textStyle');
 const { askCloudflareAi } = require('../services/cloudflareAiService');
 const { askCerebrasAi } = require('../services/cerebrasAiService');
+const { CONFIG, ANIMEIN_HEADERS_FULL } = require('../config');
+
+// Inisialisasi Groq clients dari config
+const groqClients = (CONFIG.GROQ_KEYS || []).filter(Boolean).map(key => new Groq({ apiKey: key }));
+
+// Fungsi helper untuk memanggil Groq AI
+async function askGroqAi({ userMessage, systemPrompt }) {
+    if (!groqClients.length) return null;
+    for (const client of groqClients) {
+        try {
+            const res = await client.chat.completions.create({
+                model: 'llama-3.1-8b-instant',
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userMessage }
+                ],
+                temperature: 0.3,
+                max_tokens: 300,
+            });
+            const answer = res.choices?.[0]?.message?.content || '';
+            if (answer) return { answer };
+            else return null;
+        } catch (e) {
+            console.warn('[Groq AI] Error:', e.message);
+            // Silent, coba key berikutnya
+        }
+    }
+    return null;
+}
 
 // Tracking riwayat anime yang pernah dilihat user & kueri terakhir
 const userSeenAnimeMap = new Map(); // senderUserId -> Set(animeId/title)
 const userLastQueryMap = new Map(); // senderUserId -> String(query)
+
+// Cache index Animein non-random untuk matching cepat AniList -> Animein ID
+const animeinIndexCache = {
+    items: [],
+    updatedAt: 0,
+};
+const ANIMEIN_INDEX_TTL_MS = 10 * 60 * 1000;
 
 function cleanText(value, maxLength = 26) {
     const text = String(value || '-')
@@ -18,6 +55,277 @@ function cleanText(value, maxLength = 26) {
 
 function normalize(value) {
     return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function titleWords(value) {
+    return normalize(value).split(/\s+/).filter(word => word.length > 1);
+}
+
+function scoreTitleSimilarity(sourceTitle, candidateTitle) {
+    const source = normalize(sourceTitle);
+    const candidate = normalize(candidateTitle);
+    if (!source || !candidate) return 0;
+    if (source === candidate) return 100;
+
+    if (source.length >= 4 && candidate.length >= 4) {
+        if (source.includes(candidate) || candidate.includes(source)) return 90;
+    }
+
+    const sourceWords = titleWords(source);
+    const candidateWords = new Set(titleWords(candidate));
+    if (!sourceWords.length || !candidateWords.size) return 0;
+
+    const matched = sourceWords.filter(word => candidateWords.has(word)).length;
+    return Math.round((matched / sourceWords.length) * 100);
+}
+
+function isTitleMatchSafe(sourceTitle, candidateTitle) {
+    const s = normalize(sourceTitle);
+    const c = normalize(candidateTitle);
+    if (!s || !c) return false;
+    if (s === c) return true;
+
+    const sWords = titleWords(sourceTitle);
+    const cWords = titleWords(candidateTitle);
+    if (!sWords.length || !cWords.length) return false;
+
+    if (cWords.length > sWords.length && c.startsWith(`${s} `)) {
+        return true;
+    }
+
+    const cWordsSet = new Set(cWords);
+    const sWordsSet = new Set(sWords);
+
+    const sMatched = sWords.filter(w => cWordsSet.has(w)).length;
+    const cMatched = cWords.filter(w => sWordsSet.has(w)).length;
+
+    const sRatio = sMatched / sWords.length;
+    const cRatio = cMatched / cWords.length;
+
+    if (sWords.length <= 2 || cWords.length <= 2) {
+        return sRatio >= 0.8 && cRatio >= 0.7;
+    }
+
+    return sRatio >= 0.65 && cRatio >= 0.5;
+}
+
+function pickSafeAnimeinMatch(matchArr, sourceTitles) {
+    if (!Array.isArray(matchArr)) return null;
+    for (const item of matchArr) {
+        const candidateTitle = item?.title || item?.name || '';
+        const isSafe = sourceTitles.some(sourceTitle => isTitleMatchSafe(sourceTitle, candidateTitle));
+        if (isSafe) return item;
+    }
+    return null;
+}
+
+function collectAnimeinItems(payload) {
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.movie)) return payload.movie;
+    if (Array.isArray(payload?.list)) return payload.list;
+    if (Array.isArray(payload?.data)) return payload.data;
+    if (Array.isArray(payload?.items)) return payload.items;
+    for (const value of Object.values(payload || {})) {
+        if (Array.isArray(value)) return value;
+    }
+    return [];
+}
+
+// Mapping manual judul populer ke format Animein
+const ANIMEIN_TITLE_MAP = {
+    'Re:Zero kara Hajimeru Isekai Seikatsu': ['Re: Life in a different world', 'Re:Zero', 'Re Zero'],
+    'Re:Zero - Starting Life in Another World': ['Re:Zero', 'Re Zero', 'Re: Life in a different world'],
+    'Mushoku Tensei: Isekai Ittara Honki Dasu': ['Mushoku Tensei'],
+    'Mushoku Tensei: Jobless Reincarnation': ['Mushoku Tensei'],
+    'Tensei shitara Slime Datta Ken': ['Tensei Slime', 'Slime'],
+    'That Time I Got Reincarnated as a Slime': ['Tensei Slime', 'Slime'],
+    'Overlord': ['Overlord'],
+    'No Game No Life': ['No Game No Life'],
+    'KonoSuba: God\'s Blessing on This Wonderful World!': ['KonoSuba', 'Konosuba'],
+    'Konosuba: God\'s Blessing on this Wonderful World!': ['KonoSuba', 'Konosuba'],
+    'The Rising of the Shield Hero': ['Shield Hero', 'Tate no Yuusha'],
+    'Tate no Yuusha no Nariagari': ['Shield Hero', 'Tate no Yuusha'],
+    'In Another World with My Smartphone': ['Isekai Smartphone'],
+    'Sword Art Online': ['Sword Art Online', 'SAO'],
+    'Demon Slayer: Kimetsu no Yaiba': ['Kimetsu no Yaiba', 'Demon Slayer'],
+    'Demon Slayer': ['Kimetsu no Yaiba', 'Demon Slayer'],
+    'Attack on Titan': ['Shingeki no Kyojin', 'Attack on Titan'],
+    'Shingeki no Kyojin': ['Shingeki no Kyojin', 'Attack on Titan'],
+    'Jujutsu Kaisen': ['Jujutsu Kaisen', 'JJK'],
+    'My Hero Academia': ['Boku no Hero Academia', 'My Hero Academia'],
+    'Boku no Hero Academia': ['Boku no Hero Academia', 'My Hero Academia'],
+    'Spy x Family': ['SPY x FAMILY', 'Spy Family'],
+    'Chainsaw Man': ['Chainsaw Man'],
+    'Frieren: Beyond Journey\'s End': ['Sousou no Frieren', 'Frieren'],
+    'Sousou no Frieren': ['Sousou no Frieren', 'Frieren'],
+    'Oshi no Ko': ['Oshi no Ko'],
+    'Classroom of the Elite': ['Youkoso Jitsuryoku', 'Classroom of the Elite'],
+    'Solo Leveling': ['Solo Leveling', 'Ore dake Level Up na Ken'],
+    'Cautious Hero: The Hero Is Overpowered but Overly Cautious': ['Shinchou Yuusha', 'Cautious Hero'],
+    'The Saga of Tanya the Evil': ['Youjo Senki'],
+    'Log Horizon': ['Log Horizon'],
+};
+
+function buildAnimeTitleVariants(titles) {
+    const variants = [];
+    for (const title of titles.filter(Boolean)) {
+        const raw = String(title).trim();
+        
+        // Tambahkan mapping manual jika ada
+        if (ANIMEIN_TITLE_MAP[raw]) {
+            variants.push(...ANIMEIN_TITLE_MAP[raw]);
+        }
+        
+        const cleaned = raw
+            .replace(/\([^)]*\)/g, ' ')
+            .replace(/\b(season|part|cour|movie|ova|ona|tv|the final season|season\s*\d+|part\s*\d+)\b/gi, ' ')
+            .replace(/\b\d+(st|nd|rd|th)?\b/gi, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        
+        // Variasi dasar
+        variants.push(raw, cleaned);
+        
+        // Variasi tanpa tanda baca
+        const noPunct = raw.replace(/[^a-zA-Z0-9\s]/g, '');
+        if (noPunct !== raw) variants.push(noPunct);
+        
+        // Variasi kata per kata
+        const words = titleWords(cleaned);
+        if (words.length >= 2) {
+            variants.push(words.join(' '));
+            variants.push(words.slice(0, 2).join(' '));
+            variants.push(words.slice(0, 3).join(' '));
+            if (words.length >= 4) variants.push(words.slice(0, 4).join(' '));
+        }
+        
+        // Variasi tanpa kata umum
+        const commonWords = ['the', 'a', 'an', 'and', 'of', 'in', 'on', 'at', 'to', 'for', 'with', 'kara', 'ni', 'no', 'ga', 'wa', 'wo', 'mo'];
+        const filteredWords = words.filter(word => !commonWords.includes(word.toLowerCase()));
+        if (filteredWords.length >= 2) {
+            variants.push(filteredWords.join(' '));
+            if (filteredWords.slice(0, 2).length >= 2) variants.push(filteredWords.slice(0, 2).join(' '));
+            if (filteredWords.slice(0, 3).length >= 2) variants.push(filteredWords.slice(0, 3).join(' '));
+        }
+        
+        // Variasi romaji vs english
+        if (raw.includes(':')) {
+            variants.push(raw.replace(':', ''));
+            variants.push(raw.replace(':', ' '));
+        }
+        if (raw.includes('!')) {
+            variants.push(raw.replace('!', ''));
+        }
+        if (raw.includes('?')) {
+            variants.push(raw.replace('?', ''));
+        }
+        if (raw.includes('~')) {
+            variants.push(raw.replace('~', ''));
+        }
+    }
+    
+    // Hapus duplikat dan kosong
+    return [...new Set(variants.map(v => String(v || '').trim()).filter(v => v.length > 1))].slice(0, 15);
+}
+
+async function fetchAnimeinDirectMatches(keyword) {
+    const baseUrl = CONFIG.BASE_URL;
+    if (!baseUrl || !keyword) return [];
+
+    const authParams = CONFIG.AI_USER_ID
+        ? { id_user: CONFIG.AI_USER_ID, key_client: CONFIG.AI_KEY_CLIENT }
+        : {};
+    const params = { ...authParams, search: keyword, q: keyword, page: 1 };
+    const headers = ANIMEIN_HEADERS_FULL;
+
+    const endpoints = [
+        '/3/2/explore/movie',
+    ];
+
+    const responses = await Promise.all(endpoints.map(endpoint => axios.get(`${baseUrl}${endpoint}`, {
+        params,
+        headers,
+        timeout: 9000,
+    }).catch(() => null)));
+
+    return responses.flatMap(res => collectAnimeinItems(res?.data?.data || res?.data || {}));
+}
+
+async function buildAnimeinIndex(fetchAnimeinList) {
+    if (Date.now() - animeinIndexCache.updatedAt < ANIMEIN_INDEX_TTL_MS && animeinIndexCache.items.length > 0) {
+        return animeinIndexCache.items;
+    }
+
+    const seen = new Set();
+    const items = [];
+
+    const addItems = (list) => {
+        if (!Array.isArray(list)) return;
+        for (const item of list) {
+            if (!item || !(item.title || item.name)) continue;
+            const key = String(item.id || item.anime_id || item.id_movie || item.title || item.name).toLowerCase();
+            if (seen.has(key)) continue;
+            seen.add(key);
+            items.push(item);
+        }
+    };
+
+    if (typeof fetchAnimeinList === 'function') {
+        const categories = ['new_episode', 'hot', 'popular', 'random'];
+        const lists = await Promise.all(categories.map(category => fetchAnimeinList(category).catch(() => [])));
+        lists.forEach(addItems);
+    }
+
+    try {
+        const authParams = CONFIG.AI_USER_ID
+            ? { id_user: CONFIG.AI_USER_ID, key_client: CONFIG.AI_KEY_CLIENT }
+            : {};
+        const pages = Array.from({ length: 40 }, (_, i) => i + 1);
+        const exploreResponses = await Promise.all(pages.map(p => axios.get(`${CONFIG.BASE_URL}/3/2/explore/movie`, {
+            params: { ...authParams, page: p },
+            headers: ANIMEIN_HEADERS_FULL,
+            timeout: 8000
+        }).catch(() => null)));
+
+        exploreResponses.forEach(res => {
+            const movies = res?.data?.data?.movie || collectAnimeinItems(res?.data?.data || res?.data || {});
+            addItems(movies);
+        });
+    } catch (e) {
+        console.warn('[ANIMEIN INDEX] Error fetching explore pages:', e.message);
+    }
+
+    animeinIndexCache.items = items;
+    animeinIndexCache.updatedAt = Date.now();
+    console.log(`[ANIMEIN INDEX] Indeks katalog Animein berhasil dimuat: ${items.length} anime.`);
+    return items;
+}
+
+function pickAnimeinIndexMatch(indexItems, sourceTitles) {
+    if (!Array.isArray(indexItems) || indexItems.length === 0) return null;
+    const scored = indexItems
+        .map(item => {
+            const candidateTitle = item?.title || item?.name || '';
+            const matchingSource = sourceTitles.find(sourceTitle => isTitleMatchSafe(sourceTitle, candidateTitle));
+            if (!matchingSource) return null;
+            const score = scoreTitleSimilarity(matchingSource, candidateTitle);
+            return { item, score };
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.score - a.score);
+
+    return scored[0]?.item || null;
+}
+
+async function warmAnimeinCandidateCache(malCandidates, fetchSearchResults) {
+    if (!Array.isArray(malCandidates) || typeof fetchSearchResults !== 'function') return;
+    for (const malItem of malCandidates.slice(0, 10)) {
+        const searchTitles = [malItem.title, malItem.title_english].filter(Boolean);
+        const titleVariants = buildAnimeTitleVariants(searchTitles);
+        for (const t of titleVariants.slice(0, 1)) {
+            await fetchSearchResults(t, 3).catch(() => []);
+        }
+    }
 }
 
 // Deteksi kata kunci pemicu kelanjutan (follow-up)
@@ -38,99 +346,206 @@ function fallbackExtractKeyword(rawQuery) {
     return tokens[0] || String(rawQuery || '').trim();
 }
 
-// STAGE 1: AI Prompt Processor (AI Utama mengolah kata kunci & 15 judul anime kandidat)
-async function analyzePromptWithAI(userQuery) {
-    const systemPrompt = `Kamu adalah sistem AI analis kueri anime.
-Tugasmu: Analisis permintaan rekomendasi user "${userQuery}".
-1. Ekstrak 1-2 kata kunci pencarian utama dalam Bahasa Inggris/Romaji (misal: "isekai", "romance school", "action fantasy", "comedy slice of life").
-2. Berikan 15 judul anime Jepang terbaik yang sesuai.
-Output WAJIB berupa JSON valid tanpa markdown codeblock:
-{"searchKeyword":"isekai","genres":["Isekai","Fantasy"],"titles":["Tensei shitara Slime Datta Ken","Mushoku Tensei","Kono Subarashii Sekai ni Shukufuku wo!"]}`;
+// STAGE 1: AI Prompt Processor (AI mengekstrak Genre & Kata Kunci Pencarian)
+// Mapping genre Indonesia -> Inggris (AniList standard)
+const GENRE_MAP = {
+    'aksi': 'Action', 'petualangan': 'Adventure', 'komedi': 'Comedy', 'drama': 'Drama',
+    'fantasi': 'Fantasy', 'horor': 'Horror', 'misteri': 'Mystery', 'romansa': 'Romance',
+    'romantis': 'Romance', 'fiksi ilmiah': 'Sci-Fi', 'olahraga': 'Sports',
+    'supernatural': 'Supernatural', 'thriller': 'Thriller', 'psikologis': 'Psychological',
+    'kehidupan sehari hari': 'Slice of Life', 'musik': 'Music', 'mecha': 'Mecha',
+    'action': 'Action', 'adventure': 'Adventure', 'comedy': 'Comedy', 'fantasy': 'Fantasy',
+    'horror': 'Horror', 'mystery': 'Mystery', 'romance': 'Romance', 'sci-fi': 'Sci-Fi',
+    'sports': 'Sports', 'thriller': 'Thriller', 'psychological': 'Psychological',
+    'slice of life': 'Slice of Life', 'music': 'Music', 'drama': 'Drama',
+    'isekai': 'Fantasy', 'ecchi': 'Ecchi', 'harem': 'Romance',
+};
 
-    let aiRes = null;
-
-    // Utamakan Cloudflare AI sebagai AI utama yang stabil dan cepat
-    try {
-        aiRes = await askCloudflareAi({
-            userMessage: `Analisis kueri rekomendasi anime: "${userQuery}"`,
-            systemPrompt,
-        });
-    } catch (e) {
-        // Fallback ke AI cadangan secara silent jika Cloudflare error
-    }
-
-    if (!aiRes || !aiRes.answer) {
-        try {
-            aiRes = await askCerebrasAi({
-                userMessage: `Analisis kueri rekomendasi anime: "${userQuery}"`,
-                systemPrompt,
-            });
-        } catch (e) {
-            // Silent catch 402/quota error dari Cerebras agar tidak mencetak warning log
-        }
-    }
-
-    if (aiRes && aiRes.answer) {
-        try {
-            const rawJson = String(aiRes.answer).replace(/```json/gi, '').replace(/```/g, '').trim();
-            const parsed = JSON.parse(rawJson);
-            if (parsed) {
-                return {
-                    searchKeyword: String(parsed.searchKeyword || fallbackExtractKeyword(userQuery)).trim(),
-                    genres: Array.isArray(parsed.genres) ? parsed.genres : [],
-                    titles: Array.isArray(parsed.titles) ? parsed.titles.filter(t => typeof t === 'string' && t.length > 2) : []
-                };
-            }
-        } catch (e) {
-            const lines = String(aiRes.answer)
-                .split('\n')
-                .map(line => line.replace(/^\d+[\.\-\)]\s*/, '').trim())
-                .filter(line => line.length > 2 && !line.toLowerCase().includes('berikut') && !line.toLowerCase().includes('rekomendasi'));
-            return {
-                searchKeyword: fallbackExtractKeyword(userQuery),
-                genres: [],
-                titles: lines
-            };
-        }
-    }
-
-    return {
-        searchKeyword: fallbackExtractKeyword(userQuery),
-        genres: [],
-        titles: []
-    };
+function normalizeGenres(genres) {
+    if (!Array.isArray(genres)) return [];
+    return genres.map(g => {
+        const lower = String(g || '').toLowerCase().trim();
+        return GENRE_MAP[lower] || g;
+    }).filter(Boolean);
 }
 
-// STAGE 2: Global MAL / AniList Database Search berbasis Search Keyword AI
-async function fetchGlobalAnimeCandidates(searchKeyword) {
-    if (!searchKeyword) return [];
-    const gqlQuery = `
-    query ($search: String) {
-      Page(page: 1, perPage: 25) {
-        media(search: $search, type: ANIME, sort: POPULARITY_DESC) {
-          id
-          title { romaji english native }
-          genres
-        }
-      }
+function parseTitlesFromJsonResponse(rawText) {
+    if (!rawText) return [];
+    let text = String(rawText).trim();
+    const firstBrace = text.indexOf('{');
+    const lastBrace = text.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        text = text.substring(firstBrace, lastBrace + 1);
     }
-    `;
     try {
-        const res = await axios.post('https://graphql.anilist.co', {
-            query: gqlQuery,
-            variables: { search: searchKeyword }
-        }, {
-            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            timeout: 6000
-        });
-        const list = res.data?.data?.Page?.media || [];
-        return list.map(item => ({
-            title: item.title.romaji || item.title.english || item.title.native,
-            title_english: item.title.english || item.title.romaji
-        }));
-    } catch (e) {
-        return [];
+        const parsed = JSON.parse(text);
+        if (parsed && Array.isArray(parsed.titles) && parsed.titles.length > 0) {
+            return parsed.titles.map(t => String(t || '').trim()).filter(Boolean);
+        }
+    } catch (e) {}
+
+    try {
+        const sanitized = text
+            .replace(/\/\*[\s\S]*?\*\/|([^:]|^)\/\/.*/g, '$1')
+            .replace(/,(\s*[\]}])/g, '$1');
+        const parsed = JSON.parse(sanitized);
+        if (parsed && Array.isArray(parsed.titles) && parsed.titles.length > 0) {
+            return parsed.titles.map(t => String(t || '').trim()).filter(Boolean);
+        }
+    } catch (e) {}
+
+    const match = text.match(/"titles"\s*:\s*\[([\s\S]*?)\]/i);
+    if (match && match[1]) {
+        const items = [];
+        const stringRegex = /"([^"]+)"|'([^']+)'/g;
+        let m;
+        while ((m = stringRegex.exec(match[1])) !== null) {
+            const val = (m[1] || m[2] || '').trim();
+            if (val && val.toLowerCase() !== 'title' && !val.match(/^title\s*\d+$/i)) {
+                items.push(val);
+            }
+        }
+        if (items.length > 0) return items;
     }
+    return [];
+}
+
+async function analyzePromptWithAI(userQuery) {
+    const systemPrompt = `Kamu adalah AI spesialis rekomendasi anime.
+Tugasmu: Berikan 10 rekomendasi anime real/asli yang paling sesuai dengan kueri user "${userQuery}".
+Instruksi Penting:
+- Gunakan nama judul utama/Romaji standar yang umum (contoh: "Kimetsu no Yaiba", "Shingeki no Kyojin", "Overlord", "Toradora!", "KonoSuba", "Clannad").
+- Jangan tambahkan keterangan Season, Part, atau Episode di judul.
+- Output WAJIB berupa JSON valid tanpa teks lain:
+{
+  "titles": [
+    "Judul 1",
+    "Judul 2",
+    "Judul 3",
+    "Judul 4",
+    "Judul 5",
+    "Judul 6",
+    "Judul 7",
+    "Judul 8",
+    "Judul 9",
+    "Judul 10"
+  ]
+}`;
+    const userMessage = `Berikan 10 judul anime real yang paling cocok untuk: "${userQuery}". Output WAJIB JSON {"titles": [...]}`;
+
+    // 1. Groq AI (Utama - Llama 3.1 8B)
+    try {
+        const res = await askGroqAi({ userMessage, systemPrompt });
+        const rawText = res?.text || res?.answer || '';
+        const titles = parseTitlesFromJsonResponse(rawText);
+        if (titles.length > 0) {
+            console.log('[AI Plan 1] Berhasil dari Groq AI');
+            return { provider: 'Groq AI', titles: titles.slice(0, 10) };
+        }
+    } catch (e) {
+        console.warn('[AI Plan 1] Groq AI error:', e.message);
+    }
+
+    // 2. Cerebras AI (Fallback 1 - Gemma 4 31B)
+    try {
+        const res = await askCerebrasAi({ userMessage, systemPrompt });
+        const rawText = res?.text || res?.answer || '';
+        const titles = parseTitlesFromJsonResponse(rawText);
+        if (titles.length > 0) {
+            console.log('[AI Plan 1] Berhasil dari Cerebras AI');
+            return { provider: 'Cerebras AI', titles: titles.slice(0, 10) };
+        }
+    } catch (e) {
+        console.warn('[AI Plan 1] Cerebras AI error:', e.message);
+    }
+
+    // 3. Cloudflare AI (Fallback 2 - Llama 3.2 1B)
+    try {
+        const res = await askCloudflareAi({ userMessage, systemPrompt });
+        const rawText = res?.text || res?.answer || '';
+        const titles = parseTitlesFromJsonResponse(rawText);
+        if (titles.length > 0) {
+            console.log('[AI Plan 1] Berhasil dari Cloudflare AI');
+            return { provider: 'Cloudflare AI', titles: titles.slice(0, 10) };
+        }
+    } catch (e) {
+        console.warn('[AI Plan 1] Cloudflare AI error:', e.message);
+    }
+
+    return { provider: 'AI Gagal', titles: [] };
+}
+
+async function matchSingleTitleToAnimein(title, fetchSearchResults, animeinIndex = []) {
+    const searchTitles = [title].filter(Boolean);
+    const titleVariants = buildAnimeTitleVariants(searchTitles);
+
+    for (const t of titleVariants) {
+        let combinedMatches = [];
+        if (typeof fetchSearchResults === 'function') {
+            try {
+                const searchMatches = await fetchSearchResults(t, 5);
+                if (Array.isArray(searchMatches)) combinedMatches.push(...searchMatches);
+            } catch (e) {}
+        }
+
+        try {
+            const directMatches = await fetchAnimeinDirectMatches(t);
+            if (Array.isArray(directMatches)) combinedMatches.push(...directMatches);
+        } catch (e) {}
+
+        const match = pickSafeAnimeinMatch(combinedMatches, searchTitles);
+        if (match) {
+            const animeId = match.id || match.id_movie || match.anime_id || match.slug;
+            if (animeId) {
+                return {
+                    ...match,
+                    id: animeId,
+                    id_movie: animeId,
+                    title: match.title || match.name || title,
+                };
+            }
+        }
+    }
+
+    if (Array.isArray(animeinIndex) && animeinIndex.length > 0) {
+        const indexMatch = pickAnimeinIndexMatch(animeinIndex, searchTitles);
+        if (indexMatch) {
+            const animeId = indexMatch.id || indexMatch.id_movie || indexMatch.anime_id || indexMatch.slug;
+            if (animeId) {
+                return {
+                    ...indexMatch,
+                    id: animeId,
+                    id_movie: animeId,
+                    title: indexMatch.title || indexMatch.name || title,
+                };
+            }
+        }
+    }
+
+    return null;
+}
+
+async function matchAnimeTitlesToAnimein(titles, fetchSearchResults, animeinIndex = [], maxResults = 10) {
+    if (!Array.isArray(titles)) return [];
+
+    const matchedItems = await Promise.all(
+        titles.slice(0, 10).map(title => matchSingleTitleToAnimein(title, fetchSearchResults, animeinIndex))
+    );
+
+    const results = [];
+    const seenIds = new Set();
+
+    for (const item of matchedItems) {
+        if (!item) continue;
+        const key = String(item.id || item.id_movie).toLowerCase();
+        if (key && !seenIds.has(key)) {
+            seenIds.add(key);
+            results.push(item);
+            if (results.length >= maxResults) break;
+        }
+    }
+
+    return results;
 }
 
 async function execute(ctx) {
@@ -142,9 +557,9 @@ async function execute(ctx) {
         sendChatMessage,
         checkCommandLimit,
         incrementCommandUsage,
-        fetchAnimeinList,
         saveRecentAnimeList,
         fetchAnimeSearchResults,
+        fetchAnimeinList,
     } = ctx;
 
     if (bot.isCooldown) return true;
@@ -179,99 +594,29 @@ async function execute(ctx) {
 
         const effectiveQuery = query || 'popular';
 
-        // 1. DIOLAH OLEH AI TERLEBIH DAHULU (AI First Processing)
-        const aiAnalysis = await analyzePromptWithAI(effectiveQuery);
-        const aiKeyword = aiAnalysis.searchKeyword || fallbackExtractKeyword(effectiveQuery);
-        const aiTitles = aiAnalysis.titles || [];
-        const aiGenres = aiAnalysis.genres || [];
+        // 1. Dapatkan 10 rekomendasi anime dari AI (dengan fallback 3 AI provider)
+        const aiResult = await analyzePromptWithAI(effectiveQuery);
+        const aiTitles = aiResult.titles || [];
+        console.log(`[REKOMENDASI] AI Provider: ${aiResult.provider}`);
+        console.log(`[REKOMENDASI] AI Titles: ${aiTitles.join(', ')}`);
 
         let filterLabel = isFollowUp ? `OPSI LAIN (${effectiveQuery.toUpperCase()})` : effectiveQuery.toUpperCase();
-        if (aiGenres.length > 0) {
-            filterLabel = `${aiGenres.map(g => g.toUpperCase()).join(' & ')}`;
-        }
 
         let results = [];
         const fetchSearchResults = typeof fetchAnimeSearchResults === 'function' ? fetchAnimeSearchResults : (ctx.fetchAnimeSearchResults || null);
+        const animeinIndex = await buildAnimeinIndex(fetchAnimeinList);
 
-        // Match judul kandidat dari AI ke DB Animein
-        if (aiTitles.length > 0 && fetchSearchResults) {
-            const searchPromises = aiTitles.map(t => fetchSearchResults(t, 2));
-            const searchResArray = await Promise.all(searchPromises);
-            for (const itemArr of searchResArray) {
-                if (results.length >= 10) break;
-                if (Array.isArray(itemArr) && itemArr.length > 0) {
-                    const topMatch = itemArr[0];
-                    const key = String(topMatch.id || topMatch.anime_id || topMatch.title || topMatch.name);
-                    if (key && !seenAnimeSet.has(key)) {
-                        results.push(topMatch);
-                    }
-                }
-            }
+        // 2. Pencarian ID di Animein untuk list judul dari AI
+        if (aiTitles.length > 0) {
+            results = await matchAnimeTitlesToAnimein(
+                aiTitles.slice(0, 10),
+                fetchSearchResults,
+                animeinIndex,
+                10
+            );
         }
 
-        // 2. Cari di MyAnimeList / AniList berdasarkan kata kunci hasil olahan AI
-        if (results.length < 10 && fetchSearchResults) {
-            const malCandidates = await fetchGlobalAnimeCandidates(aiKeyword);
-            for (const malItem of malCandidates) {
-                if (results.length >= 10) break;
-                const searchTitles = [malItem.title, malItem.title_english].filter(Boolean);
-                for (const t of searchTitles) {
-                    const matchArr = await fetchSearchResults(t, 2);
-                    if (Array.isArray(matchArr) && matchArr.length > 0) {
-                        const match = matchArr[0];
-                        const key = String(match.id || match.anime_id || match.title || match.name);
-                        if (key && !seenAnimeSet.has(key)) {
-                            results.push(match);
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        // 3. Jika belum 10, pencarian kata kunci terikat pada katalog lokal Animein (BEBAS POPULAR FALLBACK UMUM)
-        if (results.length < 10) {
-            const [popularList, trendingList, baruList, movieList, ongoingList, completedList, randomList] = await Promise.all([
-                fetchAnimeinList('popular'),
-                fetchAnimeinList('trending'),
-                fetchAnimeinList('baru'),
-                fetchAnimeinList('movie'),
-                fetchAnimeinList('ongoing'),
-                fetchAnimeinList('completed'),
-                fetchAnimeinList('random'),
-            ]);
-
-            const allCategories = [
-                ...(popularList || []),
-                ...(trendingList || []),
-                ...(baruList || []),
-                ...(movieList || []),
-                ...(ongoingList || []),
-                ...(completedList || []),
-                ...(randomList || []),
-            ];
-
-            const searchTokens = normalize(`${effectiveQuery} ${aiKeyword}`).split(/\s+/).filter(t => t.length > 1 && !STOP_WORDS.has(t));
-            const matchedCatalog = allCategories.filter(anime => {
-                const combined = normalize(`${anime.title || ''} ${anime.name || ''} ${anime.genre || ''} ${anime.synopsis || ''}`);
-                return searchTokens.some(st => combined.includes(st));
-            });
-
-            for (const item of matchedCatalog) {
-                if (results.length >= 10) break;
-                const key = String(item.id || item.anime_id || item.title || item.name);
-                if (key && !seenAnimeSet.has(key)) {
-                    results.push(item);
-                }
-            }
-        }
-
-        // Catat ID anime yang terpilih ke riwayat user agar tidak pernah diulang
         const finalPicks = results.slice(0, 10);
-        finalPicks.forEach(a => {
-            const key = String(a.id || a.anime_id || a.title || a.name);
-            if (key) seenAnimeSet.add(key);
-        });
 
         // Simpan ke cache tag global agar `tag no 1` - `tag no 10` langsung berfungsi
         if (finalPicks.length > 0 && typeof saveRecentAnimeList === 'function') {
@@ -288,7 +633,7 @@ async function execute(ctx) {
                 lines.push(`│ ${i + 1}. ${fullTitle}`);
             });
         } else {
-            lines.push(`│ Rekomendasi anime tidak ditemukan untuk kriteria ini.`);
+            lines.push(`│ Rekomendasi anime tidak ditemukan di Animein untuk kriteria ini.`);
         }
 
         lines.push(`├───────────────────`);
@@ -296,6 +641,8 @@ async function execute(ctx) {
         lines.push(`└───────────────────`);
 
         await sendChatMessage(bot, `@${senderName.substring(0, 10)}\n${lines.join('\n')}`, msg.id);
+
+
     } catch (e) {
         console.error('[REKOMENDASI ERROR]', e.message);
         await sendChatMessage(bot, formatCommandUsage(senderName, 'Gagal mengambil rekomendasi terfokus.'), msg.id);
