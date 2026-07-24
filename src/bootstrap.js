@@ -118,6 +118,12 @@ function initializeBootstrap(options = {}) {
                     )
                 `);
                 await db.execute(`
+                    CREATE TABLE IF NOT EXISTS anime_notif_cache (
+                        item_id TEXT PRIMARY KEY,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                `);
+                await db.execute(`
                     CREATE TABLE IF NOT EXISTS laporan (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         username TEXT,
