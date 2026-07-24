@@ -4,6 +4,8 @@ const crypto = require('crypto');
 const axios = require('./httpClient');
 const { getDashboardHTML, getLoginHTML } = require('../dashboard.js');
 const { SESSION, RATE_LIMIT, LIMITS } = require('./config/constants');
+const { getCloudflareStat } = require('./services/cloudflareAiService');
+const { getCerebrasStat } = require('./services/cerebrasAiService');
 
 const SESSION_TTL_MS = SESSION.TTL_MS; // 24 jam
 const SESSIONS = new Map();
@@ -457,7 +459,9 @@ function startDashboard(scope) {
 
             const botStatus = isSystemOff ? 'offline' : ((bots[0] && bots[0].auth && bots[0].auth.userId) ? 'online' : 'offline');
             res.json({ 
-                ...stats, 
+                ...stats,
+                cloudflare: getCloudflareStat(),
+                cerebras: getCerebrasStat(),
                 uptime, 
                 botStatus,
                 isBotActive: isBotInfoActive, // backward compat
@@ -1066,6 +1070,20 @@ function startDashboard(scope) {
         } else {
             res.status(404).json({ success: false });
         }
+    });
+
+    app.post('/api/cloudflare/toggle', (req, res) => {
+        const cfStat = getCloudflareStat();
+        cfStat.active = !cfStat.active;
+        console.log(`[DASHBOARD] Cloudflare AI: ${cfStat.active ? 'ON' : 'OFF'}`);
+        res.json({ success: true, active: cfStat.active });
+    });
+
+    app.post('/api/cerebras/toggle', (req, res) => {
+        const cbStat = getCerebrasStat();
+        cbStat.active = !cbStat.active;
+        console.log(`[DASHBOARD] Cerebras AI: ${cbStat.active ? 'ON' : 'OFF'}`);
+        res.json({ success: true, active: cbStat.active });
     });
 
     app.post('/api/cache/clear', async (req, res) => {

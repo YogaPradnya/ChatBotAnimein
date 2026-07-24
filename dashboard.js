@@ -2002,9 +2002,49 @@ async function updateStats() {
     if (d.otak) {
       const gList = document.getElementById('modelList');
       if (gList) {
-        gList.innerHTML = d.otak.map((g, i) => \`
+        let html = '';
+
+        if (d.cloudflare) {
+          const cf = d.cloudflare;
+          html += \`
+            <div class="model-card \${cf.active ? 'active' : 'inactive'}" style="border-left: 4px solid var(--accent);">
+              <div class="model-num" style="color:var(--accent);">MODEL UTAMA: CLOUDFLARE WORKERS AI (Llama 3.2 1B)</div>
+              <div class="model-metrics">
+                <div class="m-stat"><div class="m-lbl">Requests</div><div class="m-val">\${cf.requests || 0}</div></div>
+                <div class="m-stat"><div class="m-lbl">Errors</div><div class="m-val">\${cf.errors || 0}</div></div>
+                <div class="m-stat"><div class="m-lbl">Status</div><div class="m-val">\${cf.cooldownUntil && Date.now() < cf.cooldownUntil ? 'Cooldown' : (cf.active ? 'Aktif' : 'Nonaktif')}</div></div>
+                <div class="m-stat"><div class="m-lbl">Last Error</div><div class="m-val" style="font-size:10px; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">\${cf.lastError || '-'}</div></div>
+              </div>
+              <div class="toggle-pill \${!cf.active ? 'is-off' : ''}" onclick="toggleCloudflare()">
+                <div class="pill-on">ON</div>
+                <div class="pill-off">OFF</div>
+              </div>
+            </div>
+          \`;
+        }
+
+        if (d.cerebras) {
+          const cb = d.cerebras;
+          html += \`
+            <div class="model-card \${cb.active ? 'active' : 'inactive'}" style="border-left: 4px solid var(--blue);">
+              <div class="model-num" style="color:var(--blue);">FALLBACK 1: CEREBRAS AI (gemma-4-31b) - MAX 30 RPM</div>
+              <div class="model-metrics">
+                <div class="m-stat"><div class="m-lbl">Requests</div><div class="m-val">\${cb.requests || 0}</div></div>
+                <div class="m-stat"><div class="m-lbl">RPM Saat Ini</div><div class="m-val">\${cb.currentRpm || 0} / 30</div></div>
+                <div class="m-stat"><div class="m-lbl">Errors</div><div class="m-val">\${cb.errors || 0}</div></div>
+                <div class="m-stat"><div class="m-lbl">Last Error</div><div class="m-val" style="font-size:10px; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">\${cb.lastError || '-'}</div></div>
+              </div>
+              <div class="toggle-pill \${!cb.active ? 'is-off' : ''}" onclick="toggleCerebras()">
+                <div class="pill-on">ON</div>
+                <div class="pill-off">OFF</div>
+              </div>
+            </div>
+          \`;
+        }
+
+        html += d.otak.map((g, i) => \`
           <div class="model-card \${g.active ? 'active' : 'inactive'}">
-            <div class="model-num">OTAK #\${i+1}</div>
+            <div class="model-num">OTAK #\${i+1} (GROQ FALLBACK 2)</div>
             <div class="model-metrics">
               <div class="m-stat"><div class="m-lbl">Requests</div><div class="m-val">\${g.requests || 0}</div></div>
               <div class="m-stat"><div class="m-lbl">Success</div><div class="m-val">\${g.success || 0}</div></div>
@@ -2017,6 +2057,8 @@ async function updateStats() {
             </div>
           </div>
         \`).join('');
+
+        gList.innerHTML = html;
       }
     }
 
@@ -2075,6 +2117,16 @@ async function updateStats() {
 
   async function toggleGroq(id) {
     await fetch('/api/groq/toggle/' + id, { method: 'POST' });
+    refresh();
+  }
+
+  async function toggleCloudflare() {
+    await fetch('/api/cloudflare/toggle', { method: 'POST' });
+    refresh();
+  }
+
+  async function toggleCerebras() {
+    await fetch('/api/cerebras/toggle', { method: 'POST' });
     refresh();
   }
 
