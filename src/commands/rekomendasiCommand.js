@@ -1,7 +1,12 @@
+const axios = require('axios');
 const { formatCommandUsage } = require('../utils/messageFormatter');
 const { boxHeader } = require('../utils/textStyle');
 const { askCerebrasAi } = require('../services/cerebrasAiService');
 const { askCloudflareAi } = require('../services/cloudflareAiService');
+
+// Tracking riwayat anime yang pernah dilihat user & kueri terakhir
+const userSeenAnimeMap = new Map(); // senderUserId -> Set(animeId/title)
+const userLastQueryMap = new Map(); // senderUserId -> String(query)
 
 function cleanText(value, maxLength = 26) {
     const text = String(value || '-')
@@ -15,10 +20,22 @@ function normalize(value) {
     return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
+// Deteksi kata kunci pemicu kelanjutan (follow-up)
+function isFollowUpTrigger(msgText) {
+    const norm = normalize(msgText);
+    const patterns = [
+        'ada lagi', 'ada yang lain', 'yang lain', 'opsi lain', 'lainnya',
+        'rekomendasi lagi', 'rekomendasi yang lain', 'yang lain dong',
+        'lainnya dong', 'opsi lain dong', 'ada opsi lain', 'rekomen lagi'
+    ];
+    return patterns.some(p => norm.includes(p));
+}
+
+// STAGE 1: Process User Query with AI Prompt Analysis
 async function analyzePromptWithAI(userQuery) {
     const systemPrompt = `Kamu adalah sistem pemroses kueri rekomendasi anime. 
 Tugasmu: Analisis permintaan rekomendasi user berikut: "${userQuery}".
-Berikan 10 judul anime Jepang yang paling cocok dan populer untuk kriteria tersebut.
+Berikan 15 judul anime Jepang yang paling cocok dan populer untuk kriteria tersebut.
 Format output WAJIB berupa daftar judul yang dipisahkan baris baru tanpa penomoran atau teks penjelasan tambahan. Contoh:
 Tensei shitara Slime Datta Ken
 Campfire Cooking in Another World
@@ -26,13 +43,13 @@ Kono Subarashii Sekai ni Shukufuku wo!`;
 
     try {
         let aiRes = await askCerebrasAi({
-            userMessage: `Berikan 10 judul anime terbaik untuk: "${userQuery}"`,
+            userMessage: `Berikan 15 judul anime terbaik untuk: "${userQuery}"`,
             systemPrompt,
         });
 
         if (!aiRes || !aiRes.answer) {
             aiRes = await askCloudflareAi({
-                userMessage: `Berikan 10 judul anime terbaik untuk: "${userQuery}"`,
+                userMessage: `Berikan 15 judul anime terbaik untuk: "${userQuery}"`,
                 systemPrompt,
             });
         }
@@ -42,12 +59,40 @@ Kono Subarashii Sekai ni Shukufuku wo!`;
                 .split('\n')
                 .map(line => line.replace(/^\d+[\.\-\)]\s*/, '').trim())
                 .filter(line => line.length > 2 && !line.toLowerCase().includes('berikut') && !line.toLowerCase().includes('rekomendasi'));
-            return titles.slice(0, 10);
+            return titles;
         }
     } catch (e) {
         console.warn('[REKOMENDASI AI PROMPT ERROR]', e.message);
     }
     return [];
+}
+
+// STAGE 2: Global MAL / AniList Database Search
+async function fetchGlobalAnimeCandidates(queryText) {
+    const gqlQuery = `
+    query ($search: String) {
+      Page(page: 1, perPage: 15) {
+        media(search: $search, type: ANIME, sort: POPULARITY_DESC) {
+          id
+          title { romaji english native }
+          genres
+        }
+      }
+    }
+    `;
+    try {
+        const res = await axios.post('https://graphql.anilist.co', {
+            query: gqlQuery,
+            variables: { search: queryText }
+        }, {
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            timeout: 5000
+        });
+        const list = res.data?.data?.Page?.media || [];
+        return list.map(item => item.title.romaji || item.title.english || item.title.native).filter(Boolean);
+    } catch (e) {
+        return [];
+    }
 }
 
 const KEYWORD_MAP = {
@@ -95,6 +140,7 @@ async function execute(ctx) {
         fetchGenresList,
         fetchByGenre,
         saveRecentAnimeList,
+        fetchAnimeSearchResults,
     } = ctx;
 
     if (bot.isCooldown) return true;
@@ -104,7 +150,7 @@ async function execute(ctx) {
         .replace(/^\.?rekomen\s*/i, '')
         .replace(/^\.?rekom\s*/i, '')
         .trim();
-    const query = rawQuery.replace(/^anime\s*/i, '').trim();
+    let query = rawQuery.replace(/^anime\s*/i, '').trim();
 
     const cmdLimit = await checkCommandLimit(senderUserId, senderName);
     if (cmdLimit.remaining <= 0) {
@@ -114,97 +160,59 @@ async function execute(ctx) {
     await incrementCommandUsage(senderUserId, senderName);
 
     try {
-        if (!query) {
-            // Tanpa parameter: tampilkan rekomendasi 10 anime pilihan
-            let list = await fetchAnimeinList('popular');
-            if (!list || list.length === 0) {
-                list = await fetchAnimeinList('trending');
-            }
+        const uIdKey = String(senderUserId || senderName);
+        if (!userSeenAnimeMap.has(uIdKey)) {
+            userSeenAnimeMap.set(uIdKey, new Set());
+        }
+        const seenAnimeSet = userSeenAnimeMap.get(uIdKey);
 
-            const picks = (list || []).slice(0, 10);
-            if (picks.length > 0 && typeof saveRecentAnimeList === 'function') {
-                saveRecentAnimeList(senderName, senderUserId, picks, 'rekomendasi:featured');
-            }
-
-            const lines = [
-                `┌── ${boxHeader('REKOMENDASI ANIME')}`,
-            ];
-
-            if (picks.length > 0) {
-                picks.forEach((a, i) => {
-                    const fullTitle = String(a.title || a.name || 'Tanpa judul').trim();
-                    lines.push(`│ ${i + 1}. ${fullTitle}`);
-                });
-            } else {
-                lines.push(`│ Data rekomendasi tidak tersedia saat ini.`);
-            }
-
-            lines.push(`├───────────────────`);
-            lines.push(`│ Ketik "tag no 1" - "tag no 10" untuk detail`);
-            lines.push(`└───────────────────`);
-
-            await sendChatMessage(bot, `@${senderName.substring(0, 10)}\n${lines.join('\n')}`, msg.id);
-            return true;
+        const isFollowUp = isFollowUpTrigger(cleanMsg || '');
+        if (isFollowUp) {
+            query = userLastQueryMap.get(uIdKey);
+        } else if (query) {
+            userLastQueryMap.set(uIdKey, query);
         }
 
-        // Dengan parameter: cari berdasarkan genre, mood, status, atau kata kunci (10 judul)
+        const effectiveQuery = query;
         let results = [];
-        let filterLabel = query.toUpperCase();
+        let filterLabel = isFollowUp ? `OPSI LAIN (${effectiveQuery.toUpperCase()})` : effectiveQuery.toUpperCase();
 
-        // STAGE 1: AI Prompt Analysis - Dapatkan calon judul dari AI
         const fetchSearchResults = typeof fetchAnimeSearchResults === 'function' ? fetchAnimeSearchResults : (ctx.fetchAnimeSearchResults || null);
-        const aiTitles = await analyzePromptWithAI(query);
+
+        // 1. Dapatkan kandidat anime dari AI Prompt Analysis
+        const aiTitles = await analyzePromptWithAI(effectiveQuery);
         if (aiTitles && aiTitles.length > 0 && fetchSearchResults) {
             const searchPromises = aiTitles.map(t => fetchSearchResults(t, 2));
             const searchResArray = await Promise.all(searchPromises);
-            const seenAiIds = new Set();
             for (const itemArr of searchResArray) {
                 if (Array.isArray(itemArr) && itemArr.length > 0) {
                     const topMatch = itemArr[0];
-                    const key = topMatch.id || topMatch.title || topMatch.name;
-                    if (key && !seenAiIds.has(key)) {
-                        seenAiIds.add(key);
+                    const key = String(topMatch.id || topMatch.anime_id || topMatch.title || topMatch.name);
+                    if (key && !seenAnimeSet.has(key)) {
                         results.push(topMatch);
                     }
                 }
             }
-            if (results.length > 0) {
-                filterLabel = `AI MATCH (${query.toUpperCase()})`;
-            }
         }
 
-        // STAGE 2: Cek Genre jika belum cukup 10 hasil dari AI
-        if (results.length < 10 && typeof fetchGenresList === 'function' && typeof fetchByGenre === 'function') {
-            const genres = await fetchGenresList();
-            const qNorm = normalize(query);
-            const matchGenre = genres.find(g => normalize(g.name) === qNorm)
-                || genres.find(g => normalize(g.name).includes(qNorm))
-                || genres.find(g => qNorm.includes(normalize(g.name)));
-
-            if (matchGenre) {
-                const genreRes = await fetchByGenre(matchGenre.id, false, 10);
-                const seenKeys = new Set(results.map(a => a.id || a.title || a.name));
-                for (const gItem of (genreRes || [])) {
-                    const k = gItem.id || gItem.title || gItem.name;
-                    if (k && !seenKeys.has(k)) {
-                        seenKeys.add(k);
-                        results.push(gItem);
+        // 2. Jika belum 10, ambil dari Global MAL / AniList Search & Match Animein DB
+        if (results.length < 10 && fetchSearchResults) {
+            const malCandidates = await fetchGlobalAnimeCandidates(effectiveQuery);
+            for (const malTitle of malCandidates) {
+                if (results.length >= 10) break;
+                const matchArr = await fetchSearchResults(malTitle, 2);
+                if (Array.isArray(matchArr) && matchArr.length > 0) {
+                    const match = matchArr[0];
+                    const key = String(match.id || match.anime_id || match.title || match.name);
+                    if (key && !seenAnimeSet.has(key)) {
+                        results.push(match);
                     }
                 }
-                if (!filterLabel || filterLabel.includes(query.toUpperCase())) {
-                    filterLabel = `GENRE: ${matchGenre.name.toUpperCase()}`;
-                }
             }
         }
 
-        // STAGE 3: Jika belum 10, pencarian kata kunci terikat pada SELURUH katalog
+        // 3. Jika belum 10, olah katalog Animein lokal (popular, trending, baru, movie, ongoing, completed, random)
         if (results.length < 10) {
-            let fullList = [];
-            if (typeof fetchAnimeSearchResults === 'function') {
-                const searchResults = (await fetchAnimeSearchResults(query, 20)) || [];
-                fullList.push(...searchResults);
-            }
-
             const [popularList, trendingList, baruList, movieList, ongoingList, completedList, randomList] = await Promise.all([
                 fetchAnimeinList('popular'),
                 fetchAnimeinList('trending'),
@@ -225,18 +233,8 @@ async function execute(ctx) {
                 ...(randomList || []),
             ];
 
-            const seenIds = new Set(results.map(a => a.id || a.title || a.name));
-            const consolidatedList = [];
-            for (const item of [...fullList, ...allCategories]) {
-                const key = item.id || item.title || item.name;
-                if (key && !seenIds.has(key)) {
-                    seenIds.add(key);
-                    consolidatedList.push(item);
-                }
-            }
-
-            const keywords = enrichQueryKeywords(query);
-            const scored = consolidatedList.map(anime => {
+            const keywords = enrichQueryKeywords(effectiveQuery);
+            const scored = allCategories.map(anime => {
                 const combined = normalize(`${anime.title || ''} ${anime.name || ''} ${anime.genre || ''} ${anime.synopsis || ''}`);
                 let score = 0;
                 keywords.forEach(kw => {
@@ -245,32 +243,53 @@ async function execute(ctx) {
                 return { anime, score };
             });
             scored.sort((a, b) => b.score - a.score);
-            const keywordMatches = scored.filter(s => s.score > 0).map(s => s.anime);
+            const matchedCatalog = scored.filter(s => s.score > 0).map(s => s.anime);
 
-            const existingSet = new Set(results.map(a => a.id || a.title || a.name));
-            for (const km of keywordMatches) {
+            for (const item of matchedCatalog) {
                 if (results.length >= 10) break;
-                const k = km.id || km.title || km.name;
-                if (k && !existingSet.has(k)) {
-                    existingSet.add(k);
-                    results.push(km);
+                const key = String(item.id || item.anime_id || item.title || item.name);
+                if (key && !seenAnimeSet.has(key)) {
+                    results.push(item);
                 }
             }
         }
 
+        // 4. Jika masih belum 10 (misal baru pertama kali atau history hampir penuh), ambil fallback pilihan katalog yang durung terpakai
+        if (results.length < 10) {
+            const fallbackCatalog = (await fetchAnimeinList('popular')) || (await fetchAnimeinList('trending')) || [];
+            for (const item of fallbackCatalog) {
+                if (results.length >= 10) break;
+                const key = String(item.id || item.anime_id || item.title || item.name);
+                if (key && !seenAnimeSet.has(key)) {
+                    results.push(item);
+                }
+            }
+        }
+
+        // Catat ID anime yang terpilih ke riwayat user agar tidak pernah diulang
         const finalPicks = results.slice(0, 10);
+        finalPicks.forEach(a => {
+            const key = String(a.id || a.anime_id || a.title || a.name);
+            if (key) seenAnimeSet.add(key);
+        });
+
+        // Simpan ke cache tag global agar `tag no 1` - `tag no 10` langsung berfungsi
         if (finalPicks.length > 0 && typeof saveRecentAnimeList === 'function') {
-            saveRecentAnimeList(senderName, senderUserId, finalPicks, `rekomendasi:${query}`);
+            saveRecentAnimeList(senderName, senderUserId, finalPicks, `rekomendasi:${effectiveQuery}`);
         }
 
         const lines = [
             `┌── ${boxHeader(`REKOMENDASI ${filterLabel}`)}`,
         ];
 
-        finalPicks.forEach((a, i) => {
-            const fullTitle = String(a.title || a.name || 'Tanpa judul').trim();
-            lines.push(`│ ${i + 1}. ${fullTitle}`);
-        });
+        if (finalPicks.length > 0) {
+            finalPicks.forEach((a, i) => {
+                const fullTitle = String(a.title || a.name || 'Tanpa judul').trim();
+                lines.push(`│ ${i + 1}. ${fullTitle}`);
+            });
+        } else {
+            lines.push(`│ Rekomendasi anime tidak ditemukan.`);
+        }
 
         lines.push(`├───────────────────`);
         lines.push(`│ Ketik "tag no 1" - "tag no 10" untuk detail`);

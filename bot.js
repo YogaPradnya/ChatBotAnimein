@@ -3196,6 +3196,7 @@ function getRecentAnimeListKeys(senderName, senderUserId) {
         senderUserId,
         senderName,
         String(senderName || '').replace(/^@+/, ''),
+        'global_latest_recommendation'
     ].map(v => String(v || '').toLowerCase().trim()).filter(Boolean))];
 }
 
