@@ -78,6 +78,15 @@ function createEnvConfig() {
             API_KEYS: collectAiHordeKeys(),
             CLIENT_AGENT: getEnv('AI_HORDE_CLIENT_AGENT', 'AnimeinBot:1.0'),
         },
+        CLOUDFLARE: {
+            API_KEY: getEnv('CLOUDFLARE_API_KEY'),
+            ACCOUNT_ID: getEnv('CLOUDFLARE_ACCOUNT_ID'),
+            MODEL: getEnv('CLOUDFLARE_MODEL', '@cf/meta/llama-3.2-1b-instruct'),
+        },
+        CEREBRAS: {
+            API_KEY: getEnv('CEREBRAS_API_KEY'),
+            MODEL: getEnv('CEREBRAS_MODEL', 'gemma-4-31b'),
+        },
         BOT: {
             POLL_INTERVAL: 9000,
         },

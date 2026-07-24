@@ -35,6 +35,8 @@ const { createInitialQuizState, createQuizService } = require('./src/services/qu
 const { createImageService } = require('./src/services/imageService');
 const { createAnimeinClient } = require('./src/animein/client');
 const { createAiService } = require('./src/services/aiService');
+const { askCloudflareAi, getCloudflareStat } = require('./src/services/cloudflareAiService');
+const { askCerebrasAi, getCerebrasStat } = require('./src/services/cerebrasAiService');
 const { createAiHordeImageService } = require('./src/services/aiHordeImageService');
 const { createAnimeRecommendationService } = require('./src/services/animeRecommendationService');
 const { formatAnimeRecommendationTitles } = require('./src/utils/responseFormatter');
@@ -3531,6 +3533,72 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
         if (lastUserMsg && isNewTopic(lastUserMsg.content, userMessage)) {
             console.log(`[MEMORY] Topic switch detected for ${senderName}. Context cleared.`);
             history = [];
+        }
+    }
+
+    // Model Utama: Cloudflare Workers AI (Llama 3.2 1B)
+    const cfStat = getCloudflareStat();
+    if (cfStat.active && CONFIG.CLOUDFLARE_API_KEY && CONFIG.CLOUDFLARE_ACCOUNT_ID && Date.now() >= cfStat.cooldownUntil) {
+        try {
+            USER_CHAT_COUNT[senderUserId || senderName] = (USER_CHAT_COUNT[senderUserId || senderName] || 0) + 1;
+            if (USER_CHAT_COUNT[senderUserId || senderName] >= 5) {
+                USER_CHAT_COUNT[senderUserId || senderName] = 0;
+                updateUserMemory(senderUserId || senderName, senderName, history);
+            }
+
+            const { text, tokens, provider } = await askCloudflareAi({
+                userMessage,
+                senderName,
+                contextData: finalContext,
+                chatHistory: history,
+                replyText,
+                senderUserId,
+                systemPrompt: SYSTEM_PROMPT,
+                personalizeSystemPrompt,
+                userStatsCache: USER_STATS_CACHE,
+                sanitizeReplyContext,
+            });
+
+            const finalText = polishAiAnswer(text, userMessage, replyText);
+            if (finalText) {
+                return { text: finalText, provider: `Cloudflare (Llama 3.2 1B)`, tokens };
+            }
+        } catch (err) {
+            cfStat.errors++;
+            cfStat.lastError = (err.message || '').slice(0, 100);
+            console.error(`[CLOUDFLARE AI] Error: ${err.message}. Fallback ke Cerebras.`);
+        }
+    }
+
+    // Fallback Pertama: Cerebras AI (gemma-4-31b, Max 30 RPM)
+    const cbStat = getCerebrasStat();
+    if (cbStat.active && CONFIG.CEREBRAS_API_KEY && Date.now() >= cbStat.cooldownUntil) {
+        try {
+            USER_CHAT_COUNT[senderUserId || senderName] = (USER_CHAT_COUNT[senderUserId || senderName] || 0) + 1;
+            if (USER_CHAT_COUNT[senderUserId || senderName] >= 5) {
+                USER_CHAT_COUNT[senderUserId || senderName] = 0;
+                updateUserMemory(senderUserId || senderName, senderName, history);
+            }
+
+            const { text, tokens, provider } = await askCerebrasAi({
+                userMessage,
+                senderName,
+                contextData: finalContext,
+                chatHistory: history,
+                replyText,
+                senderUserId,
+                systemPrompt: SYSTEM_PROMPT,
+                personalizeSystemPrompt,
+                userStatsCache: USER_STATS_CACHE,
+                sanitizeReplyContext,
+            });
+
+            const finalText = polishAiAnswer(text, userMessage, replyText);
+            if (finalText) {
+                return { text: finalText, provider, tokens };
+            }
+        } catch (err) {
+            console.error(`[CEREBRAS AI] Error: ${err.message}. Fallback ke Groq.`);
         }
     }
 
