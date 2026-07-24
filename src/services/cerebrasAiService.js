@@ -105,7 +105,7 @@ async function askCerebrasAi({
                 model,
                 messages,
                 max_tokens: 1024,
-                temperature: 0.75,
+                temperature: 0.8,
             },
             {
                 headers: {

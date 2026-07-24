@@ -2886,7 +2886,7 @@ async function askGroq(index, userMessage, senderName, contextData = '', chatHis
             { role: 'user', content: userContent }
         ],
         max_tokens: 1024,
-        temperature: 0.75,
+        temperature: 0.8,
     }).withResponse();
 
     // Safety check: pastikan response memiliki choices yang valid
