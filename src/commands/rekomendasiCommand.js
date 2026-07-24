@@ -1,5 +1,7 @@
 const { formatCommandUsage } = require('../utils/messageFormatter');
 const { boxHeader } = require('../utils/textStyle');
+const { askCerebrasAi } = require('../services/cerebrasAiService');
+const { askCloudflareAi } = require('../services/cloudflareAiService');
 
 function cleanText(value, maxLength = 26) {
     const text = String(value || '-')
@@ -11,6 +13,73 @@ function cleanText(value, maxLength = 26) {
 
 function normalize(value) {
     return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+async function analyzePromptWithAI(userQuery) {
+    const systemPrompt = `Kamu adalah sistem pemroses kueri rekomendasi anime. 
+Tugasmu: Analisis permintaan rekomendasi user berikut: "${userQuery}".
+Berikan 10 judul anime Jepang yang paling cocok dan populer untuk kriteria tersebut.
+Format output WAJIB berupa daftar judul yang dipisahkan baris baru tanpa penomoran atau teks penjelasan tambahan. Contoh:
+Tensei shitara Slime Datta Ken
+Campfire Cooking in Another World
+Kono Subarashii Sekai ni Shukufuku wo!`;
+
+    try {
+        let aiRes = await askCerebrasAi({
+            userMessage: `Berikan 10 judul anime terbaik untuk: "${userQuery}"`,
+            systemPrompt,
+        });
+
+        if (!aiRes || !aiRes.answer) {
+            aiRes = await askCloudflareAi({
+                userMessage: `Berikan 10 judul anime terbaik untuk: "${userQuery}"`,
+                systemPrompt,
+            });
+        }
+
+        if (aiRes && aiRes.answer) {
+            const titles = String(aiRes.answer)
+                .split('\n')
+                .map(line => line.replace(/^\d+[\.\-\)]\s*/, '').trim())
+                .filter(line => line.length > 2 && !line.toLowerCase().includes('berikut') && !line.toLowerCase().includes('rekomendasi'));
+            return titles.slice(0, 10);
+        }
+    } catch (e) {
+        console.warn('[REKOMENDASI AI PROMPT ERROR]', e.message);
+    }
+    return [];
+}
+
+const KEYWORD_MAP = {
+    'santai': ['slice of life', 'iyashikei', 'comedy', 'relaxing', 'seinen'],
+    'isekai': ['isekai', 'reincarnation', 'another world', 'fantasy'],
+    'seru': ['action', 'adventure', 'shounen', 'fantasy'],
+    'sedih': ['drama', 'tragedy', 'romance'],
+    'baper': ['romance', 'school', 'shoujo', 'drama'],
+    'romantis': ['romance', 'school', 'shoujo'],
+    'kocak': ['comedy', 'parody', 'gag'],
+    'ngakak': ['comedy', 'parody'],
+    'mikir': ['mystery', 'psychological', 'thriller'],
+    'gelap': ['dark fantasy', 'horror', 'thriller'],
+    'olahraga': ['sports', 'shounen'],
+    'sekolah': ['school', 'romance', 'slice of life'],
+    'sihir': ['magic', 'fantasy', 'isekai'],
+};
+
+const STOP_WORDS = new Set(['yang', 'dong', 'bisa', 'mau', 'tolong', 'minta', 'kasih', 'lagi', 'buat', 'untuk', 'sama', 'ada', 'apa', 'apaan', 'dan', 'atau', 'di', 'ke', 'dari', 'ya']);
+
+function enrichQueryKeywords(rawQuery) {
+    const tokens = normalize(rawQuery).split(/\s+/).filter(t => t.length > 1 && !STOP_WORDS.has(t));
+    const enriched = new Set(tokens);
+
+    for (const token of tokens) {
+        for (const [key, mapping] of Object.entries(KEYWORD_MAP)) {
+            if (token.includes(key) || key.includes(token)) {
+                mapping.forEach(m => enriched.add(m));
+            }
+        }
+    }
+    return Array.from(enriched);
 }
 
 async function execute(ctx) {
@@ -86,8 +155,30 @@ async function execute(ctx) {
         let results = [];
         let filterLabel = query.toUpperCase();
 
-        // 1. Cek Genre
-        if (typeof fetchGenresList === 'function' && typeof fetchByGenre === 'function') {
+        // STAGE 1: AI Prompt Analysis - Dapatkan calon judul dari AI
+        const fetchSearchResults = typeof fetchAnimeSearchResults === 'function' ? fetchAnimeSearchResults : (ctx.fetchAnimeSearchResults || null);
+        const aiTitles = await analyzePromptWithAI(query);
+        if (aiTitles && aiTitles.length > 0 && fetchSearchResults) {
+            const searchPromises = aiTitles.map(t => fetchSearchResults(t, 2));
+            const searchResArray = await Promise.all(searchPromises);
+            const seenAiIds = new Set();
+            for (const itemArr of searchResArray) {
+                if (Array.isArray(itemArr) && itemArr.length > 0) {
+                    const topMatch = itemArr[0];
+                    const key = topMatch.id || topMatch.title || topMatch.name;
+                    if (key && !seenAiIds.has(key)) {
+                        seenAiIds.add(key);
+                        results.push(topMatch);
+                    }
+                }
+            }
+            if (results.length > 0) {
+                filterLabel = `AI MATCH (${query.toUpperCase()})`;
+            }
+        }
+
+        // STAGE 2: Cek Genre jika belum cukup 10 hasil dari AI
+        if (results.length < 10 && typeof fetchGenresList === 'function' && typeof fetchByGenre === 'function') {
             const genres = await fetchGenresList();
             const qNorm = normalize(query);
             const matchGenre = genres.find(g => normalize(g.name) === qNorm)
@@ -95,18 +186,63 @@ async function execute(ctx) {
                 || genres.find(g => qNorm.includes(normalize(g.name)));
 
             if (matchGenre) {
-                filterLabel = `GENRE: ${matchGenre.name.toUpperCase()}`;
-                results = await fetchByGenre(matchGenre.id, false, 10);
+                const genreRes = await fetchByGenre(matchGenre.id, false, 10);
+                const seenKeys = new Set(results.map(a => a.id || a.title || a.name));
+                for (const gItem of (genreRes || [])) {
+                    const k = gItem.id || gItem.title || gItem.name;
+                    if (k && !seenKeys.has(k)) {
+                        seenKeys.add(k);
+                        results.push(gItem);
+                    }
+                }
+                if (!filterLabel || filterLabel.includes(query.toUpperCase())) {
+                    filterLabel = `GENRE: ${matchGenre.name.toUpperCase()}`;
+                }
             }
         }
 
-        // 2. Jika bukan genre, cari di list popular / trending / baru
+        // 2. Jika bukan genre tunggal, olah prompt dengan keyword enrichment & scoring
         if (!results || results.length === 0) {
             let fullList = [];
-            const popularList = await fetchAnimeinList('popular') || [];
-            const trendingList = await fetchAnimeinList('trending') || [];
-            const baruList = await fetchAnimeinList('baru') || [];
-            fullList = [...popularList, ...trendingList, ...baruList];
+
+            // 1. Ambil dari Animein Search API secara global
+            if (typeof fetchAnimeSearchResults === 'function') {
+                const searchResults = (await fetchAnimeSearchResults(query, 20)) || [];
+                fullList.push(...searchResults);
+            }
+
+            // 2. Ambil dari seluruh kategori halaman Animein
+            const [popularList, trendingList, baruList, movieList, ongoingList, completedList, randomList] = await Promise.all([
+                fetchAnimeinList('popular'),
+                fetchAnimeinList('trending'),
+                fetchAnimeinList('baru'),
+                fetchAnimeinList('movie'),
+                fetchAnimeinList('ongoing'),
+                fetchAnimeinList('completed'),
+                fetchAnimeinList('random'),
+            ]);
+
+            const allCategories = [
+                ...(popularList || []),
+                ...(trendingList || []),
+                ...(baruList || []),
+                ...(movieList || []),
+                ...(ongoingList || []),
+                ...(completedList || []),
+                ...(randomList || []),
+            ];
+
+            // Deduplikasi seluruh katalog anime
+            const seenIds = new Set();
+            const consolidatedList = [];
+            for (const item of [...fullList, ...allCategories]) {
+                const key = item.id || item.title || item.name;
+                if (key && !seenIds.has(key)) {
+                    seenIds.add(key);
+                    consolidatedList.push(item);
+                }
+            }
+            fullList = consolidatedList;
 
             const qNorm = normalize(query);
             if (qNorm === 'ongoing' || qNorm === 'tamat' || qNorm === 'completed') {
@@ -123,19 +259,34 @@ async function execute(ctx) {
                     return tp.includes(qNorm);
                 }).slice(0, 10);
             } else {
-                // Mood / keyword search
-                results = fullList.filter(a => {
-                    const combined = normalize(`${a.title || ''} ${a.genre || ''} ${a.synopsis || ''}`);
-                    return combined.includes(qNorm);
-                }).slice(0, 10);
+                // Prompt Enrichment & Scoring
+                const keywords = enrichQueryKeywords(query);
+                const scored = fullList.map(anime => {
+                    const combined = normalize(`${anime.title || ''} ${anime.name || ''} ${anime.genre || ''} ${anime.synopsis || ''}`);
+                    let score = 0;
+                    keywords.forEach(kw => {
+                        if (combined.includes(kw)) score += 2;
+                    });
+                    return { anime, score };
+                });
+                scored.sort((a, b) => b.score - a.score);
+                results = scored.filter(s => s.score > 0).map(s => s.anime).slice(0, 10);
             }
         }
 
-        if (!results || results.length === 0) {
-            // Fallback: Ambil random jika tidak ada pencocokan spesifik
-            const randList = await fetchAnimeinList('random') || [];
-            results = randList.slice(0, 10);
-            filterLabel = `PILIHAN POPULER (${query.toUpperCase()})`;
+        if (!results || results.length < 10) {
+            const fallbackList = (await fetchAnimeinList('popular')) || (await fetchAnimeinList('trending')) || [];
+            const existingTitles = new Set((results || []).map(a => normalize(a.title || a.name)));
+            results = results || [];
+            for (const fb of fallbackList) {
+                if (results.length >= 10) break;
+                const normT = normalize(fb.title || fb.name);
+                if (normT && !existingTitles.has(normT)) {
+                    existingTitles.add(normT);
+                    results.push(fb);
+                }
+            }
+            if (!filterLabel) filterLabel = `PILIHAN (${query.toUpperCase()})`;
         }
 
         const finalPicks = results.slice(0, 10);

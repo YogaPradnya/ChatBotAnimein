@@ -25,7 +25,7 @@ const limitCommand = require('./limitCommand');
 const createImageCommand = require('./createImageCommand');
 const dataCommand = require('./dataCommand');
 const rekomendasiCommand = require('./rekomendasiCommand');
-const cuplixDlCommand = require('./cuplixDlCommand');
+const linkCommand = require('./linkCommand');
 
 // Cooldown global untuk .hint (30 detik)
 const HINT_COOLDOWN_MS = 30 * 1000;
@@ -172,8 +172,8 @@ async function handleInfoCommand(ctx) {
         return rekomendasiCommand.execute(ctx);
     }
 
-    if (lowerMsg === '.cuplixdl' || lowerMsg === '.cuplix') {
-        return cuplixDlCommand.execute(ctx);
+    if (lowerMsg === '.link' || lowerMsg === '.cuplixdl' || lowerMsg === '.cuplix') {
+        return linkCommand.execute(ctx);
     }
 
     return false;
@@ -215,7 +215,7 @@ module.exports = {
     createImageCommand,
     dataCommand,
     rekomendasiCommand,
-    cuplixDlCommand,
+    linkCommand,
 
     handleKuisCommand,
     handleInfoCommand,

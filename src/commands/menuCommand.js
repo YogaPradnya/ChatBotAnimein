@@ -20,7 +20,7 @@ async function execute(ctx) {
         `│ 8. .populer`,
         `│ 9. .random`,
         `│10. .waifu [@user]`,
-        `│11. .cuplixDL`,
+        `│11. .link`,
         `│12. .data [isi/hapus/reset]`,
         `│13. .profil`,
         `│14. .cek @user`,
