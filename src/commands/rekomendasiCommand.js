@@ -30,7 +30,12 @@ async function execute(ctx) {
 
     if (bot.isCooldown) return true;
 
-    const query = String(cleanMsg || '').replace(/^\.rekomendasi\s*/i, '').trim();
+    const rawQuery = String(cleanMsg || '')
+        .replace(/^\.?rekomendasi\s*/i, '')
+        .replace(/^\.?rekomen\s*/i, '')
+        .replace(/^\.?rekom\s*/i, '')
+        .trim();
+    const query = rawQuery.replace(/^anime\s*/i, '').trim();
 
     const cmdLimit = await checkCommandLimit(senderUserId, senderName);
     if (cmdLimit.remaining <= 0) {

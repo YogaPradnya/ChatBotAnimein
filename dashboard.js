@@ -901,104 +901,109 @@ function getDashboardHTML() {
         <div class="two-col">
           <!-- Left Column: XP & Event Config -->
           <div>
-            <div class="card" style="margin-bottom: 20px; padding: 20px; border: 1px solid var(--border); box-shadow: var(--shadow-sm);">
-              <h3 style="font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 16px;">Pengaturan Pendapatan & Event XP</h3>
+            <div class="card" style="margin-bottom: 20px;">
+              <div class="card-title">Pengaturan Pendapatan & Event XP</div>
               
               <div style="margin-bottom: 16px;">
-                <label class="form-label" style="font-weight: 600; font-size: 12px; margin-bottom: 6px; display: block;">Base XP Rate (Persentase)</label>
+                <label class="form-label">Base XP Rate (Persentase)</label>
                 <div style="display: flex; align-items: center; gap: 8px;">
-                  <input type="number" id="ecoBaseXpRate" value="60" min="1" max="1000" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); width: 100px; font-weight: 700; outline: none; background: #fff;">
+                  <input type="number" id="ecoBaseXpRate" value="60" min="1" max="1000" style="width: 110px; font-weight: 700;">
                   <span style="font-weight: 600; color: var(--muted); font-size: 13px;">% dari default</span>
                 </div>
-                <small style="color: var(--muted); font-size: 11px; display: block; margin-top: 4px;">Persentase pendapatan base XP player (default: 60% setelah dikurangi 40%).</small>
+                <small style="color: var(--muted); font-size: 11px; display: block; margin-top: 4px; margin-bottom: 16px;">Persentase pendapatan base XP player (default: 60% setelah dikurangi 40%).</small>
               </div>
 
-              <div style="border-top: 1px solid var(--border); padding-top: 16px; margin-bottom: 16px;">
+              <div style="border-top: 1px solid var(--border); padding-top: 16px;">
                 <h4 style="font-size: 12px; font-weight: 700; margin-bottom: 12px; color: var(--accent);">Event Double/Multi XP</h4>
-                <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;">
                   <div style="flex: 1; min-width: 120px;">
-                    <label class="form-label" style="font-size: 11px; margin-bottom: 4px; display: block;">XP Multiplier</label>
-                    <select id="ecoXpMultiplier" style="width: 100%; padding: 8px; border-radius: 8px; border: 1px solid var(--border); font-weight: 700; outline: none; background: #fff;">
+                    <label class="form-label">XP Multiplier</label>
+                    <select id="ecoXpMultiplier" style="width: 100%; padding: 8px; border-radius: 8px; border: 1px solid var(--border); font-weight: 700;">
                       <option value="2">x2 XP</option>
                       <option value="4">x4 XP</option>
                       <option value="8">x8 XP</option>
                     </select>
                   </div>
                   <div style="flex: 1; min-width: 120px;">
-                    <label class="form-label" style="font-size: 11px; margin-bottom: 4px; display: block;">Durasi Event</label>
-                    <div style="display: flex; align-items: center; gap: 4px;">
-                      <input type="number" id="ecoXpDuration" value="60" min="1" style="width: 70px; padding: 8px; border-radius: 8px; border: 1px solid var(--border); font-weight: 700; text-align: center; outline: none; background: #fff;">
-                      <span style="font-size: 11px; color: var(--muted);">menit</span>
+                    <label class="form-label">Durasi Event</label>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                      <input type="number" id="ecoXpDuration" value="60" min="1" style="width: 80px; font-weight: 700; text-align: center;">
+                      <span style="font-size: 12px; color: var(--muted); font-weight:600;">menit</span>
                     </div>
                   </div>
                 </div>
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 16px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--border); padding-top: 16px;">
                   <span style="font-size: 12px; font-weight: 600;">Status Event Multi XP</span>
-                  <button id="ecoXpToggleBtn" class="btn-sm" onclick="triggerEcoXpEvent()" style="background: var(--muted); color: white; padding: 6px 16px; font-weight: 700; border-radius: 8px; border: none; cursor: pointer; transition: background 0.2s;">OFF</button>
+                  <button id="ecoXpToggleBtn" class="btn-sm btn-secondary" onclick="triggerEcoXpEvent()">OFF</button>
                 </div>
               </div>
             </div>
 
-            <div class="card" style="padding: 20px; border: 1px solid var(--border); box-shadow: var(--shadow-sm);">
-              <h3 style="font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 16px;">Event Diskon Toko Rara</h3>
-              <div style="margin-bottom: 16px;">
-                <label class="form-label" style="font-weight: 600; font-size: 12px; margin-bottom: 6px; display: block;">Persentase Diskon</label>
-                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                  <input type="number" id="ecoDiscountPercent" value="50" min="1" max="99" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); width: 100px; font-weight: 700; outline: none; background: #fff;">
-                  <span style="font-weight: 600; color: var(--muted); font-size: 13px;">% diskon</span>
+            <div class="card">
+              <div class="card-title">Event Diskon Toko Rara</div>
+              <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px;">
+                <div style="flex: 1; min-width: 120px;">
+                  <label class="form-label">Persentase Diskon</label>
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <input type="number" id="ecoDiscountPercent" value="50" min="1" max="99" style="width: 80px; font-weight: 700; text-align: center;">
+                    <span style="font-size: 12px; color: var(--muted); font-weight: 600;">% diskon</span>
+                  </div>
                 </div>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <input type="number" id="ecoDiscountDuration" value="60" min="1" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); width: 100px; font-weight: 700; outline: none; background: #fff;">
-                  <span style="font-weight: 600; color: var(--muted); font-size: 13px;">menit durasi</span>
+                <div style="flex: 1; min-width: 120px;">
+                  <label class="form-label">Durasi Event</label>
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <input type="number" id="ecoDiscountDuration" value="60" min="1" style="width: 80px; font-weight: 700; text-align: center;">
+                    <span style="font-size: 12px; color: var(--muted); font-weight: 600;">menit</span>
+                  </div>
                 </div>
-                <small style="color: var(--muted); font-size: 11px; display: block; margin-top: 4px;">Persentase potongan harga seluruh item di Toko Rara.</small>
               </div>
+              <small style="color: var(--muted); font-size: 11px; display: block; margin-bottom: 16px;">Persentase potongan harga seluruh item di Toko Rara.</small>
               
               <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--border); padding-top: 16px;">
                 <span style="font-size: 12px; font-weight: 600;">Status Event Diskon Toko</span>
-                <button id="ecoDiscountToggleBtn" class="btn-sm" onclick="triggerEcoDiscountEvent()" style="background: var(--muted); color: white; padding: 6px 16px; font-weight: 700; border-radius: 8px; border: none; cursor: pointer; transition: background 0.2s;">OFF</button>
+                <button id="ecoDiscountToggleBtn" class="btn-sm btn-secondary" onclick="triggerEcoDiscountEvent()">OFF</button>
               </div>
             </div>
           </div>
 
           <!-- Right Column: Shop Prices Config -->
           <div>
-            <div class="card" style="padding: 20px; border: 1px solid var(--border); box-shadow: var(--shadow-sm); height: 100%;">
-              <h3 style="font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 16px;">Harga Dasar Item Toko</h3>
+            <div class="card" style="height: 100%;">
+              <div class="card-title">Harga Dasar Item Toko</div>
               
               <div style="margin-bottom: 16px;">
-                <label class="form-label" style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">Custom Title (Base Price)</label>
+                <label class="form-label">Custom Title (Base Price)</label>
                 <div style="display: flex; align-items: center;">
-                  <input type="number" id="priceCustomTitle" value="6500" min="0" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); width: 100%; font-weight: 700; outline: none; background: #fff;">
+                  <input type="number" id="priceCustomTitle" value="6500" min="0" style="width: 100%; font-weight: 700;">
                   <span style="margin-left: 8px; font-size: 12px; color: var(--muted); font-weight: 600; min-width: 25px;">XP</span>
                 </div>
               </div>
 
               <div style="margin-bottom: 16px;">
-                <label class="form-label" style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">Hint Pack (x3) (Base Price)</label>
+                <label class="form-label">Hint Pack (x3) (Base Price)</label>
                 <div style="display: flex; align-items: center;">
-                  <input type="number" id="priceHintPack" value="1800" min="0" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); width: 100%; font-weight: 700; outline: none; background: #fff;">
+                  <input type="number" id="priceHintPack" value="1800" min="0" style="width: 100%; font-weight: 700;">
                   <span style="margin-left: 8px; font-size: 12px; color: var(--muted); font-weight: 600; min-width: 25px;">XP</span>
                 </div>
               </div>
 
               <div style="margin-bottom: 16px;">
-                <label class="form-label" style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">Extra Gambar (+3) (Base Price)</label>
+                <label class="form-label">Extra Gambar (+3) (Base Price)</label>
                 <div style="display: flex; align-items: center;">
-                  <input type="number" id="priceExtraImage" value="3000" min="0" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); width: 100%; font-weight: 700; outline: none; background: #fff;">
+                  <input type="number" id="priceExtraImage" value="3000" min="0" style="width: 100%; font-weight: 700;">
                   <span style="margin-left: 8px; font-size: 12px; color: var(--muted); font-weight: 600; min-width: 25px;">XP</span>
                 </div>
               </div>
 
               <div style="margin-bottom: 24px;">
-                <label class="form-label" style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">Extra Limit (+1) (Base Price)</label>
+                <label class="form-label">Extra Limit (+1) (Base Price)</label>
                 <div style="display: flex; align-items: center;">
-                  <input type="number" id="priceExtraLimit" value="2500" min="0" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); width: 100%; font-weight: 700; outline: none; background: #fff;">
+                  <input type="number" id="priceExtraLimit" value="2500" min="0" style="width: 100%; font-weight: 700;">
                   <span style="margin-left: 8px; font-size: 12px; color: var(--muted); font-weight: 600; min-width: 25px;">XP</span>
                 </div>
               </div>
 
-              <button class="btn-primary" onclick="saveEkonomiSettings()" style="width: 100%; padding: 12px; font-weight: 700; border-radius: 10px; background: var(--accent); color: white; border: none; cursor: pointer; transition: background 0.2s; box-shadow: var(--shadow);">Simpan Seluruh Pengaturan</button>
+              <button class="btn-primary" onclick="saveEkonomiSettings()" style="width: 100%;">Simpan Seluruh Pengaturan</button>
             </div>
           </div>
         </div>
@@ -1009,9 +1014,9 @@ function getDashboardHTML() {
     <div class="page" id="page-gambar">
 
       <!-- SECTION 1: Global Limit Setting -->
-      <div class="card" style="background:linear-gradient(135deg,#fff7ed 0%,#ffffff 50%,#eff6ff 100%); border-color:#fed7aa;">
-        <div class="card-title">Setting Global Limit</div>
-        <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr);">
+      <div class="card">
+        <div class="card-title">Pengaturan Limit Global Bot</div>
+        <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 16px;">
           <div class="stat-card accent">
             <div class="label">Default CMD / Hari</div>
             <div class="value" id="globalCmdDefault">10</div>
@@ -1021,54 +1026,54 @@ function getDashboardHTML() {
             <div class="value" id="globalImgDefault">3</div>
           </div>
           <div class="stat-card green">
-            <div class="label">User CMD</div>
+            <div class="label">User Active CMD</div>
             <div class="value" id="globalCmdUsers">0</div>
           </div>
           <div class="stat-card green">
-            <div class="label">User Gambar</div>
+            <div class="label">User Active Gambar</div>
             <div class="value" id="globalImgUsers">0</div>
           </div>
         </div>
-        <div class="control-row" style="align-items:flex-end; flex-wrap:wrap; margin-top:16px;">
-          <div style="width:180px;">
+        <div class="control-row" style="align-items: flex-end; flex-wrap: wrap; gap: 12px; border-top: 1px solid var(--border); padding-top: 16px;">
+          <div style="flex: 1; min-width: 140px; max-width: 220px;">
             <label class="form-label">Limit CMD / Hari</label>
             <input type="number" id="globalCmdInput" value="10" min="0">
           </div>
-          <div style="width:180px;">
+          <div style="flex: 1; min-width: 140px; max-width: 220px;">
             <label class="form-label">Limit Gambar / Hari</label>
             <input type="number" id="globalImgInput" value="3" min="0">
           </div>
           <button class="btn-primary" onclick="saveGlobalLimits()">Simpan Global</button>
         </div>
-        <p style="font-size:11px; color:var(--muted); margin-top:10px; margin-bottom:0;">Perubahan berlaku realtime. Command yang dikecualikan: .ai, .rara, .tebak, .hint, .help</p>
+        <p style="font-size: 11px; color: var(--muted); margin-top: 10px; margin-bottom: 0;">Perubahan berlaku realtime. Command yang dikecualikan: .ai, .rara, .tebak, .hint, .help</p>
       </div>
 
       <!-- SECTION 2: Command Limits per User -->
       <div class="card">
-        <div class="card-title">
+        <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
           <span>Command Limits per User</span>
           <button class="btn-sm btn-sm-edit" onclick="loadCommandLimits()">Refresh</button>
         </div>
-        <div class="control-row" style="align-items:flex-end; flex-wrap:wrap; margin-bottom:14px;">
-          <div style="flex:1; min-width:160px;">
+        <div class="control-row" style="align-items: flex-end; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; background: rgba(0,0,0,0.02); padding: 12px; border-radius: 10px; border: 1px solid var(--border);">
+          <div style="flex: 2; min-width: 180px;">
             <label class="form-label">Username</label>
             <input type="text" id="cmdLimitUsername" placeholder="contoh: YogaPradnya">
             <input type="hidden" id="cmdLimitUserId">
           </div>
-          <div style="width:120px;">
+          <div style="flex: 1; min-width: 110px;">
             <label class="form-label">Extra Limit</label>
             <input type="number" id="cmdLimitExtra" value="0" min="0">
           </div>
-          <div style="width:120px;">
+          <div style="flex: 1; min-width: 110px;">
             <label class="form-label">Terpakai</label>
             <input type="number" id="cmdLimitUsed" placeholder="auto" min="0">
           </div>
           <button class="btn-primary" onclick="saveCmdLimit()">Simpan</button>
         </div>
-        <div class="control-row" style="align-items:center; flex-wrap:wrap; margin-bottom:12px;">
-          <input type="text" id="cmdLimitSearch" placeholder="Cari username..." oninput="debouncedCmdLimitSearch()" style="max-width:280px;">
+        <div class="control-row" style="align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
+          <input type="text" id="cmdLimitSearch" placeholder="Cari username..." oninput="debouncedCmdLimitSearch()" style="max-width: 280px; flex: 1;">
           <button class="btn-secondary" onclick="clearCmdLimitSearch()">Clear</button>
-          <div id="cmdLimitPageInfo" style="margin-left:auto; color:var(--muted); font-size:12px; font-weight:700;">Page 1 / 1</div>
+          <div id="cmdLimitPageInfo" style="margin-left: auto; color: var(--muted); font-size: 12px; font-weight: 700;">Page 1 / 1</div>
         </div>
         <div class="table-wrap">
           <table>
@@ -1085,13 +1090,13 @@ function getDashboardHTML() {
               </tr>
             </thead>
             <tbody id="cmdLimitTable">
-              <tr><td colspan="8" style="text-align:center; color:var(--muted);">Belum ada data.</td></tr>
+              <tr><td colspan="8" style="text-align: center; color: var(--muted);">Belum ada data.</td></tr>
             </tbody>
           </table>
         </div>
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:14px; flex-wrap:wrap;">
-          <div id="cmdLimitTotalInfo" style="font-size:12px; color:var(--muted); font-weight:700;">0 user</div>
-          <div style="display:flex; gap:8px; align-items:center;">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; flex-wrap: wrap;">
+          <div id="cmdLimitTotalInfo" style="font-size: 12px; color: var(--muted); font-weight: 700;">0 user</div>
+          <div style="display: flex; gap: 8px; align-items: center;">
             <button class="btn-sm btn-sm-edit" id="cmdLimitPrevBtn" onclick="changeCmdLimitPage(-1)">Prev</button>
             <button class="btn-sm btn-sm-edit" id="cmdLimitNextBtn" onclick="changeCmdLimitPage(1)">Next</button>
           </div>
@@ -1100,30 +1105,30 @@ function getDashboardHTML() {
 
       <!-- SECTION 3: Image Limits per User -->
       <div class="card">
-        <div class="card-title">
+        <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
           <span>Limit Gambar per User</span>
           <button class="btn-sm btn-sm-edit" onclick="loadImageLimits()">Refresh</button>
         </div>
-        <div class="control-row" style="align-items:flex-end; flex-wrap:wrap; margin-bottom:14px;">
-          <div style="flex:1; min-width:160px;">
+        <div class="control-row" style="align-items: flex-end; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; background: rgba(0,0,0,0.02); padding: 12px; border-radius: 10px; border: 1px solid var(--border);">
+          <div style="flex: 2; min-width: 180px;">
             <label class="form-label">Username</label>
             <input type="text" id="imageLimitUsername" placeholder="contoh: YogaPradnya">
             <input type="hidden" id="imageLimitUserId">
           </div>
-          <div style="width:120px;">
+          <div style="flex: 1; min-width: 110px;">
             <label class="form-label">Limit / Hari</label>
             <input type="number" id="imageLimitDaily" value="3" min="0">
           </div>
-          <div style="width:120px;">
+          <div style="flex: 1; min-width: 110px;">
             <label class="form-label">Terpakai</label>
             <input type="number" id="imageLimitUsed" placeholder="auto" min="0">
           </div>
           <button class="btn-primary" onclick="saveImageLimit()">Simpan</button>
         </div>
-        <div class="control-row" style="align-items:center; flex-wrap:wrap; margin-bottom:12px;">
-          <input type="text" id="imageLimitSearch" placeholder="Cari username..." oninput="debouncedImageLimitSearch()" style="max-width:280px;">
+        <div class="control-row" style="align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
+          <input type="text" id="imageLimitSearch" placeholder="Cari username..." oninput="debouncedImageLimitSearch()" style="max-width: 280px; flex: 1;">
           <button class="btn-secondary" onclick="clearImageLimitSearch()">Clear</button>
-          <div id="imageLimitPageInfo" style="margin-left:auto; color:var(--muted); font-size:12px; font-weight:700;">Page 1 / 1</div>
+          <div id="imageLimitPageInfo" style="margin-left: auto; color: var(--muted); font-size: 12px; font-weight: 700;">Page 1 / 1</div>
         </div>
         <div class="table-wrap">
           <table>
@@ -1138,13 +1143,13 @@ function getDashboardHTML() {
               </tr>
             </thead>
             <tbody id="imageLimitTable">
-              <tr><td colspan="6" style="text-align:center; color:var(--muted);">Belum ada data.</td></tr>
+              <tr><td colspan="6" style="text-align: center; color: var(--muted);">Belum ada data.</td></tr>
             </tbody>
           </table>
         </div>
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:14px; flex-wrap:wrap;">
-          <div id="imageLimitTotalInfo" style="font-size:12px; color:var(--muted); font-weight:700;">0 user</div>
-          <div style="display:flex; gap:8px; align-items:center;">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; flex-wrap: wrap;">
+          <div id="imageLimitTotalInfo" style="font-size: 12px; color: var(--muted); font-weight: 700;">0 user</div>
+          <div style="display: flex; gap: 8px; align-items: center;">
             <button class="btn-sm btn-sm-edit" id="imageLimitPrevBtn" onclick="changeImageLimitPage(-1)">Prev</button>
             <button class="btn-sm btn-sm-edit" id="imageLimitNextBtn" onclick="changeImageLimitPage(1)">Next</button>
           </div>

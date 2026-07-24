@@ -161,7 +161,14 @@ async function handleInfoCommand(ctx) {
         return dataCommand.execute(ctx);
     }
 
-    if (lowerMsg === '.rekomendasi' || lowerMsg.startsWith('.rekomendasi ') || lowerMsg === '.rekomen' || lowerMsg.startsWith('.rekomen ')) {
+    if (
+        lowerMsg === '.rekomendasi' || lowerMsg.startsWith('.rekomendasi ') ||
+        lowerMsg === 'rekomendasi' || lowerMsg.startsWith('rekomendasi ') ||
+        lowerMsg === '.rekomen' || lowerMsg.startsWith('.rekomen ') ||
+        lowerMsg === 'rekomen' || lowerMsg.startsWith('rekomen ') ||
+        lowerMsg === '.rekom' || lowerMsg.startsWith('.rekom ') ||
+        lowerMsg === 'rekom' || lowerMsg.startsWith('rekom ')
+    ) {
         return rekomendasiCommand.execute(ctx);
     }
 
