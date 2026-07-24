@@ -49,14 +49,14 @@ Output WAJIB berupa JSON valid tanpa markdown codeblock:
 
     let aiRes = null;
 
-    // Utamakan Cloudflare AI
+    // Utamakan Cloudflare AI sebagai AI utama yang stabil dan cepat
     try {
         aiRes = await askCloudflareAi({
             userMessage: `Analisis kueri rekomendasi anime: "${userQuery}"`,
             systemPrompt,
         });
     } catch (e) {
-        console.warn('[REKOMENDASI CLOUDFLARE AI ERROR, FALLBACK TO CEREBRAS]', e.message);
+        // Fallback ke AI cadangan secara silent jika Cloudflare error
     }
 
     if (!aiRes || !aiRes.answer) {
@@ -66,7 +66,7 @@ Output WAJIB berupa JSON valid tanpa markdown codeblock:
                 systemPrompt,
             });
         } catch (e) {
-            console.warn('[REKOMENDASI CEREBRAS AI ERROR]', e.message);
+            // Silent catch 402/quota error dari Cerebras agar tidak mencetak warning log
         }
     }
 
