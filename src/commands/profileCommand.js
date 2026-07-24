@@ -80,7 +80,7 @@ async function execute(ctx) {
         const profileLines = [
             `┌── ${boxHeader('PROFIL USER')} 👤`,
             `│ @${dn}`,
-            `│ 👑 Gelar : ${gelar || 'Wibu Baru'}`,
+            `│ Gelar : ${gelar || 'Wibu Baru'}`,
             `├───────────────────`,
             `│ 🏆 Rank  : #${rank}`,
             `│ 🌟 Level : ${level}`,
