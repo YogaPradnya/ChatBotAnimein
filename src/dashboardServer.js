@@ -878,6 +878,31 @@ function startDashboard(scope) {
         }
     });
 
+    // --- AI TEMPERATURE SETTINGS ---
+    app.get('/api/config/temperature', (req, res) => {
+        const temp = typeof global.AI_TEMPERATURE === 'number' ? global.AI_TEMPERATURE : 1.0;
+        res.json({ success: true, temperature: temp });
+    });
+
+    app.post('/api/config/temperature', async (req, res) => {
+        const { temperature } = req.body || {};
+        const val = parseFloat(temperature);
+        if (isNaN(val) || val < 0 || val > 2.0) {
+            return res.status(400).json({ success: false, message: 'Nilai temperatur harus angka antara 0.0 sampai 2.0.' });
+        }
+        global.AI_TEMPERATURE = val;
+        try {
+            await db.execute({
+                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('ai_temperature', ?)",
+                args: [String(val)]
+            });
+        } catch (e) {
+            console.warn('[DASHBOARD] Gagal simpan ai_temperature ke DB:', e.message);
+        }
+        console.log(`[DASHBOARD] AI Temperature diubah menjadi ${val}`);
+        res.json({ success: true, temperature: val });
+    });
+
     // --- COMMAND LIMITS PER USER ---
     app.get('/api/limits/commands', async (req, res) => {
         try {

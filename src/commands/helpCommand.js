@@ -57,6 +57,10 @@ async function execute(ctx) {
     } else if (helpArg === 'limit') {
         helpMsg = wrapInBox('LIMIT', 'Cek sisa limit command dan gambar hari ini.\n\nCommand:\n- .limit\n\nTampilan: sisa command & gambar.\nReset jam 00:00 WIB.');
 
+    } else if (helpArg === 'waifu') {
+        helpMsg = wrapInBox('WAIFU', 'Lihat daftar waifu milik kamu atau user lain.\n\nCommand:\n- .waifu\n- .waifu @user\n\nTampilan: total waifu & nama waifu.');
+    } else if (helpArg === 'cuplixdl' || helpArg === 'cuplix') {
+        helpMsg = wrapInBox('CUPLIX DL', 'Dapatkan link download Cuplix.\n\nCommand:\n- .cuplixDL\n- .cuplixdl');
     } else if (helpArg === 'rekomendasi' || helpArg === 'rekomen') {
         helpMsg = wrapInBox('REKOMENDASI', 'Rekomendasi anime terfokus.\n\nCommand:\n- .rekomendasi\n- .rekomendasi [genre/mood/status/tipe]\n\nContoh:\n- .rekomendasi action\n- .rekomendasi sad\n- .rekomendasi ongoing\n- .rekomendasi movie');
     } else if (helpArg === 'data') {
@@ -80,18 +84,19 @@ async function execute(ctx) {
             `│ Ketik: .help [topik]`,
             `├───────────────────`,
             `│ Topik:`,
-            `│ 1. rekomendasi  2. data`,
-            `│ 3. kuis         4. gambar`,
-            `│ 5. gambarkan    6. xp`,
-            `│ 7. shop         8. kombo`,
-            `│ 9. profil      10. cek`,
-            `│11. rank        12. streak`,
-            `│13. level       14. ai`,
-            `│15. jadwal      16. hot`,
-            `│17. baru        18. random`,
-            `│19. populer     20. cari`,
-            `│21. genre       22. tas`,
-            `│23. limit       24. ban`,
+            `│ 1. rekomendasi  2. waifu`,
+            `│ 3. cuplixdl     4. data`,
+            `│ 5. kuis         6. gambar`,
+            `│ 7. gambarkan    8. xp`,
+            `│ 9. shop        10. kombo`,
+            `│11. profil      12. cek`,
+            `│13. rank        14. streak`,
+            `│15. level       16. ai`,
+            `│17. jadwal      18. hot`,
+            `│19. baru        20. random`,
+            `│21. populer     22. cari`,
+            `│23. genre       24. tas`,
+            `│25. limit       26. ban`,
             `└───────────────────`,
         ].join('\n');
     }

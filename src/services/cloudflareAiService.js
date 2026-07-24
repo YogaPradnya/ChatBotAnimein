@@ -78,7 +78,7 @@ async function askCloudflareAi({
         {
             messages,
             max_tokens: 1024,
-            temperature: 0.8,
+            temperature: typeof global.AI_TEMPERATURE === 'number' ? global.AI_TEMPERATURE : 1.0,
         },
         {
             headers: {

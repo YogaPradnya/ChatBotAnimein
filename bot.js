@@ -335,13 +335,19 @@ async function initDB() {
             }
         }
 
-        // Load Prompt from DB. Semua prompt utama harus berasal dari Turso.
+        // Load Prompt from DB. Semua prompt utama harus berasal dari Turso / File.
         const promptValue = await settingsRepo.get(SETTINGS_KEYS.SYSTEM_PROMPT);
-        if (promptValue) {
+        if (promptValue && promptValue.trim()) {
             SYSTEM_PROMPT = promptValue;
-            console.log(`[PROMPT] Loaded full prompt from DB.`);
+            console.log('[PROMPT] Loaded full prompt from DB.');
         } else {
-            console.warn('[PROMPT] system_prompt kosong di DB. Menggunakan fallback minimal sementara.');
+            SYSTEM_PROMPT = readPromptFromFileFallback();
+            if (SYSTEM_PROMPT) {
+                console.log('[PROMPT] Loaded prompt from fallback file.');
+                await settingsRepo.set(SETTINGS_KEYS.SYSTEM_PROMPT, SYSTEM_PROMPT).catch(() => {});
+            } else {
+                console.warn('[PROMPT] system_prompt kosong di DB dan File.');
+            }
         }
 
         // Load Knowledge from DB
@@ -452,7 +458,11 @@ async function initDB() {
         const prLimitVal = await settingsRepo.get(SETTINGS_KEYS.PRICE_EXTRA_LIMIT);
         if (prLimitVal !== null) global.priceExtraLimit = parseInt(prLimitVal) || 2500;
 
-        console.log(`[ECONOMY] Loaded Base XP Rate: ${global.baseXpRate}%, Discount Event: ${global.isDiscountEvent} (${global.discountPercent}%)`);
+        const aiTempVal = await settingsRepo.get('ai_temperature');
+        if (aiTempVal !== null) global.AI_TEMPERATURE = parseFloat(aiTempVal) || 1.0;
+        else global.AI_TEMPERATURE = 1.0;
+
+        console.log(`[ECONOMY] Loaded Base XP Rate: ${global.baseXpRate}%, Discount Event: ${global.isDiscountEvent} (${global.discountPercent}%), AI Temp: ${global.AI_TEMPERATURE}`);
 
         // Load Banned Users from DB
         const bannedRes = await banRepo.listBannedUsers();
@@ -998,7 +1008,23 @@ function addActivity(type, from, text, response, provider, tokens = 0) {
 
 const groqClients = CONFIG.GROQ_KEYS.map(key => new Groq({ apiKey: key }));
 
-let SYSTEM_PROMPT = `Anda Rara dari Animein.ai.`;
+let SYSTEM_PROMPT = '';
+
+function readPromptFromFileFallback() {
+    try {
+        const primaryPath = path.join(__dirname, 'public', 'Prompt_Karakter_Rara.txt');
+        if (fs.existsSync(primaryPath)) {
+            return fs.readFileSync(primaryPath, 'utf8');
+        }
+        const secondaryPath = path.join(__dirname, 'scratch', 'docs', 'Prompt_Karakter_Rara.txt');
+        if (fs.existsSync(secondaryPath)) {
+            return fs.readFileSync(secondaryPath, 'utf8');
+        }
+    } catch (e) {
+        console.warn('[PROMPT] Gagal membaca file fallback prompt:', e.message);
+    }
+    return '';
+}
 
 function personalizeSystemPrompt(prompt, senderName) {
     return String(prompt || '').replace(/\{\{senderName\}\}/g, senderName || 'user');
@@ -2785,16 +2811,18 @@ function sanitizeReplyContext(replyText) {
 }
 
 function polishAiAnswer(answer, userMessage, replyText = '') {
-    const text = String(answer || '').trim();
+    let text = String(answer || '').trim();
     const genericConfusion = /\b(saya|aku|rara)\s+(kurang\s+paham|tidak\s+paham|nggak\s+paham|gak\s+paham|tidak\s+tahu|tidak\s+tau|nggak\s+tahu|gak\s+tau)\b/i;
-    if (!genericConfusion.test(text)) return text;
-
-    const reply = sanitizeReplyContext(replyText);
-    const question = String(userMessage || '').trim();
-    if (reply) {
-        return `Aku baca konteks reply-nya: "${reply.slice(0, 180)}". Dari situ, maksudmu soal "${question}" kan? Bisa aku bantu bahas dari konteks itu.`;
+    if (genericConfusion.test(text)) {
+        const reply = sanitizeReplyContext(replyText);
+        const question = String(userMessage || '').trim();
+        if (reply) {
+            return `Nih udah dibaca konteks reply-nya: "${reply.slice(0, 180)}". Dari situ maksudnya soal "${question}" kan? Sini dibantu bahas dari konteks itu!`;
+        }
+        return `Coba jelasin sedikit lagi maksudnya! Dari tadi ditangkap soal "${question}", tapi butuh konteks lebih jelas biar gak salah jawab!`;
     }
-    return `Bisa jelasin sedikit lagi maksudnya? Aku tangkap kamu lagi nanya soal "${question}", tapi butuh konteks kecil biar jawabannya tepat.`;
+
+    return text;
 }
 
 /** Groq (Llama 3.1) - kualitas lebih baik */
@@ -2832,7 +2860,7 @@ async function askGroq(index, userMessage, senderName, contextData = '', chatHis
             { role: 'user', content: userContent }
         ],
         max_tokens: 1024,
-        temperature: 0.8,
+        temperature: typeof global.AI_TEMPERATURE === 'number' ? global.AI_TEMPERATURE : 1.0,
     }).withResponse();
 
     // Safety check: pastikan response memiliki choices yang valid
@@ -4373,7 +4401,12 @@ async function processMessages(bot, messages) {
                 USER_STATS_CACHE,
                 XP_PENDING_UPDATES,
                 runtimeRepo,
-                saveRecentAnimeList
+                saveRecentAnimeList,
+                fetchOtherUserProfile,
+                bots,
+                CONFIG,
+                recordPath,
+                isAnimeinApiBlocked
             };
             if (await handleAnimeTagInstruction(infoCommandContext)) continue;
             if (await commands.handleInfoCommand(infoCommandContext)) continue;

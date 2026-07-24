@@ -268,6 +268,15 @@ function getDashboardHTML() {
     box-shadow: 0 4px 12px rgba(249, 115, 22, 0.25); 
   }
   .nav-item.active svg { filter: drop-shadow(0 0 10px rgba(255,255,255,0.35)); }
+  .nav-section-title {
+    font-size: 10px;
+    font-weight: 800;
+    color: rgba(255, 255, 255, 0.45);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 14px 16px 6px 16px;
+    margin-top: 4px;
+  }
   .sidebar-status { padding: 16px 20px; border-top: 1px solid #333; }
   .sidebar-status .s-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 6px; }
   .sidebar-status span { font-size: 12px; color: var(--sidebar-text); font-weight: 600; }
@@ -658,18 +667,53 @@ function getDashboardHTML() {
     <p>Control Panel <span style="font-size: 10px; font-weight: 400; color: var(--muted);">by yoga</span></p>
   </div>
   <nav class="sidebar-nav">
-    <button class="nav-item active" onclick="showPage('dashboard', this); toggleSidebar(false)"><i data-lucide="layout-dashboard"></i><span>Dashboard</span></button>
-    <button class="nav-item" onclick="showPage('prompt', this); toggleSidebar(false)"><i data-lucide="brain-circuit"></i><span>Prompt & Knowledge</span></button>
-    <button class="nav-item" onclick="showPage('kuis', this); toggleSidebar(false)"><i data-lucide="trophy"></i><span>Kuis & Leaderboard</span></button>
-    <button class="nav-item" onclick="showPage('ekonomi', this); toggleSidebar(false)"><i data-lucide="coins"></i><span>Ekonomi & Toko</span></button>
-    <button class="nav-item" onclick="showPage('filter', this); toggleSidebar(false)"><i data-lucide="shield-alert"></i><span>Filter Kata</span></button>
-    <button class="nav-item" onclick="showPage('model', this); toggleSidebar(false)"><i data-lucide="bot"></i><span>Model AI</span></button>
-    <button class="nav-item" onclick="showPage('gambar', this); toggleSidebar(false)"><i data-lucide="image"></i><span>Limit Manager</span></button>
-    <button class="nav-item" onclick="showPage('laporan', this); toggleSidebar(false)"><i data-lucide="file-warning"></i><span>Laporan</span></button>
-    <button class="nav-item" onclick="showPage('banned', this); toggleSidebar(false)"><i data-lucide="user-x"></i><span>Blokir User</span></button>
-    <button class="nav-item" onclick="showPage('inspector', this); toggleSidebar(false)"><i data-lucide="id-card"></i><span>Cek & Setting Data User</span></button>
-    <button class="nav-item" onclick="showPage('logs', this); toggleSidebar(false)"><i data-lucide="terminal"></i><span>Realtime Logs</span></button>
-    <button class="nav-item" onclick="showPage('api-traffic', this); toggleSidebar(false)"><i data-lucide="activity"></i><span>API Monitor</span></button>
+    <div class="nav-group open">
+      <button class="nav-group-header" onclick="toggleNavGroup(this)">
+        <span>Utama & Monitoring</span>
+        <i data-lucide="chevron-down" class="nav-chevron"></i>
+      </button>
+      <div class="nav-group-items">
+        <button class="nav-item active" onclick="showPage('dashboard', this); toggleSidebar(false)"><i data-lucide="layout-dashboard"></i><span>Dashboard</span></button>
+        <button class="nav-item" onclick="showPage('logs', this); toggleSidebar(false)"><i data-lucide="terminal"></i><span>Realtime Logs</span></button>
+        <button class="nav-item" onclick="showPage('api-traffic', this); toggleSidebar(false)"><i data-lucide="activity"></i><span>API Monitor</span></button>
+      </div>
+    </div>
+
+    <div class="nav-group">
+      <button class="nav-group-header" onclick="toggleNavGroup(this)">
+        <span>Konfigurasi AI & Chat</span>
+        <i data-lucide="chevron-down" class="nav-chevron"></i>
+      </button>
+      <div class="nav-group-items">
+        <button class="nav-item" onclick="showPage('model', this); toggleSidebar(false)"><i data-lucide="bot"></i><span>Model AI</span></button>
+        <button class="nav-item" onclick="showPage('prompt', this); toggleSidebar(false)"><i data-lucide="brain-circuit"></i><span>Prompt & Knowledge</span></button>
+        <button class="nav-item" onclick="showPage('filter', this); toggleSidebar(false)"><i data-lucide="shield-alert"></i><span>Filter Kata</span></button>
+      </div>
+    </div>
+
+    <div class="nav-group">
+      <button class="nav-group-header" onclick="toggleNavGroup(this)">
+        <span>Fitur & Ekonomi Bot</span>
+        <i data-lucide="chevron-down" class="nav-chevron"></i>
+      </button>
+      <div class="nav-group-items">
+        <button class="nav-item" onclick="showPage('kuis', this); toggleSidebar(false)"><i data-lucide="trophy"></i><span>Kuis & Leaderboard</span></button>
+        <button class="nav-item" onclick="showPage('ekonomi', this); toggleSidebar(false)"><i data-lucide="coins"></i><span>Ekonomi & Toko</span></button>
+        <button class="nav-item" onclick="showPage('gambar', this); toggleSidebar(false)"><i data-lucide="image"></i><span>Limit Manager</span></button>
+      </div>
+    </div>
+
+    <div class="nav-group">
+      <button class="nav-group-header" onclick="toggleNavGroup(this)">
+        <span>Moderasi & User</span>
+        <i data-lucide="chevron-down" class="nav-chevron"></i>
+      </button>
+      <div class="nav-group-items">
+        <button class="nav-item" onclick="showPage('inspector', this); toggleSidebar(false)"><i data-lucide="id-card"></i><span>Cek & Setting User</span></button>
+        <button class="nav-item" onclick="showPage('banned', this); toggleSidebar(false)"><i data-lucide="user-x"></i><span>Blokir User</span></button>
+        <button class="nav-item" onclick="showPage('laporan', this); toggleSidebar(false)"><i data-lucide="file-warning"></i><span>Laporan</span></button>
+      </div>
+    </div>
   </nav>
   <div class="sidebar-status">
     <span class="s-dot" id="statusDot" style="background:var(--red)"></span>
@@ -1160,6 +1204,16 @@ function getDashboardHTML() {
               <textarea id="promptEditor" style="min-height:400px; font-family:monospace; font-size:12px;"></textarea>
             </div>
             <button class="btn-primary" onclick="savePrompt()">Simpan Prompt</button>
+          </div>
+
+          <div class="card">
+            <div class="card-title">AI Temperature Control</div>
+            <div style="font-size:11px; color:var(--muted); margin-bottom:12px;">Pengaturan temperatur AI Chat (0.0 = fokus/konsisten, 1.0 = standar/kreatif, 2.0 = sangat acak).</div>
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+              <input type="range" id="aiTempSlider" min="0" max="2" step="0.05" value="1.0" style="flex:1;" oninput="document.getElementById('aiTempVal').textContent = this.value">
+              <span id="aiTempVal" style="font-weight:700; font-size:14px; width:40px; text-align:right;">1.0</span>
+            </div>
+            <button class="btn-primary" onclick="saveAiTemperature()">Simpan Temperatur</button>
           </div>
 
           <div class="card">
@@ -1811,6 +1865,13 @@ function getDashboardHTML() {
     refresh();
   }
 
+  function toggleNavGroup(headerBtn) {
+    const group = headerBtn.closest('.nav-group');
+    if (group) {
+      group.classList.toggle('open');
+    }
+  }
+
   function showPage(id, el) {
     document.querySelectorAll('.page').forEach(p => {
       p.classList.remove('active');
@@ -1819,6 +1880,7 @@ function getDashboardHTML() {
     });
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     const target = document.getElementById('page-' + id);
+    if (!target) return;
     target.classList.add('active');
     if (id === 'dashboard' || id === 'prompt') {
       target.classList.add('dash-flex');
@@ -1826,7 +1888,13 @@ function getDashboardHTML() {
     } else {
       target.style.display = 'block';
     }
-    el.classList.add('active');
+    if (el) {
+      el.classList.add('active');
+      const parentGroup = el.closest('.nav-group');
+      if (parentGroup) {
+        parentGroup.classList.add('open');
+      }
+    }
     const titles = { dashboard: 'Dashboard', model: 'Model AI', prompt: 'Prompt & Knowledge', gambar: 'Limit Manager', laporan: 'Laporan', banned: 'Blokir User', inspector: 'Cek & Setting Data User', filter: 'Filter Kata', kuis: 'Kuis & Leaderboard', logs: 'Realtime Logs', 'api-traffic': 'API Monitor', ekonomi: 'Ekonomi & Toko' };
     document.getElementById('pageTitle').textContent = titles[id] || id;
     if (id === 'dashboard') refresh();
@@ -2238,6 +2306,7 @@ async function updateStats() {
     const res = await fetch('/api/prompt');
     const d = await res.json();
     document.getElementById('promptEditor').value = d.prompt;
+    loadAiTemperature();
     loadDomains();
     loadKnowledge();
   }
@@ -2248,6 +2317,30 @@ async function updateStats() {
       body: JSON.stringify({ prompt: text })
     });
     showToast('Prompt berhasil disimpan!', 'success');
+  }
+  async function loadAiTemperature() {
+    try {
+      const res = await fetch('/api/config/temperature');
+      const d = await res.json();
+      if (d.success && d.temperature !== undefined) {
+        document.getElementById('aiTempSlider').value = d.temperature;
+        document.getElementById('aiTempVal').textContent = d.temperature;
+      }
+    } catch(e) {}
+  }
+  async function saveAiTemperature() {
+    const val = parseFloat(document.getElementById('aiTempSlider').value);
+    const res = await fetch('/api/config/temperature', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ temperature: val })
+    });
+    const d = await res.json();
+    if (d.success) {
+      showToast('Temperatur AI berhasil diperbarui!', 'success');
+    } else {
+      showToast(d.message || 'Gagal menyimpan temperatur', 'error');
+    }
   }
   async function loadDomains() {
     const res = await fetch('/api/domains');

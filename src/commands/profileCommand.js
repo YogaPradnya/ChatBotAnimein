@@ -4,6 +4,7 @@ const { formatLimitExceeded } = require('../utils/messageFormatter');
 async function execute(ctx) {
     const {
         bot,
+        bots,
         msg,
         senderName, senderUserId,
         sendChatMessage,
@@ -16,6 +17,10 @@ async function execute(ctx) {
         handleError,
         stats,
         logEmitter,
+        fetchOtherUserProfile,
+        CONFIG,
+        recordPath,
+        isAnimeinApiBlocked,
     } = ctx;
 
     if (bot.isCooldown) return true;
@@ -42,6 +47,18 @@ async function execute(ctx) {
             if (qRes.rows.length > 0) quizData = qRes.rows[0];
         } catch (e) { console.warn("[PROFIL] Quiz stats query failed:", e.message); }
 
+        let extraProfile = null;
+        if (typeof fetchOtherUserProfile === 'function' && Array.isArray(bots) && bots.length > 0 && CONFIG) {
+            try {
+                const resProfile = await fetchOtherUserProfile(senderName, bots[0], CONFIG, recordPath, isAnimeinApiBlocked);
+                if (resProfile && !resProfile.error) {
+                    extraProfile = resProfile;
+                }
+            } catch (err) {
+                console.warn("[PROFIL] Extra profile fetch error:", err.message);
+            }
+        }
+
         const updatedLimit = await checkCommandLimit(senderUserId, senderName);
         const {xp, level, custom_title, rank} = userData;
         const gelar = getGelar(level, custom_title);
@@ -60,29 +77,40 @@ async function execute(ctx) {
         let imgLimit = { used: 0, limit: IMAGE_DAILY_LIMIT_DEFAULT, remaining: IMAGE_DAILY_LIMIT_DEFAULT };
         try { imgLimit = await getImageLimitStatus(senderUserId, senderName); } catch(e) { handleError(e, { scope: 'PROFIL', detail: 'image limit status', stats, logEmitter }); }
 
-        const profileMsg = [
-            `┌── ${boxHeader('📋 PROFIL')}`,
-            `│👤 @${dn}`,
-            `│🎖️ ${gelar || 'Wibu Baru'}`,
+        const profileLines = [
+            `┌── ${boxHeader('PROFIL')}`,
+            `│ @${dn}`,
+            `│ Gelar : ${gelar || 'Wibu Baru'}`,
             `├───────────────────`,
-            `│🏅 Rank  : #${rank}`,
-            `│📊 Level : ${level}`,
-            `│✨ ${xpStr}/${reqStr}`,
+            `│ Rank  : #${rank}`,
+            `│ Level : ${level}`,
+            `│ XP    : ${xpStr}/${reqStr}`,
             `│ [${bar}] ${percentage}%`,
-            `├── ${boxHeader('🎮 KUIS')}`,
-            `│\uD83C\uDFC6 Win:${quizData.wins} WR:${winRate}%`,
-            `│\uD83C\uDFAF Main : ${quizData.participations}`,
-            `│💡 Hint : ${quizData.total_hints_used}`,
-            `├── ${boxHeader('🔥 STREAK')}`,
-            `│🔥 Now : ${quizData.current_streak} hari`,
-            `│👑 Best: ${quizData.best_streak} hari`,
-            `├── ${boxHeader('📦 LIMIT')}`,
-            `│🎟️ Cmd : ${updatedLimit.remaining}/${updatedLimit.limit}`,
-            `│🖼️ Img : ${imgLimit.remaining}/${imgLimit.limit}`,
-            `└───────────────────`,
-        ].join('\n');
+        ];
 
-        await sendChatMessage(bot, profileMsg, msg.id);
+        if (extraProfile) {
+            profileLines.push(`├── ${boxHeader('PERSONAL INFO')}`);
+            if (extraProfile.kontribusi !== undefined) profileLines.push(`│ Contrib : ${Number(extraProfile.kontribusi).toLocaleString('id-ID')}`);
+            if (extraProfile.total_love !== undefined) profileLines.push(`│ Lovers  : ${Number(extraProfile.total_love).toLocaleString('id-ID')}`);
+            if (extraProfile.pokemon_count !== undefined) profileLines.push(`│ Pokemon : ${Number(extraProfile.pokemon_count).toLocaleString('id-ID')}`);
+            if (extraProfile.waifu_count !== undefined) profileLines.push(`│ Waifu   : ${Number(extraProfile.waifu_count).toLocaleString('id-ID')}`);
+        }
+
+        profileLines.push(
+            `├── ${boxHeader('KUIS')}`,
+            `│ Win  : ${quizData.wins} (WR: ${winRate}%)`,
+            `│ Main : ${quizData.participations}`,
+            `│ Hint : ${quizData.total_hints_used}`,
+            `├── ${boxHeader('STREAK')}`,
+            `│ Now  : ${quizData.current_streak} hari`,
+            `│ Best : ${quizData.best_streak} hari`,
+            `├── ${boxHeader('LIMIT')}`,
+            `│ Cmd  : ${updatedLimit.remaining}/${updatedLimit.limit}`,
+            `│ Img  : ${imgLimit.remaining}/${imgLimit.limit}`,
+            `└──────────────────`
+        );
+
+        await sendChatMessage(bot, profileLines.join('\n'), msg.id);
     } catch(e) {
         console.error("[PROFIL ERROR]", e);
     }
