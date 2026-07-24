@@ -268,14 +268,47 @@ function getDashboardHTML() {
     box-shadow: 0 4px 12px rgba(249, 115, 22, 0.25); 
   }
   .nav-item.active svg { filter: drop-shadow(0 0 10px rgba(255,255,255,0.35)); }
-  .nav-section-title {
-    font-size: 10px;
+  .nav-group {
+    margin-bottom: 6px;
+  }
+  .nav-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 10px 14px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 11px;
     font-weight: 800;
-    color: rgba(255, 255, 255, 0.45);
+    color: rgba(255, 255, 255, 0.5);
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    padding: 14px 16px 6px 16px;
-    margin-top: 4px;
+    letter-spacing: 0.06em;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+  }
+  .nav-group-header:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.05);
+  }
+  .nav-chevron {
+    width: 14px;
+    height: 14px;
+    stroke-width: 2.5;
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .nav-group.open .nav-chevron {
+    transform: rotate(180deg);
+    color: var(--accent);
+  }
+  .nav-group-items {
+    display: none;
+    padding-top: 4px;
+    padding-left: 2px;
+  }
+  .nav-group.open .nav-group-items {
+    display: block;
   }
   .sidebar-status { padding: 16px 20px; border-top: 1px solid #333; }
   .sidebar-status .s-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 6px; }
