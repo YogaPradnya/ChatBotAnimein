@@ -513,64 +513,9 @@ setInterval(async () => {
     }
 }, 60000);
 
-/** 
- * EXTRA PSIKIATRI: Ekstraksi Memori Inti (Solution 3)
- * Mengubah percakapan menjadi poin-poin memori singkat agar hemat token.
- */
+// Auto-update memory oleh AI dinonaktifkan: Data user hanya diisi oleh user secara manual.
 async function updateUserMemory(userId, username, chatHistory) {
-    if (chatHistory.length < 4) return;
-    
-    try {
-        const stats = USER_STATS_CACHE[userId];
-        if (!stats) return;
-
-        // Jika user sudah mengisi data manual via .data, jangan timpa
-        if (stats._hasManualData) {
-            console.log(`[CORE MEMORY] Skip auto-update untuk ${username}: user sudah set data manual.`);
-            return;
-        }
-
-        // Safety check: pastikan groqClients tersedia
-        if (!groqClients || groqClients.length === 0) return;
-
-        // Ambil hanya 5 pesan terakhir untuk rangkuman (Hemat Token)
-        const recentChat = chatHistory.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n');
-        const oldMemory = stats.core_memory || 'Belum ada memori.';
-
-        const memoryPrompt = `Tugas: Perbarui "Core Memory" (Profil Ringkas) untuk user @${username} berdasarkan percakapan terbaru.
-Core Memory Lama: ${oldMemory}
-Percakapan Baru: 
-${recentChat}
-
-INSTRUKSI:
-1. Tulis poin-poin penting saja (nama, hobi, anime favorit, sifat, atau fakta unik).
-2. JANGAN hapus informasi lama yang masih relevan.
-3. Maksimal 2-3 kalimat atau poin-poin singkat (hemat token).
-4. Hasil harus dalam Bahasa Indonesia gaya santai.
-5. Jika tidak ada fakta baru, kembalikan memori lama secara utuh.`;
-
-        // Gunakan model tercepat (index 0)
-        const client = groqClients[0];
-        const res = await client.chat.completions.create({
-            model: 'llama-3.1-8b-instant',
-            messages: [{ role: 'system', content: memoryPrompt }],
-            max_tokens: 150,
-            temperature: 0.3
-        });
-
-        // Safety check: pastikan response memiliki choices
-        if (!res.choices || res.choices.length === 0 || !res.choices[0].message) {
-            console.warn(`[CORE MEMORY] Response kosong dari Groq untuk ${username}.`);
-            return;
-        }
-
-        const newMemory = res.choices[0].message.content.trim();
-        stats.core_memory = newMemory;
-        XP_PENDING_UPDATES[userId] = (XP_PENDING_UPDATES[userId] || 0) + 0; // Trigger sync
-        console.log(`[CORE MEMORY] Updated for ${username}: ${newMemory}`);
-    } catch (e) {
-        console.error(`[CORE MEMORY] Gagal update memori ${username}:`, e.message);
-    }
+    return;
 }
 /** Hitung level berdasarkan total XP. Formula: level L butuh 50 * L^3 XP. */
 function calcLevelFromXP(xp) {
@@ -2863,7 +2808,7 @@ async function askGroq(index, userMessage, senderName, contextData = '', chatHis
     const userStats = USER_STATS_CACHE[senderUserId];
     let coreMemory = '';
     if (userStats && userStats.core_memory) {
-        const memoryLines = userStats.core_memory.split('\n').filter(l => l.trim());
+        const memoryLines = userStats.core_memory.split('\n').filter(l => l.trim()).slice(0, 5);
         if (memoryLines.length > 0) {
             coreMemory = `\n\n=== INFORMASI PENTING TENTANG USER @${senderName} ===\n` +
                          `Kamu sedang berbicara dengan @${senderName}. Kamu WAJIB menyelaraskan jawabanmu dengan fakta & preferensi personal user di bawah ini:\n` +
@@ -3547,11 +3492,7 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
     const cfStat = getCloudflareStat();
     if (cfStat.active && CONFIG.CLOUDFLARE_API_KEY && CONFIG.CLOUDFLARE_ACCOUNT_ID && Date.now() >= cfStat.cooldownUntil) {
         try {
-            USER_CHAT_COUNT[senderUserId || senderName] = (USER_CHAT_COUNT[senderUserId || senderName] || 0) + 1;
-            if (USER_CHAT_COUNT[senderUserId || senderName] >= 5) {
-                USER_CHAT_COUNT[senderUserId || senderName] = 0;
-                updateUserMemory(senderUserId || senderName, senderName, history);
-            }
+
 
             const { text, tokens, provider } = await askCloudflareAi({
                 userMessage,
@@ -3581,11 +3522,7 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
     const cbStat = getCerebrasStat();
     if (cbStat.active && CONFIG.CEREBRAS_API_KEY && Date.now() >= cbStat.cooldownUntil) {
         try {
-            USER_CHAT_COUNT[senderUserId || senderName] = (USER_CHAT_COUNT[senderUserId || senderName] || 0) + 1;
-            if (USER_CHAT_COUNT[senderUserId || senderName] >= 5) {
-                USER_CHAT_COUNT[senderUserId || senderName] = 0;
-                updateUserMemory(senderUserId || senderName, senderName, history);
-            }
+
 
             const { text, tokens, provider } = await askCerebrasAi({
                 userMessage,
@@ -3616,12 +3553,7 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
         if (!stat.active || nowLoop < stat.cooldownUntil) continue;
 
         try {
-            // Update Core Memory setiap 5 interaksi (Hemat Token)
-            USER_CHAT_COUNT[senderUserId || senderName] = (USER_CHAT_COUNT[senderUserId || senderName] || 0) + 1;
-            if (USER_CHAT_COUNT[senderUserId || senderName] >= 5) {
-                USER_CHAT_COUNT[senderUserId || senderName] = 0;
-                updateUserMemory(senderUserId || senderName, senderName, history);
-            }
+
 
             const { text, tokens } = await askGroq(i, userMessage, senderName, finalContext, history, replyText, senderUserId);
             const finalText = polishAiAnswer(text, userMessage, replyText);

@@ -38,6 +38,11 @@ async function execute(ctx) {
     const args = cleanMsg.split(' ').slice(1).join(' ').trim();
     let currentData = USER_STATS_CACHE[senderUserId].core_memory || '';
     let memoryLines = currentData ? currentData.split('\n').filter(l => l.trim()) : [];
+    if (memoryLines.length > 5) {
+        memoryLines = memoryLines.slice(0, 5);
+        USER_STATS_CACHE[senderUserId].core_memory = memoryLines.join('\n');
+        if (ctx.XP_PENDING_UPDATES) ctx.XP_PENDING_UPDATES[senderUserId] = (ctx.XP_PENDING_UPDATES[senderUserId] || 0) + 0;
+    }
 
     if (!args) {
         if (memoryLines.length === 0) {

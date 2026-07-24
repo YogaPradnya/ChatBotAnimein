@@ -42,7 +42,7 @@ async function askCloudflareAi({
     const userStats = userStatsCache ? userStatsCache[senderUserId] : null;
     let coreMemory = '';
     if (userStats && userStats.core_memory) {
-        const memoryLines = userStats.core_memory.split('\n').filter(l => l.trim());
+        const memoryLines = userStats.core_memory.split('\n').filter(l => l.trim()).slice(0, 5);
         if (memoryLines.length > 0) {
             coreMemory = `\n\n=== INFORMASI PENTING TENTANG USER @${senderName} ===\n` +
                          `Kamu sedang berbicara dengan @${senderName}. Kamu WAJIB menyelaraskan jawabanmu dengan fakta & preferensi personal user di bawah ini:\n` +
