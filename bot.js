@@ -3661,6 +3661,7 @@ const getImageLimitStatus = limitService.getImageLimitStatus;
 const incrementImageLimitUsage = limitService.incrementImageLimitUsage;
 
 const fetchPinterestImage = imageService.fetchPinterestImage;
+const fetchAndDownloadPinterestImage = imageService.fetchAndDownloadPinterestImage;
 const pickUnusedPinterestImage = imageService.pickUnusedPinterestImage;
 const getPinterestHistoryKey = imageService.getPinterestHistoryKey;
 const pruneExpiredPinterestHistory = imageService.pruneExpiredPinterestHistory;
@@ -4488,7 +4489,7 @@ async function startBot() {
                     console.log(`[ANIME_NOTIF] Notifikasi rilis anime terkirim via ${notifBot.username}.`);
                 }
             },
-            intervalMs: 15000
+            intervalMs: 60000
         });
     }
 

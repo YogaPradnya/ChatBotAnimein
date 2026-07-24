@@ -189,7 +189,7 @@ async function checkAnimeUpdates({ animeinClient, sendNotifCallback, cacheRepo }
  * Jalankan poller notifikasi anime di background
  * @param {object} options - { animeinClient, sendNotifCallback, cacheRepo, intervalMs }
  */
-async function startAnimeNotifPoller({ animeinClient, sendNotifCallback, cacheRepo, intervalMs = 15000 }) {
+async function startAnimeNotifPoller({ animeinClient, sendNotifCallback, cacheRepo, intervalMs = 60000 }) {
     if (isPolling) {
         console.log('[ANIME_NOTIF] Poller sudah berjalan.');
         return;
