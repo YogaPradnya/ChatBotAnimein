@@ -67,6 +67,51 @@ function createCacheRepo(db) {
         });
     }
 
+    async function initNotifCacheTable() {
+        return db.execute(`
+            CREATE TABLE IF NOT EXISTS anime_notif_cache (
+                item_id TEXT PRIMARY KEY,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+    }
+
+    async function loadNotifiedAnimeIds() {
+        try {
+            await initNotifCacheTable();
+            const res = await db.execute('SELECT item_id FROM anime_notif_cache');
+            return (res.rows || []).map(r => String(r.item_id));
+        } catch (e) {
+            return [];
+        }
+    }
+
+    async function saveNotifiedAnimeId(itemId) {
+        try {
+            await initNotifCacheTable();
+            return await db.execute({
+                sql: 'INSERT OR IGNORE INTO anime_notif_cache (item_id) VALUES (?)',
+                args: [String(itemId)],
+            });
+        } catch (e) {
+            return null;
+        }
+    }
+
+    async function pruneNotifiedAnimeIds(keepCount = 500) {
+        try {
+            await initNotifCacheTable();
+            return await db.execute({
+                sql: `DELETE FROM anime_notif_cache WHERE item_id NOT IN (
+                    SELECT item_id FROM anime_notif_cache ORDER BY rowid DESC LIMIT ?
+                )`,
+                args: [keepCount],
+            });
+        } catch (e) {
+            return null;
+        }
+    }
+
     return {
         findResponseByQuestionKey,
         getAnswerByQuestionKey,
@@ -79,6 +124,10 @@ function createCacheRepo(db) {
         deleteCacheById,
         countCache,
         pruneExpiredCache,
+        initNotifCacheTable,
+        loadNotifiedAnimeIds,
+        saveNotifiedAnimeId,
+        pruneNotifiedAnimeIds,
     };
 }
 

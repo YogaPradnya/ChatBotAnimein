@@ -4,6 +4,9 @@ const notifiedItems = new Set();
 let isPolling = false;
 let pollerIntervalId = null;
 
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+let isChecking = false;
+
 /**
  * Extract array item list dari berbagai struktur payload API schedule
  */
@@ -26,6 +29,31 @@ function extractScheduleItems(payload) {
 }
 
 /**
+ * Cek apakah item anime memiliki label / badge NEW
+ * @param {object} item
+ * @returns {boolean}
+ */
+function isItemNew(item) {
+    if (!item || typeof item !== 'object') return false;
+
+    if (item.is_new === true || item.is_new === 1 || item.new === true || item.new === 1 || item.isNew === true) {
+        return true;
+    }
+
+    const textFields = [item.badge, item.status, item.label, item.tag, item.type, item.is_new, item.new];
+    for (const val of textFields) {
+        if (typeof val === 'string') {
+            const normalized = val.trim().toUpperCase();
+            if (normalized === 'NEW' || normalized === 'BARU' || normalized.includes('NEW')) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+/**
  * Format pesan notifikasi rilis anime
  * @param {object} item - Data anime / episode dari API
  * @returns {string}
@@ -43,7 +71,7 @@ function formatAnimeNotifMessage(item) {
 
     const synopsisLines = truncatedSynopsis.split('\n').map(l => l.trim()).filter(Boolean);
 
-    let msg = `┌── UPDATE ANIME ──────────────────\n`;
+    let msg = `┌── UPDATE ANIME\n`;
     msg += `│ Judul   : ${title}\n`;
     msg += `│ Episode : Episode ${episode}\n`;
     msg += `│ Rating  : ${rating}\n`;
@@ -55,45 +83,41 @@ function formatAnimeNotifMessage(item) {
     }
     msg += `│ \n`;
     msg += `│ Nonton sekarang di Animein!\n`;
-    msg += `└──────────────────────────────────`;
+    msg += `└───────────────────`;
 
     return msg;
 }
 
 /**
- * Pengecekan update anime dari API (Home & Jadwal)
- * @param {object} options - { animeinClient, sendNotifCallback }
+ * Pengecekan update anime dari API Jadwal dengan label NEW
+ * @param {object} options - { animeinClient, sendNotifCallback, cacheRepo }
  */
-async function checkAnimeUpdates({ animeinClient, sendNotifCallback }) {
+async function checkAnimeUpdates({ animeinClient, sendNotifCallback, cacheRepo }) {
     if (!animeinClient || typeof sendNotifCallback !== 'function') return [];
+    if (isChecking) return [];
 
+    isChecking = true;
     try {
+        // Preload dari SQLite jika notifiedItems masih kosong dan cacheRepo tersedia
+        if (notifiedItems.size === 0 && cacheRepo?.loadNotifiedAnimeIds) {
+            const savedIds = await cacheRepo.loadNotifiedAnimeIds();
+            if (Array.isArray(savedIds)) {
+                savedIds.forEach(id => notifiedItems.add(id));
+            }
+        }
+
         const todayName = getAnimeinDayName(0);
 
-        const [homeRes, scheduleRes] = await Promise.allSettled([
-            animeinClient.get('/3/2/home/data', { timeout: 8000 }),
-            animeinClient.get('/3/2/schedule/data', { params: { day: todayName, hari: todayName }, timeout: 8000 })
-        ]);
+        const scheduleRes = await animeinClient.get('/3/2/schedule/data', {
+            params: { day: todayName, hari: todayName },
+            timeout: 8000
+        });
 
-        const recentList = [];
-
-        if (homeRes.status === 'fulfilled' && homeRes.value?.data?.data) {
-            const data = homeRes.value.data.data;
-            recentList.push(
-                ...(data.today || []),
-                ...(data.new || []),
-                ...(data.latest || [])
-            );
-        }
-
-        if (scheduleRes.status === 'fulfilled' && scheduleRes.value?.data) {
-            const scheduleItems = extractScheduleItems(scheduleRes.value.data);
-            recentList.push(...scheduleItems);
-        }
-
-        if (recentList.length === 0) return [];
+        const recentList = extractScheduleItems(scheduleRes?.data || {});
+        if (!recentList || recentList.length === 0) return [];
 
         const newUpdates = [];
+        const isFirstRun = notifiedItems.size === 0;
 
         for (const item of recentList) {
             if (!item || (!item.id && !item.slug && !item.title && !item.name && !item.movie)) continue;
@@ -107,18 +131,33 @@ async function checkAnimeUpdates({ animeinClient, sendNotifCallback }) {
                 }
             }
 
+            // Filter label NEW: pastikan item memiliki label/badge NEW
+            if (!isItemNew(item)) {
+                continue;
+            }
+
             const title = item.title || item.name || item.movie || 'Anime';
             const episode = item.episode || item.eps || item.episode_now || item.latest_episode || item.last_episode || 'new';
             const itemId = String(item.id || item.slug || `${title}_eps_${episode}`);
             
             if (!notifiedItems.has(itemId)) {
-                // Pada run pertama, kita populate notifiedItems agar tidak membombardir notifikasi anime lama
-                if (notifiedItems.size === 0) {
-                    notifiedItems.add(itemId);
+                notifiedItems.add(itemId);
+
+                // Persiskan ke SQLite jika cacheRepo tersedia
+                if (cacheRepo?.saveNotifiedAnimeId) {
+                    cacheRepo.saveNotifiedAnimeId(itemId).catch(() => {});
+                }
+
+                // Pada run pertama saat startup, hanya isi notifiedItems tanpa mengirim notifikasi
+                if (isFirstRun) {
                     continue;
                 }
 
-                notifiedItems.add(itemId);
+                // Jika sudah ada notifikasi sebelumnya yang terkirim pada siklus ini, beri jeda 11 detik
+                if (newUpdates.length > 0) {
+                    await delay(11000);
+                }
+
                 newUpdates.push(item);
 
                 const message = formatAnimeNotifMessage(item);
@@ -132,20 +171,25 @@ async function checkAnimeUpdates({ animeinClient, sendNotifCallback }) {
             const toKeep = arr.slice(arr.length - 200);
             notifiedItems.clear();
             toKeep.forEach(id => notifiedItems.add(id));
+            if (cacheRepo?.pruneNotifiedAnimeIds) {
+                cacheRepo.pruneNotifiedAnimeIds(200).catch(() => {});
+            }
         }
 
         return newUpdates;
     } catch (error) {
         console.warn('[ANIME_NOTIF] Gagal mengecek update anime:', error.message);
         return [];
+    } finally {
+        isChecking = false;
     }
 }
 
 /**
  * Jalankan poller notifikasi anime di background
- * @param {object} options - { animeinClient, sendNotifCallback, intervalMs }
+ * @param {object} options - { animeinClient, sendNotifCallback, cacheRepo, intervalMs }
  */
-function startAnimeNotifPoller({ animeinClient, sendNotifCallback, intervalMs = 15000 }) {
+async function startAnimeNotifPoller({ animeinClient, sendNotifCallback, cacheRepo, intervalMs = 15000 }) {
     if (isPolling) {
         console.log('[ANIME_NOTIF] Poller sudah berjalan.');
         return;
@@ -154,13 +198,25 @@ function startAnimeNotifPoller({ animeinClient, sendNotifCallback, intervalMs = 
     isPolling = true;
     console.log(`[ANIME_NOTIF] Poller notifikasi anime dimulai (interval: ${intervalMs}ms).`);
 
+    // Preload dari SQLite saat poller baru dimulai
+    if (notifiedItems.size === 0 && cacheRepo?.loadNotifiedAnimeIds) {
+        try {
+            const savedIds = await cacheRepo.loadNotifiedAnimeIds();
+            if (Array.isArray(savedIds)) {
+                savedIds.forEach(id => notifiedItems.add(id));
+            }
+        } catch (err) {
+            console.warn('[ANIME_NOTIF] Gagal preload cache dari SQLite:', err.message);
+        }
+    }
+
     // Pengecekan awal untuk populate initial cache
-    checkAnimeUpdates({ animeinClient, sendNotifCallback }).catch(err => {
+    checkAnimeUpdates({ animeinClient, sendNotifCallback, cacheRepo }).catch(err => {
         console.warn('[ANIME_NOTIF] Initial check error:', err.message);
     });
 
     pollerIntervalId = setInterval(() => {
-        checkAnimeUpdates({ animeinClient, sendNotifCallback }).catch(err => {
+        checkAnimeUpdates({ animeinClient, sendNotifCallback, cacheRepo }).catch(err => {
             console.warn('[ANIME_NOTIF] Polling error:', err.message);
         });
     }, intervalMs);

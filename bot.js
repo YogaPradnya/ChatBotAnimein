@@ -4469,6 +4469,7 @@ async function startBot() {
     if (notifBot) {
         startAnimeNotifPoller({
             animeinClient,
+            cacheRepo,
             sendNotifCallback: async (messageText) => {
                 if (isSystemOff || !isBotNotifActive) return;
                 if (!notifBot.auth.userId || !notifBot.auth.userKey) {
