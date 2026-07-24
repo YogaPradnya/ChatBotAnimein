@@ -78,35 +78,35 @@ async function execute(ctx) {
         try { imgLimit = await getImageLimitStatus(senderUserId, senderName); } catch(e) { handleError(e, { scope: 'PROFIL', detail: 'image limit status', stats, logEmitter }); }
 
         const profileLines = [
-            `┌── ${boxHeader('PROFIL')}`,
+            `┌── ${boxHeader('PROFIL USER')} 👤`,
             `│ @${dn}`,
-            `│ Gelar : ${gelar || 'Wibu Baru'}`,
+            `│ 👑 Gelar : ${gelar || 'Wibu Baru'}`,
             `├───────────────────`,
-            `│ Rank  : #${rank}`,
-            `│ Level : ${level}`,
-            `│ XP    : ${xpStr}/${reqStr}`,
+            `│ 🏆 Rank  : #${rank}`,
+            `│ 🌟 Level : ${level}`,
+            `│ ⚡ XP    : ${xpStr}/${reqStr}`,
             `│ [${bar}] ${percentage}%`,
         ];
 
         if (extraProfile) {
-            profileLines.push(`├── ${boxHeader('PERSONAL INFO')}`);
-            if (extraProfile.kontribusi !== undefined) profileLines.push(`│ Contrib : ${Number(extraProfile.kontribusi).toLocaleString('id-ID')}`);
-            if (extraProfile.total_love !== undefined) profileLines.push(`│ Lovers  : ${Number(extraProfile.total_love).toLocaleString('id-ID')}`);
-            if (extraProfile.pokemon_count !== undefined) profileLines.push(`│ Pokemon : ${Number(extraProfile.pokemon_count).toLocaleString('id-ID')}`);
-            if (extraProfile.waifu_count !== undefined) profileLines.push(`│ Waifu   : ${Number(extraProfile.waifu_count).toLocaleString('id-ID')}`);
+            profileLines.push(`├── ${boxHeader('PERSONAL INFO')} 📜`);
+            if (extraProfile.kontribusi !== undefined) profileLines.push(`│ 💎 Contrib : ${Number(extraProfile.kontribusi).toLocaleString('id-ID')}`);
+            if (extraProfile.total_love !== undefined) profileLines.push(`│ ❤️ Lovers  : ${Number(extraProfile.total_love).toLocaleString('id-ID')}`);
+            if (extraProfile.pokemon_count !== undefined) profileLines.push(`│ ⚔️ Pokemon : ${Number(extraProfile.pokemon_count).toLocaleString('id-ID')}`);
+            if (extraProfile.waifu_count !== undefined) profileLines.push(`│ ✨ Waifu   : ${Number(extraProfile.waifu_count).toLocaleString('id-ID')}`);
         }
 
         profileLines.push(
-            `├── ${boxHeader('KUIS')}`,
-            `│ Win  : ${quizData.wins} (WR: ${winRate}%)`,
-            `│ Main : ${quizData.participations}`,
-            `│ Hint : ${quizData.total_hints_used}`,
-            `├── ${boxHeader('STREAK')}`,
-            `│ Now  : ${quizData.current_streak} hari`,
-            `│ Best : ${quizData.best_streak} hari`,
-            `├── ${boxHeader('LIMIT')}`,
-            `│ Cmd  : ${updatedLimit.remaining}/${updatedLimit.limit}`,
-            `│ Img  : ${imgLimit.remaining}/${imgLimit.limit}`,
+            `├── ${boxHeader('STATISTIK KUIS')} 🎯`,
+            `│ 🎯 Win  : ${quizData.wins} (WR: ${winRate}%)`,
+            `│ 🎮 Main : ${quizData.participations}`,
+            `│ 💡 Hint : ${quizData.total_hints_used}`,
+            `├── ${boxHeader('STREAK HARI')} 🔥`,
+            `│ 🔥 Now  : ${quizData.current_streak} hari`,
+            `│ 🏆 Best : ${quizData.best_streak} hari`,
+            `├── ${boxHeader('BATAS LIMIT')} ⏳`,
+            `│ 📊 Cmd  : ${updatedLimit.remaining}/${updatedLimit.limit}`,
+            `│ 🖼️ Img  : ${imgLimit.remaining}/${imgLimit.limit}`,
             `└──────────────────`
         );
 

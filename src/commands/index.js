@@ -162,12 +162,8 @@ async function handleInfoCommand(ctx) {
     }
 
     if (
-        lowerMsg === '.rekomendasi' || lowerMsg.startsWith('.rekomendasi ') ||
-        lowerMsg === 'rekomendasi' || lowerMsg.startsWith('rekomendasi ') ||
-        lowerMsg === '.rekomen' || lowerMsg.startsWith('.rekomen ') ||
-        lowerMsg === 'rekomen' || lowerMsg.startsWith('rekomen ') ||
-        lowerMsg === '.rekom' || lowerMsg.startsWith('.rekom ') ||
-        lowerMsg === 'rekom' || lowerMsg.startsWith('rekom ')
+        /\b(\.?(rekomendasi|rekomen|rekom|recommendation|recommend|saranin|cariin|carikan))\b/i.test(lowerMsg) ||
+        (/\b(saran|rekomen|rekom|rekomendasi|recommendation|recommend)\b/i.test(lowerMsg) && /anime/i.test(lowerMsg))
     ) {
         return rekomendasiCommand.execute(ctx);
     }

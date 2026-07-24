@@ -412,7 +412,7 @@ function parseTitlesFromJsonResponse(rawText) {
 
 async function analyzePromptWithAI(userQuery) {
     const systemPrompt = `Kamu adalah AI spesialis rekomendasi anime.
-Tugasmu: Berikan 10 rekomendasi anime real/asli yang paling sesuai dengan kueri user "${userQuery}".
+Tugasmu: Berikan 15 rekomendasi anime real/asli yang paling sesuai dengan kueri user "${userQuery}".
 Instruksi Penting:
 - Gunakan nama judul utama/Romaji standar yang umum (contoh: "Kimetsu no Yaiba", "Shingeki no Kyojin", "Overlord", "Toradora!", "KonoSuba", "Clannad").
 - Jangan tambahkan keterangan Season, Part, atau Episode di judul.
@@ -428,10 +428,15 @@ Instruksi Penting:
     "Judul 7",
     "Judul 8",
     "Judul 9",
-    "Judul 10"
+    "Judul 10",
+    "Judul 11",
+    "Judul 12",
+    "Judul 13",
+    "Judul 14",
+    "Judul 15"
   ]
 }`;
-    const userMessage = `Berikan 10 judul anime real yang paling cocok untuk: "${userQuery}". Output WAJIB JSON {"titles": [...]}`;
+    const userMessage = `Berikan 15 judul anime real yang paling cocok untuk: "${userQuery}". Output WAJIB JSON {"titles": [...]}`;
 
     // 1. Groq AI (Utama - Llama 3.1 8B)
     try {
@@ -440,7 +445,7 @@ Instruksi Penting:
         const titles = parseTitlesFromJsonResponse(rawText);
         if (titles.length > 0) {
             console.log('[AI Plan 1] Berhasil dari Groq AI');
-            return { provider: 'Groq AI', titles: titles.slice(0, 10) };
+            return { provider: 'Groq AI', titles: titles.slice(0, 15) };
         }
     } catch (e) {
         console.warn('[AI Plan 1] Groq AI error:', e.message);
@@ -453,7 +458,7 @@ Instruksi Penting:
         const titles = parseTitlesFromJsonResponse(rawText);
         if (titles.length > 0) {
             console.log('[AI Plan 1] Berhasil dari Cerebras AI');
-            return { provider: 'Cerebras AI', titles: titles.slice(0, 10) };
+            return { provider: 'Cerebras AI', titles: titles.slice(0, 15) };
         }
     } catch (e) {
         console.warn('[AI Plan 1] Cerebras AI error:', e.message);
@@ -466,7 +471,7 @@ Instruksi Penting:
         const titles = parseTitlesFromJsonResponse(rawText);
         if (titles.length > 0) {
             console.log('[AI Plan 1] Berhasil dari Cloudflare AI');
-            return { provider: 'Cloudflare AI', titles: titles.slice(0, 10) };
+            return { provider: 'Cloudflare AI', titles: titles.slice(0, 15) };
         }
     } catch (e) {
         console.warn('[AI Plan 1] Cloudflare AI error:', e.message);
@@ -565,11 +570,13 @@ async function execute(ctx) {
     if (bot.isCooldown) return true;
 
     const rawQuery = String(cleanMsg || '')
-        .replace(/^\.?rekomendasi\s*/i, '')
-        .replace(/^\.?rekomen\s*/i, '')
-        .replace(/^\.?rekom\s*/i, '')
+        .replace(/^[^\w\s]+/g, '')
+        .replace(/\b(rekomendasi|rekomen|rekom|recommend|saranin|saran|cariin|carikan)\b/gi, ' ')
+        .replace(/\b(ada|minta|tolong|kasih|dong|bisa|mau|punya|apa|bagus|yang|gak|ga|ya|kah|sis|gan|min|bot)\b/gi, ' ')
+        .replace(/[?.,!~]/g, ' ')
+        .replace(/\s+/g, ' ')
         .trim();
-    let query = rawQuery.replace(/^anime\s*/i, '').trim();
+    let query = rawQuery.replace(/^anime\s*/i, '').trim() || rawQuery;
 
     const cmdLimit = await checkCommandLimit(senderUserId, senderName);
     if (cmdLimit.remaining <= 0) {
@@ -606,17 +613,48 @@ async function execute(ctx) {
         const fetchSearchResults = typeof fetchAnimeSearchResults === 'function' ? fetchAnimeSearchResults : (ctx.fetchAnimeSearchResults || null);
         const animeinIndex = await buildAnimeinIndex(fetchAnimeinList);
 
-        // 2. Pencarian ID di Animein untuk list judul dari AI
+        // 2. Pencarian ID di Animein untuk list judul dari AI (maksimal 10 hasil)
         if (aiTitles.length > 0) {
             results = await matchAnimeTitlesToAnimein(
-                aiTitles.slice(0, 10),
+                aiTitles.slice(0, 15),
                 fetchSearchResults,
                 animeinIndex,
                 10
             );
         }
 
-        const finalPicks = results.slice(0, 10);
+        let finalPicks = results.slice(0, 10);
+
+        // 3. Penggenapan minimal 5 rekomendasi jika hasil pencocokan kurang dari 5
+        if (finalPicks.length < 5 && Array.isArray(animeinIndex) && animeinIndex.length > 0) {
+            const existingIds = new Set(finalPicks.map(a => String(a.id || a.id_movie || a.anime_id).toLowerCase()));
+
+            const candidateSupplements = animeinIndex.filter(item => {
+                if (!item || !(item.title || item.name)) return false;
+                const key = String(item.id || item.id_movie || item.anime_id).toLowerCase();
+                if (existingIds.has(key)) return false;
+                return true;
+            });
+
+            const scoredSupplements = candidateSupplements.map(item => {
+                const title = item.title || item.name || '';
+                const score = scoreTitleSimilarity(effectiveQuery, title);
+                return { item, score };
+            }).sort((a, b) => b.score - a.score);
+
+            for (const entry of scoredSupplements) {
+                if (finalPicks.length >= 5) break;
+                const animeId = entry.item.id || entry.item.id_movie || entry.item.anime_id || entry.item.slug;
+                if (animeId) {
+                    finalPicks.push({
+                        ...entry.item,
+                        id: animeId,
+                        id_movie: animeId,
+                        title: entry.item.title || entry.item.name,
+                    });
+                }
+            }
+        }
 
         // Simpan ke cache tag global agar `tag no 1` - `tag no 10` langsung berfungsi
         if (finalPicks.length > 0 && typeof saveRecentAnimeList === 'function') {
