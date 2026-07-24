@@ -132,12 +132,8 @@ async function execute(ctx) {
 
             if (picks.length > 0) {
                 picks.forEach((a, i) => {
-                    const title = cleanText(a.title || 'Tanpa judul', 24);
-                    lines.push(`│ ${i + 1}. ${title}`);
-                    const details = [];
-                    if (a.score || a.rating) details.push(`Skor: ${a.score || a.rating}`);
-                    if (a.genre) details.push(`Genre: ${cleanText(a.genre, 14)}`);
-                    if (details.length > 0) lines.push(`│    ${details.join(' | ')}`);
+                    const fullTitle = String(a.title || a.name || 'Tanpa judul').trim();
+                    lines.push(`│ ${i + 1}. ${fullTitle}`);
                 });
             } else {
                 lines.push(`│ Data rekomendasi tidak tersedia saat ini.`);
@@ -201,17 +197,14 @@ async function execute(ctx) {
             }
         }
 
-        // 2. Jika bukan genre tunggal, olah prompt dengan keyword enrichment & scoring
-        if (!results || results.length === 0) {
+        // STAGE 3: Jika belum 10, pencarian kata kunci terikat pada SELURUH katalog
+        if (results.length < 10) {
             let fullList = [];
-
-            // 1. Ambil dari Animein Search API secara global
             if (typeof fetchAnimeSearchResults === 'function') {
                 const searchResults = (await fetchAnimeSearchResults(query, 20)) || [];
                 fullList.push(...searchResults);
             }
 
-            // 2. Ambil dari seluruh kategori halaman Animein
             const [popularList, trendingList, baruList, movieList, ongoingList, completedList, randomList] = await Promise.all([
                 fetchAnimeinList('popular'),
                 fetchAnimeinList('trending'),
@@ -232,8 +225,7 @@ async function execute(ctx) {
                 ...(randomList || []),
             ];
 
-            // Deduplikasi seluruh katalog anime
-            const seenIds = new Set();
+            const seenIds = new Set(results.map(a => a.id || a.title || a.name));
             const consolidatedList = [];
             for (const item of [...fullList, ...allCategories]) {
                 const key = item.id || item.title || item.name;
@@ -242,51 +234,28 @@ async function execute(ctx) {
                     consolidatedList.push(item);
                 }
             }
-            fullList = consolidatedList;
 
-            const qNorm = normalize(query);
-            if (qNorm === 'ongoing' || qNorm === 'tamat' || qNorm === 'completed') {
-                filterLabel = `STATUS: ${qNorm.toUpperCase()}`;
-                results = fullList.filter(a => {
-                    const st = normalize(a.status || a.label || '');
-                    if (qNorm === 'ongoing') return st.includes('ongoing') || st.includes('berjalan');
-                    return st.includes('tamat') || st.includes('complete') || st.includes('selesai');
-                }).slice(0, 10);
-            } else if (qNorm === 'movie' || qNorm === 'film' || qNorm === 'tv' || qNorm === 'series') {
-                filterLabel = `TIPE: ${qNorm.toUpperCase()}`;
-                results = fullList.filter(a => {
-                    const tp = normalize(a.type || a.category || '');
-                    return tp.includes(qNorm);
-                }).slice(0, 10);
-            } else {
-                // Prompt Enrichment & Scoring
-                const keywords = enrichQueryKeywords(query);
-                const scored = fullList.map(anime => {
-                    const combined = normalize(`${anime.title || ''} ${anime.name || ''} ${anime.genre || ''} ${anime.synopsis || ''}`);
-                    let score = 0;
-                    keywords.forEach(kw => {
-                        if (combined.includes(kw)) score += 2;
-                    });
-                    return { anime, score };
+            const keywords = enrichQueryKeywords(query);
+            const scored = consolidatedList.map(anime => {
+                const combined = normalize(`${anime.title || ''} ${anime.name || ''} ${anime.genre || ''} ${anime.synopsis || ''}`);
+                let score = 0;
+                keywords.forEach(kw => {
+                    if (combined.includes(kw)) score += 2;
                 });
-                scored.sort((a, b) => b.score - a.score);
-                results = scored.filter(s => s.score > 0).map(s => s.anime).slice(0, 10);
-            }
-        }
+                return { anime, score };
+            });
+            scored.sort((a, b) => b.score - a.score);
+            const keywordMatches = scored.filter(s => s.score > 0).map(s => s.anime);
 
-        if (!results || results.length < 10) {
-            const fallbackList = (await fetchAnimeinList('popular')) || (await fetchAnimeinList('trending')) || [];
-            const existingTitles = new Set((results || []).map(a => normalize(a.title || a.name)));
-            results = results || [];
-            for (const fb of fallbackList) {
+            const existingSet = new Set(results.map(a => a.id || a.title || a.name));
+            for (const km of keywordMatches) {
                 if (results.length >= 10) break;
-                const normT = normalize(fb.title || fb.name);
-                if (normT && !existingTitles.has(normT)) {
-                    existingTitles.add(normT);
-                    results.push(fb);
+                const k = km.id || km.title || km.name;
+                if (k && !existingSet.has(k)) {
+                    existingSet.add(k);
+                    results.push(km);
                 }
             }
-            if (!filterLabel) filterLabel = `PILIHAN (${query.toUpperCase()})`;
         }
 
         const finalPicks = results.slice(0, 10);
@@ -295,16 +264,12 @@ async function execute(ctx) {
         }
 
         const lines = [
-            `┌── ${boxHeader(`REKOMENDASI ${cleanText(filterLabel, 14)}`)}`,
+            `┌── ${boxHeader(`REKOMENDASI ${filterLabel}`)}`,
         ];
 
         finalPicks.forEach((a, i) => {
-            const title = cleanText(a.title || a.name || 'Tanpa judul', 24);
-            lines.push(`│ ${i + 1}. ${title}`);
-            const details = [];
-            if (a.score || a.rating) details.push(`Skor: ${a.score || a.rating}`);
-            if (a.genre) details.push(cleanText(a.genre, 14));
-            if (details.length > 0) lines.push(`│    ${details.join(' | ')}`);
+            const fullTitle = String(a.title || a.name || 'Tanpa judul').trim();
+            lines.push(`│ ${i + 1}. ${fullTitle}`);
         });
 
         lines.push(`├───────────────────`);
