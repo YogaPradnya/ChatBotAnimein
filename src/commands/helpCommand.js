@@ -57,6 +57,12 @@ async function execute(ctx) {
     } else if (helpArg === 'limit') {
         helpMsg = wrapInBox('LIMIT', 'Cek sisa limit command dan gambar hari ini.\n\nCommand:\n- .limit\n\nTampilan: sisa command & gambar.\nReset jam 00:00 WIB.');
 
+    } else if (helpArg === 'rekomendasi' || helpArg === 'rekomen') {
+        helpMsg = wrapInBox('REKOMENDASI', 'Rekomendasi anime terfokus.\n\nCommand:\n- .rekomendasi\n- .rekomendasi [genre/mood/status/tipe]\n\nContoh:\n- .rekomendasi action\n- .rekomendasi sad\n- .rekomendasi ongoing\n- .rekomendasi movie');
+    } else if (helpArg === 'data') {
+        helpMsg = wrapInBox('DATA', 'Pengaturan data pribadi (Core Memory) kamu.\n\nCommand:\n- .data [isi datamu]\n- .data hapus [nomor]\n- .data reset\n\nAturan:\n- Maksimal 5 list data per ID\n- Maksimal 80 karakter per item');
+    } else if (helpArg === 'gambarkan') {
+        helpMsg = wrapInBox('GAMBARKAN', 'Buat gambar AI berbasis deskripsi prompt.\n\nCommand:\n- .gambarkan [prompt]\n\nContoh:\n- .gambarkan anime girl playing guitar');
     } else if (helpArg === 'ban') {
         helpMsg = wrapInBox('BAN', 'Aturan bot:\n• Dilarang spam\n• Dilarang toxic\n• Dilarang abuse XP\n\nPelanggar akan di-ban permanen.');
     } else if (helpArg) {
@@ -70,21 +76,22 @@ async function execute(ctx) {
         }
     } else {
         helpMsg = [
-            `┌── ${boxHeader('📖 HELP')}`,
+            `┌── ${boxHeader('HELP TOPIC')}`,
             `│ Ketik: .help [topik]`,
             `├───────────────────`,
             `│ Topik:`,
-            `│ 1. kuis     2. gambar`,
-            `│ 3. xp       4. shop`,
-            `│ 5. kombo    6. profil`,
-            `│ 7. cek      8. rank`,
-            `│ 9. streak   10. level`,
-            `│11. ai      12. ban`,
-            `│13. jadwal  14. hot`,
-            `│15. baru    16. random`,
-            `│17. populer 18. cari`,
-            `│19. genre   20. tas`,
-            `│21. limit`,
+            `│ 1. rekomendasi  2. data`,
+            `│ 3. kuis         4. gambar`,
+            `│ 5. gambarkan    6. xp`,
+            `│ 7. shop         8. kombo`,
+            `│ 9. profil      10. cek`,
+            `│11. rank        12. streak`,
+            `│13. level       14. ai`,
+            `│15. jadwal      16. hot`,
+            `│17. baru        18. random`,
+            `│19. populer     20. cari`,
+            `│21. genre       22. tas`,
+            `│23. limit       24. ban`,
             `└───────────────────`,
         ].join('\n');
     }

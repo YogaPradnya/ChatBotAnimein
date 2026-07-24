@@ -4372,7 +4372,8 @@ async function processMessages(bot, messages) {
                 fetchByGenre,
                 USER_STATS_CACHE,
                 XP_PENDING_UPDATES,
-                runtimeRepo
+                runtimeRepo,
+                saveRecentAnimeList
             };
             if (await handleAnimeTagInstruction(infoCommandContext)) continue;
             if (await commands.handleInfoCommand(infoCommandContext)) continue;

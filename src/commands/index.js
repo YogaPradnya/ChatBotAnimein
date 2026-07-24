@@ -24,6 +24,7 @@ const tasCommand = require('./tasCommand');
 const limitCommand = require('./limitCommand');
 const createImageCommand = require('./createImageCommand');
 const dataCommand = require('./dataCommand');
+const rekomendasiCommand = require('./rekomendasiCommand');
 
 // Cooldown global untuk .hint (30 detik)
 const HINT_COOLDOWN_MS = 30 * 1000;
@@ -159,6 +160,10 @@ async function handleInfoCommand(ctx) {
         return dataCommand.execute(ctx);
     }
 
+    if (lowerMsg === '.rekomendasi' || lowerMsg.startsWith('.rekomendasi ') || lowerMsg === '.rekomen' || lowerMsg.startsWith('.rekomen ')) {
+        return rekomendasiCommand.execute(ctx);
+    }
+
     return false;
 }
 
@@ -196,6 +201,8 @@ module.exports = {
     tasCommand,
     limitCommand,
     createImageCommand,
+    dataCommand,
+    rekomendasiCommand,
 
     handleKuisCommand,
     handleInfoCommand,
