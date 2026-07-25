@@ -62,8 +62,12 @@ function collectUrlsFromObject(obj, found = []) {
     }
     if (typeof obj === 'object') {
         for (const key of Object.keys(obj)) {
-            const val = obj[key];
             const lowerKey = key.toLowerCase();
+            // Abaikan avatar profil / masukotto
+            if (lowerKey.includes('masukotto') || lowerKey.includes('avatar') || lowerKey.includes('pokemon')) {
+                continue;
+            }
+            const val = obj[key];
             if (typeof val === 'string' && val.trim().length > 0) {
                 const norm = normalizeUrl(val);
                 if (norm) {
@@ -82,18 +86,31 @@ function collectUrlsFromObject(obj, found = []) {
 }
 
 function extractImageUrl(msg = {}, cleanMsg = '') {
-    // 1. Scan direct message object
-    const directUrls = collectUrlsFromObject(msg);
+    // 1. Prioritas Utama API Animein: image_url & image_url_replay
+    if (typeof msg.image_url === 'string' && msg.image_url.trim().length > 0) {
+        const norm = normalizeUrl(msg.image_url);
+        if (norm) return norm;
+    }
+
+    if (typeof msg.image_url_replay === 'string' && msg.image_url_replay.trim().length > 0) {
+        const norm = normalizeUrl(msg.image_url_replay);
+        if (norm) return norm;
+    }
+
+    // 2. Scan objek pesan utama (dengan mengabaikan image_masukotto)
+    const cloneMsg = { ...msg };
+    delete cloneMsg.image_masukotto;
+    const directUrls = collectUrlsFromObject(cloneMsg);
     if (directUrls.length > 0) return directUrls[0];
 
-    // 2. Scan reply/quoted object
+    // 3. Scan objek reply/quoted
     const replyObj = msg.replay || msg.reply || msg.quoted || msg.message?.replay || msg.message?.reply;
     if (replyObj) {
         const replyUrls = collectUrlsFromObject(replyObj);
         if (replyUrls.length > 0) return replyUrls[0];
     }
 
-    // 3. Extract http(s) link from text or reply text
+    // 4. Ekstrak link http(s) dari teks pesan atau replay
     const userArg = String(cleanMsg || '').replace(/^\.cari\s*/i, '').trim();
     const fullText = `${userArg} ${msg.text || ''} ${getReplyText(msg)}`;
     const urlMatch = fullText.match(/https?:\/\/[^\s<"']+\.(?:jpg|jpeg|png|webp|gif)(\?[^\s<"']*)?/i)
