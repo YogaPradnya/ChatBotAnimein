@@ -2135,7 +2135,7 @@ async function updateStats() {
           const cf = d.cloudflare;
           html += \`
             <div class="model-card \${cf.active ? 'active' : 'inactive'}" style="border-left: 4px solid var(--accent);">
-              <div class="model-num" style="color:var(--accent);">MODEL UTAMA: CLOUDFLARE WORKERS AI (Llama 3.1 8B)</div>
+              <div class="model-num" style="color:var(--accent);">MODEL UTAMA: CLOUDFLARE WORKERS AI (Llama 3.3 70B)</div>
               <div class="model-metrics">
                 <div class="m-stat"><div class="m-lbl">Requests</div><div class="m-val">\${cf.requests || 0}</div></div>
                 <div class="m-stat"><div class="m-lbl">Errors</div><div class="m-val">\${cf.errors || 0}</div></div>

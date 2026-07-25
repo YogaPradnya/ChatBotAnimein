@@ -3547,7 +3547,7 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
         affectionPoints: userAffection.points
     });
 
-    // Model Utama (1): Cloudflare Workers AI (Llama 3.1 8B)
+    // Model Utama (1): Cloudflare Workers AI (Llama 3.3 70B)
     const cfStat = getCloudflareStat();
     if (cfStat.active && CONFIG.CLOUDFLARE_API_KEY && CONFIG.CLOUDFLARE_ACCOUNT_ID && Date.now() >= cfStat.cooldownUntil) {
         try {
@@ -3566,7 +3566,7 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
 
             const finalText = polishAiAnswer(text, userMessage, replyText);
             if (finalText) {
-                return { text: finalText, provider: `Cloudflare (Llama 3.1 8B)`, tokens };
+                return { text: finalText, provider: `Cloudflare (Llama 3.3 70B)`, tokens };
             }
         } catch (err) {
             cfStat.errors++;
