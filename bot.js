@@ -2843,6 +2843,9 @@ function polishAiAnswer(answer, userMessage, replyText = '') {
         text = firstLine;
     }
 
+    // Bersihkan jika AI menaruh nama 'Rara' di akhir kalimat (misal: "..., Rara.")
+    text = text.replace(/,\s*rara\b[.!?]?$/i, '.').replace(/\s+rara\b[.!?]?$/i, '.').trim();
+
     return text;
 }
 
