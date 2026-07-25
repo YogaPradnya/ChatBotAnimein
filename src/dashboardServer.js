@@ -1251,35 +1251,54 @@ function startDashboard(scope) {
     });
 
     app.post('/api/users/update-xp', async (req, res) => {
-        const { userId, user_id, username, xp, level, custom_title } = req.body;
+        const { userId, user_id, username, xp, level, custom_title, affection_points, affection_level } = req.body;
         const targetUserId = userId || user_id;
         try {
             const finalTitle = custom_title === "" ? null : custom_title;
+            const affPoints = typeof affection_points !== 'undefined' ? (parseInt(affection_points) || 0) : null;
+            const affLevel = typeof affection_level !== 'undefined' ? (parseInt(affection_level) || 0) : null;
+
             if (targetUserId) {
-                await db.execute({ 
-                    sql: "UPDATE user_stats SET xp = ?, level = ?, custom_title = ?, username = ? WHERE user_id = ?", 
-                    args: [xp, level, finalTitle, username, String(targetUserId)] 
-                });
+                if (affPoints !== null && affLevel !== null) {
+                    await db.execute({ 
+                        sql: "UPDATE user_stats SET xp = ?, level = ?, custom_title = ?, username = ?, affection_points = ?, affection_level = ? WHERE user_id = ?", 
+                        args: [xp, level, finalTitle, username, affPoints, affLevel, String(targetUserId)] 
+                    });
+                } else {
+                    await db.execute({ 
+                        sql: "UPDATE user_stats SET xp = ?, level = ?, custom_title = ?, username = ? WHERE user_id = ?", 
+                        args: [xp, level, finalTitle, username, String(targetUserId)] 
+                    });
+                }
 
                 if (USER_STATS_CACHE[targetUserId]) {
                     USER_STATS_CACHE[targetUserId].username = username;
                     USER_STATS_CACHE[targetUserId].xp = parseInt(xp);
                     USER_STATS_CACHE[targetUserId].level = parseInt(level);
                     USER_STATS_CACHE[targetUserId].custom_title = finalTitle;
+                    if (affPoints !== null) USER_STATS_CACHE[targetUserId].affection_points = affPoints;
+                    if (affLevel !== null) USER_STATS_CACHE[targetUserId].affection_level = affLevel;
                 }
             } else {
-                // Fallback for safety
-                await db.execute({ 
-                    sql: "UPDATE user_stats SET xp = ?, level = ?, custom_title = ? WHERE username = ?", 
-                    args: [xp, level, finalTitle, username] 
-                });
+                if (affPoints !== null && affLevel !== null) {
+                    await db.execute({ 
+                        sql: "UPDATE user_stats SET xp = ?, level = ?, custom_title = ?, affection_points = ?, affection_level = ? WHERE username = ?", 
+                        args: [xp, level, finalTitle, affPoints, affLevel, username] 
+                    });
+                } else {
+                    await db.execute({ 
+                        sql: "UPDATE user_stats SET xp = ?, level = ?, custom_title = ? WHERE username = ?", 
+                        args: [xp, level, finalTitle, username] 
+                    });
+                }
 
-                // Find by username in cache
                 const cachedId = Object.keys(USER_STATS_CACHE).find(k => USER_STATS_CACHE[k]?.username === username);
                 if (cachedId) {
                     USER_STATS_CACHE[cachedId].xp = parseInt(xp);
                     USER_STATS_CACHE[cachedId].level = parseInt(level);
                     USER_STATS_CACHE[cachedId].custom_title = finalTitle;
+                    if (affPoints !== null) USER_STATS_CACHE[cachedId].affection_points = affPoints;
+                    if (affLevel !== null) USER_STATS_CACHE[cachedId].affection_level = affLevel;
                 }
             }
 

@@ -1704,6 +1704,27 @@ function getDashboardHTML() {
       <div style="font-size: 10px; color: var(--muted); margin-top: 5px;">Hanya muncul gelar yang sudah ditambahkan di menu Kuis.</div>
     </div>
 
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+      <div class="form-group">
+        <label class="form-label">Heart Level Rara</label>
+        <select id="editUserAffectionLevel">
+          <option value="0">Heart 0 (0-99 Poin)</option>
+          <option value="1">Heart 1 (100-299 Poin)</option>
+          <option value="2">Heart 2 (300-699 Poin)</option>
+          <option value="3">Heart 3 (700-1499 Poin)</option>
+          <option value="4">Heart 4 (1500-2999 Poin)</option>
+          <option value="5">Heart 5 (3000+ Poin)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Poin Affection Rara</label>
+        <div style="position:relative;">
+          <input type="number" id="editUserAffectionPoints" style="padding-right: 40px;">
+          <span style="position:absolute; right:12px; top:50%; transform:translateY(-50%); font-size:12px; color:var(--muted); font-weight:600;">PTS</span>
+        </div>
+      </div>
+    </div>
+
     <div style="background:#f1f5f9; padding:14px; border-radius:12px; margin-bottom:20px; border:1px dashed var(--border);">
        <p style="font-size:11px; color:#475569; line-height:1.5;"><b>Note:</b> Pastikan Level dan XP sinkron. Mengubah XP terlalu besar tanpa menaikkan level bisa membuat user naik level mendadak saat interaksi berikutnya.</p>
     </div>
@@ -2875,22 +2896,29 @@ async function updateStats() {
         const safeTitle = jsString(u.custom_title || '');
         const safeUsername = jsString(u.username);
         const safeUserId = jsString(u.user_id || '');
+        const affPts = u.affection_points || 0;
+        const affLvl = u.affection_level || 0;
         return \`<tr>
           <td style="font-weight:700; color:var(--muted); text-align:center;">\${i+1}</td>
           <td style="font-weight:700; color:var(--accent); font-size:13px;">@\${escapeHTML(u.username)}<div style="font-size:10px; color:var(--muted); font-weight:500;">\${escapeHTML(title)}</div></td>
-          <td style="text-align:center;"><span class="prov-tag" style="background:var(--accent); color:#fff; border:none; padding:2px 6px;">Lv \${u.level}</span></td>
+          <td style="text-align:center;">
+            <span class="prov-tag" style="background:var(--accent); color:#fff; border:none; padding:2px 6px;">Lv \${u.level}</span>
+            <div style="font-size:10px; font-weight:700; color:#e11d48; margin-top:3px;">Heart \${affLvl} (\${affPts} pts)</div>
+          </td>
           <td style="font-weight:600; font-size:11px; white-space:nowrap;">\${(u.xp||0).toLocaleString('id-ID')}<br>\${req.toLocaleString('id-ID')}</td>
-          <td class="td-actions"><button class="btn-sm btn-sm-edit" onclick="editUserStats('\${safeUsername}', \${u.level}, \${u.xp}, '\${safeTitle}', '\${safeUserId}')">Edit</button></td>
+          <td class="td-actions"><button class="btn-sm btn-sm-edit" onclick="editUserStats('\${safeUsername}', \${u.level}, \${u.xp}, '\${safeTitle}', '\${safeUserId}', \${affPts}, \${affLvl})">Edit</button></td>
           </tr>\`;
       }).join('');
     } catch(e) {}
   }
-  function editUserStats(user, level, xp, customTitle = '', userId = '') {
+  function editUserStats(user, level, xp, customTitle = '', userId = '', affPts = 0, affLvl = 0) {
     document.getElementById('editUserUsername').value = user;
     document.getElementById('editUserUserId').value = userId;
     document.getElementById('editUserTitle').textContent = user;
     document.getElementById('editUserLevel').value = level;
     document.getElementById('editUserXP').value = xp;
+    document.getElementById('editUserAffectionPoints').value = affPts || 0;
+    document.getElementById('editUserAffectionLevel').value = affLvl || 0;
     
     updateModalTitleDropdown(customTitle);
     const sel = document.getElementById('editUserTitleSelect');
@@ -2905,7 +2933,9 @@ async function updateStats() {
       username: document.getElementById('editUserUsername').value,
       level: parseInt(document.getElementById('editUserLevel').value),
       xp: parseInt(document.getElementById('editUserXP').value),
-      custom_title: document.getElementById('editUserTitleSelect').value
+      custom_title: document.getElementById('editUserTitleSelect').value,
+      affection_points: parseInt(document.getElementById('editUserAffectionPoints').value) || 0,
+      affection_level: parseInt(document.getElementById('editUserAffectionLevel').value) || 0
     };
     const res = await fetch('/api/users/update-xp', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)

@@ -74,6 +74,13 @@ async function execute(ctx) {
         const xpStr = xp.toLocaleString('id-ID');
         const reqStr = reqXP.toLocaleString('id-ID');
 
+        let affectionData = { points: 0, level: 0 };
+        try {
+            if (userRepo && typeof userRepo.getAffection === 'function') {
+                affectionData = await userRepo.getAffection(senderUserId);
+            }
+        } catch (e) { console.warn("[PROFIL] Affection query failed:", e.message); }
+
         let imgLimit = { used: 0, limit: IMAGE_DAILY_LIMIT_DEFAULT, remaining: IMAGE_DAILY_LIMIT_DEFAULT };
         try { imgLimit = await getImageLimitStatus(senderUserId, senderName); } catch(e) { handleError(e, { scope: 'PROFIL', detail: 'image limit status', stats, logEmitter }); }
 
@@ -84,6 +91,7 @@ async function execute(ctx) {
             `├───────────────────`,
             `│ 🏆 Rank  : #${rank}`,
             `│ 🌟 Level : ${level}`,
+            `│ 💖 Heart : Level ${affectionData.level || 0} (${(affectionData.points || 0).toLocaleString('id-ID')} Poin)`,
             `│ ⚡ XP    : ${xpStr}/${reqStr}`,
             `│ [${bar}] ${percentage}%`,
         ];
