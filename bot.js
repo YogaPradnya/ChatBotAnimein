@@ -4578,6 +4578,8 @@ async function processMessages(bot, messages) {
                 XP_PENDING_UPDATES,
                 runtimeRepo,
                 saveRecentAnimeList,
+                getRecentAnimeListText,
+                getRecentAnimeList,
                 fetchOtherUserProfile,
                 bots,
                 CONFIG,

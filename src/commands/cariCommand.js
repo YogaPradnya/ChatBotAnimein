@@ -183,7 +183,7 @@ async function searchTraceMoe(imageUrl) {
                 data = res.data;
             }
         } catch (getErr) {
-            console.warn('[CARI GAMBAR] GET URL ke trace.moe gagal:', getErr.message);
+            console.warn('[CARI GAMBAR] GET URL gagal:', getErr.message);
         }
     }
 
@@ -262,16 +262,24 @@ async function execute(ctx) {
 
             await incrementCommandUsage(senderUserId, senderName);
 
+            const isLowAccuracy = result.similarityNum < 0.70;
             const lines = [
                 `┌── ${boxHeader('HASIL CARI GAMBAR')} 🔍`,
                 `│ 📺 Judul   : ${cleanText(result.title, 30)}`,
                 result.titleEnglish && result.titleEnglish !== '-' ? `│ 🌐 Eng     : ${cleanText(result.titleEnglish, 30)}` : null,
                 `│ 🎬 Episode : Episode ${result.episode}`,
                 `│ ⏱️ Menit   : ${result.timestamp}`,
-                `│ 🎯 Akurasi : ${result.similarity}`,
+                `│ 🎯 Akurasi : ${result.similarity}${isLowAccuracy ? ' (Rendah)' : ''}`,
                 result.isAdult ? `│ ⚠️ Rating  : 18+ (Adult Content)` : null,
-                `└───────────────────`,
             ].filter(Boolean);
+
+            if (isLowAccuracy) {
+                lines.push('├───────────────────');
+                lines.push('│ 💡 Akurasi <70%: Potongan adegan,');
+                lines.push('│    fan art, PV, atau anime rilis baru.');
+            }
+
+            lines.push('└───────────────────');
 
             await sendChatMessage(bot, `@${senderName.substring(0, 10)}\n${lines.join('\n')}`, msg.id);
         } catch (e) {
