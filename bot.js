@@ -4134,6 +4134,14 @@ function extractNumberedAnimeTitles(text, maxItems = 10) {
         }
     }
 
+    if (!titles.some(Boolean)) {
+        const judulMatch = normalizedText.match(/Judul\s*:\s*(.+)$/im);
+        if (judulMatch) {
+            const title = cleanAnimeTitleFromList(judulMatch[1]);
+            if (title) titles[0] = title;
+        }
+    }
+
     return titles.slice(0, maxItems);
 }
 

@@ -297,6 +297,9 @@ async function execute(ctx) {
             });
 
             lines.push(`└───────────────────`);
+            if (typeof ctx.saveRecentAnimeList === 'function' && results && results.length > 0) {
+                ctx.saveRecentAnimeList(senderName, senderUserId, results.slice(0, 5), `cari_hibrida:${query}`);
+            }
             await sendChatMessage(bot, `@${senderName.substring(0, 10)}\n${lines.join('\n')}`, msg.id);
             return true;
         } catch (err) {
@@ -328,6 +331,10 @@ async function execute(ctx) {
                     result.candidates.slice(0, 3).forEach((cand, index) => {
                         lowLines.push(`│ 🎬 ${index + 1}. ${cleanText(cand.title, 26)} (${cand.similarity})`);
                     });
+                    if (typeof ctx.saveRecentAnimeList === 'function') {
+                        const listToSave = result.candidates.slice(0, 4).map(c => ({ title: c.title }));
+                        ctx.saveRecentAnimeList(senderName, senderUserId, listToSave, 'cari_gambar_low');
+                    }
                 } else {
                     lowLines.push(`│ (Potongan adegan / fan art / PV)`);
                 }
@@ -367,6 +374,14 @@ async function execute(ctx) {
                 result.isAdult ? `│ ⚠️ Rating  : 18+ (Adult Content)` : null,
                 `└───────────────────`,
             ].filter(Boolean);
+
+            if (typeof ctx.saveRecentAnimeList === 'function') {
+                const listToSave = [
+                    { title: result.title, id_movie: animeinId !== '-' ? animeinId : null },
+                    ...(Array.isArray(result.candidates) ? result.candidates.slice(1).map(c => ({ title: c.title })) : [])
+                ];
+                ctx.saveRecentAnimeList(senderName, senderUserId, listToSave, 'cari_gambar');
+            }
 
             await sendChatMessage(bot, `@${senderName.substring(0, 10)}\n${lines.join('\n')}`, msg.id);
         } catch (e) {
