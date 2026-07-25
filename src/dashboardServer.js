@@ -1336,8 +1336,22 @@ function startDashboard(scope) {
         } catch (e) { res.json({ error: e.message }); }
     });
 
-    app.get('/api/prompt', (req, res) => {
-        res.json({ success: true, prompt: SYSTEM_PROMPT });
+    app.get('/api/prompt', async (req, res) => {
+        try {
+            let config = null;
+            if (scope.settingsRepo && typeof scope.settingsRepo.getJSON === 'function') {
+                config = await scope.settingsRepo.getJSON('rara_character_config', null);
+            } else {
+                const row = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'rara_character_config'", args: [] });
+                if (row.rows.length > 0 && row.rows[0].value) {
+                    config = JSON.parse(row.rows[0].value);
+                }
+            }
+            const jsonStr = config ? JSON.stringify(config, null, 2) : (typeof SYSTEM_PROMPT === 'string' ? SYSTEM_PROMPT : '');
+            res.json({ success: true, prompt: jsonStr, config: config || null });
+        } catch (e) {
+            res.json({ success: false, prompt: '', error: e.message });
+        }
     });
 
     // --- AUTOREPLY MANAGEMENT ---
@@ -1373,15 +1387,29 @@ function startDashboard(scope) {
 
     app.post('/api/prompt/save', async (req, res) => {
         const { prompt } = req.body;
-        if (!prompt || prompt.trim().length < 10) return res.status(400).json({ success: false, error: 'Prompt terlalu pendek.' });
-        SYSTEM_PROMPT = prompt;
+        if (!prompt || !prompt.trim()) return res.status(400).json({ success: false, error: 'Prompt JSON kosong.' });
         try {
-            await db.execute({ 
-                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('system_prompt', ?)", 
-                args: [SYSTEM_PROMPT] 
-            });
-        } catch(e) {}
-        res.json({ success: true });
+            const parsedConfig = JSON.parse(prompt);
+            const formattedConfig = parsedConfig.rara ? parsedConfig : { rara: parsedConfig };
+            const jsonStr = JSON.stringify(formattedConfig);
+
+            if (scope.settingsRepo && typeof scope.settingsRepo.setJSON === 'function') {
+                await scope.settingsRepo.setJSON('rara_character_config', formattedConfig);
+            } else {
+                await db.execute({ 
+                    sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('rara_character_config', ?)", 
+                    args: [jsonStr] 
+                });
+            }
+
+            if (global.RARA_CHARACTER_CONFIG !== undefined) {
+                global.RARA_CHARACTER_CONFIG = formattedConfig;
+            }
+
+            res.json({ success: true, message: 'JSON Prompt Rara berhasil disimpan ke DB.' });
+        } catch (e) {
+            res.status(400).json({ success: false, error: 'Format JSON tidak valid: ' + e.message });
+        }
     });
 
     // --- RARA CHARACTER JSON MANAGEMENT ---

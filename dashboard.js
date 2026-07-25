@@ -1237,7 +1237,7 @@ function getDashboardHTML() {
         <!-- Left Column -->
         <div class="prompt-col">
           <div class="card">
-            <div class="card-title">System Prompt (Live Edit)</div>
+            <div class="card-title">JSON Karakter Rara & Heart Profiles (Live Edit)</div>
             <div class="form-group">
               <textarea id="promptEditor" style="min-height:400px; font-family:monospace; font-size:12px;"></textarea>
             </div>
@@ -2343,18 +2343,42 @@ async function updateStats() {
   async function loadPrompt() {
     const res = await fetch('/api/prompt');
     const d = await res.json();
-    document.getElementById('promptEditor').value = d.prompt;
+    if (d.prompt) {
+      try {
+        const parsed = JSON.parse(d.prompt);
+        document.getElementById('promptEditor').value = JSON.stringify(parsed, null, 2);
+      } catch (e) {
+        document.getElementById('promptEditor').value = d.prompt;
+      }
+    } else {
+      document.getElementById('promptEditor').value = '';
+    }
     loadAiTemperature();
     loadDomains();
     loadKnowledge();
   }
   async function savePrompt() {
     const text = document.getElementById('promptEditor').value;
-    await fetch('/api/prompt/save', {
+    if (!text.trim()) {
+      showToast('Teks JSON prompt tidak boleh kosong!', 'error');
+      return;
+    }
+    try {
+      JSON.parse(text);
+    } catch (e) {
+      showToast('Format JSON tidak valid: ' + e.message, 'error');
+      return;
+    }
+    const res = await fetch('/api/prompt/save', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt: text })
     });
-    showToast('Prompt berhasil disimpan!', 'success');
+    const d = await res.json();
+    if (d.success) {
+      showToast(d.message || 'JSON Prompt Karakter berhasil disimpan!', 'success');
+    } else {
+      showToast('Gagal menyimpan: ' + (d.error || 'Terjadi kesalahan'), 'error');
+    }
   }
   async function loadAiTemperature() {
     try {
