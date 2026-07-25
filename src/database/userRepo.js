@@ -58,6 +58,49 @@ function createUserRepo(db) {
         }
     }
 
+    function calculateHeartLevel(points) {
+        const p = Number(points || 0);
+        if (p >= 3000) return 5;
+        if (p >= 1500) return 4;
+        if (p >= 700) return 3;
+        if (p >= 300) return 2;
+        if (p >= 100) return 1;
+        return 0;
+    }
+
+    async function getAffection(userId) {
+        try {
+            const res = await db.execute({
+                sql: 'SELECT affection_points, affection_level FROM user_stats WHERE user_id = ?',
+                args: [userId],
+            });
+            if (res.rows.length > 0) {
+                const points = Number(res.rows[0].affection_points || 0);
+                const level = Number(res.rows[0].affection_level ?? calculateHeartLevel(points));
+                return { points, level };
+            }
+        } catch (e) {}
+        return { points: 0, level: 0 };
+    }
+
+    async function addAffection(userId, username, amount = 1) {
+        try {
+            const current = await getAffection(userId);
+            const newPoints = current.points + amount;
+            const newLevel = calculateHeartLevel(newPoints);
+            await db.execute({
+                sql: `INSERT INTO user_stats (user_id, username, affection_points, affection_level)
+                      VALUES (?, ?, ?, ?)
+                      ON CONFLICT(user_id) DO UPDATE SET affection_points = excluded.affection_points, affection_level = excluded.affection_level, username = excluded.username`,
+                args: [userId, username, newPoints, newLevel],
+            });
+            return { points: newPoints, level: newLevel };
+        } catch (e) {
+            console.warn('[USER_REPO] addAffection error:', e.message);
+            return { points: 0, level: 0 };
+        }
+    }
+
     return {
         getUserProfileWithRank,
         getNextRankForNewUser,
@@ -66,6 +109,8 @@ function createUserRepo(db) {
         getUserXP,
         setUserXP,
         syncUsername,
+        getAffection,
+        addAffection,
     };
 }
 

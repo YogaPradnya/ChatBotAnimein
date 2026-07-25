@@ -1,4 +1,5 @@
 const axios = require('./httpClient');
+const { boxHeader } = require('./utils/textStyle');
 
 function firstDefined(...values) {
     return values.find(value => value !== undefined && value !== null && value !== '');
@@ -279,7 +280,7 @@ function formatOtherUserProfile(profile) {
 
     const dn = (profile.username || '').substring(0, 10);
     const lines = [
-        `┌── 👤 𝗖𝗘𝗞 𝗨𝗦𝗘𝗥`,
+        `┌── ${boxHeader('CEK USER')} 👤`,
         `│ @${dn}`,
         `├───────────────────`,
     ];
@@ -309,13 +310,13 @@ function formatOtherUserProfile(profile) {
     }
 
     if (profile.battle_point !== undefined || profile.rank !== undefined) {
-        lines.push(`├── ⚔️ 𝗕𝗔𝗧𝗧𝗟𝗘`);
+        lines.push(`├── ${boxHeader('BATTLE STATS')} ⚔️`);
         if (profile.rank !== undefined) lines.push(`│ 🏆 Rank: #${profile.rank}`);
         if (profile.battle_point !== undefined) lines.push(`│ ⚔️ BP  : ${Number(profile.battle_point).toLocaleString('id-ID')}`);
     }
 
     if (profile.medal_count !== undefined || profile.pokemon_count !== undefined || profile.waifu_count !== undefined) {
-        lines.push(`├── 🎮 𝗞𝗢𝗟𝗘𝗞𝗦𝗜`);
+        lines.push(`├── ${boxHeader('KOLEKSI')} 🎮`);
         if (profile.medal_count !== undefined) lines.push(`│ 🏅 Medal : ${Number(profile.medal_count).toLocaleString('id-ID')}`);
         if (profile.pokemon_count !== undefined) lines.push(`│ 🎮 Poke  : ${Number(profile.pokemon_count).toLocaleString('id-ID')}`);
         if (profile.waifu_count !== undefined) lines.push(`│ 💞 Waifu : ${Number(profile.waifu_count).toLocaleString('id-ID')}`);

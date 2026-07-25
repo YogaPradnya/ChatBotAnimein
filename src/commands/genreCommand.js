@@ -66,12 +66,12 @@ async function execute(ctx) {
         }
 
         const lines = [
-            `┌── ${boxHeader(`GENRE ${cleanText(match.name.toUpperCase(), 14)}`)}`,
+            `┌── ${boxHeader(`GENRE ${cleanText(match.name.toUpperCase(), 14)}`)} 🏷️`,
         ];
 
         results.slice(0, 8).forEach((line, index) => {
             const text = String(line || '').replace(/^\d+\.\s*/, '').replace(/\s*\[.*\]$/, '').trim();
-            lines.push(`│ ${index + 1}. ${cleanText(text, 29)}`);
+            lines.push(`│ 🎬 ${index + 1}. ${cleanText(text, 29)}`);
         });
 
         lines.push('└───────────────────');

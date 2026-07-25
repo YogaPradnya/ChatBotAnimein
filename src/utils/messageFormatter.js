@@ -18,9 +18,9 @@ function formatLimitExceeded(username, limit, options = {}) {
     const lines = [
         name,
         warning ? '⚠️ Limit habis hari ini!' : 'Limit habis hari ini!',
-        `Sisa: 0/${limit}`,
-        'Reset jam 00:00 WIB',
-        'Beli di .toko (item 4)',
+        `⏳ Sisa: 0/${limit}`,
+        '⏰ Reset jam 00:00 WIB',
+        '🛍️ Beli di .toko (item 4)',
     ];
 
     return lines.join('\n');
@@ -30,9 +30,9 @@ function formatImageLimitExceeded(username, limit) {
     return [
         mention(username, 10),
         '⚠️ Limit gambar habis!',
-        `Sisa: 0/${limit}`,
-        'Reset jam 00:00 WIB',
-        'Beli di .toko (item 3)',
+        `⏳ Sisa: 0/${limit}`,
+        '⏰ Reset jam 00:00 WIB',
+        '🛍️ Beli di .toko (item 3)',
     ].join('\n');
 }
 

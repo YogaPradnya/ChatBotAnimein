@@ -1,4 +1,5 @@
 const { getAnimeinDayName } = require('../utils');
+const { boxHeader } = require('../utils/textStyle');
 
 const notifiedItems = new Set();
 let isPolling = false;
@@ -71,18 +72,18 @@ function formatAnimeNotifMessage(item) {
 
     const synopsisLines = truncatedSynopsis.split('\n').map(l => l.trim()).filter(Boolean);
 
-    let msg = `┌── UPDATE ANIME\n`;
-    msg += `│ Judul   : ${title}\n`;
-    msg += `│ Episode : Episode ${episode}\n`;
-    msg += `│ Rating  : ${rating}\n`;
-    msg += `│ Genre   : ${genre}\n`;
+    let msg = `┌── ${boxHeader('UPDATE ANIME')} 📢\n`;
+    msg += `│ 📺 Judul   : ${title}\n`;
+    msg += `│ 🎬 Episode : Episode ${episode}\n`;
+    msg += `│ ⭐ Rating  : ${rating}\n`;
+    msg += `│ 🏷️ Genre   : ${genre}\n`;
     msg += `│ \n`;
-    msg += `│ Sinopsis:\n`;
+    msg += `│ 📝 Sinopsis:\n`;
     for (const line of synopsisLines) {
         msg += `│ ${line}\n`;
     }
     msg += `│ \n`;
-    msg += `│ Nonton sekarang di Animein!\n`;
+    msg += `│ 🍿 Nonton sekarang di Animein!\n`;
     msg += `└───────────────────`;
 
     return msg;

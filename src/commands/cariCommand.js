@@ -1,4 +1,5 @@
 const { formatCommandUsage } = require('../utils/messageFormatter');
+const { boxHeader } = require('../utils/textStyle');
 
 function cleanText(value, maxLength = 32) {
     const text = String(value || '-')
@@ -53,10 +54,10 @@ async function execute(ctx) {
 
         const interpretation = results.find(item => item._interpretation)?._interpretation;
         const lines = [
-            '┌── 𝗛𝗔𝗦𝗜𝗟 𝗖𝗔𝗥𝗜',
-            `│ Keyword: ${cleanText(query, 26)}`,
+            `┌── ${boxHeader('HASIL CARI')} 🔍`,
+            `│ 🔑 Keyword: ${cleanText(query, 26)}`,
         ];
-        if (interpretation) lines.push(`│ Tafsir : ${cleanText(interpretation, 26)}`);
+        if (interpretation) lines.push(`│ 💡 Tafsir : ${cleanText(interpretation, 26)}`);
         lines.push('├───────────────────');
 
         results.slice(0, 7).forEach((anime, index) => {
@@ -64,7 +65,7 @@ async function execute(ctx) {
             const type = pickValue(anime.type, anime.type_name);
             const year = pickValue(anime.year, anime.aired_start ? String(anime.aired_start).slice(0, 4) : null);
             const views = pickValue(anime.views, anime.view);
-            lines.push(`│ ${index + 1}. ${title}`);
+            lines.push(`│ 🎬 ${index + 1}. ${title}`);
             lines.push(`│    ${type} | ${year} | ${views}`);
             if (anime._matchReason) lines.push(`│    Cocok: ${cleanText(anime._matchReason, 23)}`);
         });

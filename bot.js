@@ -43,6 +43,8 @@ const { formatAnimeRecommendationTitles } = require('./src/utils/responseFormatt
 const { createDeterministicAnswerRouter } = require('./src/services/deterministicAnswerRouter');
 const { createSettingsRepo } = require('./src/database/settingsRepo');
 const { createUserRepo } = require('./src/database/userRepo');
+const { buildSystemPrompt } = require('./src/services/promptBuilder');
+let RARA_CHARACTER_CONFIG = null;
 const { createLimitRepo } = require('./src/database/limitRepo');
 const { createShopRepo } = require('./src/database/shopRepo');
 const { createBanRepo } = require('./src/database/banRepo');
@@ -213,9 +215,13 @@ async function initDB() {
                 username TEXT NOT NULL DEFAULT '',
                 xp INTEGER DEFAULT 0,
                 level INTEGER DEFAULT 1,
-                custom_title TEXT DEFAULT NULL
+                custom_title TEXT DEFAULT NULL,
+                affection_points INTEGER DEFAULT 0,
+                affection_level INTEGER DEFAULT 1
             )
         `);
+        try { await db.execute("ALTER TABLE user_stats ADD COLUMN affection_points INTEGER DEFAULT 0"); } catch (e) {}
+        try { await db.execute("ALTER TABLE user_stats ADD COLUMN affection_level INTEGER DEFAULT 1"); } catch (e) {}
         await db.execute(`
             CREATE TABLE IF NOT EXISTS user_memories (
                 user_id TEXT PRIMARY KEY,
@@ -335,20 +341,19 @@ async function initDB() {
             }
         }
 
-        // Load Prompt from DB. Semua prompt utama harus berasal dari Turso / File.
-        const promptValue = await settingsRepo.get(SETTINGS_KEYS.SYSTEM_PROMPT);
-        if (promptValue && promptValue.trim()) {
-            SYSTEM_PROMPT = promptValue;
-            console.log('[PROMPT] Loaded full prompt from DB.');
-        } else {
-            SYSTEM_PROMPT = readPromptFromFileFallback();
-            if (SYSTEM_PROMPT) {
-                console.log('[PROMPT] Loaded prompt from fallback file.');
-                await settingsRepo.set(SETTINGS_KEYS.SYSTEM_PROMPT, SYSTEM_PROMPT).catch(() => {});
+        // Load Prompt JSON Karakter Rara murni dari DB settings
+        try {
+            RARA_CHARACTER_CONFIG = await settingsRepo.getJSON('rara_character_config', null);
+            if (RARA_CHARACTER_CONFIG) {
+                console.log('[PROMPT_JSON] Loaded Rara character JSON config from DB.');
             } else {
-                console.warn('[PROMPT] system_prompt kosong di DB dan File.');
+                console.warn('[PROMPT_JSON] Konfigurasi Rara di DB belum diisi dari Dashboard.');
             }
+        } catch (e) {
+            console.warn('[PROMPT_JSON] Failed loading character JSON config from DB:', e.message);
         }
+
+        SYSTEM_PROMPT = buildSystemPrompt({ characterConfig: RARA_CHARACTER_CONFIG, senderName: 'user', affectionLevel: 0, affectionPoints: 0 });
 
         // Load Knowledge from DB
         ANIMEIN_KNOWLEDGE = await knowledgeRepo.loadAnimeinKnowledge(ANIMEIN_KNOWLEDGE);
@@ -3517,12 +3522,19 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
         }
     }
 
+    // Hitung affection & susun dynamic system prompt dari JSON DB
+    const userAffection = userRepo ? await userRepo.addAffection(senderUserId, senderName, 1) : { points: 0, level: 0 };
+    const dynamicSystemPrompt = buildSystemPrompt({
+        characterConfig: RARA_CHARACTER_CONFIG,
+        senderName,
+        affectionLevel: userAffection.level,
+        affectionPoints: userAffection.points
+    });
+
     // Model Utama: Cloudflare Workers AI (Llama 3.2 1B)
     const cfStat = getCloudflareStat();
     if (cfStat.active && CONFIG.CLOUDFLARE_API_KEY && CONFIG.CLOUDFLARE_ACCOUNT_ID && Date.now() >= cfStat.cooldownUntil) {
         try {
-
-
             const { text, tokens, provider } = await askCloudflareAi({
                 userMessage,
                 senderName,
@@ -3530,7 +3542,7 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
                 chatHistory: history,
                 replyText,
                 senderUserId,
-                systemPrompt: SYSTEM_PROMPT,
+                systemPrompt: dynamicSystemPrompt,
                 personalizeSystemPrompt,
                 userStatsCache: USER_STATS_CACHE,
                 sanitizeReplyContext,
@@ -3551,8 +3563,6 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
     const cbStat = getCerebrasStat();
     if (cbStat.active && CONFIG.CEREBRAS_API_KEY && Date.now() >= cbStat.cooldownUntil) {
         try {
-
-
             const { text, tokens, provider } = await askCerebrasAi({
                 userMessage,
                 senderName,
@@ -3560,7 +3570,7 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
                 chatHistory: history,
                 replyText,
                 senderUserId,
-                systemPrompt: SYSTEM_PROMPT,
+                systemPrompt: dynamicSystemPrompt,
                 personalizeSystemPrompt,
                 userStatsCache: USER_STATS_CACHE,
                 sanitizeReplyContext,

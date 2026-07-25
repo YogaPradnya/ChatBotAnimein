@@ -1,4 +1,5 @@
 const { formatCommandUsage } = require('../utils/messageFormatter');
+const { boxHeader } = require('../utils/textStyle');
 
 function cleanText(value, maxLength = 220) {
     const text = String(value || '')
@@ -67,24 +68,24 @@ async function execute(ctx) {
         const synopsis = cleanText(pickValue(movie.synopsis, movie.synopsis_short, movie.description), 260);
 
         const lines = [
-            '┌── 𝗗𝗘𝗧𝗔𝗜𝗟 𝗔𝗡𝗜𝗠𝗘',
-            `│ Judul : ${cleanText(title, 34)}`,
-            `│ Type  : ${type}`,
-            `│ Tahun : ${year}`,
-            `│ Studio: ${cleanText(studio, 26)}`,
-            `│ Genre : ${genre}`,
-            `│ Score : ${score}`,
-            `│ Views : ${views}`,
-            `│ Status: ${status}`,
-            '├── 𝗦𝗜𝗡𝗢𝗣𝗦𝗜𝗦',
+            `┌── ${boxHeader('DETAIL ANIME')} 🎬`,
+            `│ 📺 Judul : ${cleanText(title, 34)}`,
+            `│ 🎞️ Type  : ${type}`,
+            `│ 📅 Tahun : ${year}`,
+            `│ 🏢 Studio: ${cleanText(studio, 26)}`,
+            `│ 🏷️ Genre : ${genre}`,
+            `│ ⭐ Score : ${score}`,
+            `│ 👁️ Views : ${views}`,
+            `│ 📌 Status: ${status}`,
+            `├── ${boxHeader('SINOPSIS')} 📝`,
             `│ ${synopsis}`,
-            '├── 𝗘𝗣𝗜𝗦𝗢𝗗𝗘',
-            `│ Total : ${episodes.length || pickValue(movie.total_episode, movie.episodes)}`,
+            `├── ${boxHeader('EPISODE')} 📺`,
+            `│ 📊 Total : ${episodes.length || pickValue(movie.total_episode, movie.episodes)}`,
         ];
 
         if (latestEpisode) {
             const epTitle = cleanText(pickValue(latestEpisode.title, latestEpisode.name, latestEpisode.episode, latestEpisode.eps), 34);
-            lines.push(`│ Terbaru: ${epTitle}`);
+            lines.push(`│ 🎬 Terbaru: ${epTitle}`);
         }
 
         lines.push('└───────────────────');

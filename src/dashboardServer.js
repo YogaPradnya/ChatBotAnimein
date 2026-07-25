@@ -1384,6 +1384,52 @@ function startDashboard(scope) {
         res.json({ success: true });
     });
 
+    // --- RARA CHARACTER JSON MANAGEMENT ---
+    app.get('/api/character/rara', async (req, res) => {
+        try {
+            let config = null;
+            if (scope.settingsRepo && typeof scope.settingsRepo.getJSON === 'function') {
+                config = await scope.settingsRepo.getJSON('rara_character_config', null);
+            } else {
+                const row = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'rara_character_config'", args: [] });
+                if (row.rows.length > 0 && row.rows[0].value) {
+                    config = JSON.parse(row.rows[0].value);
+                }
+            }
+            res.json({ success: true, config: config || null });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
+    app.post('/api/character/rara/save', async (req, res) => {
+        try {
+            const { config } = req.body;
+            if (!config || typeof config !== 'object') {
+                return res.status(400).json({ success: false, error: 'Format JSON Karakter Rara tidak valid.' });
+            }
+
+            const formattedConfig = config.rara ? config : { rara: config };
+            const jsonStr = JSON.stringify(formattedConfig);
+
+            if (scope.settingsRepo && typeof scope.settingsRepo.setJSON === 'function') {
+                await scope.settingsRepo.setJSON('rara_character_config', formattedConfig);
+            } else {
+                await db.execute({
+                    sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('rara_character_config', ?)",
+                    args: [jsonStr]
+                });
+            }
+
+            if (global.RARA_CHARACTER_CONFIG) {
+                global.RARA_CHARACTER_CONFIG = formattedConfig;
+            }
+            res.json({ success: true, message: 'Berhasil menyimpan konfigurasi JSON Karakter Rara.' });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
     app.get('/api/knowledge', (req, res) => {
         res.json({ success: true, knowledge: ANIMEIN_KNOWLEDGE });
     });

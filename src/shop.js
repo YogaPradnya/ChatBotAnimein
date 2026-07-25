@@ -4,6 +4,7 @@
  */
 
 const { createShopRepo } = require('./database/shopRepo');
+const { boxHeader } = require('./utils/textStyle');
 
 const SHOP_ITEMS = [
     {
@@ -68,20 +69,20 @@ function getItemPrice(item) {
 
 function getShopMessage() {
     const lines = [
-        `┌── 🛒 𝗧𝗢𝗞𝗢 𝗥𝗔𝗥𝗔`,
+        `┌── ${boxHeader('TOKO RARA')} 🛒`,
         `├───────────────────`,
     ];
     SHOP_ITEMS.forEach(item => {
         const finalPrice = getItemPrice(item);
         const p = finalPrice.toLocaleString('id-ID');
         const discountTag = global.isDiscountEvent ? ` (🎁 DISKON ${global.discountPercent}%)` : '';
-        lines.push(`│ ${item.id}. ${item.name}`);
-        lines.push(`│   ${p} XP${discountTag}`);
-        lines.push(`│   ${item.description}`);
+        lines.push(`│ 🏷️ ${item.id}. ${item.name}`);
+        lines.push(`│ 💰   ${p} XP${discountTag}`);
+        lines.push(`│ ✨   ${item.description}`);
     });
     lines.push(`├───────────────────`);
-    lines.push(`│ .beli [nomor]`);
-    lines.push(`│ Cth: .beli 2`);
+    lines.push(`│ 🛍️ .beli [nomor]`);
+    lines.push(`│ 💡 Cth: .beli 2`);
     lines.push(`└───────────────────`);
     return lines.join('\n');
 }
