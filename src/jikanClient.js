@@ -239,9 +239,42 @@ function formatAnimeDetail(anime) {
     };
 }
 
+/**
+ * Get anime characters
+ */
+async function getAnimeCharacters(malId) {
+    const cacheKey = `characters:${malId}`;
+    const cached = getCached(cacheKey);
+    if (cached) return cached;
+
+    try {
+        await respectRateLimit();
+        const response = await axios.get(`${JIKAN_BASE}/anime/${malId}/characters`, {
+            timeout: 10000
+        });
+
+        const data = response.data?.data || [];
+        const formatted = data.map(item => ({
+            name: item.character?.name || 'Unknown',
+            role: item.role || 'Main'
+        }));
+
+        setCache(cacheKey, formatted);
+        return formatted;
+    } catch (error) {
+        if (error.response?.status === 429) {
+            console.warn('[JIKAN] Rate limit hit on characters');
+            return [];
+        }
+        console.error('[JIKAN] Characters error:', error.message);
+        return [];
+    }
+}
+
 module.exports = {
     searchAnime,
     getAnimeDetail,
     getAnimeEpisodes,
+    getAnimeCharacters,
     parseDuration
 };

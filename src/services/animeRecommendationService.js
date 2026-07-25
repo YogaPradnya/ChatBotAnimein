@@ -50,13 +50,20 @@ function pickMixedGenreMovies(movies, maxLimit = 10, mode = 'mixed') {
     const byRating = [...normalized].sort((a, b) => parseAnimeMetric(b.rating || b.score || b.favorites || b.star) - parseAnimeMetric(a.rating || a.score || a.favorites || a.star));
     const randoms = [...normalized].sort(() => Math.random() - 0.5);
 
+    const shuffleArray = (arr) => [...arr].sort(() => Math.random() - 0.5);
+
     if (mode === 'views_high') byViewsHigh.forEach(item => add(item, 'views tertinggi'));
     else if (mode === 'views_low') byViewsLow.forEach(item => add(item, 'views rendah'));
     else if (mode === 'rating') byRating.forEach(item => add(item, 'rating tertinggi'));
     else {
-        byRating.slice(0, 3).forEach(item => add(item, 'rating tertinggi'));
-        byViewsHigh.slice(0, 3).forEach(item => add(item, 'views terbanyak'));
-        byViewsLow.slice(0, 2).forEach(item => add(item, 'hidden gem'));
+        // Ambil sampel acak dari top 10 rating & views agar rekomendasi bervariasi dan tidak selalu Toradora/Clannad
+        const topRatingSample = shuffleArray(byRating.slice(0, 10)).slice(0, 3);
+        const topViewsSample = shuffleArray(byViewsHigh.slice(0, 10)).slice(0, 3);
+        const lowViewsSample = shuffleArray(byViewsLow.slice(0, 10)).slice(0, 2);
+
+        topRatingSample.forEach(item => add(item, 'rating tertinggi'));
+        topViewsSample.forEach(item => add(item, 'views terbanyak'));
+        lowViewsSample.forEach(item => add(item, 'hidden gem'));
         randoms.forEach(item => add(item, 'acak genre'));
     }
 

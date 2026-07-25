@@ -38,6 +38,7 @@ const { createAiService } = require('./src/services/aiService');
 const { askCloudflareAi, getCloudflareStat } = require('./src/services/cloudflareAiService');
 const { askCerebrasAi, getCerebrasStat } = require('./src/services/cerebrasAiService');
 const { createAiHordeImageService } = require('./src/services/aiHordeImageService');
+const { searchAnime: jikanSearchAnime, getAnimeDetail: jikanGetAnimeDetail, getAnimeCharacters } = require('./src/jikanClient');
 const { createAnimeRecommendationService } = require('./src/services/animeRecommendationService');
 const { formatAnimeRecommendationTitles } = require('./src/utils/responseFormatter');
 const { createDeterministicAnswerRouter } = require('./src/services/deterministicAnswerRouter');
@@ -3484,45 +3485,49 @@ deterministicAnswerRouter = createDeterministicAnswerRouter([
 ]);
 
 /** Main AI handler: Groq only */
-async function getAIResponse(userMessage, senderName, isReply = false, senderUserId = null, replyText = '') {
+async function getAIResponse(userMessage, senderName, isReply = false, senderUserId = null, replyText = '', options = {}) {
+    const isExplainPrompt = Boolean(options.skipRecommendationRouter || String(userMessage || '').startsWith('[EXPLAIN_ANIME]'));
     const contextMessage = [replyText, userMessage].filter(Boolean).join('\n');
-    const deterministicAnswer = deterministicAnswerRouter
-        ? await deterministicAnswerRouter.run({ userMessage, senderName, senderUserId })
-        : null;
-    if (deterministicAnswer) {
-        return deterministicAnswer;
-    }
 
-    if (!deterministicAnswerRouter) {
-        const directProfileAnswer = await answerOwnProfileStatQuestion(userMessage, senderName, senderUserId);
-        if (directProfileAnswer) {
-            return { text: directProfileAnswer, provider: 'Animein Profile', tokens: 0 };
+    if (!isExplainPrompt) {
+        const deterministicAnswer = deterministicAnswerRouter
+            ? await deterministicAnswerRouter.run({ userMessage, senderName, senderUserId })
+            : null;
+        if (deterministicAnswer) {
+            return deterministicAnswer;
         }
 
-        const deterministicGenreAnswer = animeRecommendationService
-            ? await animeRecommendationService.buildDeterministicGenreRecommendation(userMessage, senderName, senderUserId)
-            : await buildDeterministicGenreRecommendation(userMessage, senderName, senderUserId);
-        if (deterministicGenreAnswer) {
-            return deterministicGenreAnswer;
-        }
-    }
+        if (!deterministicAnswerRouter) {
+            const directProfileAnswer = await answerOwnProfileStatQuestion(userMessage, senderName, senderUserId);
+            if (directProfileAnswer) {
+                return { text: directProfileAnswer, provider: 'Animein Profile', tokens: 0 };
+            }
 
-    const looksLikeGenreRecommendation = /rekomendasi|rekomen|recommend|saran|saranin/i.test(userMessage)
-        && /anime/i.test(userMessage)
-        && animeRecommendationService
-        && (await animeRecommendationService.getMatchedGenresFromText(userMessage, 1)).length > 0;
-    if (looksLikeGenreRecommendation) {
-        logError({
-            category: ERROR_CATEGORY.DATA_EMPTY,
-            scope: 'ANIME_RECOMMENDATION',
-            message: 'Deterministic genre recommendation kosong, AI fallback diblokir agar tag no tidak rusak',
-            maxLength: 120,
-        });
-        return {
-            text: 'Data rekomendasi genre belum bisa diambil. Coba ulang sebentar lagi supaya list bisa disimpan dan tag no tetap aman.',
-            provider: 'Animein Genre',
-            tokens: 0,
-        };
+            const deterministicGenreAnswer = animeRecommendationService
+                ? await animeRecommendationService.buildDeterministicGenreRecommendation(userMessage, senderName, senderUserId)
+                : await buildDeterministicGenreRecommendation(userMessage, senderName, senderUserId);
+            if (deterministicGenreAnswer) {
+                return deterministicGenreAnswer;
+            }
+        }
+
+        const looksLikeGenreRecommendation = /rekomendasi|rekomen|recommend|saran|saranin/i.test(userMessage)
+            && /anime/i.test(userMessage)
+            && animeRecommendationService
+            && (await animeRecommendationService.getMatchedGenresFromText(userMessage, 1)).length > 0;
+        if (looksLikeGenreRecommendation) {
+            logError({
+                category: ERROR_CATEGORY.DATA_EMPTY,
+                scope: 'ANIME_RECOMMENDATION',
+                message: 'Deterministic genre recommendation kosong, AI fallback diblokir agar tag no tidak rusak',
+                maxLength: 120,
+            });
+            return {
+                text: 'Data rekomendasi genre belum bisa diambil. Coba ulang sebentar lagi supaya list bisa disimpan dan tag no tetap aman.',
+                provider: 'Animein Genre',
+                tokens: 0,
+            };
+        }
     }
 
     const intent = detectIntent(userMessage);
@@ -3948,12 +3953,12 @@ function extractAnimeTagNumber(text) {
 function extractNumberExplainRequest(text) {
     const normalized = normalizeBoldSansDigits(String(text || '')).toLowerCase();
     
-    // Pola: jelaskan/ceritakan/sinopsis/detail/info no/nomor 1
-    const p1 = normalized.match(/(?:jelaskan|ceritakan|sinopsis|detail|info|informasi|tentang|apa\s+itu|cerita)\s+(?:anime\s+)?(?:yang\s+)?(?:no|nomor|#)?\s*(\d{1,2})\b/i);
+    // Pola 1: Pertanyaan tentang karakter, MC, tokoh utama, alur, sinopsis, cerita, ending, studio, dsb pada no X
+    const p1 = normalized.match(/(?:jelaskan|ceritakan|sinopsis|detail|info|informasi|tentang|apa\s+itu|cerita|siapa|gimana|bagaimana|mc|tokoh|karakter|alur|plot|ending|pemeran|heroine|waifu|studio)\s+.*?(?:no|nomor|#)\s*(\d{1,2})\b/i);
     if (p1) return Number(p1[1]);
 
-    // Pola: no 1 tentang apa / no 1 ceritanya apa
-    const p2 = normalized.match(/(?:no|nomor|#)\s*(\d{1,2})\s+(?:tentang\s+apa|ceritanya\s+apa|detailnya\s+apa|sinopsisnya\s+apa)/i);
+    // Pola 2: "no 1 siapa mc nya", "no 1 karakternya siapa aja", "no 1 alur ceritanya gimana"
+    const p2 = normalized.match(/(?:no|nomor|#)\s*(\d{1,2})\s+.*?(?:tentang|ceritanya|detailnya|sinopsisnya|mc|karakter|tokoh|alur|ending|siapa|gimana|bagaimana)/i);
     if (p2) return Number(p2[1]);
 
     // Pola singkat: "no 1" / "nomor 1"
@@ -4331,13 +4336,22 @@ async function handleAnimeTagInstruction(ctx) {
     return sendAnimeTag(bot, msg, selected, `search:${query}`);
 }
 
+function getShortTitleForSearch(title) {
+    if (!title) return '';
+    let clean = String(title).split(/[:(]/)[0].trim();
+    if (clean.length > 40) {
+        clean = clean.slice(0, 40).trim();
+    }
+    return clean || String(title).slice(0, 40).trim();
+}
+
 async function handleAnimeNumberExplanationInstruction(ctx) {
     const { bot, msg, cleanMsg, senderName, senderUserId } = ctx;
 
     const explainNo = extractNumberExplainRequest(cleanMsg);
     if (explainNo <= 0) return false;
 
-    console.log(`[EXPLAIN NO] ${senderName} requested explanation for no ${explainNo}`);
+    console.log(`[EXPLAIN NO] ${senderName} requested adaptive explanation for no ${explainNo} (query: "${cleanMsg}")`);
 
     const resolved = getAnimeTitleByNumber(senderName, senderUserId, explainNo, msg);
     if (!resolved || !resolved.title) {
@@ -4346,32 +4360,64 @@ async function handleAnimeNumberExplanationInstruction(ctx) {
     }
 
     const title = resolved.title;
-    console.log(`[EXPLAIN NO] Resolved title for no ${explainNo}: "${title}" (source: ${resolved.source})`);
+    const searchKeyword = getShortTitleForSearch(title);
+    console.log(`[EXPLAIN NO] Resolved title for no ${explainNo}: "${title}" (search keyword: "${searchKeyword}", source: ${resolved.source})`);
 
     let animeDetailText = '';
+    let characterListText = '';
     try {
-        const jikanResults = await searchAnime(title, { limit: 1 });
+        const jikanResults = await jikanSearchAnime(searchKeyword, { limit: 1 });
         if (jikanResults && jikanResults.length > 0) {
             const anime = jikanResults[0];
-            animeDetailText = `Judul: ${anime.title}\nRating: ${anime.score || '-'}\nGenre: ${Array.isArray(anime.genres) ? anime.genres.join(', ') : '-'}\nEpisodes: ${anime.episodes || '-'}\nSinopsis Mentah: ${anime.synopsis || '-'}`;
+            animeDetailText = `Judul: ${anime.title}\nRating/Score: ${anime.score || '-'}\nGenre: ${Array.isArray(anime.genres) ? anime.genres.join(', ') : '-'}\nEpisodes: ${anime.episodes || '-'}\nStatus: ${anime.status || '-'}\nSinopsis: ${anime.synopsis || '-'}`;
+            
+            // Ambil daftar karakter jika ada indikasi pertanyaan karakter / MC / tokoh
+            if (/karakter|mc|tokoh|pemeran|heroine|waifu/i.test(cleanMsg) && anime.malId) {
+                try {
+                    const characters = await getAnimeCharacters(anime.malId);
+                    if (characters && characters.length > 0) {
+                        const topChars = characters.slice(0, 6).map(c => `- ${c.name} (${c.role || 'Karakter'})`).join('\n');
+                        characterListText = `\nDaftar Karakter Utama:\n${topChars}`;
+                    }
+                } catch (cErr) {
+                    console.warn(`[EXPLAIN NO] Gagal fetch karakter untuk malId ${anime.malId}:`, cErr.message);
+                }
+            }
         }
     } catch (err) {
-        console.warn(`[EXPLAIN NO] Gagal fetch detail Jikan untuk "${title}":`, err.message);
+        console.warn(`[EXPLAIN NO] Gagal fetch detail Jikan untuk "${searchKeyword}":`, err.message);
     }
 
-    const aiPrompt = `User @${senderName} meminta kamu menjelaskan anime nomor ${explainNo} dari list rekomendasi, yaitu "${title}".\n` +
-        (animeDetailText ? `Data Pendukung Anime:\n${animeDetailText}\n\n` : '') +
-        `Instruksi: Berikan penjelasan sinopsis, alur cerita, dan keunggulan anime "${title}" ini dengan bahasa Rara yang ramah, seru, dan mudah dipahami berdasarkan pengetahuanmu!`;
+    const aiPrompt = `[EXPLAIN_ANIME] Kamu sedang menjawab pertanyaan spesifik dari @${senderName} mengenai anime nomor ${explainNo} dari rekomendasi, yaitu "${title}".\n` +
+        `Pertanyaan Spesifik User: "${cleanMsg}"\n\n` +
+        (animeDetailText ? `Data Pendukung Anime:\n${animeDetailText}\n` : '') +
+        (characterListText ? `${characterListText}\n` : '') +
+        `\nInstruksi: Jawablah pertanyaan user ("${cleanMsg}") secara sangat adaptif, presisi, dan tepat sasaran sesuai pertanyaan yang diajukan user untuk anime "${title}". Gunakan gaya bahasa Rara yang ramah, seru, dan bersahabat!`;
 
-    const aiRes = await getAIResponse(aiPrompt, senderName, false, senderUserId, '');
-    const explanationText = aiRes?.text || `Anime nomor ${explainNo} adalah "${title}".\n\n${animeDetailText || 'Anime ini sangat populer dan menarik untuk ditonton!'}`;
+    let explanationText = '';
+    let aiProvider = 'Fallback';
+    let aiTokens = 0;
+    try {
+        const aiRes = await getAIResponse(aiPrompt, senderName, false, senderUserId, '', { skipRecommendationRouter: true });
+        if (aiRes?.text) {
+            explanationText = aiRes.text;
+            aiProvider = aiRes.provider || 'AI';
+            aiTokens = aiRes.tokens || 0;
+        }
+    } catch (aiErr) {
+        console.warn(`[EXPLAIN NO] AI Provider error:`, aiErr.message);
+    }
+
+    if (!explanationText) {
+        explanationText = `Anime nomor ${explainNo} adalah "${title}".\n\n${animeDetailText || 'Anime ini menyajikan cerita yang seru dan sangat menarik untuk ditonton!'}`;
+    }
 
     const sent = await sendChatMessage(bot, `@${senderName}\n${explanationText}`, msg.id);
     if (sent) {
-        addActivity('anime_explanation', senderName, cleanMsg, explanationText, aiRes?.provider || 'AI', aiRes?.tokens || 0);
+        addActivity('anime_explanation', senderName, cleanMsg, explanationText, aiProvider, aiTokens);
         await addXP(senderUserId, senderName, 10);
         trackStreak(senderUserId, senderName);
-        saveChatLog(senderUserId, senderName, cleanMsg, explanationText, aiRes?.provider || 'AI', aiRes?.tokens || 0);
+        saveChatLog(senderUserId, senderName, cleanMsg, explanationText, aiProvider, aiTokens);
     }
 
     return true;
@@ -4391,7 +4437,7 @@ async function processMessages(bot, messages) {
 
         const senderName = msg.username || msg.user_username || msg.user_login || msg.user_name || 'User';
         const senderUserId = msg.user_id || msg.id_user || msg.userId || msg.user?.id || msg.user?.id_user || null;
-        let msgText = msg.text || '';
+        let msgText = msg.text || msg.caption || msg.comment || msg.content || msg.message || msg.body || msg.text_chat || '';
         
         // --- 1. NORMALISASI PESAN (Strip Mentions) ---
         const botName = bot.username.toLowerCase();
