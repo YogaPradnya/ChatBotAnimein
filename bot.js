@@ -3945,6 +3945,61 @@ function extractAnimeTagNumber(text) {
     return match ? Number(match[1]) : 0;
 }
 
+function extractNumberExplainRequest(text) {
+    const normalized = normalizeBoldSansDigits(String(text || '')).toLowerCase();
+    
+    // Pola: jelaskan/ceritakan/sinopsis/detail/info no/nomor 1
+    const p1 = normalized.match(/(?:jelaskan|ceritakan|sinopsis|detail|info|informasi|tentang|apa\s+itu|cerita)\s+(?:anime\s+)?(?:yang\s+)?(?:no|nomor|#)?\s*(\d{1,2})\b/i);
+    if (p1) return Number(p1[1]);
+
+    // Pola: no 1 tentang apa / no 1 ceritanya apa
+    const p2 = normalized.match(/(?:no|nomor|#)\s*(\d{1,2})\s+(?:tentang\s+apa|ceritanya\s+apa|detailnya\s+apa|sinopsisnya\s+apa)/i);
+    if (p2) return Number(p2[1]);
+
+    // Pola singkat: "no 1" / "nomor 1"
+    const p3 = normalized.match(/^(?:no|nomor|#)\s*(\d{1,2})$/i);
+    if (p3) return Number(p3[1]);
+
+    return 0;
+}
+
+function getAnimeTitleByNumber(senderName, senderUserId, targetNo, msg = {}) {
+    if (!Number.isInteger(targetNo) || targetNo < 1) return null;
+
+    // Prioritas 1: Reply text jika ada
+    const replyText = getReplyText(msg);
+    if (replyText) {
+        const replyTitle = extractTitleFromNumberedList(replyText, targetNo);
+        if (replyTitle) {
+            return { title: replyTitle, source: 'reply' };
+        }
+        const replyTitles = extractNumberedAnimeTitles(replyText);
+        if (replyTitles[targetNo - 1]) {
+            return { title: replyTitles[targetNo - 1], source: 'reply-list' };
+        }
+    }
+
+    // Prioritas 2: Memori list / recent cache user
+    const recent = getRecentAnimeList(senderName, senderUserId);
+    const listMemory = getRecentAnimeListText(senderName, senderUserId);
+
+    const isRecentStale = recent && listMemory && listMemory.savedAt > recent.savedAt;
+
+    if (recent && !isRecentStale) {
+        const selected = selectAnimeByTagNumber(recent.items, targetNo);
+        if (selected) {
+            const title = selected.title || selected.name || selected.requestedTitle || '';
+            if (title) return { title, item: selected, source: 'recent-cache' };
+        }
+    }
+
+    if (listMemory && listMemory.titles && listMemory.titles[targetNo - 1]) {
+        return { title: listMemory.titles[targetNo - 1], source: 'list-memory' };
+    }
+
+    return null;
+}
+
 function getReplyText(msg = {}) {
     return String(
         msg.text_replay
@@ -4276,6 +4331,52 @@ async function handleAnimeTagInstruction(ctx) {
     return sendAnimeTag(bot, msg, selected, `search:${query}`);
 }
 
+async function handleAnimeNumberExplanationInstruction(ctx) {
+    const { bot, msg, cleanMsg, senderName, senderUserId } = ctx;
+
+    const explainNo = extractNumberExplainRequest(cleanMsg);
+    if (explainNo <= 0) return false;
+
+    console.log(`[EXPLAIN NO] ${senderName} requested explanation for no ${explainNo}`);
+
+    const resolved = getAnimeTitleByNumber(senderName, senderUserId, explainNo, msg);
+    if (!resolved || !resolved.title) {
+        await sendChatMessage(bot, `@${senderName}\nBelum ada list rekomendasi sebelumnya atau nomor ${explainNo} tidak tersedia. Coba minta rekomendasi anime dulu ya!`, msg.id);
+        return true;
+    }
+
+    const title = resolved.title;
+    console.log(`[EXPLAIN NO] Resolved title for no ${explainNo}: "${title}" (source: ${resolved.source})`);
+
+    let animeDetailText = '';
+    try {
+        const jikanResults = await searchAnime(title, { limit: 1 });
+        if (jikanResults && jikanResults.length > 0) {
+            const anime = jikanResults[0];
+            animeDetailText = `Judul: ${anime.title}\nRating: ${anime.score || '-'}\nGenre: ${Array.isArray(anime.genres) ? anime.genres.join(', ') : '-'}\nEpisodes: ${anime.episodes || '-'}\nSinopsis Mentah: ${anime.synopsis || '-'}`;
+        }
+    } catch (err) {
+        console.warn(`[EXPLAIN NO] Gagal fetch detail Jikan untuk "${title}":`, err.message);
+    }
+
+    const aiPrompt = `User @${senderName} meminta kamu menjelaskan anime nomor ${explainNo} dari list rekomendasi, yaitu "${title}".\n` +
+        (animeDetailText ? `Data Pendukung Anime:\n${animeDetailText}\n\n` : '') +
+        `Instruksi: Berikan penjelasan sinopsis, alur cerita, dan keunggulan anime "${title}" ini dengan bahasa Rara yang ramah, seru, dan mudah dipahami berdasarkan pengetahuanmu!`;
+
+    const aiRes = await getAIResponse(aiPrompt, senderName, false, senderUserId, '');
+    const explanationText = aiRes?.text || `Anime nomor ${explainNo} adalah "${title}".\n\n${animeDetailText || 'Anime ini sangat populer dan menarik untuk ditonton!'}`;
+
+    const sent = await sendChatMessage(bot, `@${senderName}\n${explanationText}`, msg.id);
+    if (sent) {
+        addActivity('anime_explanation', senderName, cleanMsg, explanationText, aiRes?.provider || 'AI', aiRes?.tokens || 0);
+        await addXP(senderUserId, senderName, 10);
+        trackStreak(senderUserId, senderName);
+        saveChatLog(senderUserId, senderName, cleanMsg, explanationText, aiRes?.provider || 'AI', aiRes?.tokens || 0);
+    }
+
+    return true;
+}
+
 async function processMessages(bot, messages) {
     for (const msg of messages) {
         const msgId = parseInt(msg.id || 0);
@@ -4437,6 +4538,7 @@ async function processMessages(bot, messages) {
                 recordPath,
                 isAnimeinApiBlocked
             };
+            if (await handleAnimeNumberExplanationInstruction(infoCommandContext)) continue;
             if (await handleAnimeTagInstruction(infoCommandContext)) continue;
             if (await commands.handleInfoCommand(infoCommandContext)) continue;
 
