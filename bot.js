@@ -3246,11 +3246,17 @@ function saveRecentAnimeList(senderName, senderUserId, items, source = '') {
 function getRecentAnimeList(senderName, senderUserId) {
     const keys = getRecentAnimeListKeys(senderName, senderUserId);
     console.log(`[TAG ANIME] lookup keys="${keys.join(',')}"`);
+    let latestEntry = null;
     for (const key of keys) {
         const entry = cache.recentAnimeLists.get(key);
         if (!entry || Date.now() - entry.savedAt > 30 * 60 * 1000) continue;
-        console.log(`[TAG ANIME] cache hit key="${key}" source="${entry.source || '-'}"`);
-        return entry;
+        if (!latestEntry || entry.savedAt > latestEntry.savedAt) {
+            latestEntry = entry;
+        }
+    }
+    if (latestEntry) {
+        console.log(`[TAG ANIME] cache hit source="${latestEntry.source || '-'}"`);
+        return latestEntry;
     }
     console.log(`[TAG ANIME] cache miss keys="${keys.join(',')}"`);
     return null;
@@ -3271,13 +3277,15 @@ function saveRecentAnimeListText(senderName, senderUserId, text, titles, source 
 
 function getRecentAnimeListText(senderName, senderUserId) {
     const keys = getRecentAnimeListKeys(senderName, senderUserId);
+    let latestEntry = null;
     for (const key of keys) {
         const entry = cache.recentAnimeListTexts.get(key);
         if (!entry || Date.now() - entry.savedAt > 30 * 60 * 1000) continue;
-        console.log(`[LIST MEMORY] hit key="${key}" source="${entry.source || '-'}"`);
-        return entry;
+        if (!latestEntry || entry.savedAt > latestEntry.savedAt) {
+            latestEntry = entry;
+        }
     }
-    return null;
+    return latestEntry;
 }
 
 async function rememberAnimeListFromText(text, senderName, senderUserId, source = '') {

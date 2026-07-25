@@ -72,6 +72,10 @@ async function execute(ctx) {
 
         lines.push('└───────────────────');
 
+        if (typeof ctx.saveRecentAnimeList === 'function') {
+            ctx.saveRecentAnimeList(senderName, senderUserId, results.slice(0, 7), `search:${query}`);
+        }
+
         await sendChatMessage(bot, `@${senderName.substring(0, 10)}\n${lines.join('\n')}`, msg.id);
     } catch (e) {
         console.error('[CARI ERROR]', e.message);

@@ -76,6 +76,14 @@ async function execute(ctx) {
 
         lines.push('└───────────────────');
 
+        if (typeof ctx.saveRecentAnimeList === 'function') {
+            const mappedResults = results.slice(0, 8).map((line, index) => {
+                const title = String(line || '').replace(/^\d+\.\s*/, '').replace(/\s*\[.*\]$/, '').trim();
+                return { title, sourceNo: index + 1 };
+            });
+            ctx.saveRecentAnimeList(senderName, senderUserId, mappedResults, `genre:${match.name}`);
+        }
+
         await sendChatMessage(bot, `@${senderName.substring(0, 10)}\n${lines.join('\n')}`, msg.id);
     } catch (e) {
         console.error('[GENRE ERROR]', e.message);
