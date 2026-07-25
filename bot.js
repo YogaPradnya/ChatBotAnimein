@@ -347,7 +347,7 @@ async function initDB() {
             if (RARA_CHARACTER_CONFIG) {
                 console.log('[PROMPT_JSON] Loaded Rara character JSON config from DB.');
             } else {
-                console.warn('[PROMPT_JSON] Konfigurasi Rara di DB belum diisi dari Dashboard.');
+                console.warn('[PROMPT_JSON] DB belum terisi JSON Karakter Rara. Silakan simpan dari Dashboard.');
             }
         } catch (e) {
             console.warn('[PROMPT_JSON] Failed loading character JSON config from DB:', e.message);

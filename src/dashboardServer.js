@@ -1347,8 +1347,9 @@ function startDashboard(scope) {
                     config = JSON.parse(row.rows[0].value);
                 }
             }
-            const jsonStr = config ? JSON.stringify(config, null, 2) : (typeof SYSTEM_PROMPT === 'string' ? SYSTEM_PROMPT : '');
-            res.json({ success: true, prompt: jsonStr, config: config || null });
+
+            const jsonStr = config ? JSON.stringify(config, null, 2) : '';
+            res.json({ success: true, prompt: jsonStr, config });
         } catch (e) {
             res.json({ success: false, prompt: '', error: e.message });
         }
