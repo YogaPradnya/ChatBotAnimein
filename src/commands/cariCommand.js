@@ -123,6 +123,20 @@ function extractImageUrl(msg = {}, cleanMsg = '') {
     return null;
 }
 
+function cleanTitleForAnimeinSearch(title) {
+    if (!title) return '';
+    let clean = String(title)
+        .replace(/×/g, ' x ')
+        .replace(/[:(].*$/, '')
+        .replace(/[^\w\s-]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    if (clean.length > 35) {
+        clean = clean.slice(0, 35).trim();
+    }
+    return clean || String(title).slice(0, 35).trim();
+}
+
 async function searchTraceMoe(imageUrl) {
     if (!imageUrl) return { ok: false, error: 'URL gambar tidak ditemukan.' };
 
@@ -327,10 +341,27 @@ async function execute(ctx) {
                 return true;
             }
 
+            // Cari ID Animein secara otomatis dari judul hasil Trace.moe
+            let animeinId = '-';
+            if (typeof fetchAnimeSearchResults === 'function') {
+                try {
+                    const searchKeyword = cleanTitleForAnimeinSearch(result.title) || cleanTitleForAnimeinSearch(result.titleEnglish);
+                    if (searchKeyword) {
+                        const animeinHits = await fetchAnimeSearchResults(searchKeyword, 1);
+                        if (animeinHits && animeinHits.length > 0 && (animeinHits[0].id || animeinHits[0].id_movie)) {
+                            animeinId = animeinHits[0].id || animeinHits[0].id_movie;
+                        }
+                    }
+                } catch (catErr) {
+                    console.warn('[CARI ANIMEIN ID] Gagal mencari di katalog Animein:', catErr.message);
+                }
+            }
+
             const lines = [
                 `┌── ${boxHeader('HASIL CARI GAMBAR')} 🔍`,
                 `│ 📺 Judul   : ${cleanText(result.title, 30)}`,
                 result.titleEnglish && result.titleEnglish !== '-' ? `│ 🌐 Eng     : ${cleanText(result.titleEnglish, 30)}` : null,
+                `│ 🆔 Animein : ${animeinId !== '-' ? `#${animeinId}` : '-'}`,
                 `│ 🎬 Episode : Episode ${result.episode}`,
                 `│ ⏱️ Menit   : ${result.timestamp}`,
                 `│ 🎯 Akurasi : ${result.similarity}`,
