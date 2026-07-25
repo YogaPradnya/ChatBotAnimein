@@ -126,38 +126,42 @@ function extractImageUrl(msg = {}, cleanMsg = '') {
 async function searchTraceMoe(imageUrl) {
     if (!imageUrl) return { ok: false, error: 'URL gambar tidak ditemukan.' };
 
-    const headers = {
+    const traceHeaders = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         'Referer': 'https://trace.moe/'
     };
 
+    const animeinHeaders = {
+        'App-Version': '3.2',
+        'Package-Name': 'net.manga.katsu.animein',
+        'User-Agent': 'okhttp/4.12.0',
+    };
+
     let data = null;
 
-    // Metode 1: Coba GET via URL
+    // 1. Download buffer dari CDN Animein dengan header okhttp Animein
+    let imageBuffer = null;
+    let contentType = 'image/jpeg';
     try {
-        const traceUrl = `https://api.trace.moe/search?anilistInfo&url=${encodeURIComponent(imageUrl)}`;
-        const res = await axios.get(traceUrl, { headers, timeout: 15000 });
-        if (res.data && Array.isArray(res.data.result)) {
-            data = res.data;
+        const imgRes = await axios.get(imageUrl, {
+            responseType: 'arraybuffer',
+            headers: animeinHeaders,
+            timeout: 12000
+        });
+        if (imgRes.data && imgRes.data.length > 0) {
+            imageBuffer = Buffer.from(imgRes.data);
+            contentType = imgRes.headers['content-type'] || 'image/jpeg';
         }
-    } catch (e1) {
-        console.warn('[TRACE.MOE] GET URL gagal, coba fallback ke POST buffer:', e1.message);
+    } catch (cdnErr) {
+        console.warn('[CARI GAMBAR] Download buffer dari CDN Animein gagal:', cdnErr.message);
     }
 
-    // Metode 2: Fallback download image buffer & POST binary
-    if (!data) {
+    // 2. Jika buffer berhasil didownload, POST binary buffer ke Trace.moe
+    if (imageBuffer) {
         try {
-            const imgRes = await axios.get(imageUrl, {
-                responseType: 'arraybuffer',
-                headers,
-                timeout: 10000
-            });
-            const imageBuffer = Buffer.from(imgRes.data);
-            const contentType = imgRes.headers['content-type'] || 'image/jpeg';
-
             const postRes = await axios.post('https://api.trace.moe/search?anilistInfo', imageBuffer, {
                 headers: {
-                    ...headers,
+                    ...traceHeaders,
                     'Content-Type': contentType
                 },
                 timeout: 20000
@@ -165,8 +169,21 @@ async function searchTraceMoe(imageUrl) {
             if (postRes.data && Array.isArray(postRes.data.result)) {
                 data = postRes.data;
             }
-        } catch (e2) {
-            console.error('[TRACE.MOE] POST buffer gagal:', e2.message);
+        } catch (postErr) {
+            console.warn('[CARI GAMBAR] POST buffer ke trace.moe gagal:', postErr.message);
+        }
+    }
+
+    // 3. Fallback: GET via URL langsung jika POST buffer tidak menghasilkan data
+    if (!data) {
+        try {
+            const traceUrl = `https://api.trace.moe/search?anilistInfo&url=${encodeURIComponent(imageUrl)}`;
+            const res = await axios.get(traceUrl, { headers: traceHeaders, timeout: 15000 });
+            if (res.data && Array.isArray(res.data.result)) {
+                data = res.data;
+            }
+        } catch (getErr) {
+            console.warn('[CARI GAMBAR] GET URL ke trace.moe gagal:', getErr.message);
         }
     }
 
