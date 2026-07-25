@@ -2817,6 +2817,13 @@ function sanitizeReplyContext(replyText) {
 
 function polishAiAnswer(answer, userMessage, replyText = '') {
     let text = String(answer || '').trim();
+    
+    // Hapus kutipan terluar jika AI menjawab dengan tanda kutip ganda
+    text = text.replace(/^["']|["']$/g, '').trim();
+
+    // Jika AI mengulang meta-instruksi sistem/level/HEART, bersihkan!
+    text = text.replace(/^(sesuai dengan|berdasarkan|pada umumnya|sebagai AI|sesuai aturan|level heart_\d+|heart_\d+)[^.!?\n]*[.!?\n]?/gi, '').trim();
+
     const genericConfusion = /\b(saya|aku|rara)\s+(kurang\s+paham|tidak\s+paham|nggak\s+paham|gak\s+paham|tidak\s+tahu|tidak\s+tau|nggak\s+tahu|gak\s+tau)\b/i;
     if (genericConfusion.test(text)) {
         const reply = sanitizeReplyContext(replyText);
@@ -2824,7 +2831,16 @@ function polishAiAnswer(answer, userMessage, replyText = '') {
         if (reply) {
             return `Nih udah dibaca konteks reply-nya: "${reply.slice(0, 180)}". Dari situ maksudnya soal "${question}" kan? Sini dibantu bahas dari konteks itu!`;
         }
-        return `Coba jelasin sedikit lagi maksudnya! Dari tadi ditangkap soal "${question}", tapi butuh konteks lebih jelas biar gak salah jawab!`;
+        return `Hmph! Coba jelasin lagi maksud dari "${question}" biar Rara paham!`;
+    }
+
+    // Ambil HANYA 1 KALIMAT PERTAMA
+    const firstSentenceMatch = text.match(/[^.!?\n]+[.!?]/);
+    if (firstSentenceMatch && firstSentenceMatch[0]) {
+        text = firstSentenceMatch[0].trim();
+    } else {
+        const firstLine = text.split('\n')[0].trim();
+        text = firstLine;
     }
 
     return text;
