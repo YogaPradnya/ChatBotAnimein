@@ -2824,6 +2824,9 @@ function polishAiAnswer(answer, userMessage, replyText = '') {
     // Jika AI mengulang meta-instruksi sistem/level/HEART, bersihkan!
     text = text.replace(/^(sesuai dengan|berdasarkan|pada umumnya|sebagai AI|sesuai aturan|level heart_\d+|heart_\d+)[^.!?\n]*[.!?\n]?/gi, '').trim();
 
+    // Ganti kata kaku/pujangga 'engkau' atau 'dikau' menjadi 'kamu'
+    text = text.replace(/\bengkau\b/gi, 'kamu').replace(/\b(daku|dikau)\b/gi, 'aku');
+
     const genericConfusion = /\b(saya|aku|rara)\s+(kurang\s+paham|tidak\s+paham|nggak\s+paham|gak\s+paham|tidak\s+tahu|tidak\s+tau|nggak\s+tahu|gak\s+tau)\b/i;
     if (genericConfusion.test(text)) {
         const reply = sanitizeReplyContext(replyText);
@@ -2843,8 +2846,9 @@ function polishAiAnswer(answer, userMessage, replyText = '') {
         text = firstLine;
     }
 
-    // Bersihkan jika AI menaruh nama 'Rara' di akhir kalimat (misal: "..., Rara.")
-    text = text.replace(/,\s*rara\b[.!?]?$/i, '.').replace(/\s+rara\b[.!?]?$/i, '.').trim();
+    // Bersihkan jika AI menaruh nama 'Rara' di akhir kalimat (termasuk jika diikuti emoji atau tanda baca)
+    text = text.replace(/,\s*rara\b[\s.!?\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}]*$/iu, '.').trim();
+    text = text.replace(/\s+rara\b[\s.!?\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}]*$/iu, '.').trim();
 
     return text;
 }
