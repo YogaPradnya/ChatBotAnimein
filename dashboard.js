@@ -2135,7 +2135,7 @@ async function updateStats() {
           const cf = d.cloudflare;
           html += \`
             <div class="model-card \${cf.active ? 'active' : 'inactive'}" style="border-left: 4px solid var(--accent);">
-              <div class="model-num" style="color:var(--accent);">MODEL UTAMA: CLOUDFLARE WORKERS AI (Llama 3.2 1B)</div>
+              <div class="model-num" style="color:var(--accent);">MODEL UTAMA: CLOUDFLARE WORKERS AI (Llama 3.1 8B)</div>
               <div class="model-metrics">
                 <div class="m-stat"><div class="m-lbl">Requests</div><div class="m-val">\${cf.requests || 0}</div></div>
                 <div class="m-stat"><div class="m-lbl">Errors</div><div class="m-val">\${cf.errors || 0}</div></div>
@@ -2154,7 +2154,7 @@ async function updateStats() {
           const cb = d.cerebras;
           html += \`
             <div class="model-card \${cb.active ? 'active' : 'inactive'}" style="border-left: 4px solid var(--blue);">
-              <div class="model-num" style="color:var(--blue);">FALLBACK 1: CEREBRAS AI (gemma-4-31b) - MAX 30 RPM</div>
+              <div class="model-num" style="color:var(--blue);">FALLBACK 1: CEREBRAS AI - MAX 30 RPM</div>
               <div class="model-metrics">
                 <div class="m-stat"><div class="m-lbl">Requests</div><div class="m-val">\${cb.requests || 0}</div></div>
                 <div class="m-stat"><div class="m-lbl">RPM Saat Ini</div><div class="m-val">\${cb.currentRpm || 0} / 30</div></div>

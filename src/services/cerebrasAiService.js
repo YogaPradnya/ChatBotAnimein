@@ -21,10 +21,9 @@ function cleanOldTimestamps(now) {
 }
 
 function getCerebrasStat() {
-    return {
-        ...cerebrasStat,
-        currentRpm: requestTimestamps.length,
-    };
+    cleanOldTimestamps(Date.now());
+    cerebrasStat.currentRpm = requestTimestamps.length;
+    return cerebrasStat;
 }
 
 /**
