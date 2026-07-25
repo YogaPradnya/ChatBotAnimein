@@ -29,8 +29,20 @@ function extractScheduleItems(payload) {
     return (arrays.sort((a, b) => b.length - a.length)[0] || []);
 }
 
+const DAY_MAP = {
+    'SUNDAY': 'AHAD', 'MONDAY': 'SENIN', 'TUESDAY': 'SELASA', 'WEDNESDAY': 'RABU',
+    'THURSDAY': 'KAMIS', 'FRIDAY': 'JUMAT', 'SATURDAY': 'SABTU',
+    'MINGGU': 'AHAD', "JUM'AT": 'JUMAT'
+};
+
+function normalizeDayName(dayStr) {
+    if (!dayStr) return '';
+    const clean = String(dayStr).trim().toUpperCase();
+    return DAY_MAP[clean] || clean;
+}
+
 /**
- * Cek apakah item anime memiliki label / badge NEW
+ * Cek apakah item anime valid sebagai episode / update baru
  * @param {object} item
  * @returns {boolean}
  */
@@ -41,14 +53,19 @@ function isItemNew(item) {
         return true;
     }
 
-    const textFields = [item.time, item.badge, item.status, item.label, item.tag, item.type, item.is_new, item.new];
+    const textFields = [item.time, item.badge, item.status, item.label, item.tag, item.type, item.is_new, item.new, item.latest_episode];
     for (const val of textFields) {
         if (typeof val === 'string') {
             const normalized = val.trim().toUpperCase();
-            if (normalized === 'NEW' || normalized === 'BARU' || normalized.includes('NEW')) {
+            if (normalized === 'NEW' || normalized === 'BARU' || normalized.includes('NEW') || normalized.includes('BARU') || normalized.includes('RELEASE') || normalized.includes('LATEST') || normalized.includes('UPDATED')) {
                 return true;
             }
         }
+    }
+
+    // Jika item diambil dari API jadwal dan memiliki info episode / ID, anggap sebagai update valid
+    if (item.episode || item.eps || item.episode_now || item.latest_episode || item.last_episode || item.id || item.slug) {
+        return true;
     }
 
     return false;
@@ -126,8 +143,9 @@ async function checkAnimeUpdates({ animeinClient, sendNotifCallback, cacheRepo }
             // Filter hari: pastikan item cocok dengan hari WIB saat ini jika memiliki properti hari
             const itemDay = item.day || item.hari || item.day_name || null;
             if (itemDay) {
-                const normalizedItemDay = String(itemDay).trim().toUpperCase();
-                if (normalizedItemDay !== todayName && normalizedItemDay !== 'TODAY' && normalizedItemDay !== 'HARI INI') {
+                const normalizedItemDay = normalizeDayName(itemDay);
+                const normalizedToday = normalizeDayName(todayName);
+                if (normalizedItemDay !== normalizedToday && normalizedItemDay !== 'TODAY' && normalizedItemDay !== 'HARI INI') {
                     continue;
                 }
             }
@@ -142,15 +160,12 @@ async function checkAnimeUpdates({ animeinClient, sendNotifCallback, cacheRepo }
             const itemId = String(item.id || item.slug || `${title}_eps_${episode}`);
             
             if (!notifiedItems.has(itemId)) {
-                notifiedItems.add(itemId);
-
-                // Persiskan ke SQLite jika cacheRepo tersedia
-                if (cacheRepo?.saveNotifiedAnimeId) {
-                    cacheRepo.saveNotifiedAnimeId(itemId).catch(() => {});
-                }
-
                 // Pada run pertama saat startup, hanya isi notifiedItems tanpa mengirim notifikasi
                 if (isFirstRun) {
+                    notifiedItems.add(itemId);
+                    if (cacheRepo?.saveNotifiedAnimeId) {
+                        cacheRepo.saveNotifiedAnimeId(itemId).catch(() => {});
+                    }
                     continue;
                 }
 
@@ -159,10 +174,19 @@ async function checkAnimeUpdates({ animeinClient, sendNotifCallback, cacheRepo }
                     await delay(11000);
                 }
 
-                newUpdates.push(item);
-
                 const message = formatAnimeNotifMessage(item);
-                await sendNotifCallback(message, item);
+                try {
+                    await sendNotifCallback(message, item);
+                    // Tambahkan ke cache HANYA setelah notifikasi berhasil terkirim
+                    notifiedItems.add(itemId);
+                    if (cacheRepo?.saveNotifiedAnimeId) {
+                        cacheRepo.saveNotifiedAnimeId(itemId).catch(() => {});
+                    }
+                    newUpdates.push(item);
+                } catch (sendErr) {
+                    console.warn(`[ANIME_NOTIF] Gagal mengirim notifikasi untuk ${itemId}:`, sendErr.message);
+                    // Tidak dimasukkan ke notifiedItems agar bisa di-retry pada siklus polling berikutnya
+                }
             }
         }
 
