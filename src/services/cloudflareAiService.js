@@ -55,10 +55,11 @@ async function askCloudflareAi({
     const basePrompt = personalizeSystemPrompt ? personalizeSystemPrompt(systemPrompt, senderName) : systemPrompt;
     const systemContent = `${basePrompt}${coreMemory}${contextData}`;
     
+    const cleanMessage = String(userMessage || '').replace(/^[:\s]+/, '').trim();
     const replyContext = sanitizeReplyContext ? sanitizeReplyContext(replyText) : (replyText ? replyText.trim() : '');
     const userContent = replyContext
-        ? `Pesan yang direply oleh ${senderName}: "${replyContext}"\n\n${senderName} berkata: "${userMessage}". Jadikan pesan reply sebagai konteks tambahan saat menjawab.`
-        : `${senderName} berkata: "${userMessage}".`;
+        ? `[Pesan yang di-reply oleh @${senderName}: "${replyContext}"]\n${cleanMessage}`
+        : cleanMessage;
 
     const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${model}`;
 
