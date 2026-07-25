@@ -191,6 +191,14 @@ async function searchTraceMoe(imageUrl) {
         return { ok: false, error: 'Tidak ada adegan anime yang cocok ditemukan.' };
     }
 
+    const candidates = data.result.slice(0, 4).map(m => ({
+        title: m.anilist?.title?.romaji || m.anilist?.title?.english || m.anilist?.title?.native || 'Anime Unknown',
+        titleEnglish: m.anilist?.title?.english || '-',
+        episode: m.episode !== null && m.episode !== undefined ? m.episode : '-',
+        similarity: `${Math.round((m.similarity || 0) * 100)}%`,
+        similarityNum: m.similarity || 0,
+    }));
+
     const topMatch = data.result[0];
     const similarityNum = topMatch.similarity || 0;
     const similarity = `${Math.round(similarityNum * 100)}%`;
@@ -216,6 +224,7 @@ async function searchTraceMoe(imageUrl) {
         timestamp: `${fromTime} - ${toTime}`,
         similarity,
         similarityNum,
+        candidates,
         videoUrl: topMatch.video || null,
         imageUrl: topMatch.image || null,
         isAdult: topMatch.anilist?.isAdult || false,
@@ -281,7 +290,7 @@ async function execute(ctx) {
         }
     }
 
-    // B. JIKA HANYA ADA GAMBAR: Gunakan Reverse Image Search dengan Strict Threshold (>=75%)
+    // B. JIKA HANYA ADA GAMBAR: Gunakan Reverse Image Search dengan Strict Threshold (>=75%) & Smart Suggestions
     if (imageUrl) {
         try {
             const result = await searchTraceMoe(imageUrl);
@@ -292,20 +301,28 @@ async function execute(ctx) {
 
             await incrementCommandUsage(senderUserId, senderName);
 
-            // Filter Ambang Akurasi Ketat (>= 75%) untuk Mencegah Salah Anime
+            // Filter Ambang Akurasi Ketat (>= 75%) dengan Smart Suggestions
             if (result.similarityNum < 0.75) {
                 const lowLines = [
                     `┌── ${boxHeader('HASIL CARI GAMBAR')} 🔍`,
                     `│ ⚠️ Akurasi Rendah (${result.similarity})`,
                     `├───────────────────`,
-                    `│ Gambar potongan adegan, fan art,`,
-                    `│ atau anime rilis baru.`,
-                    `│`,
-                    `│ 💡 Ketik caption .cari [judul]`,
-                    `│    (contoh: .cari naruto)`,
-                    `│    untuk pencarian 100% presisi!`,
-                    `└───────────────────`,
+                    `│ 📌 Alternatif Terdekat:`,
                 ];
+
+                if (Array.isArray(result.candidates) && result.candidates.length > 0) {
+                    result.candidates.slice(0, 3).forEach((cand, index) => {
+                        lowLines.push(`│ 🎬 ${index + 1}. ${cleanText(cand.title, 26)} (${cand.similarity})`);
+                    });
+                } else {
+                    lowLines.push(`│ (Potongan adegan / fan art / PV)`);
+                }
+
+                lowLines.push(`│`);
+                lowLines.push(`│ 💡 Ketik caption .cari [judul]`);
+                lowLines.push(`│    (contoh: .cari naruto)`);
+                lowLines.push(`│    untuk pencarian 100% presisi!`);
+                lowLines.push(`└───────────────────`);
                 await sendChatMessage(bot, `@${senderName.substring(0, 10)}\n${lowLines.join('\n')}`, msg.id);
                 return true;
             }
