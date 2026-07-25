@@ -154,7 +154,7 @@ async function searchTraceMoe(imageUrl) {
     }
 
     if (!data || !Array.isArray(data.result) || data.result.length === 0) {
-        return { ok: false, error: 'Tidak ada adegan anime yang cocok ditemukan di trace.moe.' };
+        return { ok: false, error: 'Tidak ada adegan anime yang cocok ditemukan.' };
     }
 
     const topMatch = data.result[0];
@@ -207,7 +207,7 @@ async function execute(ctx) {
 
     // Jika tidak ada gambar DAN tidak ada teks pencarian
     if (!imageUrl && !query) {
-        await sendChatMessage(bot, formatCommandUsage(senderName, 'Ketik .cari [judul] untuk cari anime, atau kirim/reply gambar lalu ketik .cari untuk melacak adegan via Trace.moe!'), msg.id);
+        await sendChatMessage(bot, formatCommandUsage(senderName, 'Ketik .cari [judul] untuk cari anime, atau kirim/reply gambar lalu ketik .cari untuk melacak adegan gambar!'), msg.id);
         return true;
     }
 
@@ -217,7 +217,7 @@ async function execute(ctx) {
         return true;
     }
 
-    // A. JIKA ADA GAMBAR: Gunakan Reverse Image Search (Trace.moe)
+    // A. JIKA ADA GAMBAR: Gunakan Reverse Image Search
     if (imageUrl) {
         try {
             const result = await searchTraceMoe(imageUrl);
@@ -229,7 +229,7 @@ async function execute(ctx) {
             await incrementCommandUsage(senderUserId, senderName);
 
             const lines = [
-                `┌── ${boxHeader('TRACE MOE ANIME')} 🔍`,
+                `┌── ${boxHeader('HASIL CARI GAMBAR')} 🔍`,
                 `│ 📺 Judul   : ${cleanText(result.title, 30)}`,
                 result.titleEnglish && result.titleEnglish !== '-' ? `│ 🌐 Eng     : ${cleanText(result.titleEnglish, 30)}` : null,
                 `│ 🎬 Episode : Episode ${result.episode}`,
