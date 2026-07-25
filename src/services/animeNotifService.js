@@ -42,7 +42,7 @@ function normalizeDayName(dayStr) {
 }
 
 /**
- * Cek apakah item anime valid sebagai episode / update baru
+ * Cek apakah item anime memiliki label / badge NEW secara eksplisit
  * @param {object} item
  * @returns {boolean}
  */
@@ -57,22 +57,17 @@ function isItemNew(item) {
     for (const val of textFields) {
         if (typeof val === 'string') {
             const normalized = val.trim().toUpperCase();
-            if (normalized === 'NEW' || normalized === 'BARU' || normalized.includes('NEW') || normalized.includes('BARU') || normalized.includes('RELEASE') || normalized.includes('LATEST') || normalized.includes('UPDATED')) {
+            if (normalized === 'NEW' || normalized === 'BARU' || normalized.includes('NEW') || normalized.includes('BARU')) {
                 return true;
             }
         }
-    }
-
-    // Jika item diambil dari API jadwal dan memiliki info episode / ID, anggap sebagai update valid
-    if (item.episode || item.eps || item.episode_now || item.latest_episode || item.last_episode || item.id || item.slug) {
-        return true;
     }
 
     return false;
 }
 
 /**
- * Format pesan notifikasi rilis anime
+ * Format pesan notifikasi rilis anime (Tanpa Sinopsis)
  * @param {object} item - Data anime / episode dari API
  * @returns {string}
  */
@@ -81,24 +76,12 @@ function formatAnimeNotifMessage(item) {
     const episode = item.episode || item.eps || item.episode_now || item.latest_episode || item.last_episode || 'Terbaru';
     const rating = item.score || item.rating || item.favorites || '-';
     const genre = Array.isArray(item.genres) ? item.genres.join(', ') : (item.genre || '-');
-    const synopsis = item.synopsis || item.description || 'Tidak ada deskripsi.';
-
-    const truncatedSynopsis = synopsis.length > 180 
-        ? synopsis.substring(0, 177) + '...' 
-        : synopsis;
-
-    const synopsisLines = truncatedSynopsis.split('\n').map(l => l.trim()).filter(Boolean);
 
     let msg = `┌── ${boxHeader('UPDATE ANIME')} 📢\n`;
     msg += `│ 📺 Judul   : ${title}\n`;
     msg += `│ 🎬 Episode : Episode ${episode}\n`;
     msg += `│ ⭐ Rating  : ${rating}\n`;
     msg += `│ 🏷️ Genre   : ${genre}\n`;
-    msg += `│ \n`;
-    msg += `│ 📝 Sinopsis:\n`;
-    for (const line of synopsisLines) {
-        msg += `│ ${line}\n`;
-    }
     msg += `│ \n`;
     msg += `│ 🍿 Nonton sekarang di Animein!\n`;
     msg += `└───────────────────`;
