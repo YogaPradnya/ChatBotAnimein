@@ -994,11 +994,18 @@ function getDashboardHTML() {
                   <span style="margin-left: 8px; font-size: 12px; color: var(--muted); font-weight: 600; min-width: 25px;">XP</span>
                 </div>
               </div>
-
-              <div style="margin-bottom: 24px;">
+                            <div style="margin-bottom: 16px;">
                 <label class="form-label">Extra Limit (+1) (Base Price)</label>
                 <div style="display: flex; align-items: center;">
                   <input type="number" id="priceExtraLimit" value="2500" min="0" style="width: 100%; font-weight: 700;">
+                  <span style="margin-left: 8px; font-size: 12px; color: var(--muted); font-weight: 600; min-width: 25px;">XP</span>
+                </div>
+              </div>
+
+              <div style="margin-bottom: 24px;">
+                <label class="form-label">Extra Chat Rara (+1) (Base Price)</label>
+                <div style="display: flex; align-items: center;">
+                  <input type="number" id="priceExtraRaraChat" value="3000" min="0" style="width: 100%; font-weight: 700;">
                   <span style="margin-left: 8px; font-size: 12px; color: var(--muted); font-weight: 600; min-width: 25px;">XP</span>
                 </div>
               </div>
@@ -1016,7 +1023,7 @@ function getDashboardHTML() {
       <!-- SECTION 1: Global Limit Setting -->
       <div class="card">
         <div class="card-title">Pengaturan Limit Global Bot</div>
-        <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 16px;">
+        <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); margin-bottom: 16px;">
           <div class="stat-card accent">
             <div class="label">Default CMD / Hari</div>
             <div class="value" id="globalCmdDefault">10</div>
@@ -1024,6 +1031,10 @@ function getDashboardHTML() {
           <div class="stat-card blue">
             <div class="label">Default Gambar / Hari</div>
             <div class="value" id="globalImgDefault">3</div>
+          </div>
+          <div class="stat-card pink">
+            <div class="label">Default Chat Rara / Hari</div>
+            <div class="value" id="globalRaraDefault">20</div>
           </div>
           <div class="stat-card green">
             <div class="label">User Active CMD</div>
@@ -1035,17 +1046,21 @@ function getDashboardHTML() {
           </div>
         </div>
         <div class="control-row" style="align-items: flex-end; flex-wrap: wrap; gap: 12px; border-top: 1px solid var(--border); padding-top: 16px;">
-          <div style="flex: 1; min-width: 140px; max-width: 220px;">
+          <div style="flex: 1; min-width: 120px; max-width: 180px;">
             <label class="form-label">Limit CMD / Hari</label>
             <input type="number" id="globalCmdInput" value="10" min="0">
           </div>
-          <div style="flex: 1; min-width: 140px; max-width: 220px;">
+          <div style="flex: 1; min-width: 120px; max-width: 180px;">
             <label class="form-label">Limit Gambar / Hari</label>
             <input type="number" id="globalImgInput" value="3" min="0">
           </div>
+          <div style="flex: 1; min-width: 120px; max-width: 180px;">
+            <label class="form-label">Limit Chat Rara / Hari</label>
+            <input type="number" id="globalRaraInput" value="20" min="0">
+          </div>
           <button class="btn-primary" onclick="saveGlobalLimits()">Simpan Global</button>
         </div>
-        <p style="font-size: 11px; color: var(--muted); margin-top: 10px; margin-bottom: 0;">Perubahan berlaku realtime. Command yang dikecualikan: .ai, .rara, .tebak, .hint, .help</p>
+        <p style="font-size: 11px; color: var(--muted); margin-top: 10px; margin-bottom: 0;">Perubahan berlaku realtime. Rekomendasi anime, detail, pencarian, dan kuis tetap bebas limit.</p>
       </div>
 
       <!-- SECTION 2: Command Limits per User -->
@@ -1060,37 +1075,36 @@ function getDashboardHTML() {
             <input type="text" id="cmdLimitUsername" placeholder="contoh: YogaPradnya">
             <input type="hidden" id="cmdLimitUserId">
           </div>
-          <div style="flex: 1; min-width: 110px;">
+          <div style="flex: 1; min-width: 100px;">
             <label class="form-label">Extra Limit</label>
             <input type="number" id="cmdLimitExtra" value="0" min="0">
           </div>
-          <div style="flex: 1; min-width: 110px;">
-            <label class="form-label">Terpakai</label>
+          <div style="flex: 1; min-width: 100px;">
+            <label class="form-label">Terpakai Hari Ini</label>
             <input type="number" id="cmdLimitUsed" placeholder="auto" min="0">
           </div>
           <button class="btn-primary" onclick="saveCmdLimit()">Simpan</button>
         </div>
-        <div class="control-row" style="align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
+        <div style="display: flex; gap: 10px; margin-bottom: 12px; align-items: center; flex-wrap: wrap;">
           <input type="text" id="cmdLimitSearch" placeholder="Cari username..." oninput="debouncedCmdLimitSearch()" style="max-width: 280px; flex: 1;">
           <button class="btn-secondary" onclick="clearCmdLimitSearch()">Clear</button>
           <div id="cmdLimitPageInfo" style="margin-left: auto; color: var(--muted); font-size: 12px; font-weight: 700;">Page 1 / 1</div>
         </div>
-        <div class="table-wrap">
-          <table>
+        <div class="table-responsive">
+          <table class="table">
             <thead>
               <tr>
                 <th>User</th>
                 <th>Tanggal</th>
                 <th>Terpakai</th>
-                <th>Base</th>
-                <th>Extra</th>
-                <th>Total</th>
+                <th>Ekstra</th>
+                <th>Total Limit</th>
                 <th>Sisa</th>
                 <th>Aksi</th>
               </tr>
             </thead>
             <tbody id="cmdLimitTable">
-              <tr><td colspan="8" style="text-align: center; color: var(--muted);">Belum ada data.</td></tr>
+              <tr><td colspan="7" style="text-align: center; color: var(--muted);">Belum ada data.</td></tr>
             </tbody>
           </table>
         </div>
@@ -1115,23 +1129,23 @@ function getDashboardHTML() {
             <input type="text" id="imageLimitUsername" placeholder="contoh: YogaPradnya">
             <input type="hidden" id="imageLimitUserId">
           </div>
-          <div style="flex: 1; min-width: 110px;">
+          <div style="flex: 1; min-width: 100px;">
             <label class="form-label">Limit / Hari</label>
             <input type="number" id="imageLimitDaily" value="3" min="0">
           </div>
-          <div style="flex: 1; min-width: 110px;">
-            <label class="form-label">Terpakai</label>
+          <div style="flex: 1; min-width: 100px;">
+            <label class="form-label">Terpakai Hari Ini</label>
             <input type="number" id="imageLimitUsed" placeholder="auto" min="0">
           </div>
           <button class="btn-primary" onclick="saveImageLimit()">Simpan</button>
         </div>
-        <div class="control-row" style="align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
+        <div style="display: flex; gap: 10px; margin-bottom: 12px; align-items: center; flex-wrap: wrap;">
           <input type="text" id="imageLimitSearch" placeholder="Cari username..." oninput="debouncedImageLimitSearch()" style="max-width: 280px; flex: 1;">
           <button class="btn-secondary" onclick="clearImageLimitSearch()">Clear</button>
           <div id="imageLimitPageInfo" style="margin-left: auto; color: var(--muted); font-size: 12px; font-weight: 700;">Page 1 / 1</div>
         </div>
-        <div class="table-wrap">
-          <table>
+        <div class="table-responsive">
+          <table class="table">
             <thead>
               <tr>
                 <th>User</th>
@@ -1155,6 +1169,60 @@ function getDashboardHTML() {
           </div>
         </div>
       </div>
+
+      <!-- SECTION 4: Limit Chat Rara per User -->
+      <div class="card" style="margin-top: 24px;">
+        <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
+          <span>Limit Chat Rara per User</span>
+          <button class="btn-sm btn-sm-edit" onclick="loadRaraChatLimits()">Refresh</button>
+        </div>
+        <div class="control-row" style="align-items: flex-end; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; background: rgba(0,0,0,0.02); padding: 12px; border-radius: 10px; border: 1px solid var(--border);">
+          <div style="flex: 2; min-width: 180px;">
+            <label class="form-label">Username</label>
+            <input type="text" id="raraLimitUsername" placeholder="contoh: YogaPradnya">
+            <input type="hidden" id="raraLimitUserId">
+          </div>
+          <div style="flex: 1; min-width: 100px;">
+            <label class="form-label">Extra Limit</label>
+            <input type="number" id="raraLimitExtra" value="0" min="0">
+          </div>
+          <div style="flex: 1; min-width: 100px;">
+            <label class="form-label">Terpakai Hari Ini</label>
+            <input type="number" id="raraLimitUsed" placeholder="0" min="0">
+          </div>
+          <button class="btn-primary" onclick="saveRaraChatLimit()">Simpan</button>
+        </div>
+        <div style="display: flex; gap: 10px; margin-bottom: 12px; align-items: center; flex-wrap: wrap;">
+          <input type="text" id="raraLimitSearch" placeholder="Cari username..." oninput="debouncedRaraLimitSearch()" style="max-width: 280px; flex: 1;">
+          <button class="btn-secondary" onclick="clearRaraLimitSearch()">Clear</button>
+          <div id="raraLimitPageInfo" style="margin-left: auto; color: var(--muted); font-size: 12px; font-weight: 700;">Page 1 / 1</div>
+        </div>
+        <div class="table-responsive">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Tanggal</th>
+                <th>Terpakai</th>
+                <th>Ekstra</th>
+                <th>Total Limit</th>
+                <th>Sisa</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="raraLimitTable">
+              <tr><td colspan="7" style="text-align: center; color: var(--muted);">Belum ada data.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; flex-wrap: wrap;">
+          <div id="raraLimitTotalInfo" style="font-size: 12px; color: var(--muted); font-weight: 700;">0 user</div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <button class="btn-sm btn-sm-edit" id="raraLimitPrevBtn" onclick="changeRaraLimitPage(-1)">Prev</button>
+            <button class="btn-sm btn-sm-edit" id="raraLimitNextBtn" onclick="changeRaraLimitPage(1)">Next</button>
+        </div>
+      </div>
+
     </div>
 
     <!-- PAGE: REALTIME LOGS -->
@@ -1971,7 +2039,7 @@ function getDashboardHTML() {
     if (id === 'prompt') loadPrompt();
     if (id === 'laporan') loadLaporan();
     if (id === 'filter') loadFilter();
-    if (id === 'gambar') { loadGlobalLimits(); loadCommandLimits(); loadImageLimits(); }
+    if (id === 'gambar') { loadGlobalLimits(); loadCommandLimits(); loadImageLimits(); loadRaraChatLimits(); }
     if (id === 'banned') loadBannedPage();
     if (id === 'kuis') { loadTitles(); loadUsers(); loadQuizPool(); }
     if (id === 'logs') renderRealtimeLogs();
@@ -3314,10 +3382,14 @@ async function updateStats() {
       if (!d.success) return;
       document.getElementById('globalCmdDefault').textContent = d.cmdDefaultLimit ?? 10;
       document.getElementById('globalImgDefault').textContent = d.imgDefaultLimit ?? 3;
+      const raraDefEl = document.getElementById('globalRaraDefault');
+      if (raraDefEl) raraDefEl.textContent = d.raraDefaultLimit ?? 20;
       document.getElementById('globalCmdUsers').textContent = (d.cmdUserCount || 0).toLocaleString('id-ID');
       document.getElementById('globalImgUsers').textContent = (d.imgUserCount || 0).toLocaleString('id-ID');
       document.getElementById('globalCmdInput').value = d.cmdDefaultLimit ?? 10;
       document.getElementById('globalImgInput').value = d.imgDefaultLimit ?? 3;
+      const raraInpEl = document.getElementById('globalRaraInput');
+      if (raraInpEl) raraInpEl.value = d.raraDefaultLimit ?? 20;
     } catch (e) {
       console.error('loadGlobalLimits error:', e);
     }
@@ -3326,10 +3398,12 @@ async function updateStats() {
   async function saveGlobalLimits() {
     const cmdVal = document.getElementById('globalCmdInput').value;
     const imgVal = document.getElementById('globalImgInput').value;
-    if (cmdVal === '' && imgVal === '') return showToast('Isi minimal satu field.', 'warning');
+    const raraVal = document.getElementById('globalRaraInput')?.value;
+    if (cmdVal === '' && imgVal === '' && (raraVal === undefined || raraVal === '')) return showToast('Isi minimal satu field.', 'warning');
     const body = {};
     if (cmdVal !== '') body.cmdDefaultLimit = cmdVal;
     if (imgVal !== '') body.imgDefaultLimit = imgVal;
+    if (raraVal !== undefined && raraVal !== '') body.raraDefaultLimit = raraVal;
     try {
       const res = await fetch('/api/limits/global/update', {
         method: 'POST',
@@ -3597,6 +3671,119 @@ async function updateStats() {
     return escapeHTML(value);
   }
 
+  // =============== RARA CHAT LIMITS ===============
+  let raraLimitPage = 1;
+  let raraLimitTotalPages = 1;
+  let raraLimitSearchTimer = null;
+
+  async function loadRaraChatLimits(page = raraLimitPage) {
+    const tbody = document.getElementById('raraLimitTable');
+    if (!tbody) return;
+    const query = document.getElementById('raraLimitSearch')?.value.trim() || '';
+    raraLimitPage = Math.max(1, page || 1);
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--muted);">Memuat data...</td></tr>';
+    try {
+      const params = new URLSearchParams({ page: String(raraLimitPage), limit: '10' });
+      if (query) params.set('q', query);
+      const res = await fetch('/api/limits/rara-chat?' + params.toString());
+      const d = await res.json();
+      if (!d.success) throw new Error(d.message || 'Gagal memuat limit Rara chat');
+      raraLimitTotalPages = d.pagination?.totalPages || 1;
+      updateRaraLimitPagination(d.pagination || { page: 1, totalPages: 1, total: 0, limit: 10 });
+      if (!d.data || d.data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--muted);">Belum ada user yang chat dengan Rara hari ini.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = d.data.map(row => {
+        const used = Number(row.used_count || 0);
+        const extra = Number(row.extra_limit || 0);
+        const total = Number(row.total_limit || 20);
+        const remaining = Number(row.remaining || 0);
+        const badgeColor = remaining <= 0 ? 'var(--red)' : remaining <= 3 ? '#f59e0b' : 'var(--green)';
+        return '<tr>' +
+          '<td class="td-key">@' + escapeHtml(row.username || '-') + '</td>' +
+          '<td>' + escapeHtml(row.usage_date || '-') + '</td>' +
+          '<td><strong>' + used + '</strong></td>' +
+          '<td><strong>+' + extra + '</strong></td>' +
+          '<td><strong>' + total + '</strong></td>' +
+          '<td><span style="background:' + badgeColor + '; color:#fff; padding:4px 10px; border-radius:999px; font-size:11px; font-weight:800;">' + remaining + '</span></td>' +
+          '<td class="td-actions">' +
+            '<button class="btn-sm btn-sm-edit rara-limit-edit" data-username="' + escapeAttr(row.username || '') + '" data-userid="' + escapeAttr(row.user_id || '') + '" data-extra="' + extra + '" data-used="' + used + '">Edit</button>' +
+          '</td>' +
+        '</tr>';
+      }).join('');
+    } catch (e) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--red);">' + escapeHtml(e.message) + '</td></tr>';
+    }
+  }
+
+  function updateRaraLimitPagination(pagination) {
+    const page = pagination.page || 1;
+    const totalPages = pagination.totalPages || 1;
+    const total = pagination.total || 0;
+    const limit = pagination.limit || 10;
+    const start = total === 0 ? 0 : ((page - 1) * limit) + 1;
+    const end = Math.min(total, page * limit);
+    raraLimitPage = page;
+    raraLimitTotalPages = totalPages;
+    const pageInfo = document.getElementById('raraLimitPageInfo');
+    const totalInfo = document.getElementById('raraLimitTotalInfo');
+    const prevBtn = document.getElementById('raraLimitPrevBtn');
+    const nextBtn = document.getElementById('raraLimitNextBtn');
+    if (pageInfo) pageInfo.textContent = 'Page ' + page + ' / ' + totalPages;
+    if (totalInfo) totalInfo.textContent = total ? ('Menampilkan ' + start + '-' + end + ' dari ' + total + ' user') : '0 user';
+    if (prevBtn) prevBtn.disabled = page <= 1;
+    if (nextBtn) nextBtn.disabled = page >= totalPages;
+  }
+
+  function changeRaraLimitPage(delta) {
+    const nextPage = Math.min(raraLimitTotalPages, Math.max(1, raraLimitPage + delta));
+    if (nextPage !== raraLimitPage) loadRaraChatLimits(nextPage);
+  }
+
+  function debouncedRaraLimitSearch() {
+    clearTimeout(raraLimitSearchTimer);
+    raraLimitSearchTimer = setTimeout(() => loadRaraChatLimits(1), 350);
+  }
+
+  function clearRaraLimitSearch() {
+    const input = document.getElementById('raraLimitSearch');
+    if (input) input.value = '';
+    loadRaraChatLimits(1);
+  }
+
+  function fillRaraLimitForm(username, extra, used, userId = '') {
+    document.getElementById('raraLimitUsername').value = username || '';
+    document.getElementById('raraLimitUserId').value = userId || '';
+    document.getElementById('raraLimitExtra').value = extra ?? 0;
+    document.getElementById('raraLimitUsed').value = used ?? 0;
+  }
+
+  async function saveRaraChatLimit() {
+    const username = document.getElementById('raraLimitUsername').value.trim();
+    const userId = document.getElementById('raraLimitUserId').value.trim();
+    const extraLimit = document.getElementById('raraLimitExtra').value;
+    const usedCount = document.getElementById('raraLimitUsed').value;
+    if (!username && !userId) return showToast('Username atau User ID wajib diisi.', 'warning');
+    if (extraLimit === '' || Number.isNaN(Number(extraLimit)) || Number(extraLimit) < 0) return showToast('Extra limit wajib angka valid.', 'warning');
+    if (usedCount !== '' && (Number.isNaN(Number(usedCount)) || Number(usedCount) < 0)) return showToast('Terpakai wajib angka valid.', 'warning');
+    const res = await fetch('/api/limits/rara-chat/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, username, extraLimit, usedCount })
+    });
+    const d = await res.json();
+    if (!d.success) return showToast(d.message || 'Gagal simpan limit Rara.', 'error');
+    showToast('Limit Chat Rara berhasil disimpan.', 'success');
+    loadRaraChatLimits();
+  }
+
+  window.loadRaraChatLimits = loadRaraChatLimits;
+  window.saveRaraChatLimit = saveRaraChatLimit;
+  window.changeRaraLimitPage = changeRaraLimitPage;
+  window.debouncedRaraLimitSearch = debouncedRaraLimitSearch;
+  window.clearRaraLimitSearch = clearRaraLimitSearch;
+
   document.addEventListener('click', function(event) {
     // Image limit buttons
     const editBtn = event.target.closest('.image-limit-edit');
@@ -3624,6 +3811,13 @@ async function updateStats() {
       return;
     }
 
+    // Rara limit buttons
+    const raraEditBtn = event.target.closest('.rara-limit-edit');
+    if (raraEditBtn) {
+      fillRaraLimitForm(raraEditBtn.dataset.username || '', Number(raraEditBtn.dataset.extra || 0), Number(raraEditBtn.dataset.used || 0), raraEditBtn.dataset.userid || '');
+      return;
+    }
+
     // Inspector ban buttons
     const inspectorBanBtn = event.target.closest('.inspector-ban');
     if (inspectorBanBtn) {
@@ -3637,6 +3831,7 @@ async function updateStats() {
       return;
     }
   });
+
   async function loadEkonomiSettings() {
     try {
       const res = await fetch('/api/economy/settings');
@@ -3652,6 +3847,8 @@ async function updateStats() {
         document.getElementById('priceHintPack').value = d.settings.priceHintPack || 1800;
         document.getElementById('priceExtraImage').value = d.settings.priceExtraImage || 3000;
         document.getElementById('priceExtraLimit').value = d.settings.priceExtraLimit || 2500;
+        const raraPriceEl = document.getElementById('priceExtraRaraChat');
+        if (raraPriceEl) raraPriceEl.value = d.settings.priceExtraRaraChat || 3000;
 
         const xpBtn = document.getElementById('ecoXpToggleBtn');
         if (d.settings.isDoubleXP) {
@@ -3676,45 +3873,6 @@ async function updateStats() {
     }
   }
 
-  async function triggerEcoXpEvent() {
-    const isXpOn = document.getElementById('ecoXpToggleBtn').textContent === 'ON';
-    const multiplier = document.getElementById('ecoXpMultiplier').value;
-    const duration = document.getElementById('ecoXpDuration').value;
-
-    const res = await fetch('/api/economy/toggle-xp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ active: !isXpOn, multiplier, duration })
-    });
-    const d = await res.json();
-    if (d.success) {
-      showToast('Status Event Multi XP berhasil diperbarui!', 'success');
-      loadEkonomiSettings();
-      refresh();
-    } else {
-      showToast('Gagal mengubah event XP.', 'error');
-    }
-  }
-
-  async function triggerEcoDiscountEvent() {
-    const isDiscOn = document.getElementById('ecoDiscountToggleBtn').textContent === 'ON';
-    const percent = document.getElementById('ecoDiscountPercent').value;
-    const duration = document.getElementById('ecoDiscountDuration').value;
-
-    const res = await fetch('/api/economy/toggle-discount', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ active: !isDiscOn, percent, duration })
-    });
-    const d = await res.json();
-    if (d.success) {
-      showToast('Status Event Diskon berhasil diperbarui!', 'success');
-      loadEkonomiSettings();
-    } else {
-      showToast('Gagal mengubah event diskon.', 'error');
-    }
-  }
-
   async function saveEkonomiSettings() {
     const data = {
       baseXpRate: parseInt(document.getElementById('ecoBaseXpRate').value),
@@ -3722,6 +3880,7 @@ async function updateStats() {
       priceHintPack: parseInt(document.getElementById('priceHintPack').value),
       priceExtraImage: parseInt(document.getElementById('priceExtraImage').value),
       priceExtraLimit: parseInt(document.getElementById('priceExtraLimit').value),
+      priceExtraRaraChat: parseInt(document.getElementById('priceExtraRaraChat')?.value || 3000),
     };
 
     if (Object.values(data).some(isNaN)) {

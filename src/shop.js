@@ -67,6 +67,7 @@ function getItemPrice(item) {
         if (item.type === 'free_hint') basePrice = global.priceHintPack;
         if (item.type === 'extra_image') basePrice = global.priceExtraImage;
         if (item.type === 'extra_cmd_limit') basePrice = global.priceExtraLimit;
+        if (item.type === 'extra_rara_chat') basePrice = global.priceExtraRaraChat !== undefined ? global.priceExtraRaraChat : 3000;
     }
     
     if (global.isDiscountEvent) {

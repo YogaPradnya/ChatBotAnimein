@@ -117,6 +117,8 @@ function createRuntime(scope) {
         set priceExtraImage(value) { state.priceExtraImage = value; },
         get priceExtraLimit() { return state.priceExtraLimit; },
         set priceExtraLimit(value) { state.priceExtraLimit = value; },
+        get priceExtraRaraChat() { return state.priceExtraRaraChat; },
+        set priceExtraRaraChat(value) { state.priceExtraRaraChat = value; },
         get login() { return scope.login; },
     };
 }
@@ -697,7 +699,8 @@ function startDashboard(scope) {
                     priceCustomTitle,
                     priceHintPack,
                     priceExtraImage,
-                    priceExtraLimit
+                    priceExtraLimit,
+                    priceExtraRaraChat: priceExtraRaraChat !== undefined ? priceExtraRaraChat : 3000
                 }
             });
         } catch (e) {
@@ -706,7 +709,7 @@ function startDashboard(scope) {
     });
 
     app.post('/api/economy/save', async (req, res) => {
-        const { baseXpRate: bx, priceCustomTitle: pct, priceHintPack: php, priceExtraImage: pei, priceExtraLimit: pel } = req.body || {};
+        const { baseXpRate: bx, priceCustomTitle: pct, priceHintPack: php, priceExtraImage: pei, priceExtraLimit: pel, priceExtraRaraChat: perc } = req.body || {};
         try {
             if (bx !== undefined) {
                 baseXpRate = parseInt(bx, 10);
@@ -728,8 +731,12 @@ function startDashboard(scope) {
                 priceExtraLimit = parseInt(pel, 10);
                 await settingsRepo.set(settingsKeys.PRICE_EXTRA_LIMIT, priceExtraLimit);
             }
+            if (perc !== undefined) {
+                priceExtraRaraChat = parseInt(perc, 10);
+                await settingsRepo.set('price_extra_rara_chat', priceExtraRaraChat);
+            }
 
-            console.log(`[DASHBOARD] Economy settings updated -> Base XP: ${baseXpRate}%, CustomTitle: ${priceCustomTitle}, HintPack: ${priceHintPack}, ExtraImg: ${priceExtraImage}, ExtraLimit: ${priceExtraLimit}`);
+            console.log(`[DASHBOARD] Economy settings updated -> Base XP: ${baseXpRate}%, CustomTitle: ${priceCustomTitle}, HintPack: ${priceHintPack}, ExtraImg: ${priceExtraImage}, ExtraLimit: ${priceExtraLimit}, ExtraRaraChat: ${priceExtraRaraChat}`);
             res.json({ success: true });
         } catch (e) {
             res.status(500).json({ success: false, error: e.message });
@@ -1009,6 +1016,83 @@ function startDashboard(scope) {
                 args: [today, userId]
             });
             console.log(`[DASHBOARD] Pemakaian cmd @${username}(${userId}) direset.`);
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ success: false, message: e.message });
+        }
+    });
+
+    app.get('/api/limits/rara-chat', async (req, res) => {
+        const q = req.query.q || '';
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const offset = (page - 1) * limit;
+        try {
+            const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).toISOString().slice(0, 10);
+            let countSql = "SELECT COUNT(*) as total FROM rara_chat_limits";
+            let countArgs = [];
+            let listSql = "SELECT * FROM rara_chat_limits ORDER BY updated_at DESC LIMIT ? OFFSET ?";
+            let listArgs = [limit, offset];
+
+            if (q) {
+                countSql = "SELECT COUNT(*) as total FROM rara_chat_limits WHERE username LIKE ?";
+                countArgs = [`%${q}%`];
+                listSql = "SELECT * FROM rara_chat_limits WHERE username LIKE ? ORDER BY updated_at DESC LIMIT ? OFFSET ?";
+                listArgs = [`%${q}%`, limit, offset];
+            }
+
+            const countRes = await db.execute({ sql: countSql, args: countArgs });
+            const total = countRes.rows.length > 0 ? Number(countRes.rows[0].total) : 0;
+            const listRes = await db.execute({ sql: listSql, args: listArgs });
+
+            const rowsFormatted = listRes.rows.map(r => {
+                const isToday = r.usage_date === today;
+                const used = isToday ? Number(r.used_count || 0) : 0;
+                const extra = Number(r.extra_limit || 0);
+                const totalLimit = 20 + extra;
+                return {
+                    ...r,
+                    used_count: used,
+                    extra_limit: extra,
+                    total_limit: totalLimit,
+                    remaining: Math.max(0, totalLimit - used),
+                };
+            });
+
+            res.json({
+                success: true,
+                data: rowsFormatted,
+                pagination: {
+                    page,
+                    limit,
+                    total,
+                    totalPages: Math.ceil(total / limit) || 1,
+                },
+                today,
+            });
+        } catch (e) {
+            res.status(500).json({ success: false, message: e.message });
+        }
+    });
+
+    app.post('/api/limits/rara-chat/update', async (req, res) => {
+        const username = String(req.body.username || '').replace(/^@/, '').trim();
+        const userId = String(req.body.userId || req.body.user_id || '').trim();
+        const extraLimit = parseInt(req.body.extraLimit ?? req.body.extra_limit, 10) || 0;
+        const usedCount = req.body.usedCount !== undefined ? parseInt(req.body.usedCount, 10) : 0;
+
+        if (!userId) return res.status(400).json({ success: false, message: 'User ID wajib diisi.' });
+
+        try {
+            const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).toISOString().slice(0, 10);
+            await limitRepo.upsertRaraChatLimit({
+                userId,
+                username,
+                usageDate: today,
+                usedCount,
+                extraLimit,
+            });
+            console.log(`[DASHBOARD] Limit Rara chat @${username}(${userId}): ${usedCount}/20 (extra: ${extraLimit})`);
             res.json({ success: true });
         } catch (e) {
             res.status(500).json({ success: false, message: e.message });
