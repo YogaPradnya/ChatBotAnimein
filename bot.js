@@ -3546,24 +3546,16 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
     const now = Date.now();
     let history = [];
     
-    // Ambil riwayat pendek agar konteks obrolan tetap nyambung tanpa boros token.
-    const dbHistory = await getHistoryFromDB(senderUserId, senderName, 8); 
-    history = dbHistory.messages.slice(-12); // Maksimal 12 message terakhir / sekitar 6 percakapan
+    // Ambil 6 percakapan terakhir (6 pasang Q&A = 12 pesan) agar konteks obrolan Rara tetap nyambung
+    const dbHistory = await getHistoryFromDB(senderUserId, senderName, 6); 
+    history = dbHistory.messages.slice(-12);
     const lastTime = dbHistory.lastTime;
     
-    // 1. Reset context jika idle > 10 menit
-    if (lastTime && (now - lastTime > 10 * 60 * 1000)) {
-        console.log(`[MEMORY] Session reset for ${senderName} (Idle > 10 mins)`);
+    // Reset memori jika user inaktif > 2 menit
+    const INACTIVITY_TIMEOUT_MS = 2 * 60 * 1000;
+    if (lastTime && (now - lastTime > INACTIVITY_TIMEOUT_MS)) {
+        console.log(`[MEMORY] Session reset for ${senderName} (Idle > 2 mins)`);
         history = [];
-    }
-    
-    // 2. Reset context jika ganti topik (kecuali jika membalas pesan bot)
-    if (history.length > 0 && !isReply) {
-        const lastUserMsg = [...history].reverse().find(m => m.role === 'user');
-        if (lastUserMsg && isNewTopic(lastUserMsg.content, userMessage)) {
-            console.log(`[MEMORY] Topic switch detected for ${senderName}. Context cleared.`);
-            history = [];
-        }
     }
 
     // Hitung affection & susun dynamic system prompt dari JSON DB

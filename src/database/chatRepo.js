@@ -9,8 +9,8 @@ function createChatRepo(db) {
     async function getRecentUserHistory(userId, username, limit) {
         if (userId) {
             return db.execute({
-                sql: 'SELECT pertanyaan, jawaban, timestamp FROM chat_logs WHERE user_id = ? OR (user_id IS NULL AND username = ?) ORDER BY id DESC LIMIT ?',
-                args: [String(userId), String(username || ''), limit],
+                sql: 'SELECT pertanyaan, jawaban, timestamp FROM chat_logs WHERE user_id = ? ORDER BY id DESC LIMIT ?',
+                args: [String(userId), limit],
             });
         }
         return db.execute({
