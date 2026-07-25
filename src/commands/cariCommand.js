@@ -156,10 +156,10 @@ async function searchTraceMoe(imageUrl) {
         console.warn('[CARI GAMBAR] Download buffer dari CDN Animein gagal:', cdnErr.message);
     }
 
-    // 2. Jika buffer berhasil didownload, POST binary buffer ke Trace.moe
+    // 2. Jika buffer berhasil didownload, POST binary buffer ke Trace.moe dengan ?cutBorders&anilistInfo
     if (imageBuffer) {
         try {
-            const postRes = await axios.post('https://api.trace.moe/search?anilistInfo', imageBuffer, {
+            const postRes = await axios.post('https://api.trace.moe/search?cutBorders&anilistInfo', imageBuffer, {
                 headers: {
                     ...traceHeaders,
                     'Content-Type': contentType
@@ -174,10 +174,10 @@ async function searchTraceMoe(imageUrl) {
         }
     }
 
-    // 3. Fallback: GET via URL langsung jika POST buffer tidak menghasilkan data
+    // 3. Fallback: GET via URL langsung dengan ?cutBorders&anilistInfo jika POST buffer tidak menghasilkan data
     if (!data) {
         try {
-            const traceUrl = `https://api.trace.moe/search?anilistInfo&url=${encodeURIComponent(imageUrl)}`;
+            const traceUrl = `https://api.trace.moe/search?cutBorders&anilistInfo&url=${encodeURIComponent(imageUrl)}`;
             const res = await axios.get(traceUrl, { headers: traceHeaders, timeout: 15000 });
             if (res.data && Array.isArray(res.data.result)) {
                 data = res.data;
@@ -251,7 +251,37 @@ async function execute(ctx) {
         return true;
     }
 
-    // A. JIKA ADA GAMBAR: Gunakan Reverse Image Search
+    // A. JIKA ADA GAMBAR + TEKS KATA KUNCI (Caption Hibrida): Pencarian Teks Presisi 100%
+    if (imageUrl && query) {
+        try {
+            await incrementCommandUsage(senderUserId, senderName);
+            const results = await fetchAnimeSearchResults(query, 5);
+            if (!results || results.length === 0) {
+                await sendChatMessage(bot, `@${senderName.substring(0, 10)}\n❌ Tidak ditemukan anime dengan judul "${query}".`, msg.id);
+                return true;
+            }
+
+            const lines = [
+                `┌── ${boxHeader('HASIL CARI HIBRIDA')} 🔍`,
+                `│ 🔑 Keyword : ${query}`,
+                `│ 📸 Status  : Gambar terlampir`,
+                `├───────────────────`,
+            ];
+
+            results.slice(0, 5).forEach((anime, index) => {
+                lines.push(`│ 🎬 ${index + 1}. ${cleanText(anime.title, 32)}`);
+                lines.push(`│    ${anime.type || 'TV'} | ${anime.year || '-'} | ${anime.views || '0'} views`);
+            });
+
+            lines.push(`└───────────────────`);
+            await sendChatMessage(bot, `@${senderName.substring(0, 10)}\n${lines.join('\n')}`, msg.id);
+            return true;
+        } catch (err) {
+            console.error('[CARI HIBRIDA ERROR]', err.message);
+        }
+    }
+
+    // B. JIKA HANYA ADA GAMBAR: Gunakan Reverse Image Search dengan Strict Threshold (>=75%)
     if (imageUrl) {
         try {
             const result = await searchTraceMoe(imageUrl);
@@ -262,24 +292,34 @@ async function execute(ctx) {
 
             await incrementCommandUsage(senderUserId, senderName);
 
-            const isLowAccuracy = result.similarityNum < 0.70;
+            // Filter Ambang Akurasi Ketat (>= 75%) untuk Mencegah Salah Anime
+            if (result.similarityNum < 0.75) {
+                const lowLines = [
+                    `┌── ${boxHeader('HASIL CARI GAMBAR')} 🔍`,
+                    `│ ⚠️ Akurasi Rendah (${result.similarity})`,
+                    `├───────────────────`,
+                    `│ Gambar potongan adegan, fan art,`,
+                    `│ atau anime rilis baru.`,
+                    `│`,
+                    `│ 💡 Ketik caption .cari [judul]`,
+                    `│    (contoh: .cari naruto)`,
+                    `│    untuk pencarian 100% presisi!`,
+                    `└───────────────────`,
+                ];
+                await sendChatMessage(bot, `@${senderName.substring(0, 10)}\n${lowLines.join('\n')}`, msg.id);
+                return true;
+            }
+
             const lines = [
                 `┌── ${boxHeader('HASIL CARI GAMBAR')} 🔍`,
                 `│ 📺 Judul   : ${cleanText(result.title, 30)}`,
                 result.titleEnglish && result.titleEnglish !== '-' ? `│ 🌐 Eng     : ${cleanText(result.titleEnglish, 30)}` : null,
                 `│ 🎬 Episode : Episode ${result.episode}`,
                 `│ ⏱️ Menit   : ${result.timestamp}`,
-                `│ 🎯 Akurasi : ${result.similarity}${isLowAccuracy ? ' (Rendah)' : ''}`,
+                `│ 🎯 Akurasi : ${result.similarity}`,
                 result.isAdult ? `│ ⚠️ Rating  : 18+ (Adult Content)` : null,
+                `└───────────────────`,
             ].filter(Boolean);
-
-            if (isLowAccuracy) {
-                lines.push('├───────────────────');
-                lines.push('│ 💡 Akurasi <70%: Potongan adegan,');
-                lines.push('│    fan art, PV, atau anime rilis baru.');
-            }
-
-            lines.push('└───────────────────');
 
             await sendChatMessage(bot, `@${senderName.substring(0, 10)}\n${lines.join('\n')}`, msg.id);
         } catch (e) {
