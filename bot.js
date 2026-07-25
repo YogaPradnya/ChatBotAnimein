@@ -4728,6 +4728,7 @@ startDashboard({
     chatRepo,
     statsRepo,
     settingsRepo,
+    limitRepo,
     settingsKeys: SETTINGS_KEYS,
     login,
 });

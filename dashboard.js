@@ -1220,9 +1220,9 @@ function getDashboardHTML() {
           <div style="display: flex; gap: 8px; align-items: center;">
             <button class="btn-sm btn-sm-edit" id="raraLimitPrevBtn" onclick="changeRaraLimitPage(-1)">Prev</button>
             <button class="btn-sm btn-sm-edit" id="raraLimitNextBtn" onclick="changeRaraLimitPage(1)">Next</button>
+          </div>
         </div>
       </div>
-
     </div>
 
     <!-- PAGE: REALTIME LOGS -->

@@ -103,6 +103,7 @@ function createRuntime(scope) {
         get statsRepo() { return scope.statsRepo; },
         get settingsRepo() { return scope.settingsRepo; },
         get settingsKeys() { return scope.settingsKeys; },
+        get limitRepo() { return scope.limitRepo; },
         get baseXpRate() { return state.baseXpRate; },
         set baseXpRate(value) { state.baseXpRate = value; },
         get isDiscountEvent() { return state.isDiscountEvent; },
