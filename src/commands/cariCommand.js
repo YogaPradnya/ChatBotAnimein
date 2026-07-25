@@ -361,7 +361,6 @@ async function execute(ctx) {
                 `┌── ${boxHeader('HASIL CARI GAMBAR')} 🔍`,
                 `│ 📺 Judul   : ${cleanText(result.title, 30)}`,
                 result.titleEnglish && result.titleEnglish !== '-' ? `│ 🌐 Eng     : ${cleanText(result.titleEnglish, 30)}` : null,
-                `│ 🆔 Animein : ${animeinId !== '-' ? `#${animeinId}` : '-'}`,
                 `│ 🎬 Episode : Episode ${result.episode}`,
                 `│ ⏱️ Menit   : ${result.timestamp}`,
                 `│ 🎯 Akurasi : ${result.similarity}`,
