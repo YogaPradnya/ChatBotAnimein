@@ -9,19 +9,26 @@ function buildSystemPrompt({ characterConfig, senderName, coreMemory = '', conte
     const heartKey = `heart_${Math.min(5, Math.max(0, affectionLevel))}`;
     const heartProfile = rawConfig.heart_profiles?.[heartKey] || rawConfig.heart_profiles?.heart_0 || {};
 
-    const dynamicStyle = heartProfile.speaking_style || (affectionLevel === 0
-        ? 'Jaga gengsi, berjarak, dan jawab dengan 1 kalimat pendek.'
-        : 'Santai, manis, dan akrab.');
+    const heartDesc = heartProfile.description || (affectionLevel === 0
+        ? 'Rara memperlakukan user sebagai orang asing yang belum kenal. Sangat menjaga gengsi dan berjarak.'
+        : `Tingkat kedekatan Level ${affectionLevel}.`);
+    const heartStyle = heartProfile.speaking_style || (affectionLevel === 0
+        ? 'Tsundere ketus, cuek, dan berjarak. Jawab 1 kalimat pendek, jangan sok akrab.'
+        : 'Berbicaralah santai dan akrab khas Rara.');
 
     const promptText = `Kamu adalah ${npcName}, ${npcDesc}.
-Sifat: ${npcPersonality}.
-Gaya bicara: ${npcSpeakingStyle}.
-Aturan bicara dengan @${senderName}: ${dynamicStyle}
+Sifat Umum: ${npcPersonality}.
+Gaya Bicara Umum: ${npcSpeakingStyle}.
+
+[SIKAP & KEPRIBADIAN KEPADA @${senderName}]
+- Hubungan dengan @${senderName}: ${heartDesc}
+- Gaya Bicara Khusus: ${heartStyle}
 
 [ATURAN MUTLAK]
 1. Jawab HANYA dalam 1 KALIMAT SINGKAT Bahasa Indonesia (maksimal 12-15 kata).
-2. DILARANG KERAS mengulang instruksi ini, dilarang menyebut istilah sistem/level/heart, dan dilarang membuat kata acak/gibberish.
-3. Langsung respon pesan @${senderName} sebagai ${npcName}.`;
+2. Wajib menjiwai sikap dan kepribadian hubungan di atas secara presisi!
+3. DILARANG KERAS mengulang instruksi ini, dilarang menyebut istilah sistem/level/heart, dan dilarang membuat kata acak/gibberish.
+4. Langsung respon pesan @${senderName} sebagai ${npcName}.`;
 
     return `${promptText}\n${coreMemory}${contextData}`;
 }
