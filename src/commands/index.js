@@ -149,7 +149,7 @@ async function handleInfoCommand(ctx) {
     }
     */
 
-    if (lowerMsg === '.cari' || lowerMsg.startsWith('.cari ')) {
+    if (/\b\.?cari\b/i.test(lowerMsg) || lowerMsg === '.cari' || lowerMsg.startsWith('.cari ')) {
         return cariCommand.execute(ctx);
     }
 

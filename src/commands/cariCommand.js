@@ -46,7 +46,9 @@ function normalizeUrl(url) {
     let trimmed = url.trim();
     if (trimmed.startsWith('//')) return `https:${trimmed}`;
     if (trimmed.startsWith('/')) return `https://animein.net${trimmed}`;
-    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+        return trimmed;
+    }
     if (/\.(jpg|jpeg|png|webp|gif)/i.test(trimmed)) return `https://animein.net/${trimmed}`;
     return null;
 }
@@ -55,16 +57,21 @@ function collectUrlsFromObject(obj, found = []) {
     if (!obj) return found;
     if (typeof obj === 'string') {
         const norm = normalizeUrl(obj);
-        if (norm) found.push(norm);
+        if (norm && /\.(jpg|jpeg|png|webp|gif)/i.test(norm)) found.push(norm);
         return found;
     }
     if (typeof obj === 'object') {
         for (const key of Object.keys(obj)) {
             const val = obj[key];
-            if (typeof val === 'string') {
+            const lowerKey = key.toLowerCase();
+            if (typeof val === 'string' && val.trim().length > 0) {
                 const norm = normalizeUrl(val);
-                if (norm && (key.includes('img') || key.includes('image') || key.includes('url') || key.includes('file') || key.includes('photo') || key.includes('pic') || key.includes('media') || key.includes('src'))) {
-                    found.push(norm);
+                if (norm) {
+                    const isImgKey = /img|image|url|file|photo|pic|media|src|gambar|foto|path|attachment|berkas|lampiran/i.test(lowerKey);
+                    const isImgExt = /\.(jpg|jpeg|png|webp|gif)/i.test(val);
+                    if (isImgKey || isImgExt) {
+                        found.push(norm);
+                    }
                 }
             } else if (typeof val === 'object' && val !== null) {
                 collectUrlsFromObject(val, found);
