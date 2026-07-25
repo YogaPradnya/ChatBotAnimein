@@ -30,7 +30,7 @@ async function askCloudflareAi({
 }) {
     const apiKey = CONFIG.CLOUDFLARE_API_KEY;
     const accountId = CONFIG.CLOUDFLARE_ACCOUNT_ID;
-    const model = CONFIG.CLOUDFLARE_MODEL || '@cf/meta/llama-3.2-1b-instruct';
+    const model = CONFIG.CLOUDFLARE_MODEL || '@cf/meta/llama-3.1-8b-instruct';
 
     if (!apiKey || !accountId) {
         throw new Error('Cloudflare API Key atau Account ID belum dikonfigurasi.');
@@ -97,7 +97,7 @@ async function askCloudflareAi({
     const answer = result.response.trim();
     const tokens = result.usage?.total_tokens || 0;
 
-    return { text: answer, tokens, provider: 'Cloudflare Llama 3.2 1B' };
+    return { text: answer, tokens, provider: 'Cloudflare Llama 3.1 8B' };
 }
 
 module.exports = {

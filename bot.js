@@ -2847,7 +2847,7 @@ function polishAiAnswer(answer, userMessage, replyText = '') {
 }
 
 /** Groq (Llama 3.1) - kualitas lebih baik */
-async function askGroq(index, userMessage, senderName, contextData = '', chatHistory = [], replyText = '', senderUserId = null) {
+async function askGroq(index, userMessage, senderName, contextData = '', chatHistory = [], replyText = '', senderUserId = null, overrideSystemPrompt = null) {
     const client = groqClients[index];
     const stat = stats.otak[index];
     
@@ -2867,7 +2867,7 @@ async function askGroq(index, userMessage, senderName, contextData = '', chatHis
         }
     }
     
-    const systemContent = `${personalizeSystemPrompt(SYSTEM_PROMPT, senderName)}${coreMemory}${contextData}`;
+    const systemContent = overrideSystemPrompt || `${personalizeSystemPrompt(SYSTEM_PROMPT, senderName)}${coreMemory}${contextData}`;
     const replyContext = sanitizeReplyContext(replyText);
     const userContent = replyContext
         ? `Pesan yang direply oleh ${senderName}: "${replyContext}"\n\n${senderName} berkata: "${userMessage}". Jadikan pesan reply sebagai konteks tambahan saat menjawab.`
@@ -3547,7 +3547,7 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
         affectionPoints: userAffection.points
     });
 
-    // Model Utama: Cloudflare Workers AI (Llama 3.2 1B)
+    // Model Utama (1): Cloudflare Workers AI (Llama 3.1 8B)
     const cfStat = getCloudflareStat();
     if (cfStat.active && CONFIG.CLOUDFLARE_API_KEY && CONFIG.CLOUDFLARE_ACCOUNT_ID && Date.now() >= cfStat.cooldownUntil) {
         try {
@@ -3566,7 +3566,7 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
 
             const finalText = polishAiAnswer(text, userMessage, replyText);
             if (finalText) {
-                return { text: finalText, provider: `Cloudflare (Llama 3.2 1B)`, tokens };
+                return { text: finalText, provider: `Cloudflare (Llama 3.1 8B)`, tokens };
             }
         } catch (err) {
             cfStat.errors++;
@@ -3575,7 +3575,7 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
         }
     }
 
-    // Fallback Pertama: Cerebras AI (gemma-4-31b, Max 30 RPM)
+    // Fallback Pertama (2): Cerebras AI
     const cbStat = getCerebrasStat();
     if (cbStat.active && CONFIG.CEREBRAS_API_KEY && Date.now() >= cbStat.cooldownUntil) {
         try {
@@ -3601,6 +3601,7 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
         }
     }
 
+    // Fallback Kedua (3): Groq AI (Llama 3.1 8B)
     for (let i = 0; i < groqClients.length; i++) {
         const stat = stats.otak[i];
         const nowLoop = Date.now();
@@ -3608,40 +3609,20 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
         if (!stat.active || nowLoop < stat.cooldownUntil) continue;
 
         try {
-
-
-            const { text, tokens } = await askGroq(i, userMessage, senderName, finalContext, history, replyText, senderUserId);
+            const { text, tokens } = await askGroq(i, userMessage, senderName, finalContext, history, replyText, senderUserId, dynamicSystemPrompt);
             const finalText = polishAiAnswer(text, userMessage, replyText);
             if (finalText) {
                 stats.lastUsedGroq = i;
-                
-                // Cache jawaban AI dinonaktifkan: jangan simpan response dinamis ke response_cache.
-                
-                return { text: finalText, provider: `Otak #${i+1}`, tokens };
+                return { text: finalText, provider: `Groq AI (Llama 3.1 8B)`, tokens };
             }
         } catch (err) {
             stat.errors++;
-            stat.lastError = err.message.slice(0, 100);
-            const errStatus = err.status || 0;
-            const errMsg = err.message || '';
-
-            if (errMsg.includes('429') || errStatus === 429) {
-                // Rate limit: cooldown standar
-                stat.cooldownUntil = nowLoop + CONFIG.GROQ_COOLDOWN;
-            } else if (errStatus === 401 || errStatus === 403) {
-                // API key invalid/expired: cooldown panjang (10 menit)
-                stat.cooldownUntil = nowLoop + 600000;
-                console.error(`[GROQ] Otak #${i+1} API key invalid/expired. Cooldown 10 menit.`);
-            } else if (errStatus >= 500) {
-                // Server error (500, 502, 503): cooldown standar
-                stat.cooldownUntil = nowLoop + CONFIG.GROQ_COOLDOWN;
-            } else if (errStatus === 400) {
-                // Bad request (context too long, dll): cooldown pendek (30 detik)
-                stat.cooldownUntil = nowLoop + 30000;
-            }
+            stat.lastError = (err.message || '').slice(0, 100);
+            console.error(`[GROQ AI] Otak #${i+1} Error: ${err.message}.`);
         }
     }
-    return { text: 'Maaf kak, semua koneksi AI Rara lagi sibuk/limit. Coba lagi nanti ya! 🙏', provider: 'Error', tokens: 0 };
+
+    return { text: 'Maaf kak, semua koneksi AI Rara lagi sibuk/limit. Coba lagi nanti ya!', provider: 'Error', tokens: 0 };
 }
 
 const getImageLimitStatus = limitService.getImageLimitStatus;
