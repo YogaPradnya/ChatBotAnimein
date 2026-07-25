@@ -1725,6 +1725,17 @@ function getDashboardHTML() {
       </div>
     </div>
 
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+      <div class="form-group">
+        <label class="form-label">Chat Rara Terpakai Hari Ini</label>
+        <input type="number" id="editUserRaraChatUsed" placeholder="0">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Ekstra Limit Chat Rara Hari Ini</label>
+        <input type="number" id="editUserRaraChatExtra" placeholder="0">
+      </div>
+    </div>
+
     <div style="background:#f1f5f9; padding:14px; border-radius:12px; margin-bottom:20px; border:1px dashed var(--border);">
        <p style="font-size:11px; color:#475569; line-height:1.5;"><b>Note:</b> Pastikan Level dan XP sinkron. Mengubah XP terlalu besar tanpa menaikkan level bisa membuat user naik level mendadak saat interaksi berikutnya.</p>
     </div>
@@ -2898,20 +2909,24 @@ async function updateStats() {
         const safeUserId = jsString(u.user_id || '');
         const affPts = u.affection_points || 0;
         const affLvl = u.affection_level || 0;
+        const raraUsed = u.rara_chat_used || 0;
+        const raraExtra = u.rara_chat_extra || 0;
+        const raraTotal = 20 + raraExtra;
         return \`<tr>
           <td style="font-weight:700; color:var(--muted); text-align:center;">\${i+1}</td>
           <td style="font-weight:700; color:var(--accent); font-size:13px;">@\${escapeHTML(u.username)}<div style="font-size:10px; color:var(--muted); font-weight:500;">\${escapeHTML(title)}</div></td>
           <td style="text-align:center;">
             <span class="prov-tag" style="background:var(--accent); color:#fff; border:none; padding:2px 6px;">Lv \${u.level}</span>
             <div style="font-size:10px; font-weight:700; color:#e11d48; margin-top:3px;">Heart \${affLvl} (\${affPts} pts)</div>
+            <div style="font-size:10px; font-weight:600; color:#2563eb; margin-top:2px;">Chat: \${raraUsed}/\${raraTotal} (\${raraExtra >= 0 ? '+' : ''}\${raraExtra})</div>
           </td>
           <td style="font-weight:600; font-size:11px; white-space:nowrap;">\${(u.xp||0).toLocaleString('id-ID')}<br>\${req.toLocaleString('id-ID')}</td>
-          <td class="td-actions"><button class="btn-sm btn-sm-edit" onclick="editUserStats('\${safeUsername}', \${u.level}, \${u.xp}, '\${safeTitle}', '\${safeUserId}', \${affPts}, \${affLvl})">Edit</button></td>
+          <td class="td-actions"><button class="btn-sm btn-sm-edit" onclick="editUserStats('\${safeUsername}', \${u.level}, \${u.xp}, '\${safeTitle}', '\${safeUserId}', \${affPts}, \${affLvl}, \${raraUsed}, \${raraExtra})">Edit</button></td>
           </tr>\`;
       }).join('');
     } catch(e) {}
   }
-  function editUserStats(user, level, xp, customTitle = '', userId = '', affPts = 0, affLvl = 0) {
+  function editUserStats(user, level, xp, customTitle = '', userId = '', affPts = 0, affLvl = 0, raraUsed = 0, raraExtra = 0) {
     document.getElementById('editUserUsername').value = user;
     document.getElementById('editUserUserId').value = userId;
     document.getElementById('editUserTitle').textContent = user;
@@ -2919,6 +2934,8 @@ async function updateStats() {
     document.getElementById('editUserXP').value = xp;
     document.getElementById('editUserAffectionPoints').value = affPts || 0;
     document.getElementById('editUserAffectionLevel').value = affLvl || 0;
+    document.getElementById('editUserRaraChatUsed').value = raraUsed || 0;
+    document.getElementById('editUserRaraChatExtra').value = raraExtra || 0;
     
     updateModalTitleDropdown(customTitle);
     const sel = document.getElementById('editUserTitleSelect');
@@ -2935,7 +2952,9 @@ async function updateStats() {
       xp: parseInt(document.getElementById('editUserXP').value),
       custom_title: document.getElementById('editUserTitleSelect').value,
       affection_points: parseInt(document.getElementById('editUserAffectionPoints').value) || 0,
-      affection_level: parseInt(document.getElementById('editUserAffectionLevel').value) || 0
+      affection_level: parseInt(document.getElementById('editUserAffectionLevel').value) || 0,
+      rara_chat_used: parseInt(document.getElementById('editUserRaraChatUsed').value) || 0,
+      rara_chat_extra: parseInt(document.getElementById('editUserRaraChatExtra').value) || 0
     };
     const res = await fetch('/api/users/update-xp', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)

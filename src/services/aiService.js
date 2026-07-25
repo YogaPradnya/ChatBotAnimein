@@ -293,6 +293,14 @@ function createAiService(deps) {
             console.log(`[ANIME DATA] Handler returned null, fallback to normal AI`);
         }
 
+        if (typeof deps.checkRaraChatLimit === 'function') {
+            const chatLimitStatus = await deps.checkRaraChatLimit(senderUserId, senderName);
+            if (chatLimitStatus.remaining <= 0) {
+                await sendChatMessage(bot, `@${senderName} Limit obrolan Rara harian kamu sudah habis (${chatLimitStatus.used}/${chatLimitStatus.limit}). Ketik .beli 5 untuk membeli +1 ekstra limit seharga 3.000 EXP!`, msg.id);
+                return true;
+            }
+        }
+
         const { text: aiText, provider, tokens } = await getAIResponse(question, senderName, !!msg.replay_text, senderUserId, msg.replay_text || '');
         const sent = await sendChatMessage(bot, `@${senderName} ${aiText}`, msg.id);
 
@@ -300,6 +308,10 @@ function createAiService(deps) {
             console.warn(`[AI SEND FAILED] Gagal kirim balasan AI ke chat untuk ${senderName}. Provider: ${provider}`);
             addActivity('send_failed', senderName, question, aiText, provider, tokens);
             return true;
+        }
+
+        if (typeof deps.incrementRaraChatLimitUsage === 'function') {
+            await deps.incrementRaraChatLimitUsage(senderUserId, senderName);
         }
 
         addActivity('text', senderName, question, aiText, provider, tokens);

@@ -42,6 +42,15 @@ const SHOP_ITEMS = [
         consumable: true,
         quantity: 1,
     },
+    {
+        id: 5,
+        name: 'Extra Chat Rara (+1)',
+        description: '+1 limit chat Rara hari ini',
+        price: 3000,
+        type: 'extra_rara_chat',
+        consumable: true,
+        quantity: 1,
+    },
 ];
 
 function resolveShopRepo(repoOrDb) {

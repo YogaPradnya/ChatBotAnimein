@@ -9,6 +9,7 @@ async function execute(ctx) {
         sendChatMessage,
         checkCommandLimit,
         getImageLimitStatus,
+        checkRaraChatLimit,
         handleError,
         stats,
         logEmitter,
@@ -25,10 +26,20 @@ async function execute(ctx) {
             handleError(e, { scope: 'LIMIT CMD', detail: 'image limit status', stats, logEmitter });
         }
 
+        let raraLimit = { remaining: 20, limit: 20 };
+        if (typeof checkRaraChatLimit === 'function') {
+            try {
+                raraLimit = await checkRaraChatLimit(senderUserId, senderName);
+            } catch (e) {
+                console.warn('[LIMIT CMD] Rara chat limit error:', e.message);
+            }
+        }
+
         const limitMsg = [
             `┌── ${boxHeader('📦 LIMIT HARI INI')}`,
-            `│🎟️ Command : ${cmdLimit.remaining}/${cmdLimit.limit}`,
-            `│🖼️ Gambar  : ${imgLimit.remaining}/${imgLimit.limit}`,
+            `│🎟️ Command  : ${cmdLimit.remaining}/${cmdLimit.limit}`,
+            `│🖼️ Gambar   : ${imgLimit.remaining}/${imgLimit.limit}`,
+            `│🤖 Chat Rara: ${raraLimit.remaining}/${raraLimit.limit}`,
             `├───────────────────`,
             `│ Reset jam 00:00 WIB`,
             `│ Beli extra di .toko`,

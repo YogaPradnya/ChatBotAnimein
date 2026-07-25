@@ -107,6 +107,15 @@ async function execute(ctx) {
                 }
             }
 
+            if (itemId === 5) {
+                const today = getJakartaDateKey();
+                try {
+                    await limitRepo.addRaraChatExtraLimit(senderUserId, senderName, today, buyQuantity);
+                } catch (e) {
+                    console.warn("[SHOP] Gagal update rara chat limit:", e.message);
+                }
+            }
+
             const buyMsg = [
                 `@${senderName}`,
                 `\u2705 BERHASIL!`,

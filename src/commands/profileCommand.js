@@ -13,6 +13,7 @@ async function execute(ctx) {
         userRepo,
         getGelar,
         getImageLimitStatus,
+        checkRaraChatLimit,
         IMAGE_DAILY_LIMIT_DEFAULT,
         handleError,
         stats,
@@ -31,6 +32,15 @@ async function execute(ctx) {
             return true;
         }
         await incrementCommandUsage(senderUserId, senderName);
+
+        let raraLimit = { remaining: 20, limit: 20 };
+        if (typeof checkRaraChatLimit === 'function') {
+            try {
+                raraLimit = await checkRaraChatLimit(senderUserId, senderName);
+            } catch (e) {
+                console.warn("[PROFIL] Rara chat limit query failed:", e.message);
+            }
+        }
 
         const res = await userRepo.getUserProfileWithRank(senderUserId);
         let userData;
@@ -113,8 +123,9 @@ async function execute(ctx) {
             `│ 🔥 Now  : ${quizData.current_streak} hari`,
             `│ 🏆 Best : ${quizData.best_streak} hari`,
             `├── ${boxHeader('BATAS LIMIT')} ⏳`,
-            `│ 📊 Cmd  : ${updatedLimit.remaining}/${updatedLimit.limit}`,
-            `│ 🖼️ Img  : ${imgLimit.remaining}/${imgLimit.limit}`,
+            `│ 📊 Cmd   : ${updatedLimit.remaining}/${updatedLimit.limit}`,
+            `│ 🖼️ Img   : ${imgLimit.remaining}/${imgLimit.limit}`,
+            `│ 🤖 Rara  : ${raraLimit.remaining}/${raraLimit.limit}`,
             `└──────────────────`
         );
 

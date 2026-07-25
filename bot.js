@@ -207,6 +207,16 @@ async function initDB() {
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         `);
+        await db.execute(`
+            CREATE TABLE IF NOT EXISTS rara_chat_limits (
+                user_id TEXT PRIMARY KEY,
+                username TEXT NOT NULL DEFAULT '',
+                usage_date TEXT NOT NULL,
+                used_count INTEGER DEFAULT 0,
+                extra_limit INTEGER DEFAULT 0,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
         // Pastikan kolom last_used_at ada (jika tabel sudah terlanjur dibuat)
         await db.execute(`ALTER TABLE quiz_pool ADD COLUMN last_used_at INTEGER DEFAULT 0`).catch(e => ignoreExpectedError(e, { scope: 'DB MIGRATION', detail: 'quiz_pool.last_used_at' }));
         await db.execute(`
@@ -943,6 +953,7 @@ let CMD_DAILY_LIMIT_DEFAULT = LIMITS.DEFAULT_COMMAND_DAILY_LIMIT;
 
 const checkCommandLimit = limitService.checkCommandLimit;
 const incrementCommandUsage = limitService.incrementCommandUsage;
+const checkRaraChatLimit = limitService.checkRaraChatLimit;
 
 /** Format XP singkat untuk leaderboard */
 function fmtXP(xp) {
@@ -1259,6 +1270,8 @@ aiService = createAiService({
     saveRecentAnimeList,
     isAnimeRecommendationFollowUp,
     buildFollowUpAnimeRecommendation,
+    checkRaraChatLimit: (...args) => limitService.checkRaraChatLimit(...args),
+    incrementRaraChatLimitUsage: (...args) => limitService.incrementRaraChatLimitUsage(...args),
 });
 
 /** Deteksi intent user untuk konteks data */
@@ -4329,6 +4342,7 @@ async function processMessages(bot, messages) {
                 activeQuiz,
                 getGelar,
                 getImageLimitStatus,
+                checkRaraChatLimit,
                 IMAGE_DAILY_LIMIT_DEFAULT,
                 handleError,
                 stats,

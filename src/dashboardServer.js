@@ -1185,10 +1185,10 @@ function startDashboard(scope) {
     app.get('/api/users/list', async (req, res) => {
         const q = req.query.q || '';
         try {
-            let sql = "SELECT s.*, m.content as core_memory FROM user_stats s LEFT JOIN user_memories m ON s.user_id = m.user_id ORDER BY s.level DESC, s.xp DESC LIMIT 100";
+            let sql = "SELECT s.*, m.content as core_memory, r.used_count as rara_chat_used, r.extra_limit as rara_chat_extra, r.usage_date as rara_usage_date FROM user_stats s LEFT JOIN user_memories m ON s.user_id = m.user_id LEFT JOIN rara_chat_limits r ON s.user_id = r.user_id ORDER BY s.level DESC, s.xp DESC LIMIT 100";
             let args = [];
             if (q) {
-                sql = "SELECT s.*, m.content as core_memory FROM user_stats s LEFT JOIN user_memories m ON s.user_id = m.user_id WHERE s.username LIKE ? ORDER BY s.level DESC, s.xp DESC LIMIT 100";
+                sql = "SELECT s.*, m.content as core_memory, r.used_count as rara_chat_used, r.extra_limit as rara_chat_extra, r.usage_date as rara_usage_date FROM user_stats s LEFT JOIN user_memories m ON s.user_id = m.user_id LEFT JOIN rara_chat_limits r ON s.user_id = r.user_id WHERE s.username LIKE ? ORDER BY s.level DESC, s.xp DESC LIMIT 100";
                 args = [`%${q}%`];
             }
             const result = await db.execute({ sql, args });
@@ -1251,7 +1251,7 @@ function startDashboard(scope) {
     });
 
     app.post('/api/users/update-xp', async (req, res) => {
-        const { userId, user_id, username, xp, level, custom_title, affection_points, affection_level } = req.body;
+        const { userId, user_id, username, xp, level, custom_title, affection_points, affection_level, rara_chat_used, rara_chat_extra } = req.body;
         const targetUserId = userId || user_id;
         try {
             const finalTitle = custom_title === "" ? null : custom_title;
@@ -1300,6 +1300,20 @@ function startDashboard(scope) {
                     if (affPoints !== null) USER_STATS_CACHE[cachedId].affection_points = affPoints;
                     if (affLevel !== null) USER_STATS_CACHE[cachedId].affection_level = affLevel;
                 }
+            }
+
+            const finalUserId = targetUserId || Object.keys(USER_STATS_CACHE).find(k => USER_STATS_CACHE[k]?.username === username);
+            if (finalUserId && (typeof rara_chat_used !== 'undefined' || typeof rara_chat_extra !== 'undefined')) {
+                const today = getJakartaDateKey();
+                const used = parseInt(rara_chat_used) || 0;
+                const extra = parseInt(rara_chat_extra) || 0;
+                await limitRepo.upsertRaraChatLimit({
+                    userId: String(finalUserId),
+                    username,
+                    usageDate: today,
+                    usedCount: used,
+                    extraLimit: extra,
+                });
             }
 
             res.json({ success: true });

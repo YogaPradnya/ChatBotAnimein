@@ -103,11 +103,56 @@ function createLimitService({
         return { ...status, used: nextUsed, remaining: Math.max(0, status.limit - nextUsed) };
     }
 
+    const RARA_CHAT_DAILY_LIMIT = 20;
+
+    async function checkRaraChatLimit(userId, username) {
+        const today = getJakartaDateKey();
+        const defaultLimit = RARA_CHAT_DAILY_LIMIT;
+        try {
+            const res = await limitRepo.getRaraChatLimit(userId);
+            if (!res || res.rows.length === 0) {
+                return { used: 0, limit: defaultLimit, remaining: defaultLimit };
+            }
+
+            const row = res.rows[0];
+            const extraLimit = Number(row.extra_limit || 0);
+            if (row.usage_date !== today) {
+                await limitRepo.upsertRaraChatLimit({
+                    userId,
+                    username,
+                    usageDate: today,
+                    usedCount: 0,
+                    extraLimit,
+                });
+                const totalLimit = defaultLimit + extraLimit;
+                return { used: 0, limit: totalLimit, remaining: totalLimit };
+            }
+
+            const totalLimit = defaultLimit + extraLimit;
+            const used = Number(row.used_count || 0);
+            return { used, limit: totalLimit, remaining: Math.max(0, totalLimit - used) };
+        } catch (e) {
+            handleError(e, { scope: 'RARA CHAT LIMIT', stats, logEmitter });
+            return { used: 0, limit: RARA_CHAT_DAILY_LIMIT, remaining: RARA_CHAT_DAILY_LIMIT };
+        }
+    }
+
+    async function incrementRaraChatLimitUsage(userId, username) {
+        const today = getJakartaDateKey();
+        try {
+            await limitRepo.incrementRaraChatLimitUsage(userId, username, today);
+        } catch (e) {
+            handleError(e, { scope: 'RARA CHAT LIMIT', detail: 'increment usage', stats, logEmitter });
+        }
+    }
+
     return {
         checkCommandLimit,
         incrementCommandUsage,
         getImageLimitStatus,
         incrementImageLimitUsage,
+        checkRaraChatLimit,
+        incrementRaraChatLimitUsage,
     };
 }
 
