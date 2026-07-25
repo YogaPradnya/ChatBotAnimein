@@ -34,9 +34,9 @@ function getJakartaDateKey(date = new Date()) {
     }).format(date);
 }
 
-/** Dapatkan nama hari Animein (AHAD, SENIN, dst) dengan opsional offset hari */
+/** Dapatkan nama hari Animein (MINGGU, SENIN, dst) dengan opsional offset hari */
 function getAnimeinDayName(offsetDays = 0) {
-    const days = ['AHAD', 'SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT', 'SABTU'];
+    const days = ['MINGGU', 'SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT', 'SABTU'];
     const base = getJakartaDate();
     base.setDate(base.getDate() + offsetDays);
     return days[base.getDay()];

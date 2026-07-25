@@ -36,6 +36,24 @@ function formatImageLimitExceeded(username, limit) {
     ].join('\n');
 }
 
+function formatRaraLimitExceeded(username, limit, options = {}) {
+    const {
+        shortMention = false,
+        warning = true,
+    } = options;
+
+    const name = shortMention ? mention(username, 10) : `@${username}`;
+    const lines = [
+        name,
+        warning ? '⚠️ Limit obrolan Rara habis hari ini!' : 'Limit obrolan Rara habis hari ini!',
+        `⏳ Sisa: 0/${limit}`,
+        '⏰ Reset jam 00:00 WIB',
+        '🛍️ Beli di .toko (item 5)',
+    ];
+
+    return lines.join('\n');
+}
+
 function formatSimpleError(username, message, maxLength = 10) {
     return `❌ ${mention(username, maxLength)} ${message}`;
 }
@@ -58,6 +76,7 @@ module.exports = {
     mention,
     formatLimitExceeded,
     formatImageLimitExceeded,
+    formatRaraLimitExceeded,
     formatSimpleError,
     formatCommandUsage,
     formatBox,

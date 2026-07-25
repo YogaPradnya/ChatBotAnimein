@@ -30,9 +30,9 @@ function extractScheduleItems(payload) {
 }
 
 const DAY_MAP = {
-    'SUNDAY': 'AHAD', 'MONDAY': 'SENIN', 'TUESDAY': 'SELASA', 'WEDNESDAY': 'RABU',
+    'SUNDAY': 'MINGGU', 'MONDAY': 'SENIN', 'TUESDAY': 'SELASA', 'WEDNESDAY': 'RABU',
     'THURSDAY': 'KAMIS', 'FRIDAY': 'JUMAT', 'SATURDAY': 'SABTU',
-    'MINGGU': 'AHAD', "JUM'AT": 'JUMAT'
+    'AHAD': 'MINGGU', "JUM'AT": 'JUMAT'
 };
 
 function normalizeDayName(dayStr) {

@@ -1,4 +1,5 @@
 const { formatAnimeRecommendationTitles } = require('../utils/responseFormatter');
+const { formatRaraLimitExceeded } = require('../utils/messageFormatter');
 
 const BOLD_SANS_DIGITS = {
     '𝟬': '0', '𝟭': '1', '𝟮': '2', '𝟯': '3', '𝟰': '4',
@@ -296,7 +297,7 @@ function createAiService(deps) {
         if (typeof deps.checkRaraChatLimit === 'function') {
             const chatLimitStatus = await deps.checkRaraChatLimit(senderUserId, senderName);
             if (chatLimitStatus.remaining <= 0) {
-                await sendChatMessage(bot, `@${senderName} Limit obrolan Rara harian kamu sudah habis (${chatLimitStatus.used}/${chatLimitStatus.limit}). Ketik .beli 5 untuk membeli +1 ekstra limit seharga 3.000 EXP!`, msg.id);
+                await sendChatMessage(bot, formatRaraLimitExceeded(senderName, chatLimitStatus.limit), msg.id);
                 return true;
             }
         }
