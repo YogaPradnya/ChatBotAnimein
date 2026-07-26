@@ -2266,6 +2266,8 @@ async function updateStats() {
             </div>
           \`;
         }
+
+        html += d.otak.map((g, i) => \`
           <div class="model-card \${g.active ? 'active' : 'inactive'}">
             <div class="model-num">OTAK #\${i+1} (GROQ FALLBACK 2)</div>
             <div class="model-metrics">
