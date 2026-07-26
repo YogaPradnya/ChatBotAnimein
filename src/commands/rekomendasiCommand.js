@@ -1,38 +1,10 @@
 const axios = require('axios');
-const Groq = require('groq-sdk');
 const { formatCommandUsage } = require('../utils/messageFormatter');
 const { boxHeader } = require('../utils/textStyle');
 const { askCloudflareAi } = require('../services/cloudflareAiService');
 const { askCerebrasAi } = require('../services/cerebrasAiService');
+const { askNvidiaAi } = require('../services/nvidiaAiService');
 const { CONFIG, ANIMEIN_HEADERS_FULL } = require('../config');
-
-// Inisialisasi Groq clients dari config
-const groqClients = (CONFIG.GROQ_KEYS || []).filter(Boolean).map(key => new Groq({ apiKey: key }));
-
-// Fungsi helper untuk memanggil Groq AI
-async function askGroqAi({ userMessage, systemPrompt }) {
-    if (!groqClients.length) return null;
-    for (const client of groqClients) {
-        try {
-            const res = await client.chat.completions.create({
-                model: 'llama-3.1-8b-instant',
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: userMessage }
-                ],
-                temperature: 0.3,
-                max_tokens: 300,
-            });
-            const answer = res.choices?.[0]?.message?.content || '';
-            if (answer) return { answer };
-            else return null;
-        } catch (e) {
-            console.warn('[Groq AI] Error:', e.message);
-            // Silent, coba key berikutnya
-        }
-    }
-    return null;
-}
 
 // Tracking riwayat anime yang pernah dilihat user & kueri terakhir
 const userSeenAnimeMap = new Map(); // senderUserId -> Set(animeId/title)
@@ -438,17 +410,17 @@ Instruksi Penting:
 }`;
     const userMessage = `Berikan 15 judul anime real yang paling cocok untuk: "${userQuery}". Output WAJIB JSON {"titles": [...]}`;
 
-    // 1. Groq AI (Utama - Llama 3.1 8B)
+    // 1. NVIDIA NIM API (Utama - Llama 3.1 8B Instruct)
     try {
-        const res = await askGroqAi({ userMessage, systemPrompt });
+        const res = await askNvidiaAi({ userMessage, systemPrompt });
         const rawText = res?.text || res?.answer || '';
         const titles = parseTitlesFromJsonResponse(rawText);
         if (titles.length > 0) {
-            console.log('[AI Plan 1] Berhasil dari Groq AI');
-            return { provider: 'Groq AI', titles: titles.slice(0, 15) };
+            console.log('[AI Plan 1] Berhasil dari NVIDIA AI');
+            return { provider: 'NVIDIA AI', titles: titles.slice(0, 15) };
         }
     } catch (e) {
-        console.warn('[AI Plan 1] Groq AI error:', e.message);
+        console.warn('[AI Plan 1] NVIDIA AI error:', e.message);
     }
 
     // 2. Cerebras AI (Fallback 1 - Gemma 4 31B)

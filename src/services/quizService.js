@@ -1,4 +1,39 @@
 const { boxHeader } = require('../utils/textStyle');
+const { askNvidiaAi } = require('./nvidiaAiService');
+
+async function generateQuizHintWithAI(activeQuiz, hintLevel = 1) {
+    if (!activeQuiz || !activeQuiz.original) return null;
+    try {
+        const systemPrompt = [
+            "Kamu adalah pembuat petunjuk (clue) kuis anime.",
+            "Tugasmu: Buat 1 petunjuk singkat dan menarik tentang anime yang dimaksud tanpa menyebutkan atau membocorkan judul anime tersebut.",
+            "Gunakan data anime yang diberikan (sinopsis, genre, studio, tahun).",
+            "Petunjuk harus dalam Bahasa Indonesia, maksimal 2-3 kalimat ringkas.",
+            "JANGAN pernah sebutkan kata/judul anime tersebut."
+        ].join(" ");
+
+        const userMessage = [
+            `Judul Anime (RAHASIA): ${activeQuiz.original}`,
+            `Genre: ${activeQuiz.clues?.genre || '-'}`,
+            `Studio: ${activeQuiz.clues?.studio || '-'}`,
+            `Tahun: ${activeQuiz.clues?.year || '-'}`,
+            `Sinopsis: ${(activeQuiz.clues?.synopsis || '').slice(0, 300)}`,
+            `Tingkat Hint: ${hintLevel} dari 5`
+        ].join("\n");
+
+        const res = await askNvidiaAi({
+            userMessage,
+            systemPrompt,
+        });
+
+        const hintText = String(res?.answer || '').trim();
+        if (hintText) return hintText;
+    } catch (e) {
+        console.warn('[AI Quiz Hint] NVIDIA AI error:', e.message);
+    }
+    return null;
+}
+
 function createInitialQuizState() {
     return {
         isRunning: false,
@@ -263,4 +298,5 @@ function createQuizService({
 module.exports = {
     createInitialQuizState,
     createQuizService,
+    generateQuizHintWithAI,
 };

@@ -1,3 +1,5 @@
+const { generateQuizHintWithAI } = require('../services/quizService');
+
 async function execute(ctx) {
     const {
         bot,
@@ -22,9 +24,10 @@ async function execute(ctx) {
         try {
             // Generate hint terlebih dahulu sebelum potong XP/increment counter
             const nextHintNumber = activeQuiz.hintsRevealed + 1;
-            const aiHint = typeof ctx.generateQuizHintWithAI === 'function'
-                ? await ctx.generateQuizHintWithAI(activeQuiz, nextHintNumber)
-                : null;
+            const hintGenerator = typeof ctx.generateQuizHintWithAI === 'function'
+                ? ctx.generateQuizHintWithAI
+                : generateQuizHintWithAI;
+            const aiHint = await hintGenerator(activeQuiz, nextHintNumber);
 
             // Baru potong XP dan increment setelah hint berhasil di-generate
             const freeHints = await getItemCount(db, senderUserId, 'free_hint');

@@ -1,6 +1,31 @@
 const axios = require('axios');
 const { formatCommandUsage } = require('../utils/messageFormatter');
 const { boxHeader } = require('../utils/textStyle');
+const { askNvidiaAi } = require('../services/nvidiaAiService');
+
+async function extractAdaptiveSearchQueryWithNvidia(rawQuery) {
+    if (!rawQuery || rawQuery.trim().length < 12) return rawQuery;
+    try {
+        const systemPrompt = [
+            "Kamu adalah pembedah kueri pencarian anime.",
+            "Tugasmu: Dari deskripsi atau kalimat panjang yang diberikan pengguna, ekstrak 1-3 kata kunci pencarian anime paling relevan (Judul anime atau kata kunci utama dalam Bahasa Indonesia / Inggris).",
+            "Output HANYA kata kunci pencarian singkat, tanpa penjelasan, tanpa tanda kutip, tanpa markdown."
+        ].join(" ");
+
+        const res = await askNvidiaAi({
+            userMessage: rawQuery,
+            systemPrompt,
+        });
+
+        const extracted = String(res?.answer || '').replace(/^"|"$/g, '').trim();
+        if (extracted && extracted.length > 0 && extracted.length < rawQuery.length) {
+            return extracted;
+        }
+    } catch (e) {
+        console.warn('[AI Cari Query] NVIDIA AI error:', e.message);
+    }
+    return rawQuery;
+}
 
 function cleanText(value, maxLength = 32) {
     const text = String(value || '-')
@@ -394,7 +419,22 @@ async function execute(ctx) {
     // B. JIKA TIDAK ADA GAMBAR TETAPI ADA TEKS: Cari judul anime di Animein
     if (query && typeof fetchAnimeSearchResults === 'function') {
         try {
-            const results = await fetchAnimeSearchResults(query, 7);
+            let results = await fetchAnimeSearchResults(query, 7);
+            let activeQuery = query;
+
+            // Jika hasil kosong atau kueri panjang/deskriptif, bedah kueri menggunakan NVIDIA AI
+            if ((!results || results.length === 0) && query.length >= 10) {
+                const adaptedQuery = await extractAdaptiveSearchQueryWithNvidia(query);
+                if (adaptedQuery && adaptedQuery !== query) {
+                    console.log(`[CARI AI] Adaptive Query Transformation: "${query}" -> "${adaptedQuery}"`);
+                    const adaptedResults = await fetchAnimeSearchResults(adaptedQuery, 7);
+                    if (adaptedResults && adaptedResults.length > 0) {
+                        results = adaptedResults;
+                        activeQuery = adaptedQuery;
+                    }
+                }
+            }
+
             if (!results || results.length === 0) {
                 await sendChatMessage(bot, formatCommandUsage(senderName, `Anime "${query}" tidak ditemukan di Animein.`), msg.id);
                 return true;

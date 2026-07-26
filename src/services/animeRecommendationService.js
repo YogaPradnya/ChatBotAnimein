@@ -1,4 +1,5 @@
 const { formatAnimeRecommendationTitles } = require('../utils/responseFormatter');
+const { askNvidiaAi } = require('./nvidiaAiService');
 
 function normalizeAnimeKey(value) {
     return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -279,6 +280,30 @@ function getMoodGenreAliases() {
     ];
 }
 
+async function expandMoodGenreWithNvidia(text) {
+    if (!text || text.trim().length < 5) return text;
+    try {
+        const systemPrompt = [
+            "Kamu adalah pengklasifikasi mood dan genre anime.",
+            "Tugasmu: Dari deskripsi mood, perasaan, atau tema buatan pengguna, petakan ke 1-3 nama genre anime resmi dalam Bahasa Inggris (misalnya: action, romance, comedy, drama, slice of life, fantasy, isekai, mystery, horror, sports, mecha, psychological, thriller, sci-fi, school).",
+            "Output HANYA daftar nama genre dipisahkan spasi, tanpa penjelasan, tanpa tanda baca lain."
+        ].join(" ");
+
+        const res = await askNvidiaAi({
+            userMessage: text,
+            systemPrompt,
+        });
+
+        const genres = String(res?.answer || '').trim().toLowerCase();
+        if (genres) {
+            return `${text} ${genres}`;
+        }
+    } catch (e) {
+        console.warn('[AI Mood Classification] NVIDIA AI error:', e.message);
+    }
+    return text;
+}
+
 function expandMoodGenreAliases(text) {
     let expanded = String(text || '').toLowerCase().replace(/\s+/g, ' ').trim();
     const extraGenres = new Set();
@@ -332,6 +357,15 @@ function createAnimeRecommendationService({ fetchGenresList, fetchByGenre, saveR
             const name = normalizeAnimeKey(genre.name).replace(/s$/, '');
             if (new RegExp(`(^|\\s)${name}s?(\\s|$)`, 'i').test(lower)) addGenre(genre);
         });
+
+        if (matched.length < maxGenres) {
+            const nvidiaExpanded = await expandMoodGenreWithNvidia(text);
+            const lowerExpanded = normalizeAnimeKey(nvidiaExpanded);
+            genres.forEach(genre => {
+                const name = normalizeAnimeKey(genre.name).replace(/s$/, '');
+                if (new RegExp(`(^|\\s)${name}s?(\\s|$)`, 'i').test(lowerExpanded)) addGenre(genre);
+            });
+        }
 
         if (matched.length < maxGenres) {
             const words = lower.split(/\s+/).filter(w => w.length >= 4);

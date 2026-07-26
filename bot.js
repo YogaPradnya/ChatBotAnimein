@@ -37,6 +37,7 @@ const { createAnimeinClient } = require('./src/animein/client');
 const { createAiService } = require('./src/services/aiService');
 const { askCloudflareAi, getCloudflareStat } = require('./src/services/cloudflareAiService');
 const { askCerebrasAi, getCerebrasStat } = require('./src/services/cerebrasAiService');
+const { askNvidiaAi, getNvidiaStat } = require('./src/services/nvidiaAiService');
 const { createAiHordeImageService } = require('./src/services/aiHordeImageService');
 const { searchAnime: jikanSearchAnime, getAnimeDetail: jikanGetAnimeDetail, getAnimeCharacters } = require('./src/jikanClient');
 const { createAnimeRecommendationService } = require('./src/services/animeRecommendationService');
@@ -3596,7 +3597,35 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
         } catch (err) {
             cfStat.errors++;
             cfStat.lastError = (err.message || '').slice(0, 100);
-            console.error(`[CLOUDFLARE AI] Error: ${err.message}. Fallback ke Cerebras.`);
+            console.error(`[CLOUDFLARE AI] Error: ${err.message}. Fallback ke NVIDIA AI.`);
+        }
+    }
+
+    // Fallback Pertama (2): NVIDIA NIM AI (Llama 3.1 8B Instruct)
+    const nvStat = getNvidiaStat();
+    if (nvStat.active && CONFIG.NVIDIA_API_KEY && Date.now() >= nvStat.cooldownUntil) {
+        try {
+            const { answer, tokens, model } = await askNvidiaAi({
+                userMessage,
+                senderName,
+                contextData: finalContext,
+                chatHistory: history,
+                replyText,
+                senderUserId,
+                systemPrompt: dynamicSystemPrompt,
+                personalizeSystemPrompt,
+                userStatsCache: USER_STATS_CACHE,
+                sanitizeReplyContext,
+            });
+
+            const finalText = polishAiAnswer(answer, userMessage, replyText);
+            if (finalText) {
+                return { text: finalText, provider: `NVIDIA AI (${model || 'Llama 3.1 8B'})`, tokens };
+            }
+        } catch (err) {
+            nvStat.errors++;
+            nvStat.lastError = (err.message || '').slice(0, 100);
+            console.error(`[NVIDIA AI] Error: ${err.message}. Fallback ke Cerebras.`);
         }
     }
 

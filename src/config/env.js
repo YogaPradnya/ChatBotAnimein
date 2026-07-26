@@ -87,6 +87,10 @@ function createEnvConfig() {
             API_KEY: getEnv('CEREBRAS_API_KEY'),
             MODEL: getEnv('CEREBRAS_MODEL', 'gemma-4-31b'),
         },
+        NVIDIA: {
+            API_KEY: getEnv('NVIDIA_API_KEY', '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'),
+            MODEL: getEnv('NVIDIA_MODEL', 'meta/llama-3.1-8b-instruct'),
+        },
         BOT: {
             POLL_INTERVAL: 9000,
         },

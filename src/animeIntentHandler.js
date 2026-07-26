@@ -1,5 +1,6 @@
 const { searchAnime, getAnimeDetail, getAnimeEpisodes } = require('./jikanClient');
 const { boxHeader } = require('./utils/textStyle');
+const { askNvidiaAi } = require('./services/nvidiaAiService');
 
 /**
  * Anime Intent Handler
@@ -351,7 +352,35 @@ function formatAnimeDetailResponse(anime) {
     return lines.filter(Boolean).join('\n');
 }
 
+async function detectAnimeIntentWithNvidia(text) {
+    if (!text || text.trim().length < 5) return { isAnimeData: false, intentType: 'chat' };
+    try {
+        const systemPrompt = [
+            "Kamu adalah pengklasifikasi niat (intent) pesan pengguna pada bot anime.",
+            "Klasifikasikan teks pengguna ke dalam salah satu dari kategori berikut:",
+            "- ANIME_DATA: jika pengguna menanyakan fakta/data/detail/episode/sinopsis/rekomendasi/rating anime.",
+            "- CHAT: jika pengguna menyapa atau mengobrol secara santai.",
+            "- TOXIC: jika mengandung umpatan atau pelecehan ekstrim.",
+            "Output HANYA satu kata kategori di atas (ANIME_DATA, CHAT, atau TOXIC)."
+        ].join(" ");
+
+        const res = await askNvidiaAi({
+            userMessage: text,
+            systemPrompt,
+        });
+
+        const cat = String(res?.answer || '').trim().toUpperCase();
+        if (cat.includes('ANIME_DATA')) return { isAnimeData: true, intentType: 'anime_data' };
+        if (cat.includes('TOXIC')) return { isAnimeData: false, intentType: 'toxic' };
+        return { isAnimeData: false, intentType: 'chat' };
+    } catch (e) {
+        console.warn('[AI Intent Detector] NVIDIA AI error:', e.message);
+    }
+    return { isAnimeData: isAnimeDataQuestion(text), intentType: 'unknown' };
+}
+
 module.exports = {
     isAnimeDataQuestion,
-    handleAnimeDataQuestion
+    handleAnimeDataQuestion,
+    detectAnimeIntentWithNvidia
 };

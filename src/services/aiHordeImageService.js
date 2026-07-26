@@ -2,7 +2,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const sharp = require('sharp');
-const Groq = require('groq-sdk');
+const { askNvidiaAi } = require('./nvidiaAiService');
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -43,10 +43,6 @@ function createAiHordeImageService({
         const rawPrompt = String(prompt || '').trim();
         if (!rawPrompt) throw new Error('Prompt kosong.');
 
-        if (!groqClients.length) {
-            return sanitizePromptLine(rawPrompt);
-        }
-
         const systemPrompt = [
             'You convert user image prompts into stable English prompts for Stable Diffusion.',
             'If the input is Indonesian, translate it to English first.',
@@ -55,27 +51,18 @@ function createAiHordeImageService({
             'Keep it safe, concise, visual, and descriptive.'
         ].join(' ');
 
-        let lastError;
-        for (const client of groqClients) {
-            try {
-                const res = await client.chat.completions.create({
-                    model: 'llama-3.1-8b-instant',
-                    messages: [
-                        { role: 'system', content: systemPrompt },
-                        { role: 'user', content: rawPrompt }
-                    ],
-                    temperature: 0.2,
-                    max_tokens: 120,
-                });
-
-                const translated = sanitizePromptLine(res.choices?.[0]?.message?.content || '');
-                if (translated) return translated;
-            } catch (error) {
-                lastError = error;
-            }
+        // Coba NVIDIA NIM API
+        try {
+            const res = await askNvidiaAi({
+                userMessage: rawPrompt,
+                systemPrompt,
+            });
+            const translated = sanitizePromptLine(res.answer || '');
+            if (translated) return translated;
+        } catch (e) {
+            console.warn('[AI Horde Translate] NVIDIA AI Error, fallback ke prompt asli:', e.message);
         }
 
-        console.warn('[AI HORDE] Translate gagal, pakai prompt asli:', lastError?.message || lastError);
         return sanitizePromptLine(rawPrompt);
     }
 
