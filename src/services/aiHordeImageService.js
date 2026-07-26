@@ -33,7 +33,6 @@ function createAiHordeImageService({
 }) {
     const hordeApiKeys = [...new Set([...apiKeys, apiKey].filter(Boolean))];
     if (!hordeApiKeys.length) hordeApiKeys.push('0000000000');
-    const groqClients = groqKeys.filter(Boolean).map(key => new Groq({ apiKey: key }));
 
     function getKeyLabel(index) {
         return `key ${index + 1}/${hordeApiKeys.length}`;
