@@ -4409,56 +4409,48 @@ async function handleAnimeNumberExplanationInstruction(ctx) {
     }
 
     const title = resolved.title;
-    const searchKeyword = getShortTitleForSearch(title);
-    console.log(`[EXPLAIN NO] Resolved title for no ${explainNo}: "${title}" (search keyword: "${searchKeyword}", source: ${resolved.source})`);
+    console.log(`[EXPLAIN NO] Resolved title for no ${explainNo}: "${title}" (source: ${resolved.source})`);
 
-    let animeDetailText = '';
-    let characterListText = '';
-    try {
-        const jikanResults = await jikanSearchAnime(searchKeyword, { limit: 1 });
-        if (jikanResults && jikanResults.length > 0) {
-            const anime = jikanResults[0];
-            animeDetailText = `Judul: ${anime.title}\nRating/Score: ${anime.score || '-'}\nGenre: ${Array.isArray(anime.genres) ? anime.genres.join(', ') : '-'}\nEpisodes: ${anime.episodes || '-'}\nStatus: ${anime.status || '-'}\nSinopsis: ${anime.synopsis || '-'}`;
-            
-            // Ambil daftar karakter jika ada indikasi pertanyaan karakter / MC / tokoh
-            if (/karakter|mc|tokoh|pemeran|heroine|waifu/i.test(cleanMsg) && anime.malId) {
-                try {
-                    const characters = await getAnimeCharacters(anime.malId);
-                    if (characters && characters.length > 0) {
-                        const topChars = characters.slice(0, 6).map(c => `- ${c.name} (${c.role || 'Karakter'})`).join('\n');
-                        characterListText = `\nDaftar Karakter Utama:\n${topChars}`;
-                    }
-                } catch (cErr) {
-                    console.warn(`[EXPLAIN NO] Gagal fetch karakter untuk malId ${anime.malId}:`, cErr.message);
-                }
-            }
-        }
-    } catch (err) {
-        console.warn(`[EXPLAIN NO] Gagal fetch detail Jikan untuk "${searchKeyword}":`, err.message);
-    }
+    const systemPrompt = `Kamu adalah Rara, AI waifu bot animein yang imut, ramah, dan sangat berpengalaman tentang dunia anime.
+Tugasmu: Jelaskan anime "${title}" secara lengkap, seru, dan akurat kepada pengguna @${senderName}.
+Instruksi Penjelasan:
+1. Berikan sinopsis ringkas yang menarik (tanpa spoiler berat).
+2. Sebutkan Genre utama dan Karakter Utama (MC / Heroine / Tokoh Penting) dari anime "${title}".
+3. Berikan alasan kenapa anime ini sangat seru dan wajib ditonton.
+4. Jawab pertanyaan pengguna "${cleanMsg}" secara khusus, adaptif, dan ramah khas Rara!`;
 
-    const aiPrompt = `[EXPLAIN_ANIME] Kamu sedang menjawab pertanyaan spesifik dari @${senderName} mengenai anime nomor ${explainNo} dari rekomendasi, yaitu "${title}".\n` +
-        `Pertanyaan Spesifik User: "${cleanMsg}"\n\n` +
-        (animeDetailText ? `Data Pendukung Anime:\n${animeDetailText}\n` : '') +
-        (characterListText ? `${characterListText}\n` : '') +
-        `\nInstruksi: Jawablah pertanyaan user ("${cleanMsg}") secara sangat adaptif, presisi, dan tepat sasaran sesuai pertanyaan yang diajukan user untuk anime "${title}". Gunakan gaya bahasa Rara yang ramah, seru, dan bersahabat!`;
+    const userMessage = `Jelaskan anime "${title}" untuk kueri pengguna: "${cleanMsg}"`;
 
     let explanationText = '';
-    let aiProvider = 'Fallback';
+    let aiProvider = 'NVIDIA AI';
     let aiTokens = 0;
+
     try {
-        const aiRes = await getAIResponse(aiPrompt, senderName, false, senderUserId, '', { skipRecommendationRouter: true });
-        if (aiRes?.text) {
-            explanationText = aiRes.text;
-            aiProvider = aiRes.provider || 'AI';
-            aiTokens = aiRes.tokens || 0;
+        const nvRes = await askNvidiaAi({ userMessage, systemPrompt });
+        if (nvRes?.answer || nvRes?.text) {
+            explanationText = nvRes.answer || nvRes.text;
+            aiTokens = nvRes.tokens || 0;
         }
-    } catch (aiErr) {
-        console.warn(`[EXPLAIN NO] AI Provider error:`, aiErr.message);
+    } catch (nvErr) {
+        console.warn(`[EXPLAIN NO] NVIDIA AI error, fallback to general AI:`, nvErr.message);
     }
 
     if (!explanationText) {
-        explanationText = `Anime nomor ${explainNo} adalah "${title}".\n\n${animeDetailText || 'Anime ini menyajikan cerita yang seru dan sangat menarik untuk ditonton!'}`;
+        const aiPrompt = `[EXPLAIN_ANIME] Kamu sedang menjelaskan anime nomor ${explainNo} yaitu "${title}" untuk kueri user "${cleanMsg}". Gunakan gaya Rara yang ramah dan seru!`;
+        try {
+            const aiRes = await getAIResponse(aiPrompt, senderName, false, senderUserId, '', { skipRecommendationRouter: true });
+            if (aiRes?.text) {
+                explanationText = aiRes.text;
+                aiProvider = aiRes.provider || 'AI';
+                aiTokens = aiRes.tokens || 0;
+            }
+        } catch (aiErr) {
+            console.warn(`[EXPLAIN NO] AI Provider error:`, aiErr.message);
+        }
+    }
+
+    if (!explanationText) {
+        explanationText = `Anime nomor ${explainNo} adalah "${title}". Anime ini menyajikan cerita yang seru, menarik, dan sangat patut untuk ditonton!`;
     }
 
     const sent = await sendChatMessage(bot, `@${senderName}\n${explanationText}`, msg.id);
