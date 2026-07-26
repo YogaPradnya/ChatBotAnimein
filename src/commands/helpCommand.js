@@ -60,7 +60,7 @@ async function execute(ctx) {
     } else if (helpArg === 'waifu') {
         helpMsg = wrapInBox('WAIFU', 'Lihat daftar waifu milik kamu atau user lain.\n\nCommand:\n- .waifu\n- .waifu @user\n\nTampilan: total waifu & nama waifu.');
     } else if (helpArg === 'link' || helpArg === 'cuplixdl' || helpArg === 'cuplix') {
-        helpMsg = wrapInBox('LINK RESMI', 'Dapatkan daftar link resmi Animein (Grup WA, Trakteer, Cuplix Download, Converter MKV to MP4).\n\nCommand:\n- .link');
+        helpMsg = wrapInBox('LINK RESMI', 'Dapatkan daftar link resmi Animein (Grup WA, Discord, Instagram, TikTok, Trakteer, Cuplix Download).\n\nCommand:\n- .link');
     } else if (helpArg === 'rekomendasi' || helpArg === 'rekomen') {
         helpMsg = wrapInBox('REKOMENDASI', 'Rekomendasi anime terfokus.\n\nCommand:\n- .rekomendasi\n- .rekomendasi [genre/mood/status/tipe]\n\nContoh:\n- .rekomendasi action\n- .rekomendasi sad\n- .rekomendasi ongoing\n- .rekomendasi movie');
     } else if (helpArg === 'data') {

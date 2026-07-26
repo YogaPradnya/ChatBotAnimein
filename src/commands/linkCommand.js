@@ -39,9 +39,6 @@ async function execute(ctx) {
             `│`,
             `│ Link Download Cuplix:`,
             `│ https://cuplix.download.minnzcloud.web.id/`,
-            `│`,
-            `│ Link Converter MKV to MP4 & Resolusi:`,
-            `│ https://converter-by-yoga.vercel.app`,
             `└───────────────────`,
         ];
 
