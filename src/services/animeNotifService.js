@@ -243,6 +243,8 @@ function stopAnimeNotifPoller() {
 }
 
 module.exports = {
+    extractScheduleItems,
+    isItemNew,
     formatAnimeNotifMessage,
     checkAnimeUpdates,
     startAnimeNotifPoller,
