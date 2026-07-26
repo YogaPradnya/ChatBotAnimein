@@ -67,6 +67,48 @@ function isItemNew(item) {
 }
 
 /**
+ * Resolusi URL foto cover / banner asli dari item API Animein
+ * @param {object} item
+ * @returns {string}
+ */
+/**
+ * Resolusi URL foto cover / banner asli dari item API Animein
+ * @param {object} item
+ * @returns {string}
+ */
+function resolveAnimeCoverUrl(item) {
+    if (!item || typeof item !== 'object') return 'https://animeinweb.com/assets/images/logo.png';
+    let rawCover = item.image_poster || item.image_cover || item.cover || item.image || item.poster || item.thumbnail || item.banner || item.img || item.photo || item.img_url || item.backdrop_path || item.poster_path || item.cover_url || item.poster_url || '';
+    if (!rawCover) return 'https://animeinweb.com/assets/images/logo.png';
+
+    let fullUrl = /^https?:\/\//i.test(rawCover) ? rawCover : `https://japi.animein.net/${String(rawCover).replace(/^\/+/, '')}`;
+    // Ganti domain xyz-api.animein.net yang terblokir 403 menjadi domain publik japi.animein.net yang 200 OK
+    fullUrl = fullUrl.replace('xyz-api.animein.net', 'japi.animein.net');
+    fullUrl = fullUrl.replace(/([^:]\/)\/+/g, '$1');
+
+    return fullUrl;
+}
+
+/**
+ * Fetch foto cover/poster asli dari endpoint 3/2/movie/detail/{idMovie} jika belum tersedia di item
+ * @param {string|number} idMovie
+ * @param {object} animeinClient
+ * @returns {Promise<string>}
+ */
+async function fetchAnimeCoverFromApi(idMovie, animeinClient) {
+    if (!idMovie || !animeinClient) return 'https://animeinweb.com/assets/images/logo.png';
+    try {
+        const res = await animeinClient.get(`/3/2/movie/detail/${idMovie}`, { timeout: 6000 }).catch(() => null);
+        const movie = res?.data?.data?.movie || res?.data?.movie || res?.data?.data || {};
+        const coverUrl = resolveAnimeCoverUrl(movie);
+        if (coverUrl && !coverUrl.includes('logo.png')) {
+            return coverUrl;
+        }
+    } catch (e) {}
+    return 'https://animeinweb.com/assets/images/logo.png';
+}
+
+/**
  * Format pesan notifikasi rilis anime (Tanpa Sinopsis)
  * @param {object} item - Data anime / episode dari API
  * @returns {string}
@@ -76,17 +118,64 @@ function formatAnimeNotifMessage(item) {
     const episode = item.episode || item.eps || item.episode_now || item.latest_episode || item.last_episode || 'Terbaru';
     const rating = item.score || item.rating || item.favorites || '-';
     const genre = Array.isArray(item.genres) ? item.genres.join(', ') : (item.genre || '-');
+    const idMovie = item.id || item.id_movie || item.slug || item.key;
+    const animeUrl = item.link || item.url || (idMovie ? `https://animeinweb.com/anime/${idMovie}` : 'https://animeinweb.com');
 
     let msg = `┌── ${boxHeader('UPDATE ANIME')} 📢\n`;
     msg += `│ 📺 Judul   : ${title}\n`;
     msg += `│ 🎬 Episode : Episode ${episode}\n`;
     msg += `│ ⭐ Rating  : ${rating}\n`;
     msg += `│ 🏷️ Genre   : ${genre}\n`;
+    msg += `│ 🔗 Link    : ${animeUrl}\n`;
     msg += `│ \n`;
     msg += `│ 🍿 Nonton sekarang di Animein!\n`;
     msg += `└───────────────────`;
 
     return msg;
+}
+
+/**
+ * Format payload khusus Discord Webhook dengan Rich Embed, foto cover asli API, dan Universal Smart Link
+ * @param {object} item - Data anime / episode dari API
+ * @param {string} [fetchedCoverUrl] - Optional URL foto cover yang telah di-fetch dari detail API
+ * @returns {object} Payload JSON untuk Discord Webhook API
+ */
+function formatDiscordWebhookPayload(item, fetchedCoverUrl = null) {
+    const title = item.title || item.name || item.movie || 'Anime Update';
+    const episode = item.episode || item.eps || item.episode_now || item.latest_episode || item.last_episode || 'Terbaru';
+    const rating = item.score || item.rating || item.favorites || '-';
+    const genre = Array.isArray(item.genres) ? item.genres.join(', ') : (item.genre || '-');
+    const idMovie = item.id || item.id_movie || item.slug || item.key;
+    const animeUrl = item.link || item.url || (idMovie ? `https://animeinweb.com/anime/${idMovie}` : 'https://animeinweb.com');
+    const coverImageUrl = fetchedCoverUrl || resolveAnimeCoverUrl(item);
+
+    const notifText = formatAnimeNotifMessage(item);
+
+    return {
+        username: 'Animein Bot Notifikasi',
+        avatar_url: 'https://animeinweb.com/assets/images/logo.png',
+        content: `📢 **UPDATE RILIS ANIME BARU** 🍿\n\`\`\`text\n${notifText}\n\`\`\``,
+        embeds: [
+            {
+                title,
+                url: animeUrl,
+                description: `Episode ${episode} telah rilis di Animein!\n\n🔗 [Tonton Anime di Animein](${animeUrl})`,
+                color: 3447003,
+                fields: [
+                    { name: 'Rating', value: String(rating), inline: true },
+                    { name: 'Genre', value: String(genre), inline: true }
+                ],
+                image: {
+                    url: coverImageUrl
+                },
+                thumbnail: {
+                    url: 'https://animeinweb.com/assets/images/logo.png'
+                },
+                footer: { text: 'Animein Bot Notification System' },
+                timestamp: new Date().toISOString()
+            }
+        ]
+    };
 }
 
 /**
@@ -152,14 +241,17 @@ async function checkAnimeUpdates({ animeinClient, sendNotifCallback, cacheRepo }
                     continue;
                 }
 
-                // Jika sudah ada notifikasi sebelumnya yang terkirim pada siklus ini, beri jeda 11 detik
-                if (newUpdates.length > 0) {
-                    await delay(11000);
+                // Fetch foto cover asli dari API detail jika belum ada
+                const realCoverUrl = await fetchAnimeCoverFromApi(item.id || item.id_movie || item.slug, animeinClient);
+                if (realCoverUrl) {
+                    item.cover = realCoverUrl;
+                    item.image_cover = realCoverUrl;
+                    item.image_poster = realCoverUrl;
                 }
 
                 const message = formatAnimeNotifMessage(item);
                 try {
-                    await sendNotifCallback(message, item);
+                    await sendNotifCallback(message, item, realCoverUrl);
                     // Tambahkan ke cache HANYA setelah notifikasi berhasil terkirim
                     notifiedItems.add(itemId);
                     if (cacheRepo?.saveNotifiedAnimeId) {
@@ -245,7 +337,10 @@ function stopAnimeNotifPoller() {
 module.exports = {
     extractScheduleItems,
     isItemNew,
+    resolveAnimeCoverUrl,
+    fetchAnimeCoverFromApi,
     formatAnimeNotifMessage,
+    formatDiscordWebhookPayload,
     checkAnimeUpdates,
     startAnimeNotifPoller,
     stopAnimeNotifPoller,
