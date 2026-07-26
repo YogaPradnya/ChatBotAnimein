@@ -39,6 +39,7 @@ const { askCloudflareAi, getCloudflareStat } = require('./src/services/cloudflar
 const { askCerebrasAi, getCerebrasStat } = require('./src/services/cerebrasAiService');
 const { askNvidiaAi, getNvidiaStat } = require('./src/services/nvidiaAiService');
 const { createAiHordeImageService } = require('./src/services/aiHordeImageService');
+const { initTempCleanupService } = require('./src/services/tempCleanupService');
 const { searchAnime: jikanSearchAnime, getAnimeDetail: jikanGetAnimeDetail, getAnimeCharacters } = require('./src/jikanClient');
 const { createAnimeRecommendationService } = require('./src/services/animeRecommendationService');
 const { formatAnimeRecommendationTitles } = require('./src/utils/responseFormatter');
@@ -428,6 +429,17 @@ async function initDB() {
         console.log(`[GAMBAR] Bot Gambar: ${isImageCommandActive ? 'ON' : 'OFF'}`);
 
         const botNotifValue = await settingsRepo.get(SETTINGS_KEYS.IS_BOT_NOTIF_ACTIVE);
+
+        // Inisialisasi Cleanup Service Otomatis untuk File Temp Gambar
+        initTempCleanupService({
+            tempDirs: [
+                path.join(__dirname, 'src', 'temp_images'),
+                path.join(__dirname, 'temp_images'),
+                path.join(__dirname, 'scratch')
+            ],
+            maxAgeMs: 60 * 60 * 1000, // File usang > 1 jam
+            intervalMs: 30 * 60 * 1000 // Berjalan setiap 30 menit
+        });
         isBotNotifActive = botNotifValue !== null ? botNotifValue === 'true' : true;
         if (botNotifValue === null) {
             await settingsRepo.set(SETTINGS_KEYS.IS_BOT_NOTIF_ACTIVE, isBotNotifActive);

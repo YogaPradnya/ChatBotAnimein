@@ -2229,11 +2229,30 @@ async function updateStats() {
           \`;
         }
 
+        if (d.nvidia) {
+          const nv = d.nvidia;
+          html += \`
+            <div class="model-card \${nv.active ? 'active' : 'inactive'}" style="border-left: 4px solid #10b981;">
+              <div class="model-num" style="color:#10b981;">PRIMARY BACKGROUND & FALLBACK 1: NVIDIA NIM AI (Llama 3.1 8B)</div>
+              <div class="model-metrics">
+                <div class="m-stat"><div class="m-lbl">Requests</div><div class="m-val">\${nv.requests || 0}</div></div>
+                <div class="m-stat"><div class="m-lbl">Errors</div><div class="m-val">\${nv.errors || 0}</div></div>
+                <div class="m-stat"><div class="m-lbl">Status</div><div class="m-val">\${nv.cooldownUntil && Date.now() < nv.cooldownUntil ? 'Cooldown' : (nv.active ? 'Aktif' : 'Nonaktif')}</div></div>
+                <div class="m-stat"><div class="m-lbl">Last Error</div><div class="m-val" style="font-size:10px; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">\${nv.lastError || '-'}</div></div>
+              </div>
+              <div class="toggle-pill \${!nv.active ? 'is-off' : ''}" onclick="toggleNvidia()">
+                <div class="pill-on">ON</div>
+                <div class="pill-off">OFF</div>
+              </div>
+            </div>
+          \`;
+        }
+
         if (d.cerebras) {
           const cb = d.cerebras;
           html += \`
             <div class="model-card \${cb.active ? 'active' : 'inactive'}" style="border-left: 4px solid var(--blue);">
-              <div class="model-num" style="color:var(--blue);">FALLBACK 1: CEREBRAS AI - MAX 30 RPM</div>
+              <div class="model-num" style="color:var(--blue);">FALLBACK 2: CEREBRAS AI - MAX 30 RPM</div>
               <div class="model-metrics">
                 <div class="m-stat"><div class="m-lbl">Requests</div><div class="m-val">\${cb.requests || 0}</div></div>
                 <div class="m-stat"><div class="m-lbl">RPM Saat Ini</div><div class="m-val">\${cb.currentRpm || 0} / 30</div></div>
@@ -2247,8 +2266,6 @@ async function updateStats() {
             </div>
           \`;
         }
-
-        html += d.otak.map((g, i) => \`
           <div class="model-card \${g.active ? 'active' : 'inactive'}">
             <div class="model-num">OTAK #\${i+1} (GROQ FALLBACK 2)</div>
             <div class="model-metrics">
@@ -2333,6 +2350,11 @@ async function updateStats() {
 
   async function toggleCerebras() {
     await fetch('/api/cerebras/toggle', { method: 'POST' });
+    refresh();
+  }
+
+  async function toggleNvidia() {
+    await fetch('/api/nvidia/toggle', { method: 'POST' });
     refresh();
   }
 

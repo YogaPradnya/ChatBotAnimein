@@ -6,6 +6,7 @@ const { getDashboardHTML, getLoginHTML } = require('../dashboard.js');
 const { SESSION, RATE_LIMIT, LIMITS } = require('./config/constants');
 const { getCloudflareStat } = require('./services/cloudflareAiService');
 const { getCerebrasStat } = require('./services/cerebrasAiService');
+const { getNvidiaStat } = require('./services/nvidiaAiService');
 
 const SESSION_TTL_MS = SESSION.TTL_MS; // 24 jam
 const SESSIONS = new Map();
@@ -465,6 +466,7 @@ function startDashboard(scope) {
                 ...stats,
                 cloudflare: getCloudflareStat(),
                 cerebras: getCerebrasStat(),
+                nvidia: getNvidiaStat(),
                 uptime, 
                 botStatus,
                 isBotActive: isBotInfoActive, // backward compat
@@ -1194,6 +1196,13 @@ function startDashboard(scope) {
         cbStat.active = !cbStat.active;
         console.log(`[DASHBOARD] Cerebras AI: ${cbStat.active ? 'ON' : 'OFF'}`);
         res.json({ success: true, active: cbStat.active });
+    });
+
+    app.post('/api/nvidia/toggle', (req, res) => {
+        const nvStat = getNvidiaStat();
+        nvStat.active = !nvStat.active;
+        console.log(`[DASHBOARD] NVIDIA AI: ${nvStat.active ? 'ON' : 'OFF'}`);
+        res.json({ success: true, active: nvStat.active });
     });
 
     app.post('/api/cache/clear', async (req, res) => {
