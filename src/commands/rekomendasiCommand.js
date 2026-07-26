@@ -422,7 +422,7 @@ function parseTitlesFromJsonResponse(rawText) {
 
 async function analyzePromptWithAI(userQuery) {
     const systemPrompt = `Kamu adalah AI spesialis rekomendasi anime.
-Tugasmu: Berikan 15 rekomendasi anime real/asli yang 100% SANGAT SESUAI dan PRESISI dengan kueri pengguna "${userQuery}".
+Tugasmu: Berikan 20 rekomendasi anime real/asli yang 100% SANGAT SESUAI dan PRESISI dengan kueri pengguna "${userQuery}".
 Instruksi Penting:
 - KETAT: Semua judul anime WAJIB sesuai dengan genre, tema, atau mood yang diminta pengguna. DILARANG memasukkan anime yang tidak sesuai tema (misalnya jangan masukkan anime romance jika pengguna meminta action, mecha, atau horror).
 - Gunakan nama judul utama atau Romaji standar resmi tanpa menyebutkan Season, Part, OVA, Movie, atau Nomor Episode.
@@ -444,10 +444,15 @@ Instruksi Penting:
     "Judul 12",
     "Judul 13",
     "Judul 14",
-    "Judul 15"
+    "Judul 15",
+    "Judul 16",
+    "Judul 17",
+    "Judul 18",
+    "Judul 19",
+    "Judul 20"
   ]
 }`;
-    const userMessage = `Berikan 15 judul anime real yang 100% paling cocok untuk: "${userQuery}". Output WAJIB JSON {"titles": [...]}`;
+    const userMessage = `Berikan 20 judul anime real yang 100% paling cocok untuk: "${userQuery}". Output WAJIB JSON {"titles": [...]}`;
 
     // 1. NVIDIA NIM API (Utama - Llama 3.1 8B Instruct)
     try {
@@ -456,7 +461,7 @@ Instruksi Penting:
         const titles = parseTitlesFromJsonResponse(rawText);
         if (titles.length > 0) {
             console.log('[AI Plan 1] Berhasil dari NVIDIA AI');
-            return { provider: 'NVIDIA AI', titles: titles.slice(0, 15) };
+            return { provider: 'NVIDIA AI', titles: titles.slice(0, 20) };
         }
     } catch (e) {
         console.warn('[AI Plan 1] NVIDIA AI error:', e.message);
@@ -469,7 +474,7 @@ Instruksi Penting:
         const titles = parseTitlesFromJsonResponse(rawText);
         if (titles.length > 0) {
             console.log('[AI Plan 1] Berhasil dari Cerebras AI');
-            return { provider: 'Cerebras AI', titles: titles.slice(0, 15) };
+            return { provider: 'Cerebras AI', titles: titles.slice(0, 20) };
         }
     } catch (e) {
         console.warn('[AI Plan 1] Cerebras AI error:', e.message);
@@ -482,7 +487,7 @@ Instruksi Penting:
         const titles = parseTitlesFromJsonResponse(rawText);
         if (titles.length > 0) {
             console.log('[AI Plan 1] Berhasil dari Cloudflare AI');
-            return { provider: 'Cloudflare AI', titles: titles.slice(0, 15) };
+            return { provider: 'Cloudflare AI', titles: titles.slice(0, 20) };
         }
     } catch (e) {
         console.warn('[AI Plan 1] Cloudflare AI error:', e.message);
@@ -545,7 +550,7 @@ async function matchAnimeTitlesToAnimein(titles, fetchSearchResults, animeinInde
     if (!Array.isArray(titles)) return [];
 
     const matchedItems = await Promise.all(
-        titles.slice(0, 10).map(title => matchSingleTitleToAnimein(title, fetchSearchResults, animeinIndex))
+        titles.slice(0, 20).map(title => matchSingleTitleToAnimein(title, fetchSearchResults, animeinIndex))
     );
 
     const results = [];
