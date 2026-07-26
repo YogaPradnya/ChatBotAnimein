@@ -6,14 +6,21 @@ const { askCerebrasAi } = require('../services/cerebrasAiService');
 const { askNvidiaAi } = require('../services/nvidiaAiService');
 const { CONFIG, ANIMEIN_HEADERS_FULL } = require('../config');
 
+let LOCAL_ANIMEIN_CATALOG = [];
+try {
+    LOCAL_ANIMEIN_CATALOG = require('../data/animeinCatalog.json');
+} catch (e) {
+    LOCAL_ANIMEIN_CATALOG = [];
+}
+
 // Tracking riwayat anime yang pernah dilihat user & kueri terakhir
 const userSeenAnimeMap = new Map(); // senderUserId -> Set(animeId/title)
 const userLastQueryMap = new Map(); // senderUserId -> String(query)
 
 // Cache index Animein non-random untuk matching cepat AniList -> Animein ID
 const animeinIndexCache = {
-    items: [],
-    updatedAt: 0,
+    items: Array.isArray(LOCAL_ANIMEIN_CATALOG) ? [...LOCAL_ANIMEIN_CATALOG] : [],
+    updatedAt: Date.now(),
 };
 const ANIMEIN_INDEX_TTL_MS = 10 * 60 * 1000;
 
@@ -136,6 +143,33 @@ const ANIMEIN_TITLE_MAP = {
     'Cautious Hero: The Hero Is Overpowered but Overly Cautious': ['Shinchou Yuusha', 'Cautious Hero'],
     'The Saga of Tanya the Evil': ['Youjo Senki'],
     'Log Horizon': ['Log Horizon'],
+    'Fullmetal Alchemist: Brotherhood': ['Fullmetal Alchemist', 'Hagane no Renkinjutsushi'],
+    'Fullmetal Alchemist': ['Fullmetal Alchemist', 'Hagane no Renkinjutsushi'],
+    'Death Note': ['Death Note'],
+    'Tokyo Ghoul': ['Tokyo Ghoul'],
+    'Parasyte -the maxim-': ['Kiseijuu', 'Parasyte'],
+    'Parasyte': ['Kiseijuu', 'Parasyte'],
+    'Code Geass: Lelouch of the Rebellion': ['Code Geass'],
+    'Code Geass': ['Code Geass'],
+    'Steins;Gate': ['Steins;Gate', 'Steins Gate'],
+    'Hunter x Hunter': ['Hunter x Hunter'],
+    'Bleach': ['Bleach'],
+    'Naruto': ['Naruto'],
+    'One Piece': ['One Piece'],
+    'Dragon Ball': ['Dragon Ball'],
+    'Fairy Tail': ['Fairy Tail'],
+    'Black Clover': ['Black Clover'],
+    'Mobile Suit Gundam': ['Mobile Suit Gundam', 'Gundam'],
+    'Neon Genesis Evangelion': ['Evangelion', 'Neon Genesis Evangelion'],
+    'Gurren Lagann': ['Tengen Toppa Gurren Lagann', 'Gurren Lagann'],
+    'Tengen Toppa Gurren Lagann': ['Tengen Toppa Gurren Lagann', 'Gurren Lagann'],
+    'Full Metal Panic!': ['Full Metal Panic'],
+    'Tokyo Revengers': ['Tokyo Revengers'],
+    'Vinland Saga': ['Vinland Saga'],
+    'Mob Psycho 100': ['Mob Psycho 100'],
+    'Haikyu!!': ['Haikyuu', 'Haikyu!!'],
+    'Haikyuu!!': ['Haikyuu', 'Haikyu!!'],
+    'Kuroko no Basket': ['Kuroko no Basket', 'Kuroko\'s Basketball'],
 };
 
 function buildAnimeTitleVariants(titles) {
@@ -241,6 +275,10 @@ async function buildAnimeinIndex(fetchAnimeinList) {
             items.push(item);
         }
     };
+
+    if (Array.isArray(LOCAL_ANIMEIN_CATALOG) && LOCAL_ANIMEIN_CATALOG.length > 0) {
+        addItems(LOCAL_ANIMEIN_CATALOG);
+    }
 
     if (typeof fetchAnimeinList === 'function') {
         const categories = ['new_episode', 'hot', 'popular', 'random'];
@@ -384,10 +422,11 @@ function parseTitlesFromJsonResponse(rawText) {
 
 async function analyzePromptWithAI(userQuery) {
     const systemPrompt = `Kamu adalah AI spesialis rekomendasi anime.
-Tugasmu: Berikan 15 rekomendasi anime real/asli yang paling sesuai dengan kueri user "${userQuery}".
+Tugasmu: Berikan 15 rekomendasi anime real/asli yang 100% SANGAT SESUAI dan PRESISI dengan kueri pengguna "${userQuery}".
 Instruksi Penting:
-- Gunakan nama judul utama/Romaji standar yang umum (contoh: "Kimetsu no Yaiba", "Shingeki no Kyojin", "Overlord", "Toradora!", "KonoSuba", "Clannad").
-- Jangan tambahkan keterangan Season, Part, atau Episode di judul.
+- KETAT: Semua judul anime WAJIB sesuai dengan genre, tema, atau mood yang diminta pengguna. DILARANG memasukkan anime yang tidak sesuai tema (misalnya jangan masukkan anime romance jika pengguna meminta action, mecha, atau horror).
+- Gunakan nama judul utama atau Romaji standar resmi tanpa menyebutkan Season, Part, OVA, Movie, atau Nomor Episode.
+- Pastikan judul menggunakan nama resmi yang dapat dicari di database Animein.
 - Output WAJIB berupa JSON valid tanpa teks lain:
 {
   "titles": [
@@ -408,7 +447,7 @@ Instruksi Penting:
     "Judul 15"
   ]
 }`;
-    const userMessage = `Berikan 15 judul anime real yang paling cocok untuk: "${userQuery}". Output WAJIB JSON {"titles": [...]}`;
+    const userMessage = `Berikan 15 judul anime real yang 100% paling cocok untuk: "${userQuery}". Output WAJIB JSON {"titles": [...]}`;
 
     // 1. NVIDIA NIM API (Utama - Llama 3.1 8B Instruct)
     try {
