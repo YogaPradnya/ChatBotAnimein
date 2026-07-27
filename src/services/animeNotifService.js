@@ -71,15 +71,10 @@ function isItemNew(item) {
  * @param {object} item
  * @returns {string}
  */
-/**
- * Resolusi URL foto cover / banner asli dari item API Animein
- * @param {object} item
- * @returns {string}
- */
 function resolveAnimeCoverUrl(item) {
-    if (!item || typeof item !== 'object') return 'https://animeinweb.com/assets/images/logo.png';
+    if (!item || typeof item !== 'object') return '';
     let rawCover = item.image_poster || item.image_cover || item.cover || item.image || item.poster || item.thumbnail || item.banner || item.img || item.photo || item.img_url || item.backdrop_path || item.poster_path || item.cover_url || item.poster_url || '';
-    if (!rawCover) return 'https://animeinweb.com/assets/images/logo.png';
+    if (!rawCover) return '';
 
     let fullUrl = /^https?:\/\//i.test(rawCover) ? rawCover : `https://japi.animein.net/${String(rawCover).replace(/^\/+/, '')}`;
     // Ganti domain xyz-api.animein.net yang terblokir 403 menjadi domain publik japi.animein.net yang 200 OK
@@ -96,16 +91,21 @@ function resolveAnimeCoverUrl(item) {
  * @returns {Promise<string>}
  */
 async function fetchAnimeCoverFromApi(idMovie, animeinClient) {
-    if (!idMovie || !animeinClient) return 'https://animeinweb.com/assets/images/logo.png';
+    if (!idMovie || !animeinClient) return '';
     try {
-        const res = await animeinClient.get(`/3/2/movie/detail/${idMovie}`, { timeout: 6000 }).catch(() => null);
-        const movie = res?.data?.data?.movie || res?.data?.movie || res?.data?.data || {};
-        const coverUrl = resolveAnimeCoverUrl(movie);
-        if (coverUrl && !coverUrl.includes('logo.png')) {
-            return coverUrl;
+        const res = await animeinClient.get(`/3/2/movie/detail/${idMovie}`, { timeout: 6000 });
+        const detailData = res?.data?.data || res?.data || {};
+        const cover = detailData.image_poster || detailData.image_cover || detailData.cover || detailData.poster || detailData.image || '';
+        if (cover) {
+            let fullUrl = /^https?:\/\//i.test(cover) ? cover : `https://japi.animein.net/${String(cover).replace(/^\/+/, '')}`;
+            fullUrl = fullUrl.replace('xyz-api.animein.net', 'japi.animein.net');
+            fullUrl = fullUrl.replace(/([^:]\/)\/+/g, '$1');
+            return fullUrl;
         }
-    } catch (e) {}
-    return 'https://animeinweb.com/assets/images/logo.png';
+    } catch (e) {
+        // Fallback jika API detail error
+    }
+    return '';
 }
 
 /**
@@ -151,30 +151,27 @@ function formatDiscordWebhookPayload(item, fetchedCoverUrl = null) {
 
     const notifText = formatAnimeNotifMessage(item);
 
+    const embedObj = {
+        title,
+        url: animeUrl,
+        description: `Episode ${episode} telah rilis di Animein!\n\n🔗 [Tonton Anime di Animein](${animeUrl})`,
+        color: 3447003,
+        fields: [
+            { name: 'Rating', value: String(rating), inline: true },
+            { name: 'Genre', value: String(genre), inline: true }
+        ],
+        footer: { text: 'Animein Bot Notification System' },
+        timestamp: new Date().toISOString()
+    };
+
+    if (coverImageUrl) {
+        embedObj.image = { url: coverImageUrl };
+    }
+
     return {
         username: 'Animein Bot Notifikasi',
-        avatar_url: 'https://animeinweb.com/assets/images/logo.png',
         content: `📢 **UPDATE RILIS ANIME BARU** 🍿\n\`\`\`text\n${notifText}\n\`\`\``,
-        embeds: [
-            {
-                title,
-                url: animeUrl,
-                description: `Episode ${episode} telah rilis di Animein!\n\n🔗 [Tonton Anime di Animein](${animeUrl})`,
-                color: 3447003,
-                fields: [
-                    { name: 'Rating', value: String(rating), inline: true },
-                    { name: 'Genre', value: String(genre), inline: true }
-                ],
-                image: {
-                    url: coverImageUrl
-                },
-                thumbnail: {
-                    url: 'https://animeinweb.com/assets/images/logo.png'
-                },
-                footer: { text: 'Animein Bot Notification System' },
-                timestamp: new Date().toISOString()
-            }
-        ]
+        embeds: [embedObj]
     };
 }
 

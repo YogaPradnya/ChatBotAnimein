@@ -62,7 +62,7 @@ const { createMemoryRepo } = require('./src/database/memoryRepo');
 const { createKnowledgeRepo, normalizeKnowledgeList, findKnowledgeByHelpTopic, buildKnowledgeContext } = require('./src/database/knowledgeRepo');
 const commands = require('./src/commands');
 const { formatEvolutionContext, getEvolutionByQuery } = require('./src/data/pokemonEvolutions');
-const { startAnimeNotifPoller } = require('./src/services/animeNotifService');
+const { startAnimeNotifPoller, formatDiscordWebhookPayload } = require('./src/services/animeNotifService');
 
 warnMissingConfig();
 
@@ -4665,7 +4665,7 @@ async function startBot() {
         startAnimeNotifPoller({
             animeinClient,
             cacheRepo,
-            sendNotifCallback: async (messageText) => {
+            sendNotifCallback: async (messageText, item, realCoverUrl) => {
                 if (isSystemOff || !isBotNotifActive) return;
                 if (!notifBot.auth.userId || !notifBot.auth.userKey) {
                     await login(notifBot);
@@ -4673,6 +4673,17 @@ async function startBot() {
                 if (notifBot.auth.userId && notifBot.auth.userKey) {
                     await sendChatMessage(notifBot, messageText);
                     console.log(`[ANIME_NOTIF] Notifikasi rilis anime terkirim via ${notifBot.username}.`);
+                }
+
+                const webhookUrl = CONFIG.DISCORD_WEBHOOK_URL || process.env.DISCORD_WEBHOOK_URL;
+                if (webhookUrl && item) {
+                    try {
+                        const discordPayload = formatDiscordWebhookPayload(item, realCoverUrl);
+                        await axios.post(webhookUrl, discordPayload, { timeout: 10000 });
+                        console.log(`[ANIME_NOTIF] Notifikasi rilis anime terkirim ke Discord Webhook.`);
+                    } catch (discordErr) {
+                        console.warn(`[ANIME_NOTIF] Gagal mengirim ke Discord Webhook:`, discordErr.message);
+                    }
                 }
             },
             intervalMs: 60000

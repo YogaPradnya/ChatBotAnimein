@@ -1035,13 +1035,6 @@ async function execute(ctx) {
         .trim();
     let query = rawQuery.replace(/^anime\s*/i, '').trim() || rawQuery;
 
-    const cmdLimit = await checkCommandLimit(senderUserId, senderName);
-    if (cmdLimit.remaining <= 0) {
-        await sendChatMessage(bot, formatCommandUsage(senderName, 'Limit habis.'), msg.id);
-        return true;
-    }
-    await incrementCommandUsage(senderUserId, senderName);
-
     try {
         const uIdKey = String(senderUserId || senderName);
         if (!userSeenAnimeMap.has(uIdKey)) {

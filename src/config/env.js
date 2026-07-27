@@ -57,6 +57,9 @@ function createEnvConfig() {
             NOTIF_USER_ID: getEnv('ANIMEIN_NOTIF_USER_ID'),
             NOTIF_KEY_CLIENT: getEnv('ANIMEIN_NOTIF_KEY_CLIENT'),
         },
+        DISCORD: {
+            WEBHOOK_URL: getEnv('DISCORD_WEBHOOK_URL', 'https://discord.com/api/webhooks/1531187710922854521/YgBm1LHmG0ntmoHJ2L5ahYjX5Tp3BmFfTN7hx8phf9PegnArAlYx1JKHiSv0nfEiga9n'),
+        },
         GROQ: {
             KEYS: collectGroqKeys(),
             COOLDOWN_MS: 45 * 60 * 1000,
