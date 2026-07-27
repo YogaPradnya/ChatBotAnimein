@@ -170,7 +170,7 @@ function formatDiscordWebhookPayload(item, fetchedCoverUrl = null) {
 
     return {
         username: 'Animein Bot Notifikasi',
-        content: `📢 **UPDATE RILIS ANIME BARU** 🍿\n\`\`\`text\n${notifText}\n\`\`\``,
+        content: `@everyone 📢 **UPDATE RILIS ANIME BARU** 🍿\n\`\`\`text\n${notifText}\n\`\`\``,
         embeds: [embedObj]
     };
 }
