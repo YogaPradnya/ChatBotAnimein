@@ -3929,6 +3929,64 @@ async function updateStats() {
     }
   }
 
+  async function triggerEcoXpEvent() {
+    const xpBtn = document.getElementById('ecoXpToggleBtn');
+    if (!xpBtn) return;
+    const isCurrentlyOn = xpBtn.textContent.trim() === 'ON';
+    const active = !isCurrentlyOn;
+    const multiplier = parseInt(document.getElementById('ecoXpMultiplier')?.value || '2');
+    const duration = parseInt(document.getElementById('ecoXpDuration')?.value || '60');
+
+    xpBtn.disabled = true;
+    try {
+      const res = await fetch('/api/economy/toggle-xp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active, multiplier, duration })
+      });
+      const d = await res.json();
+      if (d.success) {
+        showToast(active ? `Event Multi XP (x${multiplier}) diaktifkan!` : 'Event Multi XP dinonaktifkan.', 'success');
+        await loadEkonomiSettings();
+      } else {
+        showToast('Gagal mengubah status event Multi XP: ' + d.error, 'error');
+      }
+    } catch(e) {
+      showToast('Gagal terhubung ke server.', 'error');
+    } finally {
+      xpBtn.disabled = false;
+    }
+  }
+
+  async function triggerEcoDiscountEvent() {
+    const discBtn = document.getElementById('ecoDiscountToggleBtn');
+    if (!discBtn) return;
+    const isCurrentlyOn = discBtn.textContent.trim() === 'ON';
+    const active = !isCurrentlyOn;
+    const percent = parseInt(document.getElementById('ecoDiscountPercent')?.value || '50');
+    const duration = parseInt(document.getElementById('ecoDiscountDuration')?.value || '60');
+
+    discBtn.disabled = true;
+    try {
+      const res = await fetch('/api/economy/toggle-discount', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active, percent, duration })
+      });
+      const d = await res.json();
+      if (d.success) {
+        showToast(active ? `Event Diskon Toko (${percent}%) diaktifkan!` : 'Event Diskon Toko dinonaktifkan.', 'success');
+        await loadEkonomiSettings();
+      } else {
+        showToast('Gagal mengubah status event diskon: ' + d.error, 'error');
+      }
+    } catch(e) {
+      showToast('Gagal terhubung ke server.', 'error');
+    } finally {
+      discBtn.disabled = false;
+    }
+  }
+
   window.loadEkonomiSettings = loadEkonomiSettings;
   window.triggerEcoXpEvent = triggerEcoXpEvent;
   window.triggerEcoDiscountEvent = triggerEcoDiscountEvent;
