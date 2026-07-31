@@ -3946,7 +3946,7 @@ async function updateStats() {
       });
       const d = await res.json();
       if (d.success) {
-        showToast(active ? `Event Multi XP (x${multiplier}) diaktifkan!` : 'Event Multi XP dinonaktifkan.', 'success');
+        showToast(active ? ('Event Multi XP (x' + multiplier + ') diaktifkan!') : 'Event Multi XP dinonaktifkan.', 'success');
         await loadEkonomiSettings();
       } else {
         showToast('Gagal mengubah status event Multi XP: ' + d.error, 'error');
@@ -3975,7 +3975,7 @@ async function updateStats() {
       });
       const d = await res.json();
       if (d.success) {
-        showToast(active ? `Event Diskon Toko (${percent}%) diaktifkan!` : 'Event Diskon Toko dinonaktifkan.', 'success');
+        showToast(active ? ('Event Diskon Toko (' + percent + '%) diaktifkan!') : 'Event Diskon Toko dinonaktifkan.', 'success');
         await loadEkonomiSettings();
       } else {
         showToast('Gagal mengubah status event diskon: ' + d.error, 'error');
