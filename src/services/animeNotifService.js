@@ -32,17 +32,18 @@ function extractScheduleItems(payload) {
 const DAY_MAP = {
     'SUNDAY': 'MINGGU', 'MONDAY': 'SENIN', 'TUESDAY': 'SELASA', 'WEDNESDAY': 'RABU',
     'THURSDAY': 'KAMIS', 'FRIDAY': 'JUMAT', 'SATURDAY': 'SABTU',
-    'AHAD': 'MINGGU', "JUM'AT": 'JUMAT'
+    'AHAD': 'MINGGU', 'MINGGU': 'MINGGU',
+    "JUM'AT": 'JUMAT', 'JUMAT': 'JUMAT', 'SABTU': 'SABTU', 'SENIN': 'SENIN', 'SELASA': 'SELASA', 'RABU': 'RABU', 'KAMIS': 'KAMIS'
 };
 
 function normalizeDayName(dayStr) {
     if (!dayStr) return '';
-    const clean = String(dayStr).trim().toUpperCase();
+    const clean = String(dayStr).trim().toUpperCase().replace(/['"`]/g, '');
     return DAY_MAP[clean] || clean;
 }
 
 /**
- * Cek apakah item anime memiliki label / badge NEW secara eksplisit
+ * Cek apakah item anime valid sebagai item update (memiliki label NEW atau data anime yang valid)
  * @param {object} item
  * @returns {boolean}
  */
@@ -61,6 +62,11 @@ function isItemNew(item) {
                 return true;
             }
         }
+    }
+
+    // Jika item memiliki judul/id/episode (berasal dari jadwal rilis hari ini)
+    if ((item.title || item.name || item.movie) && (item.id || item.slug || item.episode || item.eps || item.episode_now || item.time)) {
+        return true;
     }
 
     return false;
@@ -194,17 +200,36 @@ async function checkAnimeUpdates({ animeinClient, sendNotifCallback, cacheRepo }
         }
 
         const todayName = getAnimeinDayName(0);
+        let recentList = [];
 
-        const scheduleRes = await animeinClient.get('/3/2/schedule/data', {
-            params: { day: todayName, hari: todayName },
-            timeout: 8000
-        });
+        try {
+            const scheduleRes = await animeinClient.get('/3/2/schedule/data', {
+                params: { day: todayName, hari: todayName },
+                timeout: 8000
+            });
+            recentList = extractScheduleItems(scheduleRes?.data || {});
+        } catch (scheduleErr) {
+            console.warn('[ANIME_NOTIF] Gagal fetch /3/2/schedule/data:', scheduleErr.message);
+        }
 
-        const recentList = extractScheduleItems(scheduleRes?.data || {});
+        // Fallback ke /3/2/home/data jika /3/2/schedule/data kosong/gagal
+        if (!recentList || recentList.length === 0) {
+            try {
+                const homeRes = await animeinClient.get('/3/2/home/data', {
+                    params: { day: todayName },
+                    timeout: 8000
+                });
+                const homeData = homeRes?.data?.data || homeRes?.data || {};
+                const candidateItems = homeData.today || homeData.new || homeData.movie || [];
+                recentList = extractScheduleItems(candidateItems.length ? candidateItems : homeData);
+            } catch (homeErr) {
+                console.warn('[ANIME_NOTIF] Gagal fetch fallback /3/2/home/data:', homeErr.message);
+            }
+        }
+
         if (!recentList || recentList.length === 0) return [];
 
         const newUpdates = [];
-        const isFirstRun = notifiedItems.size === 0;
 
         for (const item of recentList) {
             if (!item || (!item.id && !item.slug && !item.title && !item.name && !item.movie)) continue;
@@ -219,7 +244,7 @@ async function checkAnimeUpdates({ animeinClient, sendNotifCallback, cacheRepo }
                 }
             }
 
-            // Filter label NEW: pastikan item memiliki label/badge NEW
+            // Filter label NEW / item update valid
             if (!isItemNew(item)) {
                 continue;
             }
@@ -229,14 +254,6 @@ async function checkAnimeUpdates({ animeinClient, sendNotifCallback, cacheRepo }
             const itemId = String(item.id || item.slug || `${title}_eps_${episode}`);
             
             if (!notifiedItems.has(itemId)) {
-                // Pada run pertama saat startup, hanya isi notifiedItems tanpa mengirim notifikasi
-                if (isFirstRun) {
-                    notifiedItems.add(itemId);
-                    if (cacheRepo?.saveNotifiedAnimeId) {
-                        cacheRepo.saveNotifiedAnimeId(itemId).catch(() => {});
-                    }
-                    continue;
-                }
 
                 // Fetch foto cover asli dari API detail jika belum ada
                 const realCoverUrl = await fetchAnimeCoverFromApi(item.id || item.id_movie || item.slug, animeinClient);
@@ -307,10 +324,12 @@ async function startAnimeNotifPoller({ animeinClient, sendNotifCallback, cacheRe
         }
     }
 
-    // Pengecekan awal untuk populate initial cache
-    checkAnimeUpdates({ animeinClient, sendNotifCallback, cacheRepo }).catch(err => {
+    // Pengecekan awal saat startup
+    try {
+        await checkAnimeUpdates({ animeinClient, sendNotifCallback, cacheRepo });
+    } catch (err) {
         console.warn('[ANIME_NOTIF] Initial check error:', err.message);
-    });
+    }
 
     pollerIntervalId = setInterval(() => {
         checkAnimeUpdates({ animeinClient, sendNotifCallback, cacheRepo }).catch(err => {
@@ -333,6 +352,7 @@ function stopAnimeNotifPoller() {
 
 module.exports = {
     extractScheduleItems,
+    normalizeDayName,
     isItemNew,
     resolveAnimeCoverUrl,
     fetchAnimeCoverFromApi,
