@@ -37,12 +37,14 @@ const CONFIG = {
 
 const ANIMEIN_HEADERS = {
     'Accept': 'application/json',
+    'Origin': 'https://animeinweb.com',
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
 };
 
 const ANIMEIN_HEADERS_FULL = {
     'Accept': 'application/json, text/plain, */*',
     'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Origin': 'https://animeinweb.com',
     'Referer': 'https://animeinweb.com/',
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
     'sec-ch-ua': '"Google Chrome";v="123", "Not:A-Brand";v="8", "Chromium";v="123"',

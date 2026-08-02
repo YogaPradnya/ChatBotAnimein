@@ -62,7 +62,7 @@ const { createMemoryRepo } = require('./src/database/memoryRepo');
 const { createKnowledgeRepo, normalizeKnowledgeList, findKnowledgeByHelpTopic, buildKnowledgeContext } = require('./src/database/knowledgeRepo');
 const commands = require('./src/commands');
 const { formatEvolutionContext, getEvolutionByQuery } = require('./src/data/pokemonEvolutions');
-const { startAnimeNotifPoller, formatDiscordWebhookPayload } = require('./src/services/animeNotifService');
+const { startAnimeNotifPoller, formatDiscordWebhookPayload, downloadAnimeCover } = require('./src/services/animeNotifService');
 
 warnMissingConfig();
 
@@ -4664,6 +4664,7 @@ async function startBot() {
     if (notifBot) {
         startAnimeNotifPoller({
             animeinClient,
+            notifBot,
             cacheRepo,
             sendNotifCallback: async (messageText, item, realCoverUrl) => {
                 let sentAny = false;
@@ -4673,7 +4674,42 @@ async function startBot() {
                 if (webhookUrl && item) {
                     try {
                         const discordPayload = formatDiscordWebhookPayload(item, realCoverUrl);
-                        await axios.post(webhookUrl, discordPayload, { timeout: 10000 });
+                        
+                        // Download cover image dan kirim sebagai attachment
+                        // karena URL gambar animein butuh header Origin/Referer (Discord tidak bisa akses langsung)
+                        let coverFile = null;
+                        if (realCoverUrl) {
+                            coverFile = await downloadAnimeCover(realCoverUrl, axios);
+                        }
+
+                        if (coverFile && coverFile.filePath) {
+                            // Kirim sebagai multipart/form-data dengan file attachment
+                            const form = new FormData();
+                            const attachFilename = `cover.${coverFile.mimeType.split('/')[1] === 'jpeg' ? 'jpg' : (coverFile.mimeType.split('/')[1] || 'jpg')}`;
+                            
+                            // Ubah embed agar pakai attachment
+                            if (discordPayload.embeds && discordPayload.embeds[0]) {
+                                discordPayload.embeds[0].image = { url: `attachment://${attachFilename}` };
+                            }
+                            
+                            form.append('payload_json', JSON.stringify(discordPayload));
+                            form.append('files[0]', fs.createReadStream(coverFile.filePath), {
+                                filename: attachFilename,
+                                contentType: coverFile.mimeType,
+                            });
+
+                            await axios.post(webhookUrl, form, {
+                                headers: form.getHeaders(),
+                                timeout: 15000,
+                            });
+
+                            // Cleanup file temporary
+                            try { fs.unlinkSync(coverFile.filePath); } catch (_) {}
+                        } else {
+                            // Fallback: kirim tanpa gambar
+                            await axios.post(webhookUrl, discordPayload, { timeout: 10000 });
+                        }
+
                         console.log(`[ANIME_NOTIF] Notifikasi rilis anime terkirim ke Discord Webhook.`);
                         sentAny = true;
                     } catch (discordErr) {
