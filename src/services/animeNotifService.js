@@ -251,7 +251,8 @@ async function checkAnimeUpdates({ animeinClient, sendNotifCallback, cacheRepo }
 
             const title = item.title || item.name || item.movie || 'Anime';
             const episode = item.episode || item.eps || item.episode_now || item.latest_episode || item.last_episode || 'new';
-            const itemId = String(item.id || item.slug || `${title}_eps_${episode}`);
+            const baseId = item.id || item.slug || title.replace(/\s+/g, '_');
+            const itemId = `${baseId}_eps_${episode}`;
             
             if (!notifiedItems.has(itemId)) {
 

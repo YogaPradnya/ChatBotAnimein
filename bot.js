@@ -4666,24 +4666,40 @@ async function startBot() {
             animeinClient,
             cacheRepo,
             sendNotifCallback: async (messageText, item, realCoverUrl) => {
-                if (isSystemOff || !isBotNotifActive) return;
-                if (!notifBot.auth.userId || !notifBot.auth.userKey) {
-                    await login(notifBot);
-                }
-                if (notifBot.auth.userId && notifBot.auth.userKey) {
-                    await sendChatMessage(notifBot, messageText);
-                    console.log(`[ANIME_NOTIF] Notifikasi rilis anime terkirim via ${notifBot.username}.`);
-                }
+                let sentAny = false;
 
+                // 1. Pengiriman ke Discord Webhook (Jalur Independen)
                 const webhookUrl = CONFIG.DISCORD_WEBHOOK_URL || process.env.DISCORD_WEBHOOK_URL;
                 if (webhookUrl && item) {
                     try {
                         const discordPayload = formatDiscordWebhookPayload(item, realCoverUrl);
                         await axios.post(webhookUrl, discordPayload, { timeout: 10000 });
                         console.log(`[ANIME_NOTIF] Notifikasi rilis anime terkirim ke Discord Webhook.`);
+                        sentAny = true;
                     } catch (discordErr) {
                         console.warn(`[ANIME_NOTIF] Gagal mengirim ke Discord Webhook:`, discordErr.message);
                     }
+                }
+
+                // 2. Pengiriman ke Chat Animein (Sesuai status isBotNotifActive & isSystemOff)
+                if (!isSystemOff && isBotNotifActive) {
+                    try {
+                        if (!notifBot.auth.userId || !notifBot.auth.userKey) {
+                            await login(notifBot);
+                        }
+                        if (notifBot.auth.userId && notifBot.auth.userKey) {
+                            await sendChatMessage(notifBot, messageText);
+                            console.log(`[ANIME_NOTIF] Notifikasi rilis anime terkirim via ${notifBot.username}.`);
+                            sentAny = true;
+                        }
+                    } catch (chatErr) {
+                        console.warn(`[ANIME_NOTIF] Gagal mengirim ke Chat Animein:`, chatErr.message);
+                    }
+                }
+
+                // Jika tidak ada notifikasi yang terkirim ke salah satu channel, lempar error agar tidak di-cache
+                if (!sentAny) {
+                    throw new Error('Notifikasi di-skip atau gagal terkirim ke semua channel.');
                 }
             },
             intervalMs: 60000

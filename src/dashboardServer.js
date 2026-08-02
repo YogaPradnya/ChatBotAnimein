@@ -1218,6 +1218,16 @@ function startDashboard(scope) {
         }
     });
 
+    app.post('/api/notif/clear-cache', async (req, res) => {
+        try {
+            const result = await db.execute("DELETE FROM anime_notif_cache");
+            console.log(`[NOTIF] Cleared ${result.rowsAffected || 0} anime notification cache rows.`);
+            res.json({ success: true, deleted: result.rowsAffected || 0, message: 'Cache notifikasi anime berhasil dibersihkan.' });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
     app.get('/api/cache/list', async (req, res) => {
         try {
             const result = await cacheRepo.listCache();

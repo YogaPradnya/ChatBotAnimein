@@ -2003,6 +2003,22 @@ function getDashboardHTML() {
     refresh();
   }
 
+  async function clearNotifCache() {
+    const ok = await customConfirm('Semua cache ID notifikasi anime akan dibersihkan. Anime update akan dapat dipicu kembali.', 'Reset Cache Notifikasi', 'Reset');
+    if (!ok) return;
+    try {
+      const res = await fetch('/api/notif/clear-cache', { method: 'POST' });
+      const d = await res.json();
+      if (res.ok && d.success) {
+        showToast(d.message || 'Cache notifikasi anime berhasil dibersihkan.', 'success');
+      } else {
+        showToast(d.error || 'Gagal membersihkan cache notifikasi.', 'error');
+      }
+    } catch (e) {
+      showToast('Gagal terhubung ke server: ' + e.message, 'error');
+    }
+  }
+
   function toggleNavGroup(headerBtn) {
     const group = headerBtn.closest('.nav-group');
     if (group) {
