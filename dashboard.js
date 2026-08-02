@@ -2997,8 +2997,8 @@ async function updateStats() {
         const req = Math.floor(20 * Math.pow(u.level, 3));
         const title = getUserTitle(u.level, u.custom_title);
         const safeTitle = jsString(u.custom_title || '');
-        const safeUsername = jsString(u.username);
-        const safeUserId = jsString(u.user_id || '');
+        const safeUsername = jsString(u.username || '');
+        const safeUserId = jsString(u.user_id || u.userId || '');
         const affPts = u.affection_points || 0;
         const affLvl = u.affection_level || 0;
         const raraUsed = u.rara_chat_used || 0;
@@ -3048,11 +3048,21 @@ async function updateStats() {
       rara_chat_used: parseInt(document.getElementById('editUserRaraChatUsed').value) || 0,
       rara_chat_extra: parseInt(document.getElementById('editUserRaraChatExtra').value) || 0
     };
-    const res = await fetch('/api/users/update-xp', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
-    });
-    if (res.ok) { closeUserModal(); loadUsers(); }
-    else showToast('Gagal memperbarui stats.', 'error');
+    try {
+      const res = await fetch('/api/users/update-xp', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.success !== false) {
+        closeUserModal();
+        loadUsers();
+        showToast('Stats berhasil diperbarui.', 'success');
+      } else {
+        showToast(d.error || d.message || 'Gagal memperbarui stats.', 'error');
+      }
+    } catch (err) {
+      showToast('Gagal terhubung ke server: ' + err.message, 'error');
+    }
   }
 
   async function resetAllUsers() {

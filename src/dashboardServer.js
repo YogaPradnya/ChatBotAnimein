@@ -1396,8 +1396,17 @@ function startDashboard(scope) {
                 }
             }
 
-            const finalUserId = targetUserId || Object.keys(USER_STATS_CACHE).find(k => USER_STATS_CACHE[k]?.username === username);
-            if (finalUserId && (typeof rara_chat_used !== 'undefined' || typeof rara_chat_extra !== 'undefined')) {
+            let finalUserId = targetUserId || Object.keys(USER_STATS_CACHE).find(k => USER_STATS_CACHE[k]?.username === username);
+            if (!finalUserId && username) {
+                try {
+                    const dbUser = await db.execute({ sql: "SELECT user_id FROM user_stats WHERE username = ? LIMIT 1", args: [username] });
+                    if (dbUser?.rows?.[0]?.user_id) {
+                        finalUserId = String(dbUser.rows[0].user_id);
+                    }
+                } catch (err) {}
+            }
+
+            if (finalUserId && finalUserId !== "undefined" && (typeof rara_chat_used !== 'undefined' || typeof rara_chat_extra !== 'undefined')) {
                 const today = getJakartaDateKey();
                 const used = parseInt(rara_chat_used) || 0;
                 const extra = parseInt(rara_chat_extra) || 0;
@@ -1411,7 +1420,10 @@ function startDashboard(scope) {
             }
 
             res.json({ success: true });
-        } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+        } catch (e) { 
+            console.error('[UPDATE XP ERROR]', e);
+            res.status(500).json({ success: false, error: e.message }); 
+        }
     });
 
     app.post('/api/quiz/refetch', async (req, res) => {
