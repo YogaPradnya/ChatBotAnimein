@@ -55,7 +55,11 @@
     "hp": 58,
     "atk": 64,
     "def": 58,
-    "spd": 80
+    "spd": 80,
+    "price_coin": 405,
+    "price_gem": 0,
+    "evolves_to": "006",
+    "rarity": "R"
   },
   {
     "name": "Charizard",
@@ -89,7 +93,11 @@
     "hp": 59,
     "atk": 63,
     "def": 80,
-    "spd": 58
+    "spd": 58,
+    "price_coin": 405,
+    "price_gem": 0,
+    "evolves_to": "009",
+    "rarity": "R"
   },
   {
     "name": "Blastoise",
@@ -111,7 +119,11 @@
     "hp": 45,
     "atk": 30,
     "def": 35,
-    "spd": 45
+    "spd": 45,
+    "price_coin": 195,
+    "price_gem": 0,
+    "evolves_to": "011",
+    "rarity": "R"
   },
   {
     "name": "Metapod",
@@ -146,7 +158,11 @@
     "hp": 40,
     "atk": 35,
     "def": 30,
-    "spd": 50
+    "spd": 50,
+    "price_coin": 195,
+    "price_gem": 0,
+    "evolves_to": "014",
+    "rarity": "R"
   },
   {
     "name": "Kakuna",
@@ -182,7 +198,11 @@
     "hp": 40,
     "atk": 45,
     "def": 40,
-    "spd": 56
+    "spd": 56,
+    "price_coin": 251,
+    "price_gem": 0,
+    "evolves_to": "017",
+    "rarity": "R"
   },
   {
     "name": "Pidgeotto",
@@ -194,7 +214,12 @@
     "hp": 63,
     "atk": 60,
     "def": 55,
-    "spd": 71
+    "spd": 71,
+    "price_coin": 349,
+    "price_gem": 0,
+    "evolves_to": "018",
+    "rarity": "ROOKIE",
+    "shop_id": "18"
   },
   {
     "name": "Pidgeot",
@@ -206,7 +231,12 @@
     "hp": 83,
     "atk": 80,
     "def": 75,
-    "spd": 101
+    "spd": 101,
+    "price_coin": 479,
+    "price_gem": 0,
+    "evolves_to": null,
+    "rarity": "EPIC",
+    "shop_id": "19"
   },
   {
     "name": "Rattata",
@@ -263,7 +293,12 @@
     "hp": 35,
     "atk": 60,
     "def": 44,
-    "spd": 55
+    "spd": 55,
+    "price_coin": 288,
+    "price_gem": 0,
+    "evolves_to": "024",
+    "rarity": "ROOKIE",
+    "shop_id": "24"
   },
   {
     "name": "Arbok",
@@ -550,7 +585,11 @@
     "hp": 60,
     "atk": 55,
     "def": 50,
-    "spd": 45
+    "spd": 45,
+    "price_coin": 305,
+    "price_gem": 0,
+    "evolves_to": "049",
+    "rarity": "R"
   },
   {
     "name": "Venomoth",
@@ -573,7 +612,12 @@
     "hp": 10,
     "atk": 55,
     "def": 25,
-    "spd": 95
+    "spd": 95,
+    "price_coin": 265,
+    "price_gem": 0,
+    "evolves_to": "051",
+    "rarity": "ROOKIE",
+    "shop_id": "51"
   },
   {
     "name": "Dugtrio",
@@ -672,7 +716,11 @@
     "hp": 90,
     "atk": 110,
     "def": 80,
-    "spd": 95
+    "spd": 95,
+    "price_coin": 500,
+    "price_gem": 28,
+    "evolves_to": null,
+    "rarity": "PRO"
   },
   {
     "name": "Poliwag",
@@ -694,7 +742,12 @@
     "hp": 65,
     "atk": 65,
     "def": 65,
-    "spd": 90
+    "spd": 90,
+    "price_coin": 385,
+    "price_gem": 0,
+    "evolves_to": "062",
+    "rarity": "ROOKIE",
+    "shop_id": "62"
   },
   {
     "name": "Poliwrath",
@@ -739,7 +792,11 @@
     "hp": 55,
     "atk": 50,
     "def": 45,
-    "spd": 120
+    "spd": 120,
+    "price_coin": 500,
+    "price_gem": 0,
+    "evolves_to": null,
+    "rarity": "PRO"
   },
   {
     "name": "Machop",
@@ -772,7 +829,11 @@
     "hp": 90,
     "atk": 130,
     "def": 80,
-    "spd": 55
+    "spd": 55,
+    "price_coin": 500,
+    "price_gem": 5,
+    "evolves_to": null,
+    "rarity": "PRO"
   },
   {
     "name": "Bellsprout",
@@ -784,7 +845,11 @@
     "hp": 50,
     "atk": 75,
     "def": 35,
-    "spd": 40
+    "spd": 40,
+    "price_coin": 300,
+    "price_gem": 0,
+    "evolves_to": "070",
+    "rarity": "R"
   },
   {
     "name": "Weepinbell",
@@ -808,7 +873,11 @@
     "hp": 80,
     "atk": 105,
     "def": 65,
-    "spd": 70
+    "spd": 70,
+    "price_coin": 490,
+    "price_gem": 0,
+    "evolves_to": null,
+    "rarity": "E"
   },
   {
     "name": "Tentacool",
@@ -820,7 +889,12 @@
     "hp": 40,
     "atk": 40,
     "def": 35,
-    "spd": 70
+    "spd": 70,
+    "price_coin": 335,
+    "price_gem": 0,
+    "evolves_to": "073",
+    "rarity": "ROOKIE",
+    "shop_id": "73"
   },
   {
     "name": "Tentacruel",
@@ -844,7 +918,12 @@
     "hp": 40,
     "atk": 80,
     "def": 100,
-    "spd": 20
+    "spd": 20,
+    "price_coin": 300,
+    "price_gem": 0,
+    "evolves_to": "075",
+    "rarity": "ROOKIE",
+    "shop_id": "75"
   },
   {
     "name": "Graveler",
@@ -879,7 +958,12 @@
     "hp": 50,
     "atk": 85,
     "def": 55,
-    "spd": 90
+    "spd": 90,
+    "price_coin": 410,
+    "price_gem": 0,
+    "evolves_to": "078",
+    "rarity": "ROOKIE",
+    "shop_id": "78"
   },
   {
     "name": "Rapidash",
@@ -902,7 +986,11 @@
     "hp": 90,
     "atk": 65,
     "def": 65,
-    "spd": 15
+    "spd": 15,
+    "price_coin": 400,
+    "price_gem": 0,
+    "evolves_to": "199",
+    "rarity": "R"
   },
   {
     "name": "Slowbro",
@@ -1030,7 +1118,11 @@
     "hp": 30,
     "atk": 65,
     "def": 100,
-    "spd": 40
+    "spd": 40,
+    "price_coin": 305,
+    "price_gem": 0,
+    "evolves_to": "091",
+    "rarity": "R"
   },
   {
     "name": "Cloyster",
@@ -1066,7 +1158,12 @@
     "hp": 45,
     "atk": 50,
     "def": 45,
-    "spd": 95
+    "spd": 95,
+    "price_coin": 405,
+    "price_gem": 0,
+    "evolves_to": "094",
+    "rarity": "ROOKIE",
+    "shop_id": "94"
   },
   {
     "name": "Gengar",
@@ -1078,7 +1175,11 @@
     "hp": 60,
     "atk": 65,
     "def": 60,
-    "spd": 110
+    "spd": 110,
+    "price_coin": 500,
+    "price_gem": 0,
+    "evolves_to": null,
+    "rarity": "PRO"
   },
   {
     "name": "Onix",
@@ -1325,7 +1426,11 @@
     "hp": 30,
     "atk": 40,
     "def": 70,
-    "spd": 60
+    "spd": 60,
+    "price_coin": 295,
+    "price_gem": 0,
+    "evolves_to": "117",
+    "rarity": "R"
   },
   {
     "name": "Seadra",
@@ -1405,7 +1510,11 @@
     "hp": 70,
     "atk": 110,
     "def": 80,
-    "spd": 105
+    "spd": 105,
+    "price_coin": 500,
+    "price_gem": 5,
+    "evolves_to": "212",
+    "rarity": "PRO"
   },
   {
     "name": "Jynx",
@@ -1472,7 +1581,11 @@
     "hp": 20,
     "atk": 10,
     "def": 55,
-    "spd": 80
+    "spd": 80,
+    "price_coin": 200,
+    "price_gem": 0,
+    "evolves_to": "130",
+    "rarity": "R"
   },
   {
     "name": "Gyarados",
@@ -1507,7 +1620,12 @@
     "hp": 48,
     "atk": 48,
     "def": 48,
-    "spd": 48
+    "spd": 48,
+    "price_coin": 1500,
+    "price_gem": 0,
+    "evolves_to": null,
+    "rarity": "EPIC",
+    "shop_id": "133"
   },
   {
     "name": "Eevee",
@@ -1518,7 +1636,12 @@
     "hp": 55,
     "atk": 55,
     "def": 50,
-    "spd": 55
+    "spd": 55,
+    "price_coin": 300,
+    "price_gem": 0,
+    "evolves_to": "136",
+    "rarity": "ROOKIE",
+    "shop_id": "134"
   },
   {
     "name": "Vaporeon",
@@ -1551,7 +1674,11 @@
     "hp": 65,
     "atk": 130,
     "def": 60,
-    "spd": 65
+    "spd": 65,
+    "price_coin": 500,
+    "price_gem": 6,
+    "evolves_to": null,
+    "rarity": "PRO"
   },
   {
     "name": "Porygon",
@@ -1598,7 +1725,12 @@
     "hp": 30,
     "atk": 80,
     "def": 90,
-    "spd": 55
+    "spd": 55,
+    "price_coin": 355,
+    "price_gem": 0,
+    "evolves_to": "141",
+    "rarity": "ROOKIE",
+    "shop_id": "141"
   },
   {
     "name": "Kabutops",
@@ -1747,7 +1879,12 @@
     "hp": 60,
     "atk": 62,
     "def": 80,
-    "spd": 60
+    "spd": 60,
+    "price_coin": 405,
+    "price_gem": 0,
+    "evolves_to": "154",
+    "rarity": "ROOKIE2",
+    "shop_id": "154"
   },
   {
     "name": "Meganium",
@@ -1780,7 +1917,11 @@
     "hp": 58,
     "atk": 64,
     "def": 58,
-    "spd": 80
+    "spd": 80,
+    "price_coin": 405,
+    "price_gem": 0,
+    "evolves_to": "157",
+    "rarity": "R2"
   },
   {
     "name": "Typhlosion",
@@ -1802,7 +1943,12 @@
     "hp": 50,
     "atk": 65,
     "def": 64,
-    "spd": 43
+    "spd": 43,
+    "price_coin": 314,
+    "price_gem": 0,
+    "evolves_to": "159",
+    "rarity": "ROOKIE2",
+    "shop_id": "159"
   },
   {
     "name": "Croconaw",
@@ -1813,7 +1959,12 @@
     "hp": 65,
     "atk": 80,
     "def": 80,
-    "spd": 58
+    "spd": 58,
+    "price_coin": 405,
+    "price_gem": 0,
+    "evolves_to": "160",
+    "rarity": "ROOKIE2",
+    "shop_id": "160"
   },
   {
     "name": "Feraligatr",
@@ -1894,7 +2045,11 @@
     "hp": 55,
     "atk": 35,
     "def": 50,
-    "spd": 85
+    "spd": 85,
+    "price_coin": 390,
+    "price_gem": 0,
+    "evolves_to": null,
+    "rarity": "E2"
   },
   {
     "name": "Spinarak",
@@ -1906,7 +2061,12 @@
     "hp": 40,
     "atk": 60,
     "def": 40,
-    "spd": 30
+    "spd": 30,
+    "price_coin": 500,
+    "price_gem": 0,
+    "evolves_to": "168",
+    "rarity": "ROOKIE2",
+    "shop_id": "176"
   },
   {
     "name": "Ariados",
@@ -1942,7 +2102,12 @@
     "hp": 75,
     "atk": 38,
     "def": 38,
-    "spd": 67
+    "spd": 67,
+    "price_coin": 660,
+    "price_gem": 0,
+    "evolves_to": "171",
+    "rarity": "ROOKIE2",
+    "shop_id": "179"
   },
   {
     "name": "Lanturn",
@@ -1965,7 +2130,11 @@
     "hp": 20,
     "atk": 40,
     "def": 15,
-    "spd": 60
+    "spd": 60,
+    "price_coin": 410,
+    "price_gem": 0,
+    "evolves_to": "025",
+    "rarity": "R2"
   },
   {
     "name": "Cleffa",
@@ -2149,7 +2318,11 @@
     "hp": 55,
     "atk": 45,
     "def": 50,
-    "spd": 80
+    "spd": 80,
+    "price_coin": 680,
+    "price_gem": 0,
+    "evolves_to": "189",
+    "rarity": "R2"
   },
   {
     "name": "Jumpluff",
@@ -2612,7 +2785,12 @@
     "hp": 45,
     "atk": 60,
     "def": 30,
-    "spd": 65
+    "spd": 65,
+    "price_coin": 330,
+    "price_gem": 1,
+    "evolves_to": "229",
+    "rarity": "ROOKIE2",
+    "shop_id": "167"
   },
   {
     "name": "Houndoom",
