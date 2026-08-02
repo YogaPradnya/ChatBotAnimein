@@ -1,4 +1,4 @@
-const { getAnimeinDayName } = require('../utils');
+const { getAnimeinDayName, getJakartaDateKey } = require('../utils');
 const { boxHeader } = require('../utils/textStyle');
 
 const notifiedItems = new Set();
@@ -40,6 +40,32 @@ function normalizeDayName(dayStr) {
     if (!dayStr) return '';
     const clean = String(dayStr).trim().toUpperCase().replace(/['"`]/g, '');
     return DAY_MAP[clean] || clean;
+}
+
+/**
+ * Ekstrak nomor episode spesifik dari item anime jika tersedia
+ * @param {object} item
+ * @returns {string|null}
+ */
+function extractEpisodeNumber(item) {
+    if (!item || typeof item !== 'object') return null;
+
+    const direct = item.episode || item.eps || item.episode_now || item.latest_episode || item.last_episode;
+    if (direct && direct !== 'new' && direct !== 'BARU' && direct !== 'N/A' && direct !== 'new !!') {
+        return String(direct).trim();
+    }
+
+    const fieldsToSearch = [item.title, item.name, item.movie, item.time, item.label, item.badge, item.slug];
+    for (const val of fieldsToSearch) {
+        if (typeof val === 'string') {
+            const epMatch = val.match(/(?:episode|eps|ep)\.?\s*(\d+)/i);
+            if (epMatch) {
+                return epMatch[1];
+            }
+        }
+    }
+
+    return null;
 }
 
 /**
@@ -121,7 +147,8 @@ async function fetchAnimeCoverFromApi(idMovie, animeinClient) {
  */
 function formatAnimeNotifMessage(item) {
     const title = item.title || item.name || item.movie || 'Anime Update';
-    const episode = item.episode || item.eps || item.episode_now || item.latest_episode || item.last_episode || 'Terbaru';
+    const rawEp = extractEpisodeNumber(item);
+    const episodeText = rawEp ? `Episode ${rawEp}` : 'Episode Terbaru';
     const rating = item.score || item.rating || item.favorites || '-';
     const genre = Array.isArray(item.genres) ? item.genres.join(', ') : (item.genre || '-');
     const idMovie = item.id || item.id_movie || item.slug || item.key;
@@ -129,7 +156,7 @@ function formatAnimeNotifMessage(item) {
 
     let msg = `┌── ${boxHeader('UPDATE ANIME')} 📢\n`;
     msg += `│ 📺 Judul   : ${title}\n`;
-    msg += `│ 🎬 Episode : Episode ${episode}\n`;
+    msg += `│ 🎬 Episode : ${episodeText}\n`;
     msg += `│ ⭐ Rating  : ${rating}\n`;
     msg += `│ 🏷️ Genre   : ${genre}\n`;
     msg += `│ 🔗 Link    : ${animeUrl}\n`;
@@ -148,7 +175,8 @@ function formatAnimeNotifMessage(item) {
  */
 function formatDiscordWebhookPayload(item, fetchedCoverUrl = null) {
     const title = item.title || item.name || item.movie || 'Anime Update';
-    const episode = item.episode || item.eps || item.episode_now || item.latest_episode || item.last_episode || 'Terbaru';
+    const rawEp = extractEpisodeNumber(item);
+    const episodeText = rawEp ? `Episode ${rawEp}` : 'Episode Terbaru';
     const rating = item.score || item.rating || item.favorites || '-';
     const genre = Array.isArray(item.genres) ? item.genres.join(', ') : (item.genre || '-');
     const idMovie = item.id || item.id_movie || item.slug || item.key;
@@ -160,7 +188,7 @@ function formatDiscordWebhookPayload(item, fetchedCoverUrl = null) {
     const embedObj = {
         title,
         url: animeUrl,
-        description: `Episode ${episode} telah rilis di Animein!\n\n🔗 [Tonton Anime di Animein](${animeUrl})`,
+        description: `${episodeText} telah rilis di Animein!\n\n🔗 [Tonton Anime di Animein](${animeUrl})`,
         color: 3447003,
         fields: [
             { name: 'Rating', value: String(rating), inline: true },
@@ -250,9 +278,10 @@ async function checkAnimeUpdates({ animeinClient, sendNotifCallback, cacheRepo }
             }
 
             const title = item.title || item.name || item.movie || 'Anime';
-            const episode = item.episode || item.eps || item.episode_now || item.latest_episode || item.last_episode || 'new';
+            const rawEp = extractEpisodeNumber(item);
             const baseId = item.id || item.slug || title.replace(/\s+/g, '_');
-            const itemId = `${baseId}_eps_${episode}`;
+            const dateKey = getJakartaDateKey();
+            const itemId = rawEp ? `${baseId}_eps_${rawEp}` : `${baseId}_date_${dateKey}`;
             
             if (!notifiedItems.has(itemId)) {
 

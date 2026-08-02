@@ -79,10 +79,20 @@ function createCacheRepo(db) {
     async function loadNotifiedAnimeIds() {
         try {
             await initNotifCacheTable();
+            await db.execute("DELETE FROM anime_notif_cache WHERE item_id LIKE '%_eps_new' OR item_id LIKE '%_eps_N/A'");
             const res = await db.execute('SELECT item_id FROM anime_notif_cache');
             return (res.rows || []).map(r => String(r.item_id));
         } catch (e) {
             return [];
+        }
+    }
+
+    async function cleanCorruptedNotifCache() {
+        try {
+            await initNotifCacheTable();
+            return await db.execute("DELETE FROM anime_notif_cache WHERE item_id LIKE '%_eps_new' OR item_id LIKE '%_eps_N/A'");
+        } catch (e) {
+            return null;
         }
     }
 
@@ -128,6 +138,7 @@ function createCacheRepo(db) {
         loadNotifiedAnimeIds,
         saveNotifiedAnimeId,
         pruneNotifiedAnimeIds,
+        cleanCorruptedNotifCache,
     };
 }
 
