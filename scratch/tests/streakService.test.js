@@ -1,17 +1,21 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { createStreakService } = require('../src/services/streakService');
+const { createStreakService } = require('../../src/services/streakService');
 
 test('Streak Service - calculateStreakXpMultiplier', (t) => {
     const streakService = createStreakService({});
 
     assert.strictEqual(streakService.calculateStreakXpMultiplier(0), 1.0);
     assert.strictEqual(streakService.calculateStreakXpMultiplier(2), 1.0);
-    assert.strictEqual(streakService.calculateStreakXpMultiplier(3), 1.1);
+    assert.strictEqual(streakService.calculateStreakXpMultiplier(3), 1.0);
+    assert.strictEqual(streakService.calculateStreakXpMultiplier(5), 1.25);
     assert.strictEqual(streakService.calculateStreakXpMultiplier(7), 1.25);
+    assert.strictEqual(streakService.calculateStreakXpMultiplier(10), 1.5);
     assert.strictEqual(streakService.calculateStreakXpMultiplier(14), 1.5);
-    assert.strictEqual(streakService.calculateStreakXpMultiplier(30), 2.0);
-    assert.strictEqual(streakService.calculateStreakXpMultiplier(50), 2.0);
+    assert.strictEqual(streakService.calculateStreakXpMultiplier(15), 2.0);
+    assert.strictEqual(streakService.calculateStreakXpMultiplier(30), 2.5);
+    assert.strictEqual(streakService.calculateStreakXpMultiplier(50), 2.5);
+    assert.strictEqual(streakService.calculateStreakXpMultiplier(60), 3.0);
 });
 
 test('Streak Service - processQuizWinStreak (initial user)', async (t) => {

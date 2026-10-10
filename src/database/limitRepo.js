@@ -71,6 +71,21 @@ function createLimitRepo(db) {
         });
     }
 
+    async function incrementImageLimitUsage(userId, username, usageDate, dailyLimit) {
+        // Single-statement UPSERT atomik: tanpa SELECT dulu, aman dari lost-update konkuren.
+        return db.execute({
+            sql: `INSERT INTO image_limits (user_id, username, usage_date, used_count, daily_limit)
+                  VALUES (?, ?, ?, 1, ?)
+                  ON CONFLICT(user_id) DO UPDATE SET
+                  used_count = CASE WHEN usage_date = ? THEN used_count + 1 ELSE 1 END,
+                  usage_date = ?,
+                  username = ?,
+                  daily_limit = max(daily_limit, ?),
+                  updated_at = CURRENT_TIMESTAMP`,
+            args: [userId, username, usageDate, dailyLimit, usageDate, usageDate, username, dailyLimit],
+        });
+    }
+
     async function resetImageLimitUsage(userId, usageDate) {
         return db.execute({
             sql: 'UPDATE image_limits SET usage_date = ?, used_count = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?',
@@ -148,6 +163,7 @@ function createLimitRepo(db) {
         getImageLimit,
         createImageLimit,
         resetImageLimitUsage,
+        incrementImageLimitUsage,
         upsertImageLimitUsage,
         addCommandExtraLimit,
         addImageExtraLimit,

@@ -139,7 +139,13 @@ async function useItem(repoOrDb, userId, itemType, amount = 1) {
     const current = await getItemCount(shopRepo, userId, itemType);
     if (current < amount) return false;
     try {
-        await shopRepo.useItem(userId, itemType, amount);
+        const res = await shopRepo.useItem(userId, itemType, amount);
+        // Guard atomik (WHERE quantity >= ?): changes===0 berarti stok habis/diklaim konkuren → gagal.
+        const changed = Number(res?.rowsAffected ?? res?.changes ?? 1);
+        if (changed === 0) {
+            console.warn(`[SHOP] useItem gagal (stok kurang/race) ${itemType} user ${userId}`);
+            return false;
+        }
         return true;
     } catch (e) {
         console.warn(`[SHOP] Gagal gunakan item ${itemType} dari ${userId}:`, e.message);

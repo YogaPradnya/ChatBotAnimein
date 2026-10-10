@@ -18,7 +18,19 @@ function boxHeader(title) {
     return isAlreadyBoldSans(text) ? text : toBoldSans(text);
 }
 
+// Helper bersama untuk sanitasi + truncate teks tampilan (box UI).
+// Dipakai lintas command agar tidak ada duplikat fungsi cleanText lokal.
+// Perilaku: strip tag HTML, padatkan whitespace, truncate dengan '...'.
+function cleanAnimeText(value, maxLength = 32) {
+    const text = String(value || '-')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    return text.length > maxLength ? `${text.slice(0, maxLength - 3)}...` : text;
+}
+
 module.exports = {
     toBoldSans,
     boxHeader,
+    cleanAnimeText,
 };

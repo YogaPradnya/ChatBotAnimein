@@ -1,6 +1,9 @@
 const express = require('express');
 const path = require('path');
 const crypto = require('crypto');
+let helmet = null;
+try { helmet = require('helmet'); } catch (_) { helmet = null; }
+const { maskSensitiveText } = require('./services/errorHandler');
 const axios = require('./httpClient');
 const { getDashboardHTML, getLoginHTML } = require('../dashboard.js');
 const { SESSION, RATE_LIMIT, LIMITS } = require('./config/constants');
@@ -8,6 +11,7 @@ const { getCloudflareStat } = require('./services/cloudflareAiService');
 const { getCerebrasStat } = require('./services/cerebrasAiService');
 const { getNvidiaStat } = require('./services/nvidiaAiService');
 const { getJakartaDateKey } = require('./utils');
+const { getWeekKey, getPrevWeekKey } = require('./database/quizWeeklyRepo');
 
 const SESSION_TTL_MS = SESSION.TTL_MS; // 24 jam
 const SESSIONS = new Map();
@@ -38,6 +42,48 @@ function checkRateLimit(ip) {
     return entry.count <= RATE_LIMIT_MAX_REQUESTS;
 }
 
+// Rate-limit khusus /login: max 10/menit/IP
+const LOGIN_RATE_LIMITS = new Map(); // ip -> { count, resetAt }
+const LOGIN_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const LOGIN_RATE_LIMIT_MAX = 10;
+
+function checkLoginRateLimit(ip) {
+    const now = Date.now();
+    let entry = LOGIN_RATE_LIMITS.get(ip);
+    if (!entry || now > entry.resetAt) {
+        entry = { count: 0, resetAt: now + LOGIN_RATE_LIMIT_WINDOW_MS };
+        LOGIN_RATE_LIMITS.set(ip, entry);
+    }
+    entry.count++;
+    return entry.count <= LOGIN_RATE_LIMIT_MAX;
+}
+
+function safeCompare(a, b) {
+    const bufA = Buffer.from(String(a || ''), 'utf8');
+    const bufB = Buffer.from(String(b || ''), 'utf8');
+    if (bufA.length !== bufB.length) return false;
+    return crypto.timingSafeEqual(bufA, bufB);
+}
+
+function safeError(res, e, status = 500) {
+    try {
+        console.error('[DASHBOARD ERROR]', e && e.message ? e.message : e);
+    } catch (_) {}
+    return res.status(status).json({ success: false, message: 'Internal error' });
+}
+
+function isAllowedApiOrigin(req) {
+    const origin = req.headers.origin || req.headers.referer;
+    if (!origin) return true; // same-origin form/curl tanpa Origin tetap lolos
+    try {
+        const originUrl = new URL(origin);
+        const host = String(req.headers.host || '').toLowerCase();
+        return originUrl.host.toLowerCase() === host;
+    } catch (_) {
+        return true;
+    }
+}
+
 // Cleanup expired sessions dan rate limits setiap 10 menit
 setInterval(() => {
     const now = Date.now();
@@ -46,6 +92,9 @@ setInterval(() => {
     }
     for (const [ip, entry] of RATE_LIMITS.entries()) {
         if (now > entry.resetAt) RATE_LIMITS.delete(ip);
+    }
+    for (const [ip, entry] of LOGIN_RATE_LIMITS.entries()) {
+        if (now > entry.resetAt) LOGIN_RATE_LIMITS.delete(ip);
     }
 }, SESSION.CLEANUP_INTERVAL_MS);
 
@@ -129,22 +178,54 @@ function createRuntime(scope) {
 function startDashboard(scope) {
     const runtime = createRuntime(scope);
 
-    with (runtime) {
+    // Eksplisit: referensi stabil di-destructure; state reaktif diakses via
+    // `runtime.` agar tetap live (getter/setter), setara semantik `with(runtime)`.
+    const { projectRoot, state, CONFIG, db, bots, stats, cache, ANIMEIN_HEADERS, USER_STATS_CACHE, XP_PENDING_UPDATES, bannedUsers, sendChatMessage, sendChatWithImage, addActivity, startQuiz, resetAutoQuizTimer, fetchHomeAnime, clearQuizTimers, flushPendingXP, getImageLimitStatus, reportRepo, cacheRepo, settingsRepo, limitRepo, settingsKeys, login, logEmitter, weeklyRepo, cardsRepo } = runtime;
     const app = express();
+
+    if (helmet) {
+        app.use(helmet({
+            contentSecurityPolicy: {
+                directives: {
+                    defaultSrc: ["'self'"],
+                    scriptSrc: ["'self'", "'unsafe-inline'", 'https://unpkg.com'],
+                    scriptSrcAttr: ["'unsafe-inline'"], // WAJIB: semua tombol pakai onclick="..."
+                    styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+                    fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+                    imgSrc: ["'self'", 'data:', 'https:'],
+                    connectSrc: ["'self'"],
+                    objectSrc: ["'none'"],
+                    frameAncestors: ["'self'"],
+                },
+            },
+            crossOriginEmbedderPolicy: false,
+        }));
+    }
 
     app.use(express.json());
     app.use(express.urlencoded({ extended: true }));
+    // Block akses publik ke file prompt karakter
+    app.get('/Prompt_Karakter_Rara.txt', (req, res) => res.status(404).send('Not found'));
     app.use(express.static(path.join(projectRoot, 'public')));
+    // Pengecekan Origin/Referer sederhana untuk POST /api/* (tolak cross-origin)
+    app.use((req, res, next) => {
+        if (req.method === 'POST' && req.path.startsWith('/api/')) {
+            if (!isAllowedApiOrigin(req)) {
+                return res.status(403).json({ success: false, message: 'Forbidden origin' });
+            }
+        }
+        next();
+    });
 
     app.get('/health', (req, res) => {
         res.json({
             ok: true,
             dashboard: 'online',
-            botStatus: isSystemOff ? 'offline' : stats.botStatus,
-            isSystemOff,
-            isBotInfoActive,
-            isBotKuisActive,
-            isImageCommandActive,
+            botStatus: runtime.isSystemOff ? 'offline' : stats.botStatus,
+            isSystemOff: runtime.isSystemOff,
+            isBotInfoActive: runtime.isBotInfoActive,
+            isBotKuisActive: runtime.isBotKuisActive,
+            isImageCommandActive: runtime.isImageCommandActive,
             uptime: Math.floor((Date.now() - new Date(stats.startTime)) / 1000),
         });
     });
@@ -169,8 +250,19 @@ function startDashboard(scope) {
 
     app.get('/login', (req, res) => res.send(getLoginHTML()));
     app.post('/login', (req, res) => {
+        const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+        if (!checkLoginRateLimit(ip)) {
+            return res.status(429).send(getLoginHTML('Terlalu banyak percobaan. Coba lagi dalam 1 menit.'));
+        }
+        const expectedUser = process.env.DASHBOARD_USER || process.env.DASHBOARD_USERNAME || '';
+        const expectedPass = process.env.DASHBOARD_PASS || process.env.DASHBOARD_PASSWORD || '';
+        if (!expectedUser || !expectedPass) {
+            return res.status(500).send(getLoginHTML('Login tidak tersedia saat ini.'));
+        }
         const { username, password } = req.body;
-        if (username === process.env.DASHBOARD_USER && password === process.env.DASHBOARD_PASS) {
+        const userOk = safeCompare(username || '', expectedUser);
+        const passOk = safeCompare(password || '', expectedPass);
+        if (userOk && passOk) {
             const token = crypto.randomBytes(32).toString('hex');
             SESSIONS.set(token, { createdAt: Date.now() });
             const secureCookie = process.env.NODE_ENV === 'production' ? '; Secure' : '';
@@ -181,19 +273,22 @@ function startDashboard(scope) {
         }
     });
 
-    app.get('/logout', (req, res) => {
+    function doLogout(req, res) {
         const cookies = req.headers.cookie || '';
         const token = cookies.split(';').find(c => c.trim().startsWith('dashboard_session='))?.split('=')[1];
         if (token) SESSIONS.delete(token);
         res.setHeader('Set-Cookie', 'dashboard_session=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax');
         res.redirect('/login');
-    });
+    }
+
+    app.get('/logout', doLogout);
+    app.post('/logout', doLogout);
 
     // Lindungi semua route setelah ini
     app.use(checkAuth);
 
     function blockWhenSystemOff(res, action = 'Aksi') {
-        if (!isSystemOff) return false;
+        if (!runtime.isSystemOff) return false;
         return res.status(423).json({
             success: false,
             message: `${action} diblokir karena Kill Switch ON. Matikan Kill Switch dulu untuk menjalankan aksi ini.`
@@ -203,30 +298,30 @@ function startDashboard(scope) {
     app.post('/api/config/double-xp', (req, res) => {
         const { minutes, multiplier } = req.body || {};
         
-        if (XP_MULTIPLIER > 1 && !minutes) {
+        if (runtime.XP_MULTIPLIER > 1 && !minutes) {
             stopDoubleXP();
             return res.json({ success: true, active: false, multiplier: 1 });
         }
         if (blockWhenSystemOff(res, 'Event XP')) return;
 
-        XP_MULTIPLIER = parseInt(multiplier) || 2;
+        runtime.XP_MULTIPLIER = parseInt(multiplier) || 2;
         const durationMin = parseInt(minutes) || 60;
         const durationMs = durationMin * 60 * 1000;
-        doubleXPEndTime = Date.now() + durationMs;
+        runtime.doubleXPEndTime = Date.now() + durationMs;
 
-        if (doubleXPTimeout) clearTimeout(doubleXPTimeout);
-        doubleXPTimeout = setTimeout(() => {
+        if (runtime.doubleXPTimeout) clearTimeout(runtime.doubleXPTimeout);
+        runtime.doubleXPTimeout = setTimeout(() => {
             stopDoubleXP();
         }, durationMs);
 
-        console.log(`[EVENT] XP x${XP_MULTIPLIER} ENABLED for ${durationMin} minutes. Ends at: ${new Date(doubleXPEndTime).toLocaleTimeString()}`);
+        console.log(`[EVENT] XP x${runtime.XP_MULTIPLIER} ENABLED for ${durationMin} minutes. Ends at: ${new Date(runtime.doubleXPEndTime).toLocaleTimeString()}`);
         
         const msg = [
             `╭━━ 🎊 *EVENT AKTIF* 🎊 ━━╮`,
-            `┃ 🚀 *BONUS XP x${XP_MULTIPLIER} AKTIF!*`,
+            `┃ 🚀 *BONUS XP x${runtime.XP_MULTIPLIER} AKTIF!*`,
             `┃`,
             `┃ Semua kuis & interaksi memberikan`,
-            `┃ hadiah XP *${XP_MULTIPLIER}x lipat*! 🔥`,
+            `┃ hadiah XP *${runtime.XP_MULTIPLIER}x lipat*! 🔥`,
             `┣━━━━━━━━━━━━━━━━━━━┫`,
             `┃ ⏳ Durasi : ${durationMin} menit`,
             `┃ ✨ Ayo kumpulin XP sebanyaknya!`,
@@ -234,15 +329,15 @@ function startDashboard(scope) {
         ].join('\n');
         sendChatMessage(bots[1], msg).catch(e => console.error("[BROADCAST ERROR]:", e.message));
         
-        res.json({ success: true, active: true, multiplier: XP_MULTIPLIER, endTime: doubleXPEndTime });
+        res.json({ success: true, active: true, multiplier: runtime.XP_MULTIPLIER, endTime: runtime.doubleXPEndTime });
     });
 
     function stopDoubleXP() {
-        if (XP_MULTIPLIER === 1) return;
-        XP_MULTIPLIER = 1;
-        doubleXPEndTime = 0;
-        if (doubleXPTimeout) clearTimeout(doubleXPTimeout);
-        doubleXPTimeout = null;
+        if (runtime.XP_MULTIPLIER === 1) return;
+        runtime.XP_MULTIPLIER = 1;
+        runtime.doubleXPEndTime = 0;
+        if (runtime.doubleXPTimeout) clearTimeout(runtime.doubleXPTimeout);
+        runtime.doubleXPTimeout = null;
         console.log(`[EVENT] Event Bonus XP: DISABLED`);
         const msg = [
             `╭━━ 🏁 *EVENT SELESAI* 🏁 ━━╮`,
@@ -258,62 +353,64 @@ function startDashboard(scope) {
     }
 
     function stopDiscountEvent() {
-        if (!isDiscountEvent) return;
-        isDiscountEvent = false;
+        if (!runtime.isDiscountEvent) return;
+        runtime.isDiscountEvent = false;
         state.discountEndTime = 0;
         if (state.discountTimeout) clearTimeout(state.discountTimeout);
         state.discountTimeout = null;
-        settingsRepo.set(settingsKeys.IS_DISCOUNT_EVENT, false).catch(() => {});
+        settingsRepo.set(settingsKeys.IS_DISCOUNT_EVENT, false).catch((e) => console.warn('[DASHBOARD] persist discount event gagal:', e.message));
         console.log(`[EVENT] Toko Rara Discount Event ENDED.`);
     }
 
     app.post('/api/filter/add', async (req, res) => {
         const { word } = req.body;
         if (!word) return res.json({ success: false });
-        if (!FILTER_DATA.profanities.includes(word)) {
-            FILTER_DATA.profanities.push(word);
+        if (typeof word !== 'string' || word.length > 50) return res.status(400).json({ success: false, message: 'Kata terlalu panjang (maks 50 karakter).' });
+        if (!runtime.FILTER_DATA.profanities.includes(word)) {
+            runtime.FILTER_DATA.profanities.push(word);
             try {
                 await db.execute({ 
                     sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('filter_data', ?)", 
-                    args: [JSON.stringify(FILTER_DATA)] 
+                    args: [JSON.stringify(runtime.FILTER_DATA)] 
                 });
-            } catch(e) {}
+            } catch (e) { console.warn('[DASHBOARD] DB settings save gagal:', e.message); }
         }
         res.json({ success: true });
     });
 
     app.post('/api/filter/delete', async (req, res) => {
         const { word } = req.body;
-        FILTER_DATA.profanities = FILTER_DATA.profanities.filter(w => w !== word);
+        runtime.FILTER_DATA.profanities = runtime.FILTER_DATA.profanities.filter(w => w !== word);
         try {
             await db.execute({ 
                 sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('filter_data', ?)", 
-                args: [JSON.stringify(FILTER_DATA)] 
+                args: [JSON.stringify(runtime.FILTER_DATA)] 
             });
-        } catch(e) {}
+        } catch (e) { console.warn('[DASHBOARD] DB settings save gagal:', e.message); }
         res.json({ success: true });
     });
 
     app.post('/api/filter/save-response', async (req, res) => {
         const { response } = req.body;
-        FILTER_DATA.response = response;
+        if (typeof response === 'string' && response.length > 500) return res.status(400).json({ success: false, message: 'Respons terlalu panjang (maks 500 karakter).' });
+        runtime.FILTER_DATA.response = response;
         try {
             await db.execute({ 
                 sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('filter_data', ?)", 
-                args: [JSON.stringify(FILTER_DATA)] 
+                args: [JSON.stringify(runtime.FILTER_DATA)] 
             });
-        } catch(e) {}
+        } catch (e) { console.warn('[DASHBOARD] DB settings save gagal:', e.message); }
         res.json({ success: true });
     });
 
     app.get('/api/filter', (req, res) => {
-        res.json({ success: true, profanities: FILTER_DATA.profanities, response: FILTER_DATA.response });
+        res.json({ success: true, profanities: runtime.FILTER_DATA.profanities, response: runtime.FILTER_DATA.response });
     });
 
     app.post('/api/quiz/config', (req, res) => {
         const { filter } = req.body;
-        if (filter) QUIZ_FILTER = filter;
-        console.log(`[QUIZ] Theme filter updated to: ${QUIZ_FILTER}`);
+        if (filter) runtime.QUIZ_FILTER = filter;
+        console.log(`[QUIZ] Theme filter updated to: ${runtime.QUIZ_FILTER}`);
         res.json({ success: true });
     });
 
@@ -356,7 +453,7 @@ function startDashboard(scope) {
 
     app.post('/api/quiz/trigger', async (req, res) => {
         if (blockWhenSystemOff(res, 'Trigger kuis')) return;
-        if (!isBotKuisActive || !bots[1] || !bots[1].auth.userId) {
+        if (!runtime.isBotKuisActive || !bots[1] || !bots[1].auth.userId) {
             return res.json({ success: false, message: 'Bot Kuis sedang tidak aktif!' });
         }
         try {
@@ -452,6 +549,29 @@ function startDashboard(scope) {
         }
     });
 
+    app.get('/api/quiz/weekly', async (req, res) => {
+        try {
+            const weekKey = getWeekKey();
+            const prevKey = getPrevWeekKey();
+            const top = weeklyRepo ? await weeklyRepo.getLeaderboard(weekKey, 10) : [];
+            const winner = weeklyRepo ? await weeklyRepo.getTopUser(prevKey) : null;
+            res.json({ success: true, weekKey, top, prevWeek: { weekKey: prevKey, winner } });
+        } catch (e) {
+            safeError(res, e);
+        }
+    });
+
+    app.get('/api/gacha/stats', async (req, res) => {
+        try {
+            const s = cardsRepo && typeof cardsRepo.getCardStats === 'function'
+                ? await cardsRepo.getCardStats(5)
+                : { totalPulls: 0, legendaryPulls: 0, uniqueCollectors: 0, topCards: [] };
+            res.json({ success: true, ...s });
+        } catch (e) {
+            safeError(res, e);
+        }
+    });
+
     app.get('/api/stats', async (req, res) => {
         try {
             const uptime = Math.floor((Date.now() - new Date(stats.startTime)) / 1000);
@@ -462,7 +582,7 @@ function startDashboard(scope) {
             const titleRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'available_titles'" });
             const availableTitles = titleRes.rows.length > 0 ? JSON.parse(titleRes.rows[0].value) : [];
 
-            const botStatus = isSystemOff ? 'offline' : ((bots[0] && bots[0].auth && bots[0].auth.userId) ? 'online' : 'offline');
+            const botStatus = runtime.isSystemOff ? 'offline' : ((bots[0] && bots[0].auth && bots[0].auth.userId) ? 'online' : 'offline');
             res.json({ 
                 ...stats,
                 cloudflare: getCloudflareStat(),
@@ -470,32 +590,37 @@ function startDashboard(scope) {
                 nvidia: getNvidiaStat(),
                 uptime, 
                 botStatus,
-                isBotActive: isBotInfoActive, // backward compat
-                isBotInfoActive,
-                isBotKuisActive,
-                isImageCommandActive,
-                isBotNotifActive,
-                isSystemOff,
-                isDoubleXP: XP_MULTIPLIER > 1,
-                xpMultiplier: XP_MULTIPLIER,
-                doubleXPEndTime: doubleXPEndTime,
-                quizFilter: QUIZ_FILTER,
+                isBotActive: runtime.isBotInfoActive, // backward compat
+                isBotInfoActive: runtime.isBotInfoActive,
+                isBotKuisActive: runtime.isBotKuisActive,
+                isImageCommandActive: runtime.isImageCommandActive,
+                isBotNotifActive: runtime.isBotNotifActive,
+                isSystemOff: runtime.isSystemOff,
+                isDoubleXP: runtime.XP_MULTIPLIER > 1,
+                xpMultiplier: runtime.XP_MULTIPLIER,
+                doubleXPEndTime: runtime.doubleXPEndTime,
+                quizFilter: runtime.QUIZ_FILTER,
                 availableTitles,
                 totalDBLogs: logsCount.rows[0].count,
                 totalReports: laporanCount.rows[0].count,
                 totalDBKuis: quizCount.rows[0].count,
                 totalQuizzesStarted: stats.totalQuizzesStarted,
+                accuracyFallback: stats.accuracyFallback || 0,
+                accuracyDontKnow: stats.accuracyDontKnow || 0,
+                accuracyCorrections: stats.accuracyCorrections || 0,
+                injectionBlocked: stats.injectionBlocked || 0,
+                providerLatency: stats.providerLatency || {},
                 nextMicrofetch: stats.lastMicrofetch > 0 ? stats.lastMicrofetch + (6 * 60 * 60 * 1000) : Date.now() + (6 * 60 * 60 * 1000),
-                activeQuiz: activeQuiz.isRunning ? {
-                    title: activeQuiz.original,
-                    hints: activeQuiz.hintsRevealed,
-                    start: activeQuiz.startedAt
+                activeQuiz: runtime.activeQuiz.isRunning ? {
+                    title: runtime.activeQuiz.original,
+                    hints: runtime.activeQuiz.hintsRevealed,
+                    start: runtime.activeQuiz.startedAt
                 } : null,
                 realtimeLogs: stats.realtimeLogs || []
             });
         } catch (e) {
-            const botStatus = isSystemOff ? 'offline' : ((bots[0] && bots[0].auth && bots[0].auth.userId) ? 'online' : 'offline');
-            res.json({ ...stats, botStatus, isBotInfoActive, isBotKuisActive, isImageCommandActive, isSystemOff, realtimeLogs: stats.realtimeLogs || [], error: e.message });
+            const botStatus = runtime.isSystemOff ? 'offline' : ((bots[0] && bots[0].auth && bots[0].auth.userId) ? 'online' : 'offline');
+            res.json({ ...stats, botStatus, isBotInfoActive: runtime.isBotInfoActive, isBotKuisActive: runtime.isBotKuisActive, isImageCommandActive: runtime.isImageCommandActive, isSystemOff: runtime.isSystemOff, realtimeLogs: stats.realtimeLogs || [], error: e.message });
         }
     });
 
@@ -527,6 +652,20 @@ function startDashboard(scope) {
     app.post('/api/users/reset-all', async (req, res) => {
         try {
             console.log("[DASHBOARD] Resetting all users XP and Level...");
+            // Flush-before-reset: jangan hapus XP_PENDING tanpa mencatat/flush dulu.
+            const pendingKeys = Object.keys(XP_PENDING_UPDATES || {});
+            if (pendingKeys.length > 0) {
+                if (scope.flushPendingXP && typeof scope.flushPendingXP === 'function') {
+                    try {
+                        await scope.flushPendingXP('dashboard-reset-all');
+                        console.log(`[DASHBOARD] Flushed ${pendingKeys.length} pending XP sebelum reset.`);
+                    } catch (flushErr) {
+                        console.warn('[DASHBOARD] flushPendingXP sebelum reset gagal:', flushErr.message);
+                    }
+                } else {
+                    console.warn(`[DASHBOARD] flush runtime tidak tersedia; ${pendingKeys.length} pending XP akan dibuang saat reset.`);
+                }
+            }
             await db.execute("UPDATE user_stats SET xp = 0, level = 1");
             await db.execute("DELETE FROM user_memories");
             
@@ -537,7 +676,7 @@ function startDashboard(scope) {
             res.json({ success: true, message: 'Semua data user berhasil direset!' });
         } catch (e) {
             console.error("[RESET ALL ERROR]", e.message);
-            res.status(500).json({ success: false, message: e.message });
+            safeError(res, e);
         }
     });
 
@@ -546,59 +685,59 @@ function startDashboard(scope) {
         const { role } = req.body;
         try {
             if (role === 'notif') {
-                isBotNotifActive = !isBotNotifActive;
+                runtime.isBotNotifActive = !runtime.isBotNotifActive;
                 await db.execute({
                     sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('is_bot_notif_active', ?)",
-                    args: [String(isBotNotifActive)]
+                    args: [String(runtime.isBotNotifActive)]
                 });
-                console.log(`[DASHBOARD] Bot Notif: ${isBotNotifActive ? 'ON' : 'OFF'}`);
+                console.log(`[DASHBOARD] Bot Notif: ${runtime.isBotNotifActive ? 'ON' : 'OFF'}`);
             } else if (role === 'kuis') {
-                isBotKuisActive = !isBotKuisActive;
+                runtime.isBotKuisActive = !runtime.isBotKuisActive;
                 await db.execute({
                     sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('is_bot_kuis_active', ?)",
-                    args: [String(isBotKuisActive)]
+                    args: [String(runtime.isBotKuisActive)]
                 });
-                console.log(`[DASHBOARD] Bot Kuis: ${isBotKuisActive ? 'ON' : 'OFF'}`);
+                console.log(`[DASHBOARD] Bot Kuis: ${runtime.isBotKuisActive ? 'ON' : 'OFF'}`);
             } else {
-                isBotInfoActive = !isBotInfoActive;
+                runtime.isBotInfoActive = !runtime.isBotInfoActive;
                 await db.execute({
                     sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('is_bot_info_active', ?)",
-                    args: [String(isBotInfoActive)]
+                    args: [String(runtime.isBotInfoActive)]
                 });
-                console.log(`[DASHBOARD] Bot Info: ${isBotInfoActive ? 'ON' : 'OFF'}`);
+                console.log(`[DASHBOARD] Bot Info: ${runtime.isBotInfoActive ? 'ON' : 'OFF'}`);
             }
-            res.json({ success: true, isBotInfoActive, isBotKuisActive, isImageCommandActive, isBotNotifActive, isSystemOff });
+            res.json({ success: true, isBotInfoActive: runtime.isBotInfoActive, isBotKuisActive: runtime.isBotKuisActive, isImageCommandActive: runtime.isImageCommandActive, isBotNotifActive: runtime.isBotNotifActive, isSystemOff: runtime.isSystemOff });
         } catch (e) {
-            res.status(500).json({ success: false, message: e.message });
+            safeError(res, e);
         }
     });
 
     app.post('/api/config/image-command', async (req, res) => {
         if (blockWhenSystemOff(res, 'Toggle Bot Gambar')) return;
         try {
-            isImageCommandActive = !isImageCommandActive;
+            runtime.isImageCommandActive = !runtime.isImageCommandActive;
             await db.execute({
                 sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('is_image_command_active', ?)",
-                args: [String(isImageCommandActive)]
+                args: [String(runtime.isImageCommandActive)]
             });
 
-            if (isImageCommandActive) {
+            if (runtime.isImageCommandActive) {
                 const imageBot = bots.find(b => b.role === 'image');
                 if (imageBot && !imageBot.auth.userId) {
                     login(imageBot).catch(e => console.warn('[DASHBOARD] Gagal login Bot Gambar:', e.message));
                 }
             }
 
-            console.log(`[DASHBOARD] Bot Gambar: ${isImageCommandActive ? 'ON' : 'OFF'}`);
-            res.json({ success: true, isImageCommandActive, isSystemOff });
+            console.log(`[DASHBOARD] Bot Gambar: ${runtime.isImageCommandActive ? 'ON' : 'OFF'}`);
+            res.json({ success: true, isImageCommandActive: runtime.isImageCommandActive, isSystemOff: runtime.isSystemOff });
         } catch (e) {
-            res.status(500).json({ success: false, message: e.message });
+            safeError(res, e);
         }
     });
 
     app.get('/api/images/limits', async (req, res) => {
         try {
-            const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).toISOString().slice(0, 10);
+            const today = getJakartaDateKey();
             const q = String(req.query.q || '').replace(/^@/, '').trim();
             const page = Math.max(1, parseInt(req.query.page, 10) || 1);
             const limit = Math.min(10, Math.max(1, parseInt(req.query.limit, 10) || LIMITS.DASHBOARD_PAGE_SIZE));
@@ -631,9 +770,9 @@ function startDashboard(scope) {
                 });
             }
 
-            res.json({ success: true, date: today, defaultLimit: IMAGE_DAILY_LIMIT_DEFAULT, data, pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) }, q });
+            res.json({ success: true, date: today, defaultLimit: runtime.IMAGE_DAILY_LIMIT_DEFAULT, data, pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) }, q });
         } catch (e) {
-            res.status(500).json({ success: false, message: e.message });
+            safeError(res, e);
         }
     });
 
@@ -665,7 +804,7 @@ function startDashboard(scope) {
             console.log(`[DASHBOARD] Limit gambar @${status.username}(${status.userId}): ${usedCount}/${dailyLimit} (sisa ${remaining})`);
             res.json({ success: true, data: { user_id: status.userId, username: status.username, usage_date: status.usageDate, used_count: usedCount, daily_limit: dailyLimit, remaining } });
         } catch (e) {
-            res.status(500).json({ success: false, message: e.message });
+            safeError(res, e);
         }
     });
 
@@ -683,7 +822,7 @@ function startDashboard(scope) {
             console.log(`[DASHBOARD] Pemakaian gambar @${username}(${userId}) direset.`);
             res.json({ success: true });
         } catch (e) {
-            res.status(500).json({ success: false, message: e.message });
+            safeError(res, e);
         }
     });
 
@@ -693,22 +832,22 @@ function startDashboard(scope) {
             res.json({
                 success: true,
                 settings: {
-                    baseXpRate,
-                    isDoubleXP: XP_MULTIPLIER > 1,
-                    xpMultiplier: XP_MULTIPLIER,
-                    xpDuration: doubleXPEndTime > Date.now() ? Math.round((doubleXPEndTime - Date.now()) / 60000) : 0,
-                    isDiscountEvent,
+                    baseXpRate: runtime.baseXpRate,
+                    isDoubleXP: runtime.XP_MULTIPLIER > 1,
+                    xpMultiplier: runtime.XP_MULTIPLIER,
+                    xpDuration: runtime.doubleXPEndTime > Date.now() ? Math.round((runtime.doubleXPEndTime - Date.now()) / 60000) : 0,
+                    isDiscountEvent: runtime.isDiscountEvent,
                     discountDuration: state.discountEndTime > Date.now() ? Math.round((state.discountEndTime - Date.now()) / 60000) : 0,
-                    discountPercent,
-                    priceCustomTitle,
-                    priceHintPack,
-                    priceExtraImage,
-                    priceExtraLimit,
-                    priceExtraRaraChat: priceExtraRaraChat !== undefined ? priceExtraRaraChat : 3000
+                    discountPercent: runtime.discountPercent,
+                    priceCustomTitle: runtime.priceCustomTitle,
+                    priceHintPack: runtime.priceHintPack,
+                    priceExtraImage: runtime.priceExtraImage,
+                    priceExtraLimit: runtime.priceExtraLimit,
+                    priceExtraRaraChat: runtime.priceExtraRaraChat !== undefined ? priceExtraRaraChat : 3000
                 }
             });
         } catch (e) {
-            res.status(500).json({ success: false, error: e.message });
+            safeError(res, e);
         }
     });
 
@@ -716,34 +855,34 @@ function startDashboard(scope) {
         const { baseXpRate: bx, priceCustomTitle: pct, priceHintPack: php, priceExtraImage: pei, priceExtraLimit: pel, priceExtraRaraChat: perc } = req.body || {};
         try {
             if (bx !== undefined) {
-                baseXpRate = parseInt(bx, 10);
-                await settingsRepo.set(settingsKeys.BASE_XP_RATE, baseXpRate);
+                runtime.baseXpRate = parseInt(bx, 10);
+                await settingsRepo.set(settingsKeys.BASE_XP_RATE, runtime.baseXpRate);
             }
             if (pct !== undefined) {
-                priceCustomTitle = parseInt(pct, 10);
-                await settingsRepo.set(settingsKeys.PRICE_CUSTOM_TITLE, priceCustomTitle);
+                runtime.priceCustomTitle = parseInt(pct, 10);
+                await settingsRepo.set(settingsKeys.PRICE_CUSTOM_TITLE, runtime.priceCustomTitle);
             }
             if (php !== undefined) {
-                priceHintPack = parseInt(php, 10);
-                await settingsRepo.set(settingsKeys.PRICE_HINT_PACK, priceHintPack);
+                runtime.priceHintPack = parseInt(php, 10);
+                await settingsRepo.set(settingsKeys.PRICE_HINT_PACK, runtime.priceHintPack);
             }
             if (pei !== undefined) {
-                priceExtraImage = parseInt(pei, 10);
-                await settingsRepo.set(settingsKeys.PRICE_EXTRA_IMAGE, priceExtraImage);
+                runtime.priceExtraImage = parseInt(pei, 10);
+                await settingsRepo.set(settingsKeys.PRICE_EXTRA_IMAGE, runtime.priceExtraImage);
             }
             if (pel !== undefined) {
-                priceExtraLimit = parseInt(pel, 10);
-                await settingsRepo.set(settingsKeys.PRICE_EXTRA_LIMIT, priceExtraLimit);
+                runtime.priceExtraLimit = parseInt(pel, 10);
+                await settingsRepo.set(settingsKeys.PRICE_EXTRA_LIMIT, runtime.priceExtraLimit);
             }
             if (perc !== undefined) {
-                priceExtraRaraChat = parseInt(perc, 10);
-                await settingsRepo.set('price_extra_rara_chat', priceExtraRaraChat);
+                runtime.priceExtraRaraChat = parseInt(perc, 10);
+                await settingsRepo.set('price_extra_rara_chat', runtime.priceExtraRaraChat);
             }
 
-            console.log(`[DASHBOARD] Economy settings updated -> Base XP: ${baseXpRate}%, CustomTitle: ${priceCustomTitle}, HintPack: ${priceHintPack}, ExtraImg: ${priceExtraImage}, ExtraLimit: ${priceExtraLimit}, ExtraRaraChat: ${priceExtraRaraChat}`);
+            console.log(`[DASHBOARD] Economy settings updated -> Base XP: ${runtime.baseXpRate}%, CustomTitle: ${runtime.priceCustomTitle}, HintPack: ${runtime.priceHintPack}, ExtraImg: ${runtime.priceExtraImage}, ExtraLimit: ${runtime.priceExtraLimit}, ExtraRaraChat: ${runtime.priceExtraRaraChat}`);
             res.json({ success: true });
         } catch (e) {
-            res.status(500).json({ success: false, error: e.message });
+            safeError(res, e);
         }
     });
 
@@ -751,24 +890,24 @@ function startDashboard(scope) {
         const { active, duration, multiplier } = req.body || {};
         try {
             if (active) {
-                XP_MULTIPLIER = parseInt(multiplier) || 2;
+                runtime.XP_MULTIPLIER = parseInt(multiplier) || 2;
                 const durationMin = parseInt(duration) || 60;
                 const durationMs = durationMin * 60 * 1000;
-                doubleXPEndTime = Date.now() + durationMs;
+                runtime.doubleXPEndTime = Date.now() + durationMs;
 
-                if (doubleXPTimeout) clearTimeout(doubleXPTimeout);
-                doubleXPTimeout = setTimeout(() => {
+                if (runtime.doubleXPTimeout) clearTimeout(runtime.doubleXPTimeout);
+                runtime.doubleXPTimeout = setTimeout(() => {
                     stopDoubleXP();
                 }, durationMs);
 
-                console.log(`[EVENT] XP x${XP_MULTIPLIER} ENABLED for ${durationMin} minutes.`);
+                console.log(`[EVENT] XP x${runtime.XP_MULTIPLIER} ENABLED for ${durationMin} minutes.`);
                 
                 const msg = [
                     `╭━━ 🎊 *EVENT AKTIF* 🎊 ━━╮`,
-                    `┃ 🚀 *BONUS XP x${XP_MULTIPLIER} AKTIF!*`,
+                    `┃ 🚀 *BONUS XP x${runtime.XP_MULTIPLIER} AKTIF!*`,
                     `┃`,
                     `┃ Semua kuis & interaksi memberikan`,
-                    `┃ hadiah XP *${XP_MULTIPLIER}x lipat*! 🔥`,
+                    `┃ hadiah XP *${runtime.XP_MULTIPLIER}x lipat*! 🔥`,
                     `┣━━━━━━━━━━━━━━━━━━━┫`,
                     `┃ ⏳ Durasi : ${durationMin} menit`,
                     `┃ ✨ Ayo kumpulin XP sebanyaknya!`,
@@ -780,7 +919,7 @@ function startDashboard(scope) {
             }
             res.json({ success: true });
         } catch (e) {
-            res.status(500).json({ success: false, error: e.message });
+            safeError(res, e);
         }
     });
 
@@ -788,8 +927,8 @@ function startDashboard(scope) {
         const { active, percent, duration } = req.body || {};
         try {
             if (active) {
-                isDiscountEvent = true;
-                discountPercent = parseInt(percent) || 50;
+                runtime.isDiscountEvent = true;
+                runtime.discountPercent = parseInt(percent) || 50;
                 const durationMin = parseInt(duration) || 60;
                 const durationMs = durationMin * 60 * 1000;
                 state.discountEndTime = Date.now() + durationMs;
@@ -807,17 +946,17 @@ function startDashboard(scope) {
                     sendChatMessage(bots[1], msg).catch(e => console.error("[BROADCAST ERROR]:", e.message));
                 }, durationMs);
 
-                await settingsRepo.set(settingsKeys.IS_DISCOUNT_EVENT, isDiscountEvent);
-                await settingsRepo.set(settingsKeys.DISCOUNT_PERCENT, discountPercent);
+                await settingsRepo.set(settingsKeys.IS_DISCOUNT_EVENT, runtime.isDiscountEvent);
+                await settingsRepo.set(settingsKeys.DISCOUNT_PERCENT, runtime.discountPercent);
 
-                console.log(`[EVENT] Toko Rara Discount Event updated -> Active: ${isDiscountEvent}, Discount: ${discountPercent}%, Duration: ${durationMin}m`);
+                console.log(`[EVENT] Toko Rara Discount Event updated -> Active: ${runtime.isDiscountEvent}, Discount: ${runtime.discountPercent}%, Duration: ${durationMin}m`);
 
                 const msg = [
                     `╭━━ 🛒 *DISKON TOKO RARA* 🛒 `,
                     `┃ 🎉 *EVENT DISKON AKTIF!*`,
                     `┃`,
                     `┃ Seluruh item di Toko Rara diskon sebesar`,
-                    `┃ *${discountPercent}%* dari harga normal! 🔥`,
+                    `┃ *${runtime.discountPercent}%* dari harga normal! 🔥`,
                     `┣━━━━━━━━━━━━━━━━━━━┫`,
                     `┃ ⏳ Durasi : ${durationMin} menit`,
                     `┃ ✨ Ketik *.toko* untuk melihat harga baru!`,
@@ -838,26 +977,26 @@ function startDashboard(scope) {
 
             res.json({ success: true });
         } catch (e) {
-            res.status(500).json({ success: false, error: e.message });
+            safeError(res, e);
         }
     });
 
     // --- GLOBAL LIMIT SETTINGS ---
     app.get('/api/limits/global', async (req, res) => {
         try {
-            const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).toISOString().slice(0, 10);
+            const today = getJakartaDateKey();
             const cmdUserCount = await db.execute("SELECT COUNT(*) as total FROM command_limits");
             const imgUserCount = await db.execute("SELECT COUNT(*) as total FROM image_limits");
             res.json({
                 success: true,
                 date: today,
-                cmdDefaultLimit: CMD_DAILY_LIMIT_DEFAULT,
-                imgDefaultLimit: IMAGE_DAILY_LIMIT_DEFAULT,
+                cmdDefaultLimit: runtime.CMD_DAILY_LIMIT_DEFAULT,
+                imgDefaultLimit: runtime.IMAGE_DAILY_LIMIT_DEFAULT,
                 cmdUserCount: Number(cmdUserCount.rows[0]?.total || 0),
                 imgUserCount: Number(imgUserCount.rows[0]?.total || 0),
             });
         } catch (e) {
-            res.status(500).json({ success: false, message: e.message });
+            safeError(res, e);
         }
     });
 
@@ -867,7 +1006,7 @@ function startDashboard(scope) {
             if (cmdDefaultLimit !== undefined) {
                 const val = parseInt(cmdDefaultLimit, 10);
                 if (isNaN(val) || val < 0) return res.status(400).json({ success: false, message: 'Limit CMD harus angka valid.' });
-                CMD_DAILY_LIMIT_DEFAULT = val;
+                runtime.CMD_DAILY_LIMIT_DEFAULT = val;
                 await db.execute({
                     sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('cmd_daily_limit_default', ?)",
                     args: [String(val)]
@@ -876,16 +1015,16 @@ function startDashboard(scope) {
             if (imgDefaultLimit !== undefined) {
                 const val = parseInt(imgDefaultLimit, 10);
                 if (isNaN(val) || val < 0) return res.status(400).json({ success: false, message: 'Limit Gambar harus angka valid.' });
-                IMAGE_DAILY_LIMIT_DEFAULT = val;
+                runtime.IMAGE_DAILY_LIMIT_DEFAULT = val;
                 await db.execute({
                     sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('image_daily_limit_default', ?)",
                     args: [String(val)]
                 });
             }
-            console.log(`[DASHBOARD] Global limit updated -> CMD: ${CMD_DAILY_LIMIT_DEFAULT}/hari, IMG: ${IMAGE_DAILY_LIMIT_DEFAULT}/hari`);
-            res.json({ success: true, cmdDefaultLimit: CMD_DAILY_LIMIT_DEFAULT, imgDefaultLimit: IMAGE_DAILY_LIMIT_DEFAULT });
+            console.log(`[DASHBOARD] Global limit updated -> CMD: ${runtime.CMD_DAILY_LIMIT_DEFAULT}/hari, IMG: ${runtime.IMAGE_DAILY_LIMIT_DEFAULT}/hari`);
+            res.json({ success: true, cmdDefaultLimit: runtime.CMD_DAILY_LIMIT_DEFAULT, imgDefaultLimit: runtime.IMAGE_DAILY_LIMIT_DEFAULT });
         } catch (e) {
-            res.status(500).json({ success: false, message: e.message });
+            safeError(res, e);
         }
     });
 
@@ -914,10 +1053,87 @@ function startDashboard(scope) {
         res.json({ success: true, temperature: val });
     });
 
+    // --- RARA RESPONSE SETTINGS (gaya, panjang, emoji, temperature per intent) ---
+    const RARA_SETTINGS_SPEC = {
+        rara_style_intensity: { globalKey: 'RARA_STYLE_INTENSITY', def: 70, min: 0, max: 100, round: false },
+        rara_max_words_chat: { globalKey: 'RARA_MAX_WORDS_CHAT', def: 15, min: 5, max: 200, round: true },
+        rara_max_words_info: { globalKey: 'RARA_MAX_WORDS_INFO', def: 60, min: 5, max: 200, round: true },
+        rara_emoji_budget: { globalKey: 'RARA_EMOJI_BUDGET', def: 3, min: 0, max: 10, round: true },
+        rara_temp_chat: { globalKey: 'RARA_TEMP_CHAT', def: 1.0, min: 0, max: 2, round: false },
+        rara_temp_info: { globalKey: 'RARA_TEMP_INFO', def: 0.3, min: 0, max: 2, round: false },
+    };
+    function readRaraSettings() {
+        const out = {};
+        for (const [key, spec] of Object.entries(RARA_SETTINGS_SPEC)) {
+            const cur = global[spec.globalKey];
+            out[key] = (typeof cur === 'number' && !isNaN(cur)) ? cur : spec.def;
+        }
+        return out;
+    }
+    app.get('/api/rara/settings', (req, res) => {
+        res.json({ success: true, settings: readRaraSettings() });
+    });
+
+    app.post('/api/rara/settings', async (req, res) => {
+        try {
+            const body = req.body || {};
+            const saved = {};
+            for (const [key, spec] of Object.entries(RARA_SETTINGS_SPEC)) {
+                if (!(key in body)) continue;
+                const val = parseFloat(body[key]);
+                if (isNaN(val) || val < spec.min || val > spec.max) {
+                    return res.status(400).json({ success: false, message: `Nilai ${key} harus angka antara ${spec.min} sampai ${spec.max}.` });
+                }
+                const finalVal = spec.round ? Math.round(val) : val;
+                global[spec.globalKey] = finalVal;
+                saved[key] = finalVal;
+                try {
+                    await settingsRepo.set(key, String(finalVal));
+                } catch (e) {
+                    console.warn(`[DASHBOARD] Gagal simpan ${key} ke DB:`, e.message);
+                }
+            }
+            console.log('[DASHBOARD] Rara settings diubah:', JSON.stringify(saved));
+            res.json({ success: true, settings: readRaraSettings() });
+        } catch (e) {
+            safeError(res, e);
+        }
+    });
+
+    // --- RARA PLAYGROUND: tes 1 balasan tanpa efek samping ---
+    app.post('/api/rara/preview', async (req, res) => {
+        try {
+            const body = req.body || {};
+            const question = String(body.question || '').trim();
+            if (question.length < 3 || question.length > 500) {
+                return res.status(400).json({ success: false, message: 'Pertanyaan harus 3-500 karakter.' });
+            }
+            let affectionLevel = 0;
+            if (body.affectionLevel !== undefined && body.affectionLevel !== null && body.affectionLevel !== '') {
+                affectionLevel = parseInt(body.affectionLevel, 10);
+                if (isNaN(affectionLevel) || affectionLevel < 0 || affectionLevel > 5) {
+                    return res.status(400).json({ success: false, message: 'Affection level harus angka 0-5.' });
+                }
+            }
+            let answerStyle;
+            if (body.answerStyle === 'info' || body.answerStyle === 'chat') answerStyle = body.answerStyle;
+            else if (body.answerStyle !== undefined && body.answerStyle !== null && body.answerStyle !== '') {
+                return res.status(400).json({ success: false, message: 'answerStyle harus "chat" atau "info".' });
+            }
+            if (typeof runtime.previewRaraReply !== 'function') {
+                return res.status(503).json({ success: false, message: 'Preview Rara belum tersedia.' });
+            }
+            const result = await runtime.previewRaraReply({ question, affectionLevel, answerStyle });
+            res.json({ success: true, ...result });
+        } catch (e) {
+            safeError(res, e);
+        }
+    });
+
     // --- COMMAND LIMITS PER USER ---
     app.get('/api/limits/commands', async (req, res) => {
         try {
-            const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).toISOString().slice(0, 10);
+            const today = getJakartaDateKey();
             const q = String(req.query.q || '').replace(/^@/, '').trim();
             const page = Math.max(1, parseInt(req.query.page, 10) || 1);
             const limit = Math.min(10, Math.max(1, parseInt(req.query.limit, 10) || LIMITS.DASHBOARD_PAGE_SIZE));
@@ -945,13 +1161,13 @@ function startDashboard(scope) {
                     used = 0;
                     usageDate = today;
                 }
-                const totalLimit = CMD_DAILY_LIMIT_DEFAULT + extra;
+                const totalLimit = runtime.CMD_DAILY_LIMIT_DEFAULT + extra;
                 return {
                     user_id: row.user_id,
                     username: row.username,
                     usage_date: usageDate,
                     used_count: used,
-                    base_limit: CMD_DAILY_LIMIT_DEFAULT,
+                    base_limit: runtime.CMD_DAILY_LIMIT_DEFAULT,
                     extra_limit: extra,
                     total_limit: totalLimit,
                     remaining: Math.max(0, totalLimit - used),
@@ -959,9 +1175,9 @@ function startDashboard(scope) {
                 };
             });
 
-            res.json({ success: true, date: today, defaultLimit: CMD_DAILY_LIMIT_DEFAULT, data, pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) }, q });
+            res.json({ success: true, date: today, defaultLimit: runtime.CMD_DAILY_LIMIT_DEFAULT, data, pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) }, q });
         } catch (e) {
-            res.status(500).json({ success: false, message: e.message });
+            safeError(res, e);
         }
     });
 
@@ -975,7 +1191,7 @@ function startDashboard(scope) {
         }
 
         try {
-            const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).toISOString().slice(0, 10);
+            const today = getJakartaDateKey();
             let usedCount = 0;
             // Ambil data existing
             const existing = await db.execute({ sql: "SELECT usage_date, used_count FROM command_limits WHERE user_id = ?", args: [userId] });
@@ -999,12 +1215,12 @@ function startDashboard(scope) {
                       updated_at = CURRENT_TIMESTAMP`,
                 args: [userId, username, today, usedCount, extraLimit]
             });
-            const totalLimit = CMD_DAILY_LIMIT_DEFAULT + extraLimit;
+            const totalLimit = runtime.CMD_DAILY_LIMIT_DEFAULT + extraLimit;
             const remaining = Math.max(0, totalLimit - usedCount);
             console.log(`[DASHBOARD] Limit cmd @${username}(${userId}): ${usedCount}/${totalLimit} (extra: ${extraLimit}, sisa: ${remaining})`);
             res.json({ success: true, data: { user_id: userId, username, usage_date: today, used_count: usedCount, extra_limit: extraLimit, total_limit: totalLimit, remaining } });
         } catch (e) {
-            res.status(500).json({ success: false, message: e.message });
+            safeError(res, e);
         }
     });
 
@@ -1014,7 +1230,7 @@ function startDashboard(scope) {
         if (!userId) return res.status(400).json({ success: false, message: 'User ID wajib diisi.' });
 
         try {
-            const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).toISOString().slice(0, 10);
+            const today = getJakartaDateKey();
             await db.execute({
                 sql: "UPDATE command_limits SET usage_date = ?, used_count = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
                 args: [today, userId]
@@ -1022,17 +1238,17 @@ function startDashboard(scope) {
             console.log(`[DASHBOARD] Pemakaian cmd @${username}(${userId}) direset.`);
             res.json({ success: true });
         } catch (e) {
-            res.status(500).json({ success: false, message: e.message });
+            safeError(res, e);
         }
     });
 
     app.get('/api/limits/rara-chat', async (req, res) => {
         const q = req.query.q || '';
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;
+        const page = Math.min(100, Math.max(1, parseInt(req.query.page, 10) || 1));
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10));
         const offset = (page - 1) * limit;
         try {
-            const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).toISOString().slice(0, 10);
+            const today = getJakartaDateKey();
             let countSql = "SELECT COUNT(*) as total FROM rara_chat_limits";
             let countArgs = [];
             let listSql = "SELECT * FROM rara_chat_limits ORDER BY updated_at DESC LIMIT ? OFFSET ?";
@@ -1075,7 +1291,7 @@ function startDashboard(scope) {
                 today,
             });
         } catch (e) {
-            res.status(500).json({ success: false, message: e.message });
+            safeError(res, e);
         }
     });
 
@@ -1088,7 +1304,7 @@ function startDashboard(scope) {
         if (!userId) return res.status(400).json({ success: false, message: 'User ID wajib diisi.' });
 
         try {
-            const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })).toISOString().slice(0, 10);
+            const today = getJakartaDateKey();
             await limitRepo.upsertRaraChatLimit({
                 userId,
                 username,
@@ -1099,55 +1315,56 @@ function startDashboard(scope) {
             console.log(`[DASHBOARD] Limit Rara chat @${username}(${userId}): ${usedCount}/20 (extra: ${extraLimit})`);
             res.json({ success: true });
         } catch (e) {
-            res.status(500).json({ success: false, message: e.message });
+            safeError(res, e);
         }
     });
 
     app.post('/api/system/toggle', async (req, res) => {
-        isSystemOff = !isSystemOff;
-        stats.botStatus = isSystemOff ? 'offline' : 'online';
+        runtime.isSystemOff = !runtime.isSystemOff;
+        stats.botStatus = runtime.isSystemOff ? 'offline' : 'online';
 
-        if (isSystemOff) {
-            isBotInfoActive = false;
-            isBotKuisActive = false;
-            activeQuiz.isRunning = false;
-            activeQuiz.isStarting = false;
+        if (runtime.isSystemOff) {
+            runtime.isBotInfoActive = false;
+            runtime.isBotKuisActive = false;
+            runtime.activeQuiz.isRunning = false;
+            runtime.activeQuiz.isStarting = false;
             clearQuizTimers();
         }
 
-        console.log(`[KILL SWITCH] Kill Switch: ${isSystemOff ? 'ON (all Animein API actions blocked)' : 'OFF (system allowed)'}`);
+        console.log(`[KILL SWITCH] Kill Switch: ${runtime.isSystemOff ? 'ON (all Animein API actions blocked)' : 'OFF (system allowed)'}`);
         
         try {
             await db.execute({ 
                 sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('is_system_off', ?)", 
-                args: [String(isSystemOff)] 
+                args: [String(runtime.isSystemOff)] 
             });
             await db.execute({
                 sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('is_bot_info_active', ?)",
-                args: [String(isBotInfoActive)]
+                args: [String(runtime.isBotInfoActive)]
             });
             await db.execute({
                 sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('is_bot_kuis_active', ?)",
-                args: [String(isBotKuisActive)]
+                args: [String(runtime.isBotKuisActive)]
             });
         } catch (e) {
             console.error("[KILL SWITCH] Gagal simpan ke DB:", e.message);
         }
         
-        res.json({ success: true, isSystemOff, isBotInfoActive, isBotKuisActive });
+        res.json({ success: true, isSystemOff: runtime.isSystemOff, isBotInfoActive: runtime.isBotInfoActive, isBotKuisActive: runtime.isBotKuisActive });
     });
 
     app.post('/api/chat/send', async (req, res) => {
         if (blockWhenSystemOff(res, 'Kirim pesan manual')) return;
         const { text, botIndex } = req.body;
         if (!text) return res.status(400).json({ success: false, message: 'Text required' });
+        if (typeof text !== 'string' || text.length > 2000) return res.status(400).json({ success: false, message: 'Text terlalu panjang (maks 2000 karakter).' });
         
         const parsedIndex = Number.parseInt(botIndex, 10);
         const idx = Number.isInteger(parsedIndex) && parsedIndex >= 0 && parsedIndex < Math.min(bots.length, 3) ? parsedIndex : 0;
         const targetBot = bots[idx];
         const botName = targetBot ? targetBot.username : 'Unknown';
         
-        console.log(`[DASHBOARD] Manual Send via ${botName}: ${text}`);
+        console.log(`[DASHBOARD] Manual Send via ${botName}: ${maskSensitiveText(String(text)).slice(0, 200)}`);
         const sent = await sendChatMessage(targetBot, text);
         if (!sent) {
             console.warn(`[DASHBOARD] Manual Send gagal via ${botName}.`);
@@ -1162,8 +1379,11 @@ function startDashboard(scope) {
         if (blockWhenSystemOff(res, 'Kirim gambar manual')) return;
         const { text, image, mimeType } = req.body;
         if (!image) return res.status(400).json({ success: false, message: 'Image required' });
+        if (typeof image !== 'string' || !image.startsWith('data:image/')) return res.status(400).json({ success: false, message: 'Format gambar tidak valid.' });
+        if (image.length > 7 * 1024 * 1024) return res.status(400).json({ success: false, message: 'Gambar terlalu besar (maks ~7MB).' });
+        if (text && String(text).length > 2000) return res.status(400).json({ success: false, message: 'Caption terlalu panjang (maks 2000 karakter).' });
         
-        console.log(`[DASHBOARD] Manual Image: ${text || '(no caption)'}`);
+        console.log(`[DASHBOARD] Manual Image: ${(text || '(no caption)').toString().slice(0, 200)}`);
         const imageBot = bots.find(b => b.role === 'image') || bots[0];
         const success = await sendChatWithImage(imageBot, { data: image, mimeType: mimeType || 'image/jpeg' }, text || '');
         if (success) {
@@ -1215,7 +1435,7 @@ function startDashboard(scope) {
             console.log(`[CACHE] Cleared ${deleted} cached responses.`);
             res.json({ success: true, deleted });
         } catch (e) {
-            res.status(500).json({ success: false, error: e.message });
+            safeError(res, e);
         }
     });
 
@@ -1225,7 +1445,7 @@ function startDashboard(scope) {
             console.log(`[NOTIF] Cleared ${result.rowsAffected || 0} anime notification cache rows.`);
             res.json({ success: true, deleted: result.rowsAffected || 0, message: 'Cache notifikasi anime berhasil dibersihkan.' });
         } catch (e) {
-            res.status(500).json({ success: false, error: e.message });
+            safeError(res, e);
         }
     });
 
@@ -1248,7 +1468,7 @@ function startDashboard(scope) {
             });
             res.json({ success: true, data });
         } catch (e) {
-            res.status(500).json({ success: false, error: e.message });
+            safeError(res, e);
         }
     });
 
@@ -1262,7 +1482,7 @@ function startDashboard(scope) {
             const data = { ...result.rows[0], answer_json: result.rows[0].answer };
             res.json({ success: true, data });
         } catch (e) {
-            res.status(500).json({ success: false, error: e.message });
+            safeError(res, e);
         }
     });
 
@@ -1272,7 +1492,7 @@ function startDashboard(scope) {
             await cacheRepo.updateCacheById(id, key, answer, domain);
             res.json({ success: true });
         } catch (e) {
-            res.status(500).json({ success: false, error: e.message });
+            safeError(res, e);
         }
     });
 
@@ -1282,7 +1502,7 @@ function startDashboard(scope) {
             await cacheRepo.deleteCacheById(id);
             res.json({ success: true });
         } catch (e) {
-            res.status(500).json({ success: false, error: e.message });
+            safeError(res, e);
         }
     });
 
@@ -1308,7 +1528,7 @@ function startDashboard(scope) {
             const mergedTitles = Array.from(new Set([...titles, ...userTitles]));
 
             res.json({ success: true, data: result.rows, availableTitles: mergedTitles });
-        } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+        } catch (e) { safeError(res, e); }
     });
 
     app.get('/api/titles', async (req, res) => {
@@ -1322,7 +1542,7 @@ function startDashboard(scope) {
             const mergedTitles = Array.from(new Set([...titles, ...userTitles]));
 
             res.json({ success: true, titles: mergedTitles });
-        } catch (e) { res.json({ success: false, error: e.message }); }
+        } catch (e) { res.json({ success: false, error: 'Internal error' }); }
     });
 
     app.post('/api/titles/add', async (req, res) => {
@@ -1338,7 +1558,7 @@ function startDashboard(scope) {
                 });
             }
             res.json({ success: true });
-        } catch (e) { res.json({ success: false, error: e.message }); }
+        } catch (e) { res.json({ success: false, error: 'Internal error' }); }
     });
 
     app.post('/api/titles/delete', async (req, res) => {
@@ -1352,12 +1572,20 @@ function startDashboard(scope) {
                 args: [JSON.stringify(titles)] 
             });
             res.json({ success: true });
-        } catch (e) { res.json({ success: false, error: e.message }); }
+        } catch (e) { res.json({ success: false, error: 'Internal error' }); }
     });
 
     app.post('/api/users/update-xp', async (req, res) => {
         const { userId, user_id, username, xp, level, custom_title, affection_points, affection_level, rara_chat_used, rara_chat_extra } = req.body;
         const targetUserId = userId || user_id;
+        const xpNum = Number(xp);
+        const levelNum = Number(level);
+        if (!Number.isFinite(xpNum) || xpNum < 0 || xpNum > 1e9) {
+            return res.status(400).json({ success: false, message: 'XP tidak valid (0..1000000000).' });
+        }
+        if (!Number.isFinite(levelNum) || !Number.isInteger(levelNum) || levelNum < 1 || levelNum > 999) {
+            return res.status(400).json({ success: false, message: 'Level tidak valid (1..999).' });
+        }
         try {
             const finalTitle = custom_title === "" ? null : custom_title;
             const affPoints = typeof affection_points !== 'undefined' ? (parseInt(affection_points) || 0) : null;
@@ -1433,7 +1661,7 @@ function startDashboard(scope) {
             res.json({ success: true });
         } catch (e) { 
             console.error('[UPDATE XP ERROR]', e);
-            res.status(500).json({ success: false, error: e.message }); 
+            safeError(res, e); 
         }
     });
 
@@ -1450,10 +1678,10 @@ function startDashboard(scope) {
 
     app.post('/api/quiz/stop', async (req, res) => {
         if (blockWhenSystemOff(res, 'Stop kuis')) return;
-        if (!activeQuiz.isRunning) return res.status(400).json({ success: false, message: 'Tidak ada kuis aktif' });
+        if (!runtime.activeQuiz.isRunning) return res.status(400).json({ success: false, message: 'Tidak ada kuis aktif' });
         
-        const answer = activeQuiz.original;
-        activeQuiz.isRunning = false;
+        const answer = runtime.activeQuiz.original;
+        runtime.activeQuiz.isRunning = false;
         clearQuizTimers();
         
         console.log(`[QUIZ] Stopped by Admin. Answer: ${answer}`);
@@ -1462,6 +1690,21 @@ function startDashboard(scope) {
         res.json({ success: true });
     });
 
+    function summarizeDebugPayload(data) {
+        const list = Array.isArray(data?.data?.data) ? data.data.data
+            : Array.isArray(data?.data) ? data.data
+            : [];
+        return {
+            count: list.length,
+            preview: list.slice(0, 3).map(item => {
+                if (item && typeof item === 'object') {
+                    return { id: item.id ?? null, title: item.title || item.name || null };
+                }
+                return null;
+            }),
+        };
+    }
+
     app.get('/api/debug/trending', async (req, res) => {
         if (blockWhenSystemOff(res, 'Debug trending')) return;
         try {
@@ -1469,8 +1712,8 @@ function startDashboard(scope) {
                 params: { sort: 'popular', page: 1 },
                 headers: ANIMEIN_HEADERS, timeout: 10000,
             });
-            res.json({ status: 'ok', keys: Object.keys(r.data || {}), dataKeys: Object.keys(r.data?.data || {}), sample: r.data });
-        } catch (e) { res.json({ error: e.message }); }
+            res.json({ status: 'ok', keys: Object.keys(r.data || {}), dataKeys: Object.keys(r.data?.data || {}), summary: summarizeDebugPayload(r.data) });
+        } catch (e) { res.json({ error: 'Internal error' }); }
     });
 
     app.get('/api/debug/schedule', async (req, res) => {
@@ -1482,8 +1725,8 @@ function startDashboard(scope) {
                 params: { day: today },
                 headers: ANIMEIN_HEADERS, timeout: 10000,
             });
-            res.json({ today, status: 'ok', keys: Object.keys(r.data || {}), dataKeys: Object.keys(r.data?.data || {}), sample: r.data });
-        } catch (e) { res.json({ error: e.message }); }
+            res.json({ today, status: 'ok', keys: Object.keys(r.data || {}), dataKeys: Object.keys(r.data?.data || {}), summary: summarizeDebugPayload(r.data) });
+        } catch (e) { res.json({ error: 'Internal error' }); }
     });
 
     app.get('/api/prompt', async (req, res) => {
@@ -1507,32 +1750,32 @@ function startDashboard(scope) {
 
     // --- AUTOREPLY MANAGEMENT ---
     app.get('/api/autoreply', (req, res) => {
-        res.json({ success: true, autoreply: AUTO_REPLY });
+        res.json({ success: true, autoreply: runtime.AUTO_REPLY });
     });
 
     app.post('/api/autoreply/add', async (req, res) => {
         const { keyword, answer } = req.body;
         if (keyword && answer) {
-            AUTO_REPLY.push({ keyword, answer });
+            runtime.AUTO_REPLY.push({ keyword, answer });
             try {
                 await db.execute({ 
                     sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('auto_reply', ?)", 
-                    args: [JSON.stringify(AUTO_REPLY)] 
+                    args: [JSON.stringify(runtime.AUTO_REPLY)] 
                 });
-            } catch(e) {}
+            } catch (e) { console.warn('[DASHBOARD] DB settings save gagal:', e.message); }
         }
         res.json({ success: true });
     });
 
     app.post('/api/autoreply/delete', async (req, res) => {
         const { keyword } = req.body;
-        AUTO_REPLY = AUTO_REPLY.filter(a => a.keyword !== keyword);
+        runtime.AUTO_REPLY = runtime.AUTO_REPLY.filter(a => a.keyword !== keyword);
         try {
             await db.execute({ 
                 sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('auto_reply', ?)", 
-                args: [JSON.stringify(AUTO_REPLY)] 
+                args: [JSON.stringify(runtime.AUTO_REPLY)] 
             });
-        } catch(e) {}
+        } catch (e) { console.warn('[DASHBOARD] DB settings save gagal:', e.message); }
         res.json({ success: true });
     });
 
@@ -1563,84 +1806,66 @@ function startDashboard(scope) {
         }
     });
 
-    // --- RARA CHARACTER JSON MANAGEMENT ---
-    app.get('/api/character/rara', async (req, res) => {
-        try {
-            let config = null;
-            if (scope.settingsRepo && typeof scope.settingsRepo.getJSON === 'function') {
-                config = await scope.settingsRepo.getJSON('rara_character_config', null);
-            } else {
-                const row = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'rara_character_config'", args: [] });
-                if (row.rows.length > 0 && row.rows[0].value) {
-                    config = JSON.parse(row.rows[0].value);
-                }
-            }
-            res.json({ success: true, config: config || null });
-        } catch (e) {
-            res.status(500).json({ success: false, error: e.message });
-        }
-    });
-
-    app.post('/api/character/rara/save', async (req, res) => {
-        try {
-            const { config } = req.body;
-            if (!config || typeof config !== 'object') {
-                return res.status(400).json({ success: false, error: 'Format JSON Karakter Rara tidak valid.' });
-            }
-
-            const formattedConfig = config.rara ? config : { rara: config };
-            const jsonStr = JSON.stringify(formattedConfig);
-
-            if (scope.settingsRepo && typeof scope.settingsRepo.setJSON === 'function') {
-                await scope.settingsRepo.setJSON('rara_character_config', formattedConfig);
-            } else {
-                await db.execute({
-                    sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('rara_character_config', ?)",
-                    args: [jsonStr]
-                });
-            }
-
-            if (global.RARA_CHARACTER_CONFIG) {
-                global.RARA_CHARACTER_CONFIG = formattedConfig;
-            }
-            res.json({ success: true, message: 'Berhasil menyimpan konfigurasi JSON Karakter Rara.' });
-        } catch (e) {
-            res.status(500).json({ success: false, error: e.message });
-        }
-    });
-
     app.get('/api/knowledge', (req, res) => {
-        res.json({ success: true, knowledge: ANIMEIN_KNOWLEDGE });
+        res.json({ success: true, knowledge: runtime.ANIMEIN_KNOWLEDGE });
+    });
+
+    // --- KNOWLEDGE GAPS (learning loop): pertanyaan yang tak cocok knowledge ---
+    app.get('/api/knowledge/gaps', async (req, res) => {
+        try {
+            const key = (settingsKeys && settingsKeys.KNOWLEDGE_GAPS) || 'knowledge_gaps';
+            const gaps = (settingsRepo && typeof settingsRepo.getJSON === 'function')
+                ? await settingsRepo.getJSON(key, [])
+                : JSON.parse((await db.execute({ sql: 'SELECT value FROM settings WHERE key = ?', args: [key] })).rows[0]?.value || '[]');
+            const list = Array.isArray(gaps) ? gaps : [];
+            res.json({ success: true, gaps: list, count: list.length });
+        } catch (e) {
+            safeError(res, e);
+        }
+    });
+
+    app.delete('/api/knowledge/gaps', async (req, res) => {
+        try {
+            const key = (settingsKeys && settingsKeys.KNOWLEDGE_GAPS) || 'knowledge_gaps';
+            if (settingsRepo && typeof settingsRepo.setJSON === 'function') {
+                await settingsRepo.setJSON(key, []);
+            } else {
+                await db.execute({ sql: 'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', args: [key, '[]'] });
+            }
+            res.json({ success: true });
+        } catch (e) {
+            safeError(res, e);
+        }
     });
 
     // --- DOMAIN MANAGEMENT ---
     app.get('/api/domains', (req, res) => {
-        res.json({ success: true, domains: CUSTOM_DOMAINS });
+        res.json({ success: true, domains: runtime.CUSTOM_DOMAINS });
     });
 
     app.post('/api/domains/add', async (req, res) => {
         const { domain } = req.body;
-        if (domain && !CUSTOM_DOMAINS.includes(domain)) {
-            CUSTOM_DOMAINS.push(domain);
+        if (domain && !runtime.CUSTOM_DOMAINS.includes(domain)) {
+            runtime.CUSTOM_DOMAINS.push(domain);
             try {
                 await db.execute({ 
                     sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('custom_domains', ?)", 
-                    args: [JSON.stringify(CUSTOM_DOMAINS)] 
+                    args: [JSON.stringify(runtime.CUSTOM_DOMAINS)] 
                 });
-            } catch(e) {}
+            } catch (e) { console.warn('[DASHBOARD] DB settings save gagal:', e.message); }
         }
         res.json({ success: true });
     });
 
     app.post('/api/domains/delete', async (req, res) => {
         const { domain } = req.body;
-        CUSTOM_DOMAINS = CUSTOM_DOMAINS.filter(d => d !== domain);
+        runtime.CUSTOM_DOMAINS = runtime.CUSTOM_DOMAINS.filter(d => d !== domain);
         try {
             await db.execute({ 
                 sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('custom_domains', ?)", 
-                args: [JSON.stringify(CUSTOM_DOMAINS)] 
+                args: [JSON.stringify(runtime.CUSTOM_DOMAINS)] 
             });
-        } catch(e) {}
+        } catch (e) { console.warn('[DASHBOARD] DB settings save gagal:', e.message); }
         res.json({ success: true });
     });
 
@@ -1652,29 +1877,37 @@ function startDashboard(scope) {
             help_label: help_label || '',
             help_text: help_text || ''
         };
-        if (index === -1) {
-            ANIMEIN_KNOWLEDGE.push(entry);
+        const idx = Number(index);
+        if (!Number.isInteger(idx) || idx < -1 || idx >= runtime.ANIMEIN_KNOWLEDGE.length) {
+            return res.status(400).json({ success: false, message: 'Index tidak valid.' });
+        }
+        if (idx === -1) {
+            runtime.ANIMEIN_KNOWLEDGE.push(entry);
         } else {
-            ANIMEIN_KNOWLEDGE[index] = entry;
+            runtime.ANIMEIN_KNOWLEDGE[idx] = entry;
         }
         try {
             await db.execute({ 
                 sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('animein_knowledge', ?)", 
-                args: [JSON.stringify(ANIMEIN_KNOWLEDGE)] 
+                args: [JSON.stringify(runtime.ANIMEIN_KNOWLEDGE)] 
             });
-        } catch(e) {}
+        } catch (e) { console.warn('[DASHBOARD] DB settings save gagal:', e.message); }
         res.json({ success: true });
     });
 
     app.post('/api/knowledge/delete', async (req, res) => {
         const { index } = req.body;
-        ANIMEIN_KNOWLEDGE.splice(index, 1);
+        const idx = Number(index);
+        if (!Number.isInteger(idx) || idx < 0 || idx >= runtime.ANIMEIN_KNOWLEDGE.length) {
+            return res.status(400).json({ success: false, message: 'Index tidak valid.' });
+        }
+        runtime.ANIMEIN_KNOWLEDGE.splice(idx, 1);
         try {
             await db.execute({ 
                 sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('animein_knowledge', ?)", 
-                args: [JSON.stringify(ANIMEIN_KNOWLEDGE)] 
+                args: [JSON.stringify(runtime.ANIMEIN_KNOWLEDGE)] 
             });
-        } catch(e) {}
+        } catch (e) { console.warn('[DASHBOARD] DB settings save gagal:', e.message); }
         res.json({ success: true });
     });
 
@@ -1683,7 +1916,7 @@ function startDashboard(scope) {
             const result = await reportRepo.listReports(100);
             res.json({ success: true, laporan: result.rows });
         } catch (e) {
-            res.json({ success: false, error: e.message });
+            res.json({ success: false, error: 'Internal error' });
         }
     });
 
@@ -1693,7 +1926,7 @@ function startDashboard(scope) {
             await reportRepo.updateReportStatus(id, status);
             res.json({ success: true });
         } catch (e) {
-            res.json({ success: false, error: e.message });
+            res.json({ success: false, error: 'Internal error' });
         }
     });
 
@@ -1703,7 +1936,7 @@ function startDashboard(scope) {
             await reportRepo.deleteReport(id);
             res.json({ success: true });
         } catch (e) {
-            res.json({ success: false, error: e.message });
+            res.json({ success: false, error: 'Internal error' });
         }
     });
 
@@ -1712,7 +1945,7 @@ function startDashboard(scope) {
             await reportRepo.deleteAllReports();
             res.json({ success: true });
         } catch (e) {
-            res.json({ success: false, error: e.message });
+            res.json({ success: false, error: 'Internal error' });
         }
     });
 
@@ -1726,7 +1959,7 @@ function startDashboard(scope) {
     app.use((err, req, res, next) => {
         console.error('[DASHBOARD ERROR]', err.stack || err.message);
         if (req.path.startsWith('/api/')) {
-            return res.status(500).json({ success: false, error: err.message });
+            return res.status(500).json({ success: false, error: 'Internal error' });
         }
         res.status(500).send(`<pre>Dashboard error: ${String(err.message).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))}</pre>`);
     });
@@ -1734,7 +1967,6 @@ function startDashboard(scope) {
     app.listen(CONFIG.DASHBOARD_PORT, () => {
         console.log(`Dashboard: http://localhost:${CONFIG.DASHBOARD_PORT}`);
     });
-    }
 }
 
 module.exports = { startDashboard };

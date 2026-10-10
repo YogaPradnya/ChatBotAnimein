@@ -58,6 +58,20 @@ function logError({ category, scope = 'APP', message = 'Terjadi error', error, l
     return line;
 }
 
+function rotateLogFileIfNeeded(logFile, maxBytes = 2 * 1024 * 1024) {
+    try {
+        const stat = fs.statSync(logFile);
+        if (stat.size > maxBytes) {
+            const rotated = `${logFile}.1`;
+            try { fs.renameSync(logFile, rotated); } catch (e) {
+                try { fs.unlinkSync(logFile); } catch (_) {}
+            }
+        }
+    } catch (_) {
+        // File belum ada — abaikan.
+    }
+}
+
 function handleError(error, context = {}) {
     const scope = context.scope || 'APP';
     const detail = context.detail ? ` ${context.detail}` : '';
@@ -71,6 +85,7 @@ function handleError(error, context = {}) {
 
     if (context.writeFile !== false) {
         const logFile = context.logFile || DEFAULT_LOG_FILE;
+        rotateLogFileIfNeeded(logFile);
         fs.promises.appendFile(logFile, `${message}\n`).catch(() => {
             // Jangan lempar error dari logger agar bot tetap berjalan.
         });
@@ -155,4 +170,5 @@ module.exports = {
     maskSensitiveText,
     inferErrorCategory,
     executeWithRetry,
+    rotateLogFileIfNeeded,
 };

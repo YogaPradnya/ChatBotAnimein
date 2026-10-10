@@ -35,9 +35,11 @@ function createShopRepo(db) {
         },
 
         useItem(userId, itemType, amount = 1) {
+            // Guard atomik: hanya kurangi bila stok cukup, cegah quantity negatif saat konkuren.
+            // Caller harus cek result.changes === 0 → gagal (stok kurang).
             return db.execute({
-                sql: 'UPDATE user_inventory SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND item_type = ?',
-                args: [amount, userId, itemType],
+                sql: 'UPDATE user_inventory SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND item_type = ? AND quantity >= ?',
+                args: [amount, userId, itemType, amount],
             });
         },
 

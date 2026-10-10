@@ -58,7 +58,7 @@ function createEnvConfig() {
             NOTIF_KEY_CLIENT: getEnv('ANIMEIN_NOTIF_KEY_CLIENT'),
         },
         DISCORD: {
-            WEBHOOK_URL: getEnv('DISCORD_WEBHOOK_URL', 'https://discord.com/api/webhooks/1531187710922854521/YgBm1LHmG0ntmoHJ2L5ahYjX5Tp3BmFfTN7hx8phf9PegnArAlYx1JKHiSv0nfEiga9n'),
+            WEBHOOK_URL: getEnv('DISCORD_WEBHOOK_URL'),
         },
         GROQ: {
             KEYS: collectGroqKeys(),
@@ -66,8 +66,8 @@ function createEnvConfig() {
         },
         DASHBOARD: {
             PORT: getNumberEnv('PORT', 3500),
-            USERNAME: getEnv('DASHBOARD_USERNAME'),
-            PASSWORD: getEnv('DASHBOARD_PASSWORD'),
+            USERNAME: getEnv('DASHBOARD_USER') || getEnv('DASHBOARD_USERNAME'),
+            PASSWORD: getEnv('DASHBOARD_PASS') || getEnv('DASHBOARD_PASSWORD'),
         },
         DATABASE: {
             TURSO_URL: getEnv('TURSO_URL'),
@@ -91,7 +91,7 @@ function createEnvConfig() {
             MODEL: getEnv('CEREBRAS_MODEL', 'gemma-4-31b'),
         },
         NVIDIA: {
-            API_KEY: getEnv('NVIDIA_API_KEY', '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'),
+            API_KEY: getEnv('NVIDIA_API_KEY'),
             MODEL: getEnv('NVIDIA_MODEL', 'meta/llama-3.1-8b-instruct'),
         },
         BOT: {

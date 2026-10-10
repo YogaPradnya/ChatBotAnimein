@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { createMessagePipeline } = require('../src/pipeline/messagePipeline');
+const { createMessagePipeline } = require('../../src/pipeline/messagePipeline');
 
 test('Message Pipeline - handled by limit service when limit exceeded', async (t) => {
     const mockLimitService = {

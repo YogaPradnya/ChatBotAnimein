@@ -65,6 +65,9 @@ async function execute(ctx) {
         return true;
     }
 
+    // NOTE: blok cek limit di bawah identik dengan .gambar; bila disentuh lagi,
+    // pertimbangkan helper bersama ensureImageCommandLimit di ./helpers.js
+    // (sengaja belum dipakai di sini agar diff tetap minimal).
     try {
         const limitStatus = await getImageLimitStatus(senderUserId, senderName);
         if (limitStatus.remaining <= 0) {

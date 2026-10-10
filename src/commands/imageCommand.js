@@ -1,7 +1,8 @@
 const { safeMessage } = require('../services/errorHandler');
-const { formatCommandUsage, formatImageLimitExceeded, formatSimpleError } = require('../utils/messageFormatter');
+const { formatCommandUsage, formatSimpleError } = require('../utils/messageFormatter');
 const { validateImagePrompt } = require('../utils/contentFilter');
 const { enqueueImageJob } = require('../utils/imageJobQueue');
+const { ensureImageCommandLimit } = require('./helpers');
 const { resolveImagePromptFromHistory, setImagePromptHistory } = require('../utils/imagePromptHistory');
 
 async function execute(ctx) {
@@ -16,7 +17,6 @@ async function execute(ctx) {
         getLastImageCommandAt,
         setLastImageCommandAt,
         imageCommandCooldownMs,
-        getImageLimitStatus,
         fetchPinterestImage,
         fetchAndDownloadPinterestImage,
         downloadImageToTempFile,
@@ -71,17 +71,8 @@ async function execute(ctx) {
         return true;
     }
 
-    try {
-        const limitStatus = await getImageLimitStatus(senderUserId, senderName);
-        if (limitStatus.remaining <= 0) {
-            await sendChatMessage(bot, formatImageLimitExceeded(senderName, limitStatus.limit), msg.id);
-            return true;
-        }
-    } catch (e) {
-        console.warn('[𝗚𝗔𝗠𝗕𝗔𝗥] Gagal cek limit harian:', safeMessage(e, 120));
-        await sendChatMessage(bot, formatSimpleError(senderName, 'Gagal cek limit.'), msg.id);
-        return true;
-    }
+    // Cek limit harian via helper bersama (perilaku pesan error tidak berubah).
+    if (!(await ensureImageCommandLimit(ctx, '𝗚𝗔𝗠𝗕𝗔𝗥'))) return true;
 
     try {
         await enqueueImageJob(

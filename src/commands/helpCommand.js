@@ -17,7 +17,11 @@ async function execute(ctx) {
     let helpMsg = '';
 
     if (helpArg === 'kuis') {
-        helpMsg = wrapInBox('𝗞𝗨𝗜𝗦', 'Kuis otomatis setiap 3 jam.\n\nCommand:\n• .tebak [jawab]\n• .hint (minta clue)\n• .kuis (waktu kuis)\n\nHadiah:\n• +500 XP (maks)\n• Hint: -40 XP\n• Salah: -20 XP');
+        helpMsg = wrapInBox('𝗞𝗨𝗜𝗦', 'Kuis otomatis setiap 3 jam.\n\nCommand:\n• .tebak [jawab]\n• .hint (minta clue)\n• .kuis (waktu kuis)\n• .kuis [mudah|sedang|sulit] (mulai + XP x1|x1.5|x2)\n• .blitz (kuis kilat 60 detik, XP x1.2, hint 2x)\n• .turnamen (papan peringkat mingguan)\n\nHadiah:\n• +500 XP (maks, x multiplier level)\n• Hint: -40 XP\n• Salah: -20 XP');
+    } else if (helpArg === 'blitz') {
+        helpMsg = wrapInBox('BLITZ', 'Kuis kilat 60 detik.\n\nCommand:\n• .blitz\n\nAturan:\n• XP menang x1.2\n• Penalty hint 2x lipat\n• Tanpa hadiah otomatis lain');
+    } else if (helpArg === 'turnamen') {
+        helpMsg = wrapInBox('TURNAMEN', 'Papan peringkat kuis mingguan (reset tiap Senin).\n\nCommand:\n• .turnamen\n\nTampilan:\n• Top 10 minggu berjalan\n• Juara minggu lalu\n• Total partisipasi');
     } else if (helpArg === 'gambar') {
         helpMsg = wrapInBox('𝗚𝗔𝗠𝗕𝗔𝗥', 'Cari gambar dari Pinterest ke chat.\n\nCommand:\n• .gambar [keyword]\n\nLimit: 3 gambar/hari\nBonus: +5 XP/gambar\n\nInfo: Beli limit di .toko (item 3).');
     } else if (helpArg === 'xp') {
@@ -52,6 +56,8 @@ async function execute(ctx) {
         helpMsg = wrapInBox('CARI', 'Cari anime dari database Animein.\n\nCommand:\n- .cari [judul]\n\nContoh:\n- .cari one piece');
     } else if (helpArg === 'genre') {
         helpMsg = wrapInBox('GENRE', 'Cari rekomendasi anime berdasarkan genre.\n\nCommand:\n- .genre [nama]\n\nContoh:\n- .genre action\n- .genre romance\n\nData diambil dari Animein Explore.');
+    } else if (helpArg === 'gacha' || helpArg === 'koleksi' || helpArg === 'pajang') {
+        helpMsg = wrapInBox('GACHA', 'Gacha kartu waifu/husbando pakai XP.\n\nCommand:\n- .gacha (500 XP/pull, maks 10/hari)\n- .gacha rate (rate + pity)\n- .koleksi (galeri kartumu)\n- .pajang [nama] (pamer kartu di .profil)\n\nRate: Common 60% / Rare 25%\nEpic 11% / Legendary 4%\nPity: Epic+ tiap 20 pull\nDupe = Limit Break ★ (max ★5) + bonus XP.');
     } else if (helpArg === 'tas') {
         helpMsg = wrapInBox('TAS', 'Lihat ringkasan pokemon di tas kamu.\n\nCommand:\n- .tas\n\nData: total pokemon, jumlah per grade, dan top CP.\n\nLanjut: gunakan .kombo untuk rekomendasi tim.');
     } else if (helpArg === 'limit') {
@@ -97,6 +103,8 @@ async function execute(ctx) {
             `│21. populer     22. cari`,
             `│23. genre       24. tas`,
             `│25. limit       26. ban`,
+            `│27. blitz       28. turnamen`,
+            `│27. gacha       28. koleksi`,
             `└───────────────────`,
         ].join('\n');
     }

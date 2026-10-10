@@ -46,6 +46,8 @@ const COMMANDS = {
     LEADERBOARD: '.leaderboard',
     KUIS: '.kuis',
     KIUS: '.kius',
+    BLITZ: '.blitz',
+    TURNAMEN: '.turnamen',
     META: '.meta',
     KOMBO: '.kombo',
     COMBO: '.combo',
@@ -62,6 +64,9 @@ const COMMANDS = {
     GENRE: '.genre',
     TAS: '.tas',
     LIMIT: '.limit',
+    GACHA: '.gacha',
+    KOLEKSI: '.koleksi',
+    PAJANG: '.pajang',
 
 };
 
@@ -72,6 +77,8 @@ const SETTINGS_KEYS = {
     CUSTOM_DOMAINS: 'custom_domains',
     AUTO_REPLY: 'auto_reply',
     TOTAL_QUIZZES_STARTED: 'total_quizzes_started',
+    KNOWLEDGE_GAPS: 'knowledge_gaps',
+    ACCURACY_COUNTERS: 'accuracy_counters',
     IS_SYSTEM_OFF: 'is_system_off',
     IS_BOT_INFO_ACTIVE: 'is_bot_info_active',
     IS_BOT_KUIS_ACTIVE: 'is_bot_kuis_active',
@@ -87,6 +94,12 @@ const SETTINGS_KEYS = {
     PRICE_HINT_PACK: 'price_hint_pack',
     PRICE_EXTRA_IMAGE: 'price_extra_image',
     PRICE_EXTRA_LIMIT: 'price_extra_limit',
+    RARA_STYLE_INTENSITY: 'rara_style_intensity',
+    RARA_MAX_WORDS_CHAT: 'rara_max_words_chat',
+    RARA_MAX_WORDS_INFO: 'rara_max_words_info',
+    RARA_EMOJI_BUDGET: 'rara_emoji_budget',
+    RARA_TEMP_CHAT: 'rara_temp_chat',
+    RARA_TEMP_INFO: 'rara_temp_info',
 };
 
 module.exports = {

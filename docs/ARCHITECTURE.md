@@ -176,3 +176,24 @@ Saat refactor:
 ## Current Known Exception
 
 `dashboardServer.js` masih memiliki logic besar dan lint issue terkait `with(runtime)`. Ini sengaja tidak disentuh dalam refactor command/service agar route dashboard tetap stabil.
+
+## Status Saat Ini (Okt 2026)
+
+- `with(runtime)` di `src/dashboardServer.js:180` (fungsi `startDashboard`) masih
+  ada dan didokumentasikan sebagai known exception di atas, bukan dihindari total:
+  file berjalan dalam sloppy mode sehingga `node --check` tetap lolos, dan blok
+  tersebut sengaja tidak di-refactor agar route dashboard tetap stabil.
+- Polling chat multi-bot berjalan paralel via `Promise.allSettled` di `pollingTick`
+  (`bot.js`), dengan guard `isPolling` (skip siklus bila sebelumnya masih jalan),
+  guard `isSystemOff`, dan backoff adaptif (`nextDelay`).
+- `helmet` dimuat opsional (`try require`, fallback `null`) dan bila ada dipasang
+  dengan CSP (`defaultSrc 'self'`, `scriptSrc` + `unsafe-inline`, dsb.); ada juga
+  pengecekan Origin/Referer untuk `POST /api/*` dan SSE realtime logs di
+  `/api/logs/stream` (polling dashboard 5 detik dipertahankan untuk kompatibilitas,
+  lihat `docs/API.md`).
+- Backup DB via `scripts/backup-db.sh` (`npm run backup`): dump Turso/libsql bila
+  `TURSO_URL` ada, fallback copy SQLite lokal, output ber-timestamp di `backups/`
+  dengan retensi 7 hari; direktori `backups/` di-gitignore dan script exit 0 dengan
+  pesan bila env/DB tidak tersedia.
+- Dependensi: `npm audit` 0 vulnerability (setelah `npm audit fix --no-fund`);
+  `npm test` dan `npm run check` lolos.

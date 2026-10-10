@@ -27,6 +27,7 @@ async function askCloudflareAi({
     personalizeSystemPrompt = null,
     userStatsCache = {},
     sanitizeReplyContext = null,
+    temperature = null,
 }) {
     const apiKey = CONFIG.CLOUDFLARE_API_KEY;
     const accountId = CONFIG.CLOUDFLARE_ACCOUNT_ID;
@@ -79,7 +80,8 @@ async function askCloudflareAi({
         {
             messages,
             max_tokens: 1024,
-            temperature: typeof global.AI_TEMPERATURE === 'number' ? global.AI_TEMPERATURE : 1.0,
+            temperature: typeof temperature === 'number' ? temperature
+                : (typeof global.AI_TEMPERATURE === 'number' ? global.AI_TEMPERATURE : 1.0),
         },
         {
             headers: {

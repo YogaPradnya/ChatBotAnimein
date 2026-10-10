@@ -271,10 +271,46 @@ async function getAnimeCharacters(malId) {
     }
 }
 
+/**
+ * Resolve URL gambar karakter anime via Jikan (lazy, untuk gacha kartu).
+ * Hasil di-cache 12 jam; hormati rate limit 350ms yang sudah ada.
+ * @param {string} name - nama karakter
+ * @returns {Promise<string|null>} image_url atau null bila tidak ketemu/gagal
+ */
+async function searchCharacterImage(name) {
+    const query = String(name || '').trim();
+    if (!query) return null;
+    const cacheKey = `charimg:${query.toLowerCase()}`;
+
+    const cached = getCached(cacheKey);
+    if (cached !== null && cached !== undefined) return cached;
+
+    try {
+        await respectRateLimit();
+        const response = await axios.get(`${JIKAN_BASE}/characters`, {
+            params: { q: query, limit: 1 },
+            timeout: 10000
+        });
+
+        const first = response.data?.data?.[0];
+        const imageUrl = first?.images?.jpg?.image_url || null;
+        setCache(cacheKey, imageUrl);
+        return imageUrl;
+    } catch (error) {
+        if (error.response?.status === 429) {
+            console.warn('[JIKAN] Rate limit hit on character image');
+            return null;
+        }
+        console.error('[JIKAN] Character image error:', error.message);
+        return null;
+    }
+}
+
 module.exports = {
     searchAnime,
     getAnimeDetail,
     getAnimeEpisodes,
     getAnimeCharacters,
+    searchCharacterImage,
     parseDuration
 };

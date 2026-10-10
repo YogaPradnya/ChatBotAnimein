@@ -9,8 +9,10 @@ const { createSettingsRepo } = require('./database/settingsRepo');
 const { createUserRepo } = require('./database/userRepo');
 const { createLimitRepo } = require('./database/limitRepo');
 const { createShopRepo } = require('./database/shopRepo');
+const { createCardsRepo } = require('./database/cardsRepo');
 const { createBanRepo } = require('./database/banRepo');
 const { createQuizRepo } = require('./database/quizRepo');
+const { createQuizWeeklyRepo, QUIZ_WEEKLY_TABLE_SQL } = require('./database/quizWeeklyRepo');
 const { createReportRepo } = require('./database/reportRepo');
 const { createCacheRepo } = require('./database/cacheRepo');
 const { createChatRepo } = require('./database/chatRepo');
@@ -49,8 +51,10 @@ function initializeBootstrap(options = {}) {
     const userRepo = createUserRepo(db);
     const limitRepo = createLimitRepo(db);
     const shopRepo = createShopRepo(db);
+    const cardsRepo = createCardsRepo(db);
     const banRepo = createBanRepo(db);
     const quizRepo = createQuizRepo(db);
+    const weeklyRepo = createQuizWeeklyRepo(db);
     const reportRepo = createReportRepo(db);
     const cacheRepo = createCacheRepo(db);
     const chatRepo = createChatRepo(db);
@@ -65,8 +69,10 @@ function initializeBootstrap(options = {}) {
         userRepo,
         limitRepo,
         shopRepo,
+        cardsRepo,
         banRepo,
         quizRepo,
+        weeklyRepo,
         reportRepo,
         cacheRepo,
         chatRepo,
@@ -169,7 +175,65 @@ function initializeBootstrap(options = {}) {
                 `);
                 await db.execute(`ALTER TABLE quiz_pool ADD COLUMN last_used_at INTEGER DEFAULT 0`).catch(e => ignoreExpectedError(e, { scope: 'DB MIGRATION', detail: 'quiz_pool.last_used_at' }));
 
+                // Tabel turnamen kuis mingguan
+                await db.execute(QUIZ_WEEKLY_TABLE_SQL);
+                await db.execute(`CREATE INDEX IF NOT EXISTS idx_quiz_weekly_week ON quiz_weekly (week_key)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_quiz_weekly_week' }));
+
                 await initShopTables(shopRepo);
+
+                // Tabel gacha lama (pokemon, deprecated — diabaikan, jangan dipakai)
+                await db.execute(`
+                    CREATE TABLE IF NOT EXISTS user_gacha (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id TEXT NOT NULL,
+                        username TEXT NOT NULL DEFAULT '',
+                        pokemon_name TEXT NOT NULL,
+                        rarity TEXT NOT NULL DEFAULT 'Common',
+                        count INTEGER DEFAULT 1,
+                        first_pulled_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                `);
+                await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_gacha_user_pokemon ON user_gacha (user_id, pokemon_name)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_gacha_user_pokemon' }));
+                await db.execute(`
+                    CREATE TABLE IF NOT EXISTS user_gacha_pity (
+                        user_id TEXT PRIMARY KEY,
+                        username TEXT NOT NULL DEFAULT '',
+                        pity_count INTEGER DEFAULT 0,
+                        total_pulls INTEGER DEFAULT 0,
+                        pulls_today INTEGER DEFAULT 0,
+                        today_key TEXT DEFAULT '',
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                `);
+
+                // Tabel gacha kartu waifu/husbando (koleksi + pity per user)
+                await db.execute(`
+                    CREATE TABLE IF NOT EXISTS user_cards (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id TEXT NOT NULL,
+                        username TEXT NOT NULL DEFAULT '',
+                        char_name TEXT NOT NULL,
+                        anime TEXT NOT NULL DEFAULT '',
+                        rarity TEXT NOT NULL DEFAULT 'Common',
+                        level INTEGER DEFAULT 1,
+                        power INTEGER DEFAULT 0,
+                        image_url TEXT DEFAULT NULL,
+                        is_showcase INTEGER DEFAULT 0,
+                        pulled_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                `);
+                await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_cards_user_char ON user_cards (user_id, char_name)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_cards_user_char' }));
+                await db.execute(`
+                    CREATE TABLE IF NOT EXISTS user_card_pity (
+                        user_id TEXT PRIMARY KEY,
+                        username TEXT NOT NULL DEFAULT '',
+                        pity_count INTEGER DEFAULT 0,
+                        total_pulls INTEGER DEFAULT 0,
+                        pulls_today INTEGER DEFAULT 0,
+                        today_key TEXT DEFAULT '',
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                `);
 
                 await db.execute(`CREATE INDEX IF NOT EXISTS idx_chat_logs_username ON chat_logs (username)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_chat_logs_username' }));
                 await db.execute(`CREATE INDEX IF NOT EXISTS idx_chat_logs_timestamp ON chat_logs (timestamp)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_chat_logs_timestamp' }));
@@ -177,6 +241,10 @@ function initializeBootstrap(options = {}) {
                 await db.execute(`CREATE INDEX IF NOT EXISTS idx_quiz_pool_last_used ON quiz_pool (last_used_at)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_quiz_pool_last_used' }));
                 await db.execute(`CREATE INDEX IF NOT EXISTS idx_laporan_status ON laporan (status)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_laporan_status' }));
                 await db.execute(`CREATE INDEX IF NOT EXISTS idx_image_limits_date ON image_limits (usage_date)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_image_limits_date' }));
+                await db.execute(`CREATE INDEX IF NOT EXISTS idx_chat_logs_user_id ON chat_logs (user_id, id DESC)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_chat_logs_user_id' }));
+                await db.execute(`CREATE INDEX IF NOT EXISTS idx_quiz_pool_title ON quiz_pool (title)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_quiz_pool_title' }));
+                await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_user_type ON user_inventory (user_id, item_type)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_inventory_user_type' }));
+                await db.execute(`CREATE INDEX IF NOT EXISTS idx_quiz_banned_username ON quiz_banned (username)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_quiz_banned_username' }));
 
                 const filterValue = await settingsRepo.get(SETTINGS_KEYS.FILTER_DATA);
                 if (filterValue) {

@@ -45,7 +45,7 @@ function createUserRepo(db) {
 
     /** Update username di semua tabel user saat user ganti nama */
     async function syncUsername(userId, username) {
-        const tables = ['user_stats', 'user_quiz_stats', 'user_memories', 'user_inventory', 'command_limits', 'image_limits', 'quiz_banned'];
+        const tables = ['user_stats', 'user_quiz_stats', 'user_memories', 'user_inventory', 'command_limits', 'image_limits', 'quiz_banned', 'user_cards', 'user_card_pity'];
         for (const table of tables) {
             try {
                 await db.execute({
@@ -53,7 +53,7 @@ function createUserRepo(db) {
                     args: [username, userId],
                 });
             } catch (e) {
-                // Tabel mungkin belum ada record untuk user ini, abaikan
+                console.warn('[USER_REPO] syncUsername gagal untuk tabel', table, ':', e.message);
             }
         }
     }
@@ -79,7 +79,9 @@ function createUserRepo(db) {
                 const level = Number(res.rows[0].affection_level ?? calculateHeartLevel(points));
                 return { points, level };
             }
-        } catch (e) {}
+        } catch (e) {
+            console.warn('[USER_REPO] getAffection gagal untuk', userId, ':', e.message);
+        }
         return { points: 0, level: 0 };
     }
 

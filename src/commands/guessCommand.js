@@ -32,7 +32,7 @@ async function execute(ctx) {
         return true;
     }
 
-    if (Date.now() - activeQuiz.startedAt > durationMs) {
+    if (Date.now() - activeQuiz.startedAt > (activeQuiz.durationMs || durationMs)) {
         await expireQuiz(bot, msg.id);
         return true;
     }
@@ -76,18 +76,26 @@ async function execute(ctx) {
             const baseXP = 500;
             const penaltyHint = activeQuiz.hintsRevealed * 40;
             const penaltyWrong = (activeQuiz.wrongGuessCount || 0) * 20;
-            const xpEarned = Math.max(100, baseXP - penaltyHint - penaltyWrong);
+            const diffMult = Number(activeQuiz.xpMultiplier) || 1;
+            const xpEarned = Math.round(Math.max(100, baseXP - penaltyHint - penaltyWrong) * diffMult);
 
             const xpRes = await addXP(senderUserId, senderName, xpEarned);
             const finalDisplayXP = (XP_MULTIPLIER > 1 && xpEarned > 0) ? xpEarned * XP_MULTIPLIER : xpEarned;
             trackQuizStat(senderUserId, senderName, 'wins');
+            if (ctx.weeklyRepo && typeof ctx.weeklyRepo.recordResult === 'function') {
+                ctx.weeklyRepo.recordResult(senderUserId, senderName, true).catch((e) => {
+                    console.warn('[WEEKLY] Gagal catat menang:', e.message);
+                });
+            }
 
             const dn = senderName.substring(0, 10);
             const xpMul = XP_MULTIPLIER > 1 ? `(x${XP_MULTIPLIER})` : '';
+            const diffLabel = activeQuiz.blitz ? 'BLITZ' : String(activeQuiz.difficulty || 'normal').toUpperCase();
             const resultCard = [
                 `┌── ${boxHeader('🎉 MENANG')}`,
                 `│👤 @${dn}`,
                 `│✅ ${activeQuiz.original}`,
+                `│🏷️ ${diffLabel} (x${diffMult})`,
                 `│✨ +${finalDisplayXP.toLocaleString('id-ID')} XP ${xpMul}`,
                 `│❌ Salah: ${activeQuiz.wrongGuessCount || 0}x`,
             ];
@@ -106,6 +114,11 @@ async function execute(ctx) {
         } else {
             activeQuiz.wrongGuessCount = (activeQuiz.wrongGuessCount || 0) + 1;
             activeQuiz.wrongGuessers.add(senderName);
+            if (ctx.weeklyRepo && typeof ctx.weeklyRepo.recordResult === 'function') {
+                ctx.weeklyRepo.recordResult(senderUserId, senderName, false).catch((e) => {
+                    console.warn('[WEEKLY] Gagal catat kalah:', e.message);
+                });
+            }
             await sendChatMessage(bot, `❌ @${senderName.substring(0, 10)} Salah!\n-3 XP | ${activeQuiz.original.length} char`, msg.id);
             await addXP(senderUserId, senderName, -3);
         }

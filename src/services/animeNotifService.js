@@ -186,13 +186,13 @@ async function downloadAnimeCover(coverUrl, axios) {
         if (ext === 'jpeg') ext = 'jpg';
 
         const tempDir = path.join(__dirname, '..', 'temp_images');
-        if (!fs.existsSync(tempDir)) {
-            fs.mkdirSync(tempDir, { recursive: true });
-        }
+        // Non-blocking via fs/promises (fungsi ini sudah async; error tetap
+        // ditangkap try/catch di bawah dan mengembalikan null seperti sebelumnya).
+        await fs.promises.mkdir(tempDir, { recursive: true });
 
         const filename = `notif_cover_${Date.now()}_${Math.floor(Math.random() * 1000)}.${ext}`;
         const filePath = path.join(tempDir, filename);
-        fs.writeFileSync(filePath, Buffer.from(res.data));
+        await fs.promises.writeFile(filePath, Buffer.from(res.data));
 
         return { filePath, mimeType };
     } catch (e) {

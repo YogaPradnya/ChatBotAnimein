@@ -22,13 +22,19 @@ const {
     levenshtein,
     recordPath: recordApiPath,
 } = require('./src/utils');
+const {
+    isCacheEntryStale,
+    shouldSkipKnowledgeGap,
+    isDontKnowAnswer,
+    isUserCorrectionMessage,
+} = require('./src/utils/learningLoop');
 const { initShopTables, getShopMessage, buyItem, getItemCount, useItem } = require('./src/shop');
 const { fetchOtherUserProfile, formatOtherUserProfile } = require('./src/otherUserProfile');
 const { getPokemonComboMessage, getPokemonComboWithTargetMessage } = require('./src/pokemonCombo');
 const { fetchBattleMeta, formatMetaMessage } = require('./src/pokemonMeta');
 const { isAnimeDataQuestion, handleAnimeDataQuestion } = require('./src/animeIntentHandler');
 const { LIMITS, QUIZ, COMMANDS, SETTINGS_KEYS } = require('./src/config/constants');
-const { handleError, ignoreExpectedError, safeMessage, logError, ERROR_CATEGORY } = require('./src/services/errorHandler');
+const { handleError, ignoreExpectedError, safeMessage, logError, ERROR_CATEGORY, maskSensitiveText } = require('./src/services/errorHandler');
 const { createCommandRouter } = require('./src/services/commandRouter');
 const { createLimitService } = require('./src/services/limitService');
 const { createInitialQuizState, createQuizService } = require('./src/services/quizService');
@@ -47,11 +53,24 @@ const { createDeterministicAnswerRouter } = require('./src/services/deterministi
 const { createSettingsRepo } = require('./src/database/settingsRepo');
 const { createUserRepo } = require('./src/database/userRepo');
 const { buildSystemPrompt } = require('./src/services/promptBuilder');
+const { repairPersonaReply, sanitizeUnicodeReply, DATA_CONTEXT_RE, MAX_EMOJI_PER_REPLY, varyOpeningInterjection } = require('./src/services/responsePostCheck');
+const { buildRaraPreviewPayload } = require('./src/services/raraPreview');
+const { loadFactMemory, recordFacts, buildFactMemoryContext } = require('./src/services/factMemory');
+const { isInjectionAttempt, buildInjectionRefusal } = require('./src/services/injectionGuard');
 let RARA_CHARACTER_CONFIG = null;
+// Default pengaturan respons Rara (ditimpa dari DB saat initDB; dipakai sebagai fallback).
+global.RARA_STYLE_INTENSITY = 70;
+global.RARA_MAX_WORDS_CHAT = 15;
+global.RARA_MAX_WORDS_INFO = 60;
+global.RARA_EMOJI_BUDGET = 3;
+global.RARA_TEMP_CHAT = 1.0;
+global.RARA_TEMP_INFO = 0.3;
 const { createLimitRepo } = require('./src/database/limitRepo');
 const { createShopRepo } = require('./src/database/shopRepo');
+const { createCardsRepo } = require('./src/database/cardsRepo');
 const { createBanRepo } = require('./src/database/banRepo');
 const { createQuizRepo } = require('./src/database/quizRepo');
+const { createQuizWeeklyRepo, QUIZ_WEEKLY_TABLE_SQL } = require('./src/database/quizWeeklyRepo');
 const { createReportRepo } = require('./src/database/reportRepo');
 const { createCacheRepo } = require('./src/database/cacheRepo');
 const { createChatRepo } = require('./src/database/chatRepo');
@@ -62,7 +81,7 @@ const { createMemoryRepo } = require('./src/database/memoryRepo');
 const { createKnowledgeRepo, normalizeKnowledgeList, findKnowledgeByHelpTopic, buildKnowledgeContext } = require('./src/database/knowledgeRepo');
 const commands = require('./src/commands');
 const { formatEvolutionContext, getEvolutionByQuery } = require('./src/data/pokemonEvolutions');
-const { startAnimeNotifPoller, formatDiscordWebhookPayload, downloadAnimeCover } = require('./src/services/animeNotifService');
+const { startAnimeNotifPoller, stopAnimeNotifPoller, formatDiscordWebhookPayload, downloadAnimeCover } = require('./src/services/animeNotifService');
 
 warnMissingConfig();
 
@@ -95,9 +114,11 @@ const settingsRepo = createSettingsRepo(db);
 const userRepo = createUserRepo(db);
 const limitRepo = createLimitRepo(db);
 const shopRepo = createShopRepo(db);
+const cardsRepo = createCardsRepo(db);
 let limitService;
 const banRepo = createBanRepo(db);
 const quizRepo = createQuizRepo(db);
+const weeklyRepo = createQuizWeeklyRepo(db);
 const reportRepo = createReportRepo(db);
 const cacheRepo = createCacheRepo(db);
 const chatRepo = createChatRepo(db);
@@ -112,6 +133,8 @@ commandRouter
     .register([
         COMMANDS.HINT,
         COMMANDS.KUIS,
+        COMMANDS.BLITZ,
+        COMMANDS.TURNAMEN,
         '.game',
         COMMANDS.PROFIL,
         COMMANDS.RANK,
@@ -121,6 +144,9 @@ commandRouter
         COMMANDS.KOMBO,
         COMMANDS.COMBO,
         COMMANDS.TAS,
+        COMMANDS.GACHA,
+        COMMANDS.KOLEKSI,
+        COMMANDS.PAJANG,
         COMMANDS.META,
         COMMANDS.LIMIT,
     ], () => {});
@@ -268,6 +294,9 @@ async function initDB() {
             )
         `);
 
+        // Tabel turnamen kuis mingguan
+        await db.execute(QUIZ_WEEKLY_TABLE_SQL);
+
         // === MIGRASI: username PK -> user_id PK ===
         try {
             const schemaCheck = await db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='user_stats'");
@@ -327,6 +356,60 @@ async function initDB() {
         // Inisialisasi tabel shop/inventory
         await initShopTables(shopRepo);
 
+        // Tabel gacha lama (pokemon, deprecated — diabaikan, jangan dipakai)
+        await db.execute(`
+            CREATE TABLE IF NOT EXISTS user_gacha (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                username TEXT NOT NULL DEFAULT '',
+                pokemon_name TEXT NOT NULL,
+                rarity TEXT NOT NULL DEFAULT 'Common',
+                count INTEGER DEFAULT 1,
+                first_pulled_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+        await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_gacha_user_pokemon ON user_gacha (user_id, pokemon_name)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_gacha_user_pokemon' }));
+        await db.execute(`
+            CREATE TABLE IF NOT EXISTS user_gacha_pity (
+                user_id TEXT PRIMARY KEY,
+                username TEXT NOT NULL DEFAULT '',
+                pity_count INTEGER DEFAULT 0,
+                total_pulls INTEGER DEFAULT 0,
+                pulls_today INTEGER DEFAULT 0,
+                today_key TEXT DEFAULT '',
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        // Tabel gacha kartu waifu/husbando (koleksi + pity per user)
+        await db.execute(`
+            CREATE TABLE IF NOT EXISTS user_cards (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                username TEXT NOT NULL DEFAULT '',
+                char_name TEXT NOT NULL,
+                anime TEXT NOT NULL DEFAULT '',
+                rarity TEXT NOT NULL DEFAULT 'Common',
+                level INTEGER DEFAULT 1,
+                power INTEGER DEFAULT 0,
+                image_url TEXT DEFAULT NULL,
+                is_showcase INTEGER DEFAULT 0,
+                pulled_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+        await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_cards_user_char ON user_cards (user_id, char_name)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_cards_user_char' }));
+        await db.execute(`
+            CREATE TABLE IF NOT EXISTS user_card_pity (
+                user_id TEXT PRIMARY KEY,
+                username TEXT NOT NULL DEFAULT '',
+                pity_count INTEGER DEFAULT 0,
+                total_pulls INTEGER DEFAULT 0,
+                pulls_today INTEGER DEFAULT 0,
+                today_key TEXT DEFAULT '',
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
         // Database Indexes untuk performa query
         await db.execute(`CREATE INDEX IF NOT EXISTS idx_chat_logs_username ON chat_logs (username)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_chat_logs_username' }));
         await db.execute(`CREATE INDEX IF NOT EXISTS idx_chat_logs_timestamp ON chat_logs (timestamp)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_chat_logs_timestamp' }));
@@ -334,6 +417,11 @@ async function initDB() {
         await db.execute(`CREATE INDEX IF NOT EXISTS idx_quiz_pool_last_used ON quiz_pool (last_used_at)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_quiz_pool_last_used' }));
         await db.execute(`CREATE INDEX IF NOT EXISTS idx_laporan_status ON laporan (status)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_laporan_status' }));
         await db.execute(`CREATE INDEX IF NOT EXISTS idx_image_limits_date ON image_limits (usage_date)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_image_limits_date' }));
+        await db.execute(`CREATE INDEX IF NOT EXISTS idx_chat_logs_user_id ON chat_logs (user_id, id DESC)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_chat_logs_user_id' }));
+        await db.execute(`CREATE INDEX IF NOT EXISTS idx_quiz_pool_title ON quiz_pool (title)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_quiz_pool_title' }));
+        await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_user_type ON user_inventory (user_id, item_type)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_inventory_user_type' }));
+        await db.execute(`CREATE INDEX IF NOT EXISTS idx_quiz_banned_username ON quiz_banned (username)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_quiz_banned_username' }));
+        await db.execute(`CREATE INDEX IF NOT EXISTS idx_quiz_weekly_week ON quiz_weekly (week_key)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_quiz_weekly_week' }));
         
         const filterValue = await settingsRepo.get(SETTINGS_KEYS.FILTER_DATA);
         if (filterValue) {
@@ -371,6 +459,19 @@ async function initDB() {
         // Load Knowledge from DB
         ANIMEIN_KNOWLEDGE = await knowledgeRepo.loadAnimeinKnowledge(ANIMEIN_KNOWLEDGE);
         console.log(`[KNOWLEDGE] Loaded/normalized: ${ANIMEIN_KNOWLEDGE.length} items.`);
+
+        // Load Accuracy counters (learning loop, ringan; default 0 bila belum ada)
+        try {
+            const acc = await settingsRepo.getJSON(SETTINGS_KEYS.ACCURACY_COUNTERS, null);
+            if (acc && typeof acc === 'object') {
+                stats.accuracyFallback = Number(acc.accuracyFallback) || 0;
+                stats.accuracyDontKnow = Number(acc.accuracyDontKnow) || 0;
+                stats.accuracyCorrections = Number(acc.accuracyCorrections) || 0;
+                stats.injectionBlocked = Number(acc.injectionBlocked) || 0;
+            }
+        } catch (e) {
+            console.warn('[ACCURACY] Gagal load counters:', e.message);
+        }
 
         // Load Domains from DB
         const domainsValue = await settingsRepo.get(SETTINGS_KEYS.CUSTOM_DOMAINS);
@@ -431,7 +532,7 @@ async function initDB() {
         const botNotifValue = await settingsRepo.get(SETTINGS_KEYS.IS_BOT_NOTIF_ACTIVE);
 
         // Inisialisasi Cleanup Service Otomatis untuk File Temp Gambar
-        initTempCleanupService({
+        tempCleanupHandle = initTempCleanupService({
             tempDirs: [
                 path.join(__dirname, 'src', 'temp_images'),
                 path.join(__dirname, 'temp_images'),
@@ -491,7 +592,27 @@ async function initDB() {
         if (aiTempVal !== null) global.AI_TEMPERATURE = parseFloat(aiTempVal) || 1.0;
         else global.AI_TEMPERATURE = 1.0;
 
+        // Pengaturan respons Rara (validasi range; fallback ke default bila belum ada/invalid).
+        const loadRaraNum = async (key, def, min, max) => {
+            try {
+                const raw = await settingsRepo.get(key);
+                if (raw === null || raw === undefined || raw === '') return def;
+                const num = parseFloat(raw);
+                if (isNaN(num)) return def;
+                return Math.min(max, Math.max(min, num));
+            } catch (_) {
+                return def;
+            }
+        };
+        global.RARA_STYLE_INTENSITY = await loadRaraNum(SETTINGS_KEYS.RARA_STYLE_INTENSITY, 70, 0, 100);
+        global.RARA_MAX_WORDS_CHAT = Math.round(await loadRaraNum(SETTINGS_KEYS.RARA_MAX_WORDS_CHAT, 15, 5, 200));
+        global.RARA_MAX_WORDS_INFO = Math.round(await loadRaraNum(SETTINGS_KEYS.RARA_MAX_WORDS_INFO, 60, 5, 200));
+        global.RARA_EMOJI_BUDGET = Math.round(await loadRaraNum(SETTINGS_KEYS.RARA_EMOJI_BUDGET, 3, 0, 10));
+        global.RARA_TEMP_CHAT = await loadRaraNum(SETTINGS_KEYS.RARA_TEMP_CHAT, 1.0, 0, 2);
+        global.RARA_TEMP_INFO = await loadRaraNum(SETTINGS_KEYS.RARA_TEMP_INFO, 0.3, 0, 2);
+
         console.log(`[ECONOMY] Loaded Base XP Rate: ${global.baseXpRate}%, Discount Event: ${global.isDiscountEvent} (${global.discountPercent}%), AI Temp: ${global.AI_TEMPERATURE}`);
+        console.log(`[RARA] Loaded style intensity=${global.RARA_STYLE_INTENSITY}, words chat/info=${global.RARA_MAX_WORDS_CHAT}/${global.RARA_MAX_WORDS_INFO}, emoji=${global.RARA_EMOJI_BUDGET}, temp chat/info=${global.RARA_TEMP_CHAT}/${global.RARA_TEMP_INFO}`);
 
         // Load Banned Users from DB
         const bannedRes = await banRepo.listBannedUsers();
@@ -510,47 +631,87 @@ async function initDB() {
 
 // --- OPTIMIZATION CACHE ---
 const USER_STATS_CACHE = {};     // { user_id: { username, xp, level, custom_title, core_memory } }
-const USER_CHAT_COUNT = {};      // { user_id: count_since_last_memory_update }
 const XP_PENDING_UPDATES = {};    // { user_id: total_xp_to_add }
-const SHALLOW_AI_CACHE = [];     // Array of { query, answer, timestamp }
 
-// Flush XP Buffering to DB every 60 seconds
-setInterval(async () => {
-    const pendingCount = Object.keys(XP_PENDING_UPDATES).length;
-    if (pendingCount === 0) return;
-
+// --- LEARNING LOOP: counter akurasi (in-memory, persist ringan tiap flush XP) ---
+let accuracyDirty = false;
+function markAccuracyDirty() { accuracyDirty = true; }
+async function persistAccuracyCounters() {
+    if (!accuracyDirty) return;
+    accuracyDirty = false;
     try {
-        console.log(`[SYNC] Flushing XP & Memory updates for ${pendingCount} users...`);
+        await settingsRepo.setJSON(SETTINGS_KEYS.ACCURACY_COUNTERS, {
+            accuracyFallback: stats.accuracyFallback || 0,
+            accuracyDontKnow: stats.accuracyDontKnow || 0,
+            accuracyCorrections: stats.accuracyCorrections || 0,
+            injectionBlocked: stats.injectionBlocked || 0,
+        });
+    } catch (e) {
+        accuracyDirty = true;
+    }
+}
+
+// Catat pertanyaan yang tidak cocok knowledge (knowledge gap) — fire-and-forget.
+function recordKnowledgeGap(question) {
+    try {
+        if (shouldSkipKnowledgeGap(question)) return;
+        const normalized = normalizeQuestion(String(question || ''));
+        if (!normalized) return;
+        const now = new Date().toISOString();
+        const key = (SETTINGS_KEYS && SETTINGS_KEYS.KNOWLEDGE_GAPS) || 'knowledge_gaps';
+        settingsRepo.getJSON(key, [])
+            .then((gaps) => {
+                const list = Array.isArray(gaps) ? gaps : [];
+                const existing = list.find((e) => e && normalizeQuestion(String(e.q || '')) === normalized);
+                if (existing) {
+                    existing.count = (Number(existing.count) || 1) + 1;
+                    existing.lastSeen = now;
+                } else {
+                    list.unshift({ q: String(question).trim().slice(0, 300), count: 1, firstSeen: now, lastSeen: now });
+                    while (list.length > 100) list.pop();
+                }
+                return settingsRepo.setJSON(key, list);
+            })
+            .catch((e) => console.warn('[KNOWLEDGE-GAP] Gagal catat:', e.message));
+    } catch (e) { /* fire-and-forget: jangan perlambat chat */ }
+}
+
+// Flush gabungan XP+memory dalam SATU batchWrite. XP_PENDING hanya dihapus setelah sukses,
+// dan hanya untuk user yang snapshot-nya berhasil di-flush (hindari hapus update yang masuk saat flush).
+async function flushPendingXP(reason = 'interval') {
+    persistAccuracyCounters();
+    const snapshot = Object.entries(XP_PENDING_UPDATES);
+    if (snapshot.length === 0) return 0;
+    try {
+        console.log(`[SYNC] Flushing XP & Memory updates for ${snapshot.length} users (${reason})...`);
         const batch = [];
-        for (const [userId, amount] of Object.entries(XP_PENDING_UPDATES)) {
+        for (const [userId] of snapshot) {
             const userStats = USER_STATS_CACHE[userId];
             if (userStats) {
                 batch.push(runtimeRepo.buildUserStatsUpsert(userId, userStats.username || '', userStats));
+                if (userStats.core_memory !== undefined) {
+                    batch.push(memoryRepo.buildUpsertBatch(userId, userStats.username || '', userStats.core_memory || ''));
+                }
             }
         }
         if (batch.length > 0) {
             await runtimeRepo.batchWrite(batch);
         }
-
-        // Sync Memory separately to dedicated table
-        const memoryBatch = [];
-        for (const [userId, amount] of Object.entries(XP_PENDING_UPDATES)) {
-            const userStats = USER_STATS_CACHE[userId];
-            if (userStats && userStats.core_memory !== undefined) {
-                memoryBatch.push(memoryRepo.buildUpsertBatch(userId, userStats.username || '', userStats.core_memory || ''));
-            }
+        // Hapus hanya key yang ada di snapshot (update baru yang masuk saat flush tetap aman).
+        for (const [userId] of snapshot) {
+            if (Object.prototype.hasOwnProperty.call(XP_PENDING_UPDATES, userId)) delete XP_PENDING_UPDATES[userId];
         }
-        if (memoryBatch.length > 0) {
-            await runtimeRepo.batchWrite(memoryBatch);
-        }
-
-        // Clear pending but keep cache
-        for (const user in XP_PENDING_UPDATES) delete XP_PENDING_UPDATES[user];
-        console.log(`[SYNC] Successfully synced ${pendingCount} users to database.`);
+        console.log(`[SYNC] Successfully synced ${snapshot.length} users to database.`);
+        return snapshot.length;
     } catch (e) {
-        console.error("[SYNC] Global XP Flush failed:", e.message);
+        console.error('[SYNC] Global XP Flush failed:', e.message);
+        return 0;
     }
-}, 60000);
+}
+
+// Flush XP Buffering to DB every 60 seconds
+const xpFlushInterval = setInterval(() => { flushPendingXP('interval'); }, 60000);
+if (xpFlushInterval.unref) xpFlushInterval.unref();
 
 // Auto-update memory oleh AI dinonaktifkan: Data user hanya diisi oleh user secara manual.
 async function updateUserMemory(userId, username, chatHistory) {
@@ -593,7 +754,7 @@ async function addXP(userId, username, amount) {
         userStat.username = username;
 
         // 2. Calculate New Stats (Memory Only)
-        const baseAmount = amount > 0 ? Math.floor(amount * (baseXpRate / 100)) : amount;
+        const baseAmount = amount > 0 ? Math.floor(amount * ((Number(global.baseXpRate) || 60) / 100)) : amount;
         const multiplier = (XP_MULTIPLIER > 1 && baseAmount > 0) ? XP_MULTIPLIER : 1;
         const finalAmount = baseAmount * multiplier;
         
@@ -676,8 +837,10 @@ async function checkCache(question) {
     if (Math.random() < 0.1) return null;
 
     try {
-        const result = await cacheRepo.findCacheByQuestionKey(key);
+        const result = await cacheRepo.findResponseByQuestionKey(key);
         if (result.rows.length > 0) {
+            // Fast-stale: lewati entri domain cepat-basi yang lebih tua dari 24 jam.
+            if (isCacheEntryStale(result.rows[0].domain, result.rows[0].created_at)) return null;
             let answerData = result.rows[0].answer;
             let variations = [];
             
@@ -711,6 +874,10 @@ function isWeakAnswer(userMessage, cachedAnswer, knowledgeContext) {
 
     // 1. Trigger User: Jika user bilang "salah", "nggak lengkap", "update", dll
     if (/\bsalah\b|\bnggak bener\b|\bkurang lengkap\b|\bganti\b|\bupdate\b/i.test(lowerMsg)) {
+        if (typeof stats !== 'undefined' && stats) {
+            stats.accuracyCorrections = (stats.accuracyCorrections || 0) + 1;
+            markAccuracyDirty();
+        }
         return true;
     }
 
@@ -780,10 +947,25 @@ async function addToCache(question, answer, domain = 'general') {
                 await cacheRepo.updateAnswer(key, JSON.stringify(variations));
             }
         } else {
-            // Insert baru (simpan sebagai JSON array)
-            await cacheRepo.createResponse(key, JSON.stringify([answer]), domain || 'umum');
-            stats.cacheTotal++;
-            console.log(`[CACHE] NEW SAVED: "${key.slice(0, 30)}..."`);
+            // Insert baru (simpan sebagai JSON array). createResponse sudah ON CONFLICT,
+            // tapi tetap tangani UNIQUE violation konkuren dengan fallback UPDATE.
+            try {
+                await cacheRepo.createResponse(key, JSON.stringify([answer]), domain || 'umum');
+                stats.cacheTotal++;
+                console.log(`[CACHE] NEW SAVED: "${key.slice(0, 30)}..."`);
+            } catch (insertErr) {
+                const msg = String(insertErr?.message || '');
+                if (/UNIQUE|CONFLICT/i.test(msg)) {
+                    try {
+                        await cacheRepo.updateAnswer(key, JSON.stringify([answer]));
+                        console.warn(`[CACHE] Race insert terdeteksi untuk "${key.slice(0, 30)}...", fallback UPDATE.`);
+                    } catch (fallbackErr) {
+                        console.error('[CACHE] Fallback update gagal:', fallbackErr.message);
+                    }
+                } else {
+                    throw insertErr;
+                }
+            }
         }
     } catch (e) {
         console.error("[CACHE] Error saving to cache:", e.message);
@@ -798,7 +980,13 @@ async function getHistoryFromDB(userId, username, limit = 5) {
         
         if (!result?.rows || result.rows.length === 0) return { messages: [], lastTime: null };
 
-        const lastTime = new Date(result.rows[0].timestamp + "Z").getTime(); // Ditambah Z agar dianggap UTC
+        const rawTs = result.rows[0].timestamp;
+        let lastTime = new Date(`${rawTs}Z`).getTime(); // Ditambah Z agar dianggap UTC
+        if (Number.isNaN(lastTime)) {
+            const fallback = new Date(rawTs).getTime();
+            lastTime = Number.isNaN(fallback) ? null : fallback;
+            if (lastTime === null) console.warn('[DB] getHistoryFromDB: timestamp tidak valid:', rawTs);
+        }
         
         // Balikkan urutan agar dari yang lama ke baru
         const history = [];
@@ -824,14 +1012,16 @@ async function updateDBStats() {
         const cacheResult = await cacheRepo.countCache();
         stats.cacheTotal = cacheResult.rows[0].count;
     } catch (e) {
-        // Silent error to prevent log spam
+        console.warn('[DB] updateDBStats gagal:', e.message);
     }
 }
 
 // Update DB stats setiap 1 menit
-setInterval(updateDBStats, 60000);
+const dbStatsInterval = setInterval(updateDBStats, 60000);
+if (dbStatsInterval.unref) dbStatsInterval.unref();
 // Jalankan sekali di awal
-setTimeout(updateDBStats, 5000);
+const dbStatsStartupTimer = setTimeout(updateDBStats, 5000);
+if (dbStatsStartupTimer.unref) dbStatsStartupTimer.unref();
 
 
 let isBotInfoActive = false;  // Bot AI (info)
@@ -841,6 +1031,11 @@ let isImageCommandActive = true; // Switch bot gambar (AnimeinIMG)
 let isBotNotifActive = true; // Switch bot notifikasi (AnimeinNotif)
 const IMAGE_COMMAND_COOLDOWN_MS = 0;
 let lastImageCommandAt = 0;
+// SUMBER KEBENARAN doubleXP/discount: state runtime bersama bot.js <-> dashboardServer.js
+// (objek runtimeState yang di-pass ke startDashboard). bot.js adalah pemilik timer (doubleXPTimeout,
+// discountTimeout); dashboard hanya memutasi via setter yang sama. Saat stop/shutdown, SELALU clear
+// KEDUA timer di kedua sisi (lihat gracefulShutdown + stopDoubleXP/stopDiscountEvent) agar tidak ada
+// timeout ganda yang saling menimpa.
 let XP_MULTIPLIER = 1;
 let doubleXPTimeout = null;
 let doubleXPEndTime = 0;
@@ -886,6 +1081,11 @@ const stats = {
     totalDBKuis: 0,
     totalReports: 0,
     totalQuizzesStarted: 0,
+    accuracyFallback: 0,
+    accuracyDontKnow: 0,
+    accuracyCorrections: 0,
+    injectionBlocked: 0,
+    providerLatency: {},
     recentActivity: [],
     realtimeLogs: []
 };
@@ -908,12 +1108,20 @@ const originalConsole = {
 };
 
 function serializeLogArg(arg) {
-    if (arg instanceof Error) return arg.stack || arg.message;
-    if (typeof arg === 'string') return arg;
+    let text;
+    if (arg instanceof Error) text = arg.stack || arg.message;
+    else if (typeof arg === 'string') text = arg;
+    else {
+        try {
+            text = JSON.stringify(arg);
+        } catch (_) {
+            text = String(arg);
+        }
+    }
     try {
-        return JSON.stringify(arg);
+        return maskSensitiveText(text);
     } catch (_) {
-        return String(arg);
+        return text;
     }
 }
 
@@ -986,15 +1194,31 @@ async function trackStreak(userId, username) {
     try {
         const res = await streakRepo.getUserStreak(userId);
         if (res.rows.length === 0) {
-            await streakRepo.createInitialStreak(userId, username, today);
+            // Atomik: INSERT OR IGNORE — duplikat PK saat konkuren tidak throw.
+            try {
+                await streakRepo.createInitialStreak(userId, username, today);
+            } catch (e) {
+                const msg = String(e?.message || '');
+                if (!/UNIQUE|CONFLICT|PRIMARY/i.test(msg)) throw e;
+                console.warn(`[STREAK] Race insert streak ${username}, lanjut ke update.`);
+            }
             return;
         }
         const row = res.rows[0];
         if (row.last_active_date === today) return; // Sudah tercatat hari ini
 
-        // Hitung selisih hari
-        const lastDate = new Date(row.last_active_date + 'T00:00:00+07:00');
-        const todayDate = new Date(today + 'T00:00:00+07:00');
+        // Hitung selisih hari (guard tanggal tidak valid)
+        const lastDate = new Date(`${row.last_active_date}T00:00:00+07:00`);
+        const todayDate = new Date(`${today}T00:00:00+07:00`);
+        if (Number.isNaN(lastDate.getTime()) || Number.isNaN(todayDate.getTime())) {
+            console.warn('[STREAK] Tanggal streak tidak valid:', row.last_active_date, today);
+            try {
+                await streakRepo.updateUserStreak(userId, 1, Math.max(1, Number(row.best_streak) || 0), today);
+            } catch (e2) {
+                console.warn(`[STREAK] Gagal reset streak ${username}:`, e2.message);
+            }
+            return;
+        }
         const diffDays = Math.floor((todayDate - lastDate) / (24 * 60 * 60 * 1000));
 
         let newStreak = diffDays === 1 ? (Number(row.current_streak) + 1) : 1;
@@ -1094,24 +1318,28 @@ function getKnowledgeContext(query) {
         ? normalizedKnowledge.filter(k => k.domain === detectedDomain)
         : normalizedKnowledge;
 
-    // Step 3: Keyword matching dalam domain yang sudah difilter
-    let scored = pool
+    // Step 3: Keyword matching (exact + fuzzy typo-tolerant) dalam domain yang sudah difilter
+    const queryWords = lowerQ.split(/\s+/).filter(Boolean);
+    const isFuzzyKeywordMatch = (key) => {
+        if (key.length < 4) return false;
+        const threshold = Math.max(1, Math.floor(key.length / 4));
+        return queryWords.some(w => levenshtein(w, key) <= threshold);
+    };
+    const scored = pool
         .map(k => {
-            const matches = k.keywords.filter(key => {
-                if (key.length <= 3) return lowerQ.split(/\s+/).includes(key);
-                return lowerQ.includes(key);
-            });
-            return { info: k.info, domain: k.domain, score: matches.length };
+            let score = 0;
+            for (const key of k.keywords) {
+                let exact = false;
+                if (key.length <= 3) exact = queryWords.includes(key);
+                else exact = lowerQ.includes(key);
+                if (exact) score += 1;
+                else if (isFuzzyKeywordMatch(key)) score += 0.5;
+            }
+            return { info: k.info, domain: k.domain, score };
         })
         .filter(k => k.score > 0)
         .sort((a, b) => b.score - a.score)
         .slice(0, 3);
-
-    // Jika domain Animein terdeteksi tapi keyword tidak exact, tetap inject knowledge domain.
-    // Ini mencegah AI menjawab "tidak paham/tidak tahu" untuk pertanyaan Animein yang wording-nya beda.
-    if (scored.length === 0 && detectedDomain) {
-        scored = pool.slice(0, 3).map(k => ({ info: k.info, domain: k.domain, score: 0 }));
-    }
 
     let extraStats = "";
     
@@ -1147,7 +1375,9 @@ Instruksi AI: Jika user nanya "siapa pokemon terkuat, dewa, paling OP, terhebat"
         ? formatEvolutionContext(query)
         : '';
 
-    if (scored.length === 0 && extraStats === "" && comparisonData === "" && evolutionContext === "") return { context: "", domain: detectedDomain };
+    // Tidak ada keyword (exact/fuzzy) yang cocok: kembalikan konteks kosong + matched:false
+    // agar AI tidak diberi konteks irrelevan dan menjawab jujur sesuai aturan grounding.
+    if (scored.length === 0 && extraStats === "" && comparisonData === "" && evolutionContext === "") return { context: "", domain: detectedDomain, matched: false };
     
     let resultContext = `\n\n[INFO ANIMEIN - Akurat]:`;
     if (scored.length > 0) {
@@ -1162,17 +1392,23 @@ Instruksi AI: Jika user nanya "siapa pokemon terkuat, dewa, paling OP, terhebat"
     if (evolutionContext !== "") {
         resultContext += evolutionContext;
     }
-    return { context: resultContext, domain: detectedDomain || (scored.length > 0 ? scored[0].domain : null) };
+    return { context: resultContext, domain: detectedDomain || (scored.length > 0 ? scored[0].domain : null), matched: scored.length > 0 };
 }
 
 
 
 let bots = [
-    { username: CONFIG.USERNAME, password: CONFIG.PASSWORD, role: 'info', auth: { userId: null, userKey: null }, lastMessageId: 0, isFirstRun: true, isCooldown: false, reauthCooldownUntil: 0, lastFetchError: null },
-    { username: CONFIG.KUIS_USERNAME, password: CONFIG.PASSWORD, role: 'kuis', auth: { userId: null, userKey: null }, lastMessageId: 0, isFirstRun: true, isCooldown: false, reauthCooldownUntil: 0, lastFetchError: null },
-    { username: CONFIG.IMG_USERNAME, password: CONFIG.PASSWORD, role: 'image', auth: { userId: null, userKey: null }, lastMessageId: 0, isFirstRun: true, isCooldown: false, reauthCooldownUntil: 0, lastFetchError: null },
-    { username: CONFIG.NOTIF_USERNAME, password: CONFIG.PASSWORD, role: 'notif', auth: { userId: null, userKey: null }, lastMessageId: 0, isFirstRun: true, isCooldown: false, reauthCooldownUntil: 0, lastFetchError: null }
+    { username: CONFIG.USERNAME, password: CONFIG.PASSWORD, role: 'info', auth: { userId: null, userKey: null }, lastMessageId: 0, isFirstRun: true, isCooldown: false, cooldownTimer: null, reauthCooldownUntil: 0, lastFetchError: null },
+    { username: CONFIG.KUIS_USERNAME, password: CONFIG.PASSWORD, role: 'kuis', auth: { userId: null, userKey: null }, lastMessageId: 0, isFirstRun: true, isCooldown: false, cooldownTimer: null, reauthCooldownUntil: 0, lastFetchError: null },
+    { username: CONFIG.IMG_USERNAME, password: CONFIG.PASSWORD, role: 'image', auth: { userId: null, userKey: null }, lastMessageId: 0, isFirstRun: true, isCooldown: false, cooldownTimer: null, reauthCooldownUntil: 0, lastFetchError: null },
+    { username: CONFIG.NOTIF_USERNAME, password: CONFIG.PASSWORD, role: 'notif', auth: { userId: null, userKey: null }, lastMessageId: 0, isFirstRun: true, isCooldown: false, cooldownTimer: null, reauthCooldownUntil: 0, lastFetchError: null }
 ];
+
+// Handle interval/timer background agar bisa di-clear saat shutdown + .unref() agar tidak gantung test.
+let tempCleanupHandle = null;
+let pollingTimer = null;
+let startupFetchTimer = null;
+let startupFetchHourlyInterval = null;
 
 // isGlobalCooldown dihapus, diganti per-bot property
 
@@ -2842,8 +3078,11 @@ function sanitizeReplyContext(replyText) {
         .slice(0, 700);
 }
 
-function polishAiAnswer(answer, userMessage, replyText = '') {
+function polishAiAnswer(answer, userMessage, replyText = '', emojiBudget) {
     let text = String(answer || '').trim();
+    const budget = (typeof emojiBudget === 'number' && !isNaN(emojiBudget))
+        ? emojiBudget
+        : (typeof global.RARA_EMOJI_BUDGET === 'number' ? global.RARA_EMOJI_BUDGET : MAX_EMOJI_PER_REPLY);
     
     // Hapus kutipan terluar jika AI menjawab dengan tanda kutip ganda
     text = text.replace(/^["']|["']$/g, '').trim();
@@ -2859,9 +3098,9 @@ function polishAiAnswer(answer, userMessage, replyText = '') {
         const reply = sanitizeReplyContext(replyText);
         const question = String(userMessage || '').trim();
         if (reply) {
-            return `Nih udah dibaca konteks reply-nya: "${reply.slice(0, 180)}". Dari situ maksudnya soal "${question}" kan? Sini dibantu bahas dari konteks itu!`;
+            return sanitizeUnicodeReply(repairPersonaReply(`Nih udah dibaca konteks reply-nya: "${reply.slice(0, 180)}". Dari situ maksudnya soal "${question}" kan? Sini dibantu bahas dari konteks itu!`), budget);
         }
-        return `Hmph! Coba jelasin lagi maksud dari "${question}" biar Rara paham!`;
+        return sanitizeUnicodeReply(repairPersonaReply(`Hmph! Coba jelasin lagi maksud dari "${question}" biar Rara paham!`), budget);
     }
 
     // Ambil HANYA 1 KALIMAT PERTAMA
@@ -2877,11 +3116,35 @@ function polishAiAnswer(answer, userMessage, replyText = '') {
     text = text.replace(/,\s*rara\b[\s.!?\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}]*$/iu, '.').trim();
     text = text.replace(/\s+rara\b[\s.!?\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}]*$/iu, '.').trim();
 
+    // Post-check persona + sanitasi unicode (satu titik, tanpa ganda).
+    text = sanitizeUnicodeReply(repairPersonaReply(text), budget);
+
     return text;
 }
 
+// Finalisasi jawaban AI di satu titik: polish + variasi interjeksi + hitung accuracyDontKnow.
+function finalizeAiAnswer(rawAnswer, userMessage, replyText = '', userId = '') {
+    let finalText = polishAiAnswer(rawAnswer, userMessage, replyText);
+    finalText = varyOpeningInterjection(finalText, userId);
+    if (finalText && isDontKnowAnswer(finalText)) {
+        stats.accuracyDontKnow = (stats.accuracyDontKnow || 0) + 1;
+        markAccuracyDirty();
+    }
+    return finalText;
+}
+
+// Temperature respons Rara per intent: 'info' (faktual) pakai RARA_TEMP_INFO,
+// 'chat' (obrolan) pakai RARA_TEMP_CHAT; fallback ke AI_TEMPERATURE bila belum di-load.
+function resolveRaraTemperature(answerStyle) {
+    const fallback = typeof global.AI_TEMPERATURE === 'number' ? global.AI_TEMPERATURE : 1.0;
+    if (answerStyle === 'info') {
+        return typeof global.RARA_TEMP_INFO === 'number' ? global.RARA_TEMP_INFO : fallback;
+    }
+    return typeof global.RARA_TEMP_CHAT === 'number' ? global.RARA_TEMP_CHAT : fallback;
+}
+
 /** Groq (Llama 3.1) - kualitas lebih baik */
-async function askGroq(index, userMessage, senderName, contextData = '', chatHistory = [], replyText = '', senderUserId = null, overrideSystemPrompt = null) {
+async function askGroq(index, userMessage, senderName, contextData = '', chatHistory = [], replyText = '', senderUserId = null, overrideSystemPrompt = null, temperature = null) {
     const client = groqClients[index];
     const stat = stats.otak[index];
     
@@ -2915,7 +3178,8 @@ async function askGroq(index, userMessage, senderName, contextData = '', chatHis
             { role: 'user', content: userContent }
         ],
         max_tokens: 1024,
-        temperature: typeof global.AI_TEMPERATURE === 'number' ? global.AI_TEMPERATURE : 1.0,
+        temperature: typeof temperature === 'number' ? temperature
+            : (typeof global.AI_TEMPERATURE === 'number' ? global.AI_TEMPERATURE : 1.0),
     }).withResponse();
 
     // Safety check: pastikan response memiliki choices yang valid
@@ -3499,6 +3763,16 @@ deterministicAnswerRouter = createDeterministicAnswerRouter([
 
 /** Main AI handler: Groq only */
 async function getAIResponse(userMessage, senderName, isReply = false, senderUserId = null, replyText = '', options = {}) {
+    // ANTI PROMPT-INJECTION: titik sentral sebelum AI dipanggil. Tolak dalam
+    // karakter tanpa memanggil provider mana pun (hemat token).
+    try {
+        if (!options.skipRecommendationRouter && isInjectionAttempt(`${replyText || ''}\n${userMessage || ''}`)) {
+            stats.injectionBlocked = (stats.injectionBlocked || 0) + 1;
+            markAccuracyDirty();
+            console.log(`[GUARD] Prompt-injection diblokir dari ${senderName || 'user'}.`);
+            return { text: buildInjectionRefusal(senderName), provider: 'Rara Guard', tokens: 0 };
+        }
+    } catch (_) { /* guard tidak boleh menggagalkan chat */ }
     const isExplainPrompt = Boolean(options.skipRecommendationRouter || String(userMessage || '').startsWith('[EXPLAIN_ANIME]'));
     const contextMessage = [replyText, userMessage].filter(Boolean).join('\n');
 
@@ -3544,18 +3818,46 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
     }
 
     const intent = detectIntent(userMessage);
-    const animeContext = await buildAnimeContext(intent, userMessage);
+    const ctxBuildStart = Date.now();
     const knowledgeResult = getKnowledgeContext(contextMessage || userMessage);
     const knowledgeContext = knowledgeResult.context;
     const knowledgeDomain = knowledgeResult.domain;
+    const knowledgeMatched = knowledgeResult.matched === true;
     const wantsPokemonShop = /pokemon|poke|pika|shop|toko|jual|dijual|jualan|harga|price|stok|stock/i.test(userMessage)
         && /shop|toko|jual|dijual|jualan|harga|price|stok|stock|beli/i.test(userMessage);
-    const pokemonShopContext = wantsPokemonShop ? formatPokemonShopContext(await fetchPokemonShop(bots[0])) : '';
-    const animeinExtraContext = await buildAnimeinExtraContext(userMessage, bots[0], senderName);
-    const finalContext = animeContext + knowledgeContext + pokemonShopContext + animeinExtraContext;
+    // LATENSI: 3 fetch async dijalankan paralel (dulu sekuensial). Gagal -> string kosong.
+    const [animeCtxRes, pokemonShopRes, extraCtxRes, factMemRes] = await Promise.allSettled([
+        buildAnimeContext(intent, userMessage),
+        wantsPokemonShop ? fetchPokemonShop(bots[0]) : Promise.resolve([]),
+        buildAnimeinExtraContext(userMessage, bots[0], senderName),
+        loadFactMemory(settingsRepo, senderUserId),
+    ]);
+    const animeContext = animeCtxRes.status === 'fulfilled' ? (animeCtxRes.value || '') : '';
+    const pokemonShopContext = wantsPokemonShop
+        ? (pokemonShopRes.status === 'fulfilled' ? formatPokemonShopContext(pokemonShopRes.value || []) : '')
+        : '';
+    const animeinExtraContext = extraCtxRes.status === 'fulfilled' ? (extraCtxRes.value || '') : '';
+    const factMemoryContext = factMemRes.status === 'fulfilled'
+        ? buildFactMemoryContext(factMemRes.value && factMemRes.value.facts)
+        : '';
+    console.log(`[CONTEXT-BUILD] ${(Date.now() - ctxBuildStart)}ms (paralel: anime+shop+extra+factmem)`);
+    const finalContext = animeContext + knowledgeContext + pokemonShopContext + animeinExtraContext + factMemoryContext;
+
+    // LEARNING LOOP: catat knowledge gap (fire-and-forget) + counter akurasi.
+    if (!knowledgeMatched && !knowledgeContext && ANIMEIN_KNOWLEDGE.length > 0) {
+        recordKnowledgeGap(userMessage);
+    }
+    if (!finalContext) {
+        stats.accuracyFallback = (stats.accuracyFallback || 0) + 1;
+        markAccuracyDirty();
+    }
+    if (isUserCorrectionMessage(userMessage)) {
+        stats.accuracyCorrections = (stats.accuracyCorrections || 0) + 1;
+        markAccuracyDirty();
+    }
 
     if (intent || knowledgeContext || pokemonShopContext || animeinExtraContext) {
-        console.log(`[CONTEXT] Intent: ${intent || 'none'}, Domain: ${knowledgeDomain || 'none'}, Knowledge: ${knowledgeContext ? 'Inject' : 'Empty'}, PokemonShop: ${pokemonShopContext ? 'Inject' : 'Empty'}, ExtraAnimein: ${animeinExtraContext ? 'Inject' : 'Empty'}`);
+        console.log(`[CONTEXT] Intent: ${intent || 'none'}, Domain: ${knowledgeDomain || 'none'}, Knowledge: ${knowledgeMatched ? 'Inject' : 'Empty'}, PokemonShop: ${pokemonShopContext ? 'Inject' : 'Empty'}, ExtraAnimein: ${animeinExtraContext ? 'Inject' : 'Empty'}`);
     }
 
     // Cache jawaban AI dinonaktifkan agar data user/coin selalu real-time.
@@ -3578,17 +3880,54 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
 
     // Hitung affection & susun dynamic system prompt dari JSON DB
     const userAffection = userRepo ? await userRepo.addAffection(senderUserId, senderName, 1) : { points: 0, level: 0 };
+    // Freshness: tanggal Jakarta hari ini agar AI bisa menjawab jadwal/hari ini/kemarin/besok.
+    // getJakartaDate() memberi field wall-clock WIB via getter lokal; getJakartaDateKey() default (now) aman dari double-shift tz.
+    const jakartaNow = getJakartaDate();
+    const jakartaDisplay = `${String(jakartaNow.getDate()).padStart(2, '0')}-${String(jakartaNow.getMonth() + 1).padStart(2, '0')}-${jakartaNow.getFullYear()}`;
+    const freshnessContext = `\n[HARI INI]: ${getAnimeinDayName(0)}, ${jakartaDisplay} (${getJakartaDateKey()}) (WIB). Gunakan untuk menjawab pertanyaan jadwal/hari ini/kemarin/besok.`;
+    // Gaya jawaban intent-aware: 'info' bila ada intent/konteks berisi data,
+    // 'chat' untuk sapaan/obrolan biasa. (animeContext selalu membawa [Waktu],
+    // jadi khusus dicek penanda DATA via DATA_CONTEXT_RE.)
+    const hasAnimeData = DATA_CONTEXT_RE.test(animeContext || '');
+    const answerStyle = (intent || knowledgeContext || pokemonShopContext || animeinExtraContext || hasAnimeData) ? 'info' : 'chat';
     const dynamicSystemPrompt = buildSystemPrompt({
         characterConfig: RARA_CHARACTER_CONFIG,
         senderName,
         affectionLevel: userAffection.level,
-        affectionPoints: userAffection.points
+        affectionPoints: userAffection.points,
+        contextData: freshnessContext,
+        answerStyle,
+        styleIntensity: typeof global.RARA_STYLE_INTENSITY === 'number' ? global.RARA_STYLE_INTENSITY : 70,
+        maxWordsChat: typeof global.RARA_MAX_WORDS_CHAT === 'number' ? global.RARA_MAX_WORDS_CHAT : 15,
+        maxWordsInfo: typeof global.RARA_MAX_WORDS_INFO === 'number' ? global.RARA_MAX_WORDS_INFO : 60,
     });
 
-    // Model Utama (1): Cloudflare Workers AI (Llama 3.3 70B)
-    const cfStat = getCloudflareStat();
-    if (cfStat.active && CONFIG.CLOUDFLARE_API_KEY && CONFIG.CLOUDFLARE_ACCOUNT_ID && Date.now() >= cfStat.cooldownUntil) {
+    // MEMORI FAKTA: simpan fakta ekstraktif fire-and-forget setelah jawaban final ada.
+    const queueFactMemoryUpdate = (finalText) => {
         try {
+            recordFacts(settingsRepo, senderUserId, userMessage, finalText)
+                .catch(() => {});
+        } catch (_) { /* jangan ganggu chat */ }
+    };
+
+    // SMART ROUTING + LATENSI PROVIDER: catat latensi tiap sukses (avg untuk dashboard).
+    const recordProviderLatency = (name, ms) => {
+        try {
+            if (!stats.providerLatency) stats.providerLatency = {};
+            const entry = stats.providerLatency[name] || { count: 0, totalMs: 0, avgMs: 0 };
+            entry.count += 1;
+            entry.totalMs += Math.max(0, Math.round(ms));
+            entry.avgMs = Math.round(entry.totalMs / entry.count);
+            stats.providerLatency[name] = entry;
+        } catch (_) { /* statistik tidak boleh ganggu chat */ }
+    };
+
+    // Model Utama (1): Cloudflare Workers AI (Llama 3.3 70B, model besar)
+    const cfStat = getCloudflareStat();
+    const tryCloudflare = async () => {
+        if (!(cfStat.active && CONFIG.CLOUDFLARE_API_KEY && CONFIG.CLOUDFLARE_ACCOUNT_ID && Date.now() >= cfStat.cooldownUntil)) return null;
+        try {
+            const t0 = Date.now();
             const { text, tokens, provider } = await askCloudflareAi({
                 userMessage,
                 senderName,
@@ -3600,10 +3939,13 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
                 personalizeSystemPrompt,
                 userStatsCache: USER_STATS_CACHE,
                 sanitizeReplyContext,
+                temperature: resolveRaraTemperature(answerStyle),
             });
+            recordProviderLatency('cloudflare', Date.now() - t0);
 
-            const finalText = polishAiAnswer(text, userMessage, replyText);
+            const finalText = finalizeAiAnswer(text, userMessage, replyText, senderUserId);
             if (finalText) {
+                queueFactMemoryUpdate(finalText);
                 return { text: finalText, provider: `Cloudflare (Llama 3.3 70B)`, tokens };
             }
         } catch (err) {
@@ -3611,12 +3953,15 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
             cfStat.lastError = (err.message || '').slice(0, 100);
             console.error(`[CLOUDFLARE AI] Error: ${err.message}. Fallback ke NVIDIA AI.`);
         }
-    }
+        return null;
+    };
 
-    // Fallback Pertama (2): NVIDIA NIM AI (Llama 3.1 8B Instruct)
+    // Fallback Pertama (2): NVIDIA NIM AI (Llama 3.1 8B Instruct, cepat/murah)
     const nvStat = getNvidiaStat();
-    if (nvStat.active && CONFIG.NVIDIA_API_KEY && Date.now() >= nvStat.cooldownUntil) {
+    const tryNvidia = async () => {
+        if (!(nvStat.active && CONFIG.NVIDIA_API_KEY && Date.now() >= nvStat.cooldownUntil)) return null;
         try {
+            const t0 = Date.now();
             const { answer, tokens, model } = await askNvidiaAi({
                 userMessage,
                 senderName,
@@ -3628,10 +3973,13 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
                 personalizeSystemPrompt,
                 userStatsCache: USER_STATS_CACHE,
                 sanitizeReplyContext,
+                temperature: resolveRaraTemperature(answerStyle),
             });
+            recordProviderLatency('nvidia', Date.now() - t0);
 
-            const finalText = polishAiAnswer(answer, userMessage, replyText);
+            const finalText = finalizeAiAnswer(answer, userMessage, replyText, senderUserId);
             if (finalText) {
+                queueFactMemoryUpdate(finalText);
                 return { text: finalText, provider: `NVIDIA AI (${model || 'Llama 3.1 8B'})`, tokens };
             }
         } catch (err) {
@@ -3639,12 +3987,15 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
             nvStat.lastError = (err.message || '').slice(0, 100);
             console.error(`[NVIDIA AI] Error: ${err.message}. Fallback ke Cerebras.`);
         }
-    }
+        return null;
+    };
 
     // Fallback Pertama (2): Cerebras AI
     const cbStat = getCerebrasStat();
-    if (cbStat.active && CONFIG.CEREBRAS_API_KEY && Date.now() >= cbStat.cooldownUntil) {
+    const tryCerebras = async () => {
+        if (!(cbStat.active && CONFIG.CEREBRAS_API_KEY && Date.now() >= cbStat.cooldownUntil)) return null;
         try {
+            const t0 = Date.now();
             const { text, tokens, provider } = await askCerebrasAi({
                 userMessage,
                 senderName,
@@ -3657,38 +4008,133 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
                 userStatsCache: USER_STATS_CACHE,
                 sanitizeReplyContext,
             });
+            recordProviderLatency('cerebras', Date.now() - t0);
 
-            const finalText = polishAiAnswer(text, userMessage, replyText);
+            const finalText = finalizeAiAnswer(text, userMessage, replyText, senderUserId);
             if (finalText) {
+                queueFactMemoryUpdate(finalText);
                 return { text: finalText, provider, tokens };
             }
         } catch (err) {
             console.error(`[CEREBRAS AI] Error: ${err.message}. Fallback ke Groq.`);
         }
-    }
+        return null;
+    };
 
     // Fallback Kedua (3): Groq AI (Llama 3.1 8B)
-    for (let i = 0; i < groqClients.length; i++) {
-        const stat = stats.otak[i];
-        const nowLoop = Date.now();
+    const tryGroq = async () => {
+        for (let i = 0; i < groqClients.length; i++) {
+            const stat = stats.otak[i];
+            const nowLoop = Date.now();
 
-        if (!stat.active || nowLoop < stat.cooldownUntil) continue;
+            if (!stat.active || nowLoop < stat.cooldownUntil) continue;
 
-        try {
-            const { text, tokens } = await askGroq(i, userMessage, senderName, finalContext, history, replyText, senderUserId, dynamicSystemPrompt);
-            const finalText = polishAiAnswer(text, userMessage, replyText);
-            if (finalText) {
-                stats.lastUsedGroq = i;
-                return { text: finalText, provider: `Groq AI (Llama 3.1 8B)`, tokens };
+            try {
+                const t0 = Date.now();
+                const { text, tokens } = await askGroq(i, userMessage, senderName, finalContext, history, replyText, senderUserId, dynamicSystemPrompt, resolveRaraTemperature(answerStyle));
+                recordProviderLatency('groq', Date.now() - t0);
+                const finalText = finalizeAiAnswer(text, userMessage, replyText, senderUserId);
+                if (finalText) {
+                    queueFactMemoryUpdate(finalText);
+                    stats.lastUsedGroq = i;
+                    return { text: finalText, provider: `Groq AI (Llama 3.1 8B)`, tokens };
+                }
+            } catch (err) {
+                stat.errors++;
+                stat.lastError = (err.message || '').slice(0, 100);
+                console.error(`[GROQ AI] Otak #${i+1} Error: ${err.message}.`);
             }
-        } catch (err) {
-            stat.errors++;
-            stat.lastError = (err.message || '').slice(0, 100);
-            console.error(`[GROQ AI] Otak #${i+1} Error: ${err.message}.`);
         }
+        return null;
+    };
+
+    // SMART ROUTING: faktual (intent/knowledge/data) -> model besar dulu (urutan
+    // lama); obrolan ringan (sapaan <=60 char tanpa konteks data) -> model
+    // cepat/murah dulu (tukar 2 teratas bila keduanya active & siap).
+    const isLightChat = answerStyle === 'chat' && String(userMessage || '').trim().length <= 60;
+    const cfReady = cfStat.active && Boolean(CONFIG.CLOUDFLARE_API_KEY && CONFIG.CLOUDFLARE_ACCOUNT_ID) && Date.now() >= cfStat.cooldownUntil;
+    const nvReady = nvStat.active && Boolean(CONFIG.NVIDIA_API_KEY) && Date.now() >= nvStat.cooldownUntil;
+    const orderedAttempts = (isLightChat && cfReady && nvReady)
+        ? [tryNvidia, tryCloudflare, tryCerebras, tryGroq]
+        : [tryCloudflare, tryNvidia, tryCerebras, tryGroq];
+    if (isLightChat && cfReady && nvReady) console.log('[ROUTING] Obrolan ringan -> NVIDIA dulu, lalu Cloudflare.');
+    for (const attempt of orderedAttempts) {
+        const hit = await attempt();
+        if (hit) return hit;
     }
 
     return { text: 'Maaf kak, semua koneksi AI Rara lagi sibuk/limit. Coba lagi nanti ya!', provider: 'Error', tokens: 0 };
+}
+
+// Playground Tes Respons Rara (dashboard): bangun 1 balasan tanpa efek samping.
+// Tidak mengirim ke chat, tidak menambah XP, tidak menyimpan log.
+async function previewRaraReply({ question, affectionLevel = 0, answerStyle } = {}) {
+    const knowledgeResult = getKnowledgeContext(String(question || ''));
+    const payload = buildRaraPreviewPayload({
+        question,
+        affectionLevel,
+        answerStyle,
+        settings: {
+            styleIntensity: typeof global.RARA_STYLE_INTENSITY === 'number' ? global.RARA_STYLE_INTENSITY : undefined,
+            maxWordsChat: typeof global.RARA_MAX_WORDS_CHAT === 'number' ? global.RARA_MAX_WORDS_CHAT : undefined,
+            maxWordsInfo: typeof global.RARA_MAX_WORDS_INFO === 'number' ? global.RARA_MAX_WORDS_INFO : undefined,
+            tempChat: typeof global.RARA_TEMP_CHAT === 'number' ? global.RARA_TEMP_CHAT : undefined,
+            tempInfo: typeof global.RARA_TEMP_INFO === 'number' ? global.RARA_TEMP_INFO : undefined,
+        },
+        knowledgeMatched: knowledgeResult.matched === true,
+    });
+    const systemPrompt = buildSystemPrompt({
+        characterConfig: RARA_CHARACTER_CONFIG,
+        senderName: 'Tester',
+        affectionLevel: payload.affectionLevel,
+        affectionPoints: 0,
+        contextData: '',
+        answerStyle: payload.answerStyle,
+        styleIntensity: payload.styleIntensity,
+        maxWordsChat: payload.maxWordsChat,
+        maxWordsInfo: payload.maxWordsInfo,
+    });
+    const baseArgs = {
+        userMessage: payload.question,
+        senderName: 'Tester',
+        contextData: knowledgeResult.context || '',
+        chatHistory: [],
+        replyText: '',
+        senderUserId: null,
+        systemPrompt,
+        personalizeSystemPrompt,
+        userStatsCache: USER_STATS_CACHE,
+        sanitizeReplyContext,
+        temperature: payload.temperature,
+    };
+
+    const cfStat = getCloudflareStat();
+    if (cfStat.active && CONFIG.CLOUDFLARE_API_KEY && CONFIG.CLOUDFLARE_ACCOUNT_ID && Date.now() >= cfStat.cooldownUntil) {
+        try {
+            const { text, tokens, provider } = await askCloudflareAi(baseArgs);
+            const reply = finalizeAiAnswer(text, payload.question, '', 'playground-tester');
+            if (reply) {
+                return { reply, provider: provider || 'Cloudflare', tokens: tokens || 0, knowledgeMatched: knowledgeResult.matched === true, knowledgeDomain: knowledgeResult.domain || null };
+            }
+        } catch (err) {
+            console.warn(`[RARA PREVIEW] Cloudflare gagal: ${(err && err.message) || err}. Coba NVIDIA.`);
+        }
+    }
+
+    const nvStat = getNvidiaStat();
+    if (nvStat.active && CONFIG.NVIDIA_API_KEY && Date.now() >= nvStat.cooldownUntil) {
+        try {
+            const { answer, tokens, model } = await askNvidiaAi(baseArgs);
+            const reply = finalizeAiAnswer(answer, payload.question, '', 'playground-tester');
+            if (reply) {
+                return { reply, provider: `NVIDIA AI (${model || 'Llama 3.1 8B'})`, tokens: tokens || 0, knowledgeMatched: knowledgeResult.matched === true, knowledgeDomain: knowledgeResult.domain || null };
+            }
+        } catch (err) {
+            console.warn(`[RARA PREVIEW] NVIDIA gagal: ${(err && err.message) || err}.`);
+        }
+    }
+
+    throw new Error('Semua provider AI preview sibuk/limit. Coba lagi nanti.');
 }
 
 const getImageLimitStatus = limitService.getImageLimitStatus;
@@ -3712,6 +4158,7 @@ async function sendChatWithImage(bot, imageData, caption, replyTo = '0') {
         return false;
     }
 
+    let uploadStream = null;
     try {
         let ext = mimeType.split('/')[1] || 'jpg';
         if (ext === 'jpeg') ext = 'jpg'; 
@@ -3725,7 +4172,8 @@ async function sendChatWithImage(bot, imageData, caption, replyTo = '0') {
         form.append('key_client', bot.auth.userKey);
         const fileSize = fs.statSync(filePath).size;
         console.log(`[CHAT/IMG] Uploading ${bot.username} ${contentType} ${Math.round(fileSize / 1024)}KB`);
-        form.append('image', fs.createReadStream(filePath), { filename, contentType });
+        uploadStream = fs.createReadStream(filePath);
+        form.append('image', uploadStream, { filename, contentType });
         
         const res = await animeinClient.postForm('/3/2/chat/do', form, {
             headers: {
@@ -3753,6 +4201,7 @@ async function sendChatWithImage(bot, imageData, caption, replyTo = '0') {
         console.warn('[CHAT/IMG] Upload gambar ke chat gagal:', safeMessage(err, 80));
         return false;
     } finally {
+        try { if (uploadStream) uploadStream.destroy(); } catch (_) {}
         try {
             if (filePath && fs.existsSync(filePath)) cleanupTempImage(filePath);
         } catch (unlinkErr) {
@@ -3896,9 +4345,11 @@ async function sendChatMessage(bot, text, replyTo = '0', options = {}) {
     }
     if (isAnimeinApiBlocked(`Kirim pesan ${bot?.username || 'bot'}`)) return false;
 
-    // Aktifkan cooldown 10 detik per bot
+    // Aktifkan cooldown 10 detik per bot (clear timer lama agar tidak menumpuk saat spam)
     bot.isCooldown = true;
-    setTimeout(() => { bot.isCooldown = false; }, 10000);
+    if (bot.cooldownTimer) clearTimeout(bot.cooldownTimer);
+    bot.cooldownTimer = setTimeout(() => { bot.isCooldown = false; bot.cooldownTimer = null; }, 10000);
+    if (bot.cooldownTimer.unref) bot.cooldownTimer.unref();
     
     try {
         let res;
@@ -4522,6 +4973,8 @@ async function processMessages(bot, messages) {
                 activeQuiz,
                 getGelar,
                 getImageLimitStatus,
+                downloadImageToTempFile,
+                sendChatWithImage,
                 checkRaraChatLimit,
                 IMAGE_DAILY_LIMIT_DEFAULT,
                 handleError,
@@ -4529,6 +4982,7 @@ async function processMessages(bot, messages) {
                 logEmitter,
                 getShopMessage,
                 shopRepo,
+                cardsRepo,
                 buyItem,
                 addXP,
                 USER_STATS_CACHE,
@@ -4539,6 +4993,9 @@ async function processMessages(bot, messages) {
                 durationMs: QUIZ_DURATION_MS,
                 expireQuiz,
                 clearQuizTimers,
+                startQuiz,
+                quizRepo,
+                weeklyRepo,
                 trackQuizStat,
                 trackStreak,
                 levenshtein,
@@ -4692,19 +5149,26 @@ async function startBot() {
                                 discordPayload.embeds[0].image = { url: `attachment://${attachFilename}` };
                             }
                             
-                            form.append('payload_json', JSON.stringify(discordPayload));
-                            form.append('files[0]', fs.createReadStream(coverFile.filePath), {
-                                filename: attachFilename,
-                                contentType: coverFile.mimeType,
-                            });
+                            let coverStream = null;
+                            try {
+                                form.append('payload_json', JSON.stringify(discordPayload));
+                                coverStream = fs.createReadStream(coverFile.filePath);
+                                form.append('files[0]', coverStream, {
+                                    filename: attachFilename,
+                                    contentType: coverFile.mimeType,
+                                });
 
-                            await axios.post(webhookUrl, form, {
-                                headers: form.getHeaders(),
-                                timeout: 15000,
-                            });
-
-                            // Cleanup file temporary
-                            try { fs.unlinkSync(coverFile.filePath); } catch (_) {}
+                                await axios.post(webhookUrl, form, {
+                                    headers: form.getHeaders(),
+                                    timeout: 15000,
+                                });
+                            } finally {
+                                try { if (coverStream) coverStream.destroy(); } catch (_) {}
+                                // Cleanup selalu di finally agar tidak menumpuk saat gagal.
+                                try { fs.unlinkSync(coverFile.filePath); } catch (cleanupErr) {
+                                    console.warn('[ANIME_NOTIF] Gagal cleanup cover:', cleanupErr.message);
+                                }
+                            }
                         } else {
                             // Fallback: kirim tanpa gambar
                             await axios.post(webhookUrl, discordPayload, { timeout: 10000 });
@@ -4745,54 +5209,80 @@ async function startBot() {
     // Jadwal Microfetch: tunggu 30 menit setelah startup, lalu refresh setiap 1 jam
     if (!isSystemOff) {
         console.log("[STARTUP] Fetch anime akan dimulai dalam 30 menit...");
-        setTimeout(() => {
+        startupFetchTimer = setTimeout(() => {
             console.log("[DELAYED FETCH] Memulai fetch anime pertama kali...");
             fetchHomeAnime().catch(e => console.error("[DELAYED FETCH] Fetch anime failed:", e.message));
             
             // Setelah fetch pertama, lanjutkan dengan interval 1 jam
-            setInterval(() => {
+            startupFetchHourlyInterval = setInterval(() => {
                 if (isSystemOff) return;
                 fetchHomeAnime().catch(e => console.error("[INTERVAL] Fetch anime failed:", e.message));
             }, 60 * 60 * 1000); // Setiap 1 jam setelah fetch pertama
+            if (startupFetchHourlyInterval.unref) startupFetchHourlyInterval.unref();
         }, 30 * 60 * 1000); // Tunggu 30 menit
+        if (startupFetchTimer.unref) startupFetchTimer.unref();
     } else {
         console.log("[KILL SWITCH] Startup fetch anime dilewati.");
     }
 
-    // Main Polling Loop
-    setInterval(async () => {
-        if (isSystemOff) return; // KILL SWITCH
-        try {
-            for (const bot of bots) {
-                if (bot.role === 'notif') { bot.isFirstRun = true; continue; }
-                if (bot.role === 'image' && !isImageCommandActive) { bot.isFirstRun = true; continue; }
-                if (bot.role === 'info' && !isBotInfoActive) { bot.isFirstRun = true; continue; }
-                if (bot.role === 'kuis' && !isBotKuisActive) { bot.isFirstRun = true; continue; }
-                if (!bot.auth.userId) continue;
-                
-                const data = await fetchMessages(bot);
-                if (!data) continue;
+    // Main Polling Loop (paralel + anti-overlap + adaptive interval).
+    // Bila 5 siklus kosong berturut-turut -> interval 30s; kembali ke base saat ada pesan.
+    let isPolling = false;
+    let idleCycles = 0;
+    const POLL_BASE_MS = CONFIG.POLL_INTERVAL;
+    const POLL_IDLE_MS = 30000;
+    async function pollOneBot(bot) {
+        if (bot.role === 'notif') { bot.isFirstRun = true; return 0; }
+        if (bot.role === 'image' && !isImageCommandActive) { bot.isFirstRun = true; return 0; }
+        if (bot.role === 'info' && !isBotInfoActive) { bot.isFirstRun = true; return 0; }
+        if (bot.role === 'kuis' && !isBotKuisActive) { bot.isFirstRun = true; return 0; }
+        if (!bot.auth.userId) return 0;
 
-                const messages = (data.data && Array.isArray(data.data.chat)) ? data.data.chat : [];
+        const data = await fetchMessages(bot);
+        if (!data) return 0;
 
-                if (bot.isFirstRun) {
-                    for (const msg of messages) {
-                        const id = parseInt(msg.id || 0);
-                        if (id > bot.lastMessageId) bot.lastMessageId = id;
-                    }
-                    console.log(`[${bot.username}] Baseline ID: ${bot.lastMessageId}.`);
-                    bot.isFirstRun = false;
-                    continue;
-                }
+        const messages = (data.data && Array.isArray(data.data.chat)) ? data.data.chat : [];
 
-                if (messages.length > 0) {
-                    await processMessages(bot, messages);
-                }
+        if (bot.isFirstRun) {
+            for (const msg of messages) {
+                const id = parseInt(msg.id || 0);
+                if (id > bot.lastMessageId) bot.lastMessageId = id;
             }
+            console.log(`[${bot.username}] Baseline ID: ${bot.lastMessageId}.`);
+            bot.isFirstRun = false;
+            return 0;
+        }
+
+        if (messages.length > 0) {
+            await processMessages(bot, messages);
+            return messages.length;
+        }
+        return 0;
+    }
+    async function pollingTick() {
+        if (isSystemOff) { pollingTimer = setTimeout(pollingTick, POLL_BASE_MS); if (pollingTimer.unref) pollingTimer.unref(); return; }
+        if (isPolling) { pollingTimer = setTimeout(pollingTick, POLL_BASE_MS); if (pollingTimer.unref) pollingTimer.unref(); return; } // skip bila siklus sebelumnya masih jalan
+        isPolling = true;
+        try {
+            const results = await Promise.allSettled(bots.map((bot) => pollOneBot(bot)));
+            let totalMsgs = 0;
+            for (const r of results) {
+                if (r.status === 'fulfilled') totalMsgs += (r.value || 0);
+                else console.error('[POLLING] Error pada polling bot:', r.reason && r.reason.message ? r.reason.message : r.reason);
+            }
+            if (totalMsgs > 0) idleCycles = 0;
+            else idleCycles++;
         } catch (e) {
             console.error('[POLLING] Error pada polling loop:', e.message);
+        } finally {
+            isPolling = false;
         }
-    }, CONFIG.POLL_INTERVAL);
+        const nextDelay = idleCycles >= 5 ? POLL_IDLE_MS : POLL_BASE_MS;
+        pollingTimer = setTimeout(pollingTick, nextDelay);
+        if (pollingTimer.unref) pollingTimer.unref();
+    }
+    pollingTimer = setTimeout(pollingTick, POLL_BASE_MS);
+    if (pollingTimer.unref) pollingTimer.unref();
 
     // Otomatis Kuis setiap 1 jam
     resetAutoQuizTimer();
@@ -4814,6 +5304,7 @@ function scheduleStartupQuizDataFetch() {
         console.log('[QUIZ] Mengambil data kuis setelah 30 menit restart...');
         await fetchHomeAnime(true);
     }, STARTUP_QUIZ_FETCH_DELAY_MS);
+    if (startupQuizFetchTimer.unref) startupQuizFetchTimer.unref();
 }
 
 function resetAutoQuizTimer() {
@@ -4830,6 +5321,7 @@ function resetAutoQuizTimer() {
              nextQuizTime = Date.now() + (3 * 60 * 60 * 1000);
         }
     }, 3 * 60 * 60 * 1000);
+    if (autoQuizInterval.unref) autoQuizInterval.unref();
 }
 
 
@@ -4844,42 +5336,45 @@ async function gracefulShutdown(signal) {
     console.log(`\n[SHUTDOWN] Menerima sinyal ${signal}. Menyimpan data sebelum exit...`);
 
     try {
-        // 1. Flush XP & Stats pending ke database
-        const pendingCount = Object.keys(XP_PENDING_UPDATES).length;
-        if (pendingCount > 0 && CONFIG.TURSO_URL) {
-            console.log(`[SHUTDOWN] Flushing ${pendingCount} user XP & Memory ke database...`);
-            const batch = [];
-            for (const [userId] of Object.entries(XP_PENDING_UPDATES)) {
-                const userStats = USER_STATS_CACHE[userId];
-                if (userStats) {
-                    batch.push(runtimeRepo.buildUserStatsUpsert(userId, userStats.username || '', userStats));
-                }
-            }
-            if (batch.length > 0) {
-                await runtimeRepo.batchWrite(batch);
-            }
-
-            // Flush memory
-            const memoryBatch = [];
-            for (const [userId] of Object.entries(XP_PENDING_UPDATES)) {
-                const userStats = USER_STATS_CACHE[userId];
-                if (userStats && userStats.core_memory !== undefined) {
-                    memoryBatch.push(memoryRepo.buildUpsertBatch(userId, userStats.username || '', userStats.core_memory || ''));
-                }
-            }
-            if (memoryBatch.length > 0) {
-                await runtimeRepo.batchWrite(memoryBatch);
-            }
-            console.log(`[SHUTDOWN] Berhasil menyimpan ${batch.length} user stats dan ${memoryBatch.length} memori.`);
+        // 1. Flush XP & Stats pending ke database (gabungan satu batch, hanya hapus setelah sukses)
+        if (typeof flushPendingXP === 'function') {
+            await flushPendingXP('shutdown');
         } else {
             console.log('[SHUTDOWN] Tidak ada data pending yang perlu disimpan.');
         }
 
-        // 2. Bersihkan timer/interval
+        // 2. Bersihkan timer/interval (XP flush, DB stats, polling, kuis, event)
+        if (typeof xpFlushInterval !== 'undefined' && xpFlushInterval) clearInterval(xpFlushInterval);
+        if (typeof dbStatsInterval !== 'undefined' && dbStatsInterval) clearInterval(dbStatsInterval);
+        if (typeof dbStatsStartupTimer !== 'undefined' && dbStatsStartupTimer) clearTimeout(dbStatsStartupTimer);
+        if (pollingTimer) clearTimeout(pollingTimer);
+        if (startupFetchTimer) clearTimeout(startupFetchTimer);
+        if (startupFetchHourlyInterval) clearInterval(startupFetchHourlyInterval);
         if (autoQuizInterval) clearInterval(autoQuizInterval);
         if (startupQuizFetchTimer) clearTimeout(startupQuizFetchTimer);
-        if (doubleXPTimeout) clearTimeout(doubleXPTimeout);
-        if (discountTimeout) clearTimeout(discountTimeout);
+        // Sumber kebenaran ganda doubleXP/discount: clear keduanya agar tidak ada timeout bocor.
+        if (doubleXPTimeout) { clearTimeout(doubleXPTimeout); doubleXPTimeout = null; }
+        if (discountTimeout) { clearTimeout(discountTimeout); discountTimeout = null; }
+        try { if (typeof stopAnimeNotifPoller === 'function') stopAnimeNotifPoller(); } catch (e) {
+            console.warn('[SHUTDOWN] stopAnimeNotifPoller gagal:', e.message);
+        }
+        // Hentikan cleaner temp agar handle tertutup.
+        try { if (tempCleanupHandle && typeof tempCleanupHandle.stop === 'function') tempCleanupHandle.stop(); } catch (e) {
+            console.warn('[SHUTDOWN] stop tempCleanup gagal:', e.message);
+        }
+        // Tutup kuis yang sedang berjalan.
+        try { if (typeof clearQuizTimers === 'function') clearQuizTimers(); } catch (e) {
+            console.warn('[SHUTDOWN] clearQuizTimers gagal:', e.message);
+        }
+        for (const b of (typeof bots !== 'undefined' ? bots : [])) {
+            try { if (b && b.cooldownTimer) clearTimeout(b.cooldownTimer); } catch (_) {}
+        }
+        // Tutup koneksi DB bila tersedia.
+        try {
+            if (db && typeof db.close === 'function') await db.close();
+        } catch (e) {
+            console.warn('[SHUTDOWN] db.close gagal:', e.message);
+        }
 
     } catch (e) {
         console.error('[SHUTDOWN] Gagal menyimpan data:', e.message);
@@ -4967,6 +5462,7 @@ startDashboard({
     resetAutoQuizTimer,
     fetchHomeAnime,
     clearQuizTimers,
+    flushPendingXP,
     getImageLimitStatus,
     checkCommandLimit,
     reportRepo,
@@ -4976,7 +5472,10 @@ startDashboard({
     settingsRepo,
     limitRepo,
     settingsKeys: SETTINGS_KEYS,
+    weeklyRepo,
+    cardsRepo,
     login,
+    previewRaraReply,
 });
 startBot();
 

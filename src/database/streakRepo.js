@@ -8,26 +8,45 @@ function createStreakRepo(db) {
         'best_streak',
     ]);
 
+    function getUserStreak(userId) {
+        return db.execute({
+            sql: "SELECT current_streak, best_streak, last_active_date FROM user_quiz_stats WHERE user_id = ?",
+            args: [userId],
+        });
+    }
+
+    function updateUserStreak(userId, currentStreak, bestStreak, today) {
+        return db.execute({
+            sql: "UPDATE user_quiz_stats SET current_streak = ?, best_streak = ?, last_active_date = ? WHERE user_id = ?",
+            args: [currentStreak, bestStreak, today, userId],
+        });
+    }
+
     return {
-        getUserStreak(userId) {
-            return db.execute({
-                sql: "SELECT current_streak, best_streak, last_active_date FROM user_quiz_stats WHERE user_id = ?",
-                args: [userId],
-            });
-        },
+        getUserStreak,
 
         createInitialStreak(userId, username, today) {
+            // INSERT OR IGNORE atomik: duplikat PK saat konkuren tidak throw.
             return db.execute({
-                sql: "INSERT INTO user_quiz_stats (user_id, username, current_streak, best_streak, last_active_date) VALUES (?, ?, 1, 1, ?)",
+                sql: "INSERT OR IGNORE INTO user_quiz_stats (user_id, username, current_streak, best_streak, last_active_date) VALUES (?, ?, 1, 1, ?)",
                 args: [userId, username, today],
             });
         },
 
-        updateUserStreak(userId, currentStreak, bestStreak, today) {
-            return db.execute({
-                sql: "UPDATE user_quiz_stats SET current_streak = ?, best_streak = ?, last_active_date = ? WHERE user_id = ?",
-                args: [currentStreak, bestStreak, today, userId],
-            });
+        updateUserStreak,
+
+        getUserQuizStats(userId) {
+            return getUserStreak(userId);
+        },
+
+        updateUserQuizStreak({ userId, username, currentStreak, bestStreak, lastActiveDate }) {
+            if (username !== undefined && username !== null && username !== '') {
+                return db.execute({
+                    sql: "UPDATE user_quiz_stats SET username = ?, current_streak = ?, best_streak = ?, last_active_date = ? WHERE user_id = ?",
+                    args: [username, currentStreak, bestStreak, lastActiveDate, userId],
+                });
+            }
+            return updateUserStreak(userId, currentStreak, bestStreak, lastActiveDate);
         },
 
         incrementQuizStat(userId, username, field, amount = 1) {

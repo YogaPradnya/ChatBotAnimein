@@ -27,8 +27,9 @@ async function askNvidiaAi({
     personalizeSystemPrompt = null,
     userStatsCache = {},
     sanitizeReplyContext = null,
+    temperature = null,
 }) {
-    const apiKey = CONFIG.NVIDIA_API_KEY || "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";
+    const apiKey = CONFIG.NVIDIA_API_KEY;
     const model = CONFIG.NVIDIA_MODEL || "meta/llama-3.1-8b-instruct";
 
     if (!apiKey) {
@@ -80,7 +81,7 @@ async function askNvidiaAi({
             {
                 model,
                 messages,
-                temperature: 0.5,
+                temperature: typeof temperature === 'number' ? temperature : 0.5,
                 top_p: 1,
                 max_tokens: 1024,
             },

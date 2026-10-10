@@ -91,16 +91,22 @@ function createLimitService({
     }
 
     async function incrementImageLimitUsage(userId, username) {
-        const status = await getImageLimitStatus(userId, username);
-        const nextUsed = status.used + 1;
-        await limitRepo.upsertImageLimitUsage({
-            userId: status.userId,
-            username: status.username,
-            usageDate: status.usageDate,
-            usedCount: nextUsed,
-            dailyLimit: status.limit,
-        });
-        return { ...status, used: nextUsed, remaining: Math.max(0, status.limit - nextUsed) };
+        const userIdStr = String(userId || '');
+        const usernameClean = String(username || '').replace(/^@/, '').trim();
+        const today = getJakartaDateKey();
+        const defaultLimit = getDefaultImageLimit();
+        try {
+            // Atomik single-statement UPSERT (tanpa SELECT dulu) agar konkuren tidak lost-update.
+            await limitRepo.incrementImageLimitUsage(userIdStr, usernameClean, today, defaultLimit);
+        } catch (e) {
+            handleError(e, { scope: 'IMG LIMIT', detail: 'increment usage', stats, logEmitter });
+        }
+        // Baca status terbaru untuk return value (best-effort).
+        try {
+            return await getImageLimitStatus(userId, username);
+        } catch (e) {
+            return defaultImageStatus(userIdStr, usernameClean, today);
+        }
     }
 
     const RARA_CHAT_DAILY_LIMIT = 20;

@@ -15,23 +15,56 @@ function escapeRegex(value) {
     return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function hasWord(text, word) {
-    const normalized = normalizeText(text);
-    const compact = normalized.replace(/[^a-z0-9]+/g, '');
-    const cleanWord = normalizeText(word).replace(/[^a-z0-9]+/g, '');
+// Pre-compile regex blocklist sekali di module scope (Map), bukan per pesan.
+// NOTE: tanpa flag /g agar .test() stateless (lastIndex tidak bergeser).
+const shortWordRegexCache = new Map();
+function getShortWordRegex(cleanWord) {
+    let re = shortWordRegexCache.get(cleanWord);
+    if (!re) {
+        re = new RegExp(`(^|[^a-z0-9])${escapeRegex(cleanWord)}([^a-z0-9]|$)`, 'i');
+        shortWordRegexCache.set(cleanWord, re);
+    }
+    return re;
+}
 
+function cleanBlockWord(word) {
+    return normalizeText(word).replace(/[^a-z0-9]+/g, '');
+}
+
+// Pre-compile entri blocklist bawaan yang pendek (butuh word-boundary regex).
+// Kata panjang memakai includes() sehingga tidak perlu regex.
+const PRECOMPILED_SHORT_WORDS = new Set();
+function precompileWordList(words = []) {
+    for (const word of words) {
+        const clean = cleanBlockWord(word);
+        if (clean && clean.length <= 4 && !shortWordRegexCache.has(clean)) {
+            shortWordRegexCache.set(clean, new RegExp(`(^|[^a-z0-9])${escapeRegex(clean)}([^a-z0-9]|$)`, 'i'));
+            PRECOMPILED_SHORT_WORDS.add(clean);
+        }
+    }
+}
+
+function hasWordNormalized(normalized, compact, word) {
+    const cleanWord = cleanBlockWord(word);
     if (!cleanWord) return false;
 
     if (cleanWord.length <= 4) {
-        const regex = new RegExp(`(^|[^a-z0-9])${escapeRegex(cleanWord)}([^a-z0-9]|$)`, 'i');
-        return regex.test(normalized);
+        return getShortWordRegex(cleanWord).test(normalized);
     }
 
     return normalized.includes(cleanWord) || compact.includes(cleanWord);
 }
 
+function hasWord(text, word) {
+    const normalized = normalizeText(text);
+    const compact = normalized.replace(/[^a-z0-9]+/g, '');
+    return hasWordNormalized(normalized, compact, word);
+}
+
 function containsFilteredWord(text, words = []) {
-    return words.some(word => hasWord(text, word));
+    const normalized = normalizeText(text);
+    const compact = normalized.replace(/[^a-z0-9]+/g, '');
+    return words.some(word => hasWordNormalized(normalized, compact, word));
 }
 
 const IMAGE_PROMPT_BLOCKLIST = [
@@ -72,8 +105,10 @@ const IMAGE_PROMPT_BLOCKLIST = [
 ];
 
 function validateImagePrompt(prompt, extraWords = []) {
+    const normalized = normalizeText(prompt);
+    const compact = normalized.replace(/[^a-z0-9]+/g, '');
     const words = [...IMAGE_PROMPT_BLOCKLIST, ...extraWords];
-    const matchedWord = words.find(word => hasWord(prompt, word));
+    const matchedWord = words.find(word => hasWordNormalized(normalized, compact, word));
 
     return {
         allowed: !matchedWord,
@@ -81,8 +116,12 @@ function validateImagePrompt(prompt, extraWords = []) {
     };
 }
 
+// Pre-compile blocklist bawaan sekali saat modul dimuat.
+precompileWordList(IMAGE_PROMPT_BLOCKLIST);
+
 module.exports = {
     normalizeText,
+    hasWord,
     containsFilteredWord,
     validateImagePrompt,
     IMAGE_PROMPT_BLOCKLIST,

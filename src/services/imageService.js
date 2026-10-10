@@ -88,6 +88,15 @@ function createImageService({
         return usedUrls;
     }
 
+    // Batas jumlah keyword (outer keys) agar Map tidak tumbuh tanpa batas: max 500, eviksi FIFO.
+    const PINTEREST_OUTER_KEY_LIMIT = 500;
+    function capOuterHistorySize() {
+        while (pinterestImageHistory.size > PINTEREST_OUTER_KEY_LIMIT) {
+            const oldestKey = pinterestImageHistory.keys().next().value;
+            pinterestImageHistory.delete(oldestKey);
+        }
+    }
+
     function rememberPinterestImage(historyKey, imageUrl, sentAt = Date.now()) {
         if (!historyKey || !imageUrl) return;
 
@@ -100,6 +109,7 @@ function createImageService({
         }
 
         pinterestImageHistory.set(historyKey, usedUrls);
+        capOuterHistorySize();
     }
 
     function collectImageUrls(value, found = new Set()) {
@@ -144,14 +154,14 @@ function createImageService({
         if (ext === 'jpeg') ext = 'jpg';
 
         const tempDir = path.join(projectRoot, 'src', 'temp_images');
-        if (!fs.existsSync(tempDir)) {
-            fs.mkdirSync(tempDir, { recursive: true });
-        }
+        // Non-blocking: mkdir + tulis file via fs/promises (fungsi ini sudah async,
+        // semua caller meng-await; error tetap propagate seperti sebelumnya).
+        await fs.promises.mkdir(tempDir, { recursive: true });
 
         const filename = `temp_${Date.now()}_${Math.floor(Math.random() * 1000)}.${ext}`;
         const filePath = path.join(tempDir, filename);
 
-        fs.writeFileSync(filePath, Buffer.from(res.data));
+        await fs.promises.writeFile(filePath, Buffer.from(res.data));
 
         return {
             filePath,

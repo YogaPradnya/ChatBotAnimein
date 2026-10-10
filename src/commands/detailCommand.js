@@ -1,13 +1,11 @@
 const { formatCommandUsage } = require('../utils/messageFormatter');
 const { boxHeader } = require('../utils/textStyle');
 
+const { cleanAnimeText } = require('../utils/textStyle');
+
 function cleanText(value, maxLength = 220) {
-    const text = String(value || '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-    if (!text) return '-';
-    return text.length > maxLength ? `${text.slice(0, maxLength - 3)}...` : text;
+    // Delegasi ke helper bersama; pertahankan fallback '-' saat hasil kosong.
+    return cleanAnimeText(value, maxLength) || '-';
 }
 
 function pickValue(...values) {

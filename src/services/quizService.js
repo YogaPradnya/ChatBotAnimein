@@ -1,5 +1,6 @@
 const { boxHeader } = require('../utils/textStyle');
 const { askNvidiaAi } = require('./nvidiaAiService');
+const { DIFFICULTY, getDifficultyConfig, BLITZ_DURATION_MS, BLITZ_XP_MULTIPLIER } = require('./quizDifficulty');
 
 async function generateQuizHintWithAI(activeQuiz, hintLevel = 1) {
     if (!activeQuiz || !activeQuiz.original) return null;
@@ -88,6 +89,12 @@ function createQuizService({
         }
     }
 
+    // Durasi efektif kuis yang sedang berjalan (mendukung blitz/level), fallback ke default closure.
+    function getEffectiveDuration() {
+        const activeQuiz = getActiveQuiz();
+        return (activeQuiz && activeQuiz.durationMs) || durationMs;
+    }
+
     function buildHintMessage(level, senderName = null, penalty = 0) {
         const activeQuiz = getActiveQuiz();
         const title = activeQuiz.original;
@@ -119,7 +126,7 @@ function createQuizService({
             return result;
         };
 
-        const remaining = Math.floor((durationMs - (Date.now() - activeQuiz.startedAt)) / 1000);
+        const remaining = Math.floor((getEffectiveDuration() - (Date.now() - activeQuiz.startedAt)) / 1000);
         const timeStr = `${Math.floor(remaining/60)}m ${remaining%60}s`;
         const sentences = (c.synopsis || '').split('.').map(s => s.trim()).filter(s => s.length > 5);
 
@@ -185,7 +192,7 @@ function createQuizService({
     async function scheduleQuizExpiry(bot, lastMsgId) {
         const activeQuiz = getActiveQuiz();
         clearQuizTimers();
-        const timeLeft = durationMs - (Date.now() - activeQuiz.startedAt);
+        const timeLeft = getEffectiveDuration() - (Date.now() - activeQuiz.startedAt);
         if (timeLeft <= 0) {
             expireQuiz(bot, lastMsgId);
             return;
@@ -212,14 +219,19 @@ function createQuizService({
         await sendChatMessage(bot, timeoutMsg, lastMsgId);
     }
 
-    async function startQuiz(bot, senderName, msgId, forcedId = null) {
+    // opts opsional: { difficulty: 'mudah'|'sedang'|'sulit', durationMs, blitz: true, xpMultiplier, filter }
+    // Signature lama startQuiz(bot, senderName, msgId, forcedId) tetap kompatibel.
+    async function startQuiz(bot, senderName, msgId, forcedId = null, opts = {}) {
+        // PENTING: bersihkan timer kuis LAMA sebelum setActiveQuiz agar tidak bocor/ganda.
+        // Jangan pindahkan clearQuizTimers ke sesudah setActiveQuiz.
+        try { clearQuizTimers(); } catch (e) { console.warn('[QUIZ] clearQuizTimers awal gagal:', e.message); }
         let activeQuiz = getActiveQuiz();
         if (getIsSystemOff()) {
             console.warn('[KILL SWITCH] Start kuis diblokir karena Kill Switch ON.');
             return;
         }
         if (activeQuiz.isRunning || activeQuiz.isStarting) {
-            const remaining = Math.floor((durationMs - (Date.now() - (activeQuiz.startedAt || Date.now()))) / 1000);
+            const remaining = Math.floor((getEffectiveDuration() - (Date.now() - (activeQuiz.startedAt || Date.now()))) / 1000);
             const timeStr = remaining > 0 ? `${Math.floor(remaining/60)}m ${remaining%60}s` : 'menunggu...';
             const msg = `📌 @${senderName} Kuis masih berlangsung!\n\n` + (activeQuiz.isRunning ? buildHintMessage(activeQuiz.hintsRevealed) : '🔄 Sedang menyiapkan soal kuis...') + `\n\nKetik .tebak [jawaban] untuk menjawab!`;
             await sendChatMessage(bot, msg, msgId);
@@ -228,12 +240,32 @@ function createQuizService({
 
         activeQuiz.isStarting = true;
         try {
+            const difficulty = (opts.difficulty && DIFFICULTY[opts.difficulty]) ? opts.difficulty : 'normal';
+            const diffCfg = getDifficultyConfig(difficulty);
+            const isBlitz = Boolean(opts.blitz);
+            const quizDurationMs = opts.durationMs || (isBlitz ? BLITZ_DURATION_MS : durationMs);
+            const xpMultiplier = opts.xpMultiplier != null ? opts.xpMultiplier : (isBlitz ? BLITZ_XP_MULTIPLIER : diffCfg.xpMultiplier);
+            // Filter pool: opts.filter > mapping difficulty > filter global (dashboard).
+            const quizFilter = opts.filter || (difficulty !== 'normal' ? diffCfg.filter : getQuizFilter());
             let anime = null;
             try {
-                const res = await quizRepo.getRandomQuiz({ forcedId, filter: getQuizFilter() });
-                if (res.rows.length > 0) {
-                    anime = res.rows[0];
-                    await quizRepo.markQuizUsed(anime.id, Math.floor(Date.now() / 1000));
+                // Gunakan batch pilih+klaim bila tersedia (optimistic lock di dalam).
+                if (quizRepo.getRandomQuizAndMarkUsed) {
+                    const res = await quizRepo.getRandomQuizAndMarkUsed({ forcedId, filter: quizFilter }, Math.floor(Date.now() / 1000));
+                    if (res.rows.length > 0) anime = res.rows[0];
+                } else {
+                    const res = await quizRepo.getRandomQuiz({ forcedId, filter: quizFilter });
+                    if (res.rows.length > 0) {
+                        anime = res.rows[0];
+                        const nowTs = Math.floor(Date.now() / 1000);
+                        if (quizRepo.claimQuizIfUnchanged) {
+                            const claim = await quizRepo.claimQuizIfUnchanged(anime.id, anime.last_used_at ?? null, nowTs);
+                            const changed = Number(claim?.rowsAffected ?? claim?.changes ?? 1);
+                            if (changed === 0) console.warn('[QUIZ] Kuis id', anime.id, 'sudah diklaim worker lain (optimistic lock).');
+                        } else {
+                            await quizRepo.markQuizUsed(anime.id, nowTs);
+                        }
+                    }
                 }
             } catch (e) {
                 console.error("[QUIZ] Gagal ambil data dari DB:", e.message);
@@ -270,6 +302,10 @@ function createQuizService({
                 wrongGuessers: new Set(),
                 hintTimer: null,
                 expireTimer: null,
+                difficulty,
+                xpMultiplier,
+                durationMs: quizDurationMs,
+                blitz: isBlitz,
             };
 
             setActiveQuiz(quizData);
@@ -277,7 +313,12 @@ function createQuizService({
             settingsRepo.set(settingsKeys.TOTAL_QUIZZES_STARTED, totalQuizzesStarted)
                 .catch(e => handleError(e, { scope: 'QUIZ', detail: 'persist total_quizzes_started', stats, logEmitter }));
 
-            const introMsg = buildHintMessage(0);
+            let introMsg = buildHintMessage(0);
+            if (isBlitz) {
+                introMsg = `⚡ 𝗕𝗟𝗜𝗧𝗭! 60 detik, tanpa ampun!\nXP x${xpMultiplier}\n\n${introMsg}`;
+            } else if (difficulty !== 'normal') {
+                introMsg = `🏷️ Mode ${diffCfg.label} (XP x${diffCfg.xpMultiplier})\n\n${introMsg}`;
+            }
             await sendChatMessage(bot, introMsg, msgId);
             scheduleQuizExpiry(bot, msgId);
         } catch (err) {

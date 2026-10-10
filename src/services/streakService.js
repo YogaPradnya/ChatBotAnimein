@@ -3,17 +3,20 @@
  * Mengelola kalkulasi streak harian kuis, penggandaan XP, dan logika reset absensi.
  */
 
+const { getJakartaDateKey } = require('../utils');
+
 function createStreakService({ streakRepo, userRepo }) {
     function calculateStreakXpMultiplier(streak) {
-        if (streak >= 30) return 2.0; // 100% bonus XP
-        if (streak >= 14) return 1.5; // 50% bonus XP
-        if (streak >= 7) return 1.25; // 25% bonus XP
-        if (streak >= 3) return 1.1; // 10% bonus XP
+        if (streak >= 60) return 3.0; // 200% bonus XP
+        if (streak >= 30) return 2.5; // 150% bonus XP
+        if (streak >= 15) return 2.0; // 100% bonus XP
+        if (streak >= 10) return 1.5; // 50% bonus XP
+        if (streak >= 5) return 1.25; // 25% bonus XP
         return 1.0;
     }
 
     async function processQuizWinStreak(userId, username) {
-        const today = new Date().toISOString().split('T')[0];
+        const today = getJakartaDateKey();
         let userStats = { current_streak: 0, best_streak: 0, last_active_date: null };
 
         if (streakRepo && streakRepo.getUserQuizStats) {
@@ -31,7 +34,8 @@ function createStreakService({ streakRepo, userRepo }) {
         } else if (lastActive === today) {
             // Sudah aktif hari ini, streak tetap sama
         } else {
-            const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+            // Kemarin dalam zona Jakarta (hindari UTC split yang geser hari).
+            const yesterday = getJakartaDateKey(new Date(Date.now() - 86400000));
             if (lastActive === yesterday) {
                 newStreak += 1;
             } else {

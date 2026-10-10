@@ -94,6 +94,18 @@ async function execute(ctx) {
         let imgLimit = { used: 0, limit: IMAGE_DAILY_LIMIT_DEFAULT, remaining: IMAGE_DAILY_LIMIT_DEFAULT };
         try { imgLimit = await getImageLimitStatus(senderUserId, senderName); } catch(e) { handleError(e, { scope: 'PROFIL', detail: 'image limit status', stats, logEmitter }); }
 
+        let showcaseLine = null;
+        try {
+            const cardsRepo = ctx.cardsRepo
+                || (ctx.db ? require('../database/cardsRepo').createCardsRepo(ctx.db) : null);
+            if (cardsRepo) {
+                const showcase = await cardsRepo.getShowcase(senderUserId);
+                if (showcase) {
+                    showcaseLine = `│ 🖼️ Pajangan: ${showcase.char_name} [${showcase.rarity}] ★${showcase.level} (Power ${showcase.power})`;
+                }
+            }
+        } catch (e) { console.warn("[PROFIL] Showcase query failed:", e.message); }
+
         const profileLines = [
             `┌── ${boxHeader('PROFIL USER')} 👤`,
             `│ @${dn}`,
@@ -105,6 +117,7 @@ async function execute(ctx) {
             `│ ⚡ XP    : ${xpStr}/${reqStr}`,
             `│ [${bar}] ${percentage}%`,
         ];
+        if (showcaseLine) profileLines.push(showcaseLine);
 
         if (extraProfile) {
             profileLines.push(`├── ${boxHeader('PERSONAL INFO')} 📜`);

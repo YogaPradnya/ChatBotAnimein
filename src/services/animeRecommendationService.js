@@ -152,131 +152,131 @@ function getGenreAliases() {
 function getMoodGenreAliases() {
     return [
         // Emosi sedih / drama
-        { pattern: /\b(sad|sad ending|sad end|ending sedih|akhir sedih|bad ending|sad anime|sad story|sad vibe)\b/g, genres: ['drama', 'romance'] },
-        { pattern: /\b(bikin nangis|buat nangis|penguras air mata|menguras air mata|tearjerker|crying|cry|nangis bombay)\b/g, genres: ['drama', 'romance'] },
-        { pattern: /\b(nyesek|galau|patah hati|sakit hati|heartbreak|heartbreaking|broken heart|putus cinta)\b/g, genres: ['drama', 'romance'] },
-        { pattern: /\b(sedih|tragis|tragedy|tragic|depressing|depresi|melankolis|melancholy|emosional|emotional)\b/g, genres: ['drama'] },
-        { pattern: /\b(kesepian|lonely|loneliness|sendiri|suram|hampa|trauma|traumatis)\b/g, genres: ['drama', 'psychological'] },
-        { pattern: /\b(wholesome|heartwarming|menghangatkan hati|family friendly|keluarga|persahabatan|friendship)\b/g, genres: ['slice of life', 'drama', 'comedy'] },
+        { pattern: /\b(sad|sad ending|sad end|ending sedih|akhir sedih|bad ending|sad anime|sad story|sad vibe)\b/, genres: ['drama', 'romance'] },
+        { pattern: /\b(bikin nangis|buat nangis|penguras air mata|menguras air mata|tearjerker|crying|cry|nangis bombay)\b/, genres: ['drama', 'romance'] },
+        { pattern: /\b(nyesek|galau|patah hati|sakit hati|heartbreak|heartbreaking|broken heart|putus cinta)\b/, genres: ['drama', 'romance'] },
+        { pattern: /\b(sedih|tragis|tragedy|tragic|depressing|depresi|melankolis|melancholy|emosional|emotional)\b/, genres: ['drama'] },
+        { pattern: /\b(kesepian|lonely|loneliness|sendiri|suram|hampa|trauma|traumatis)\b/, genres: ['drama', 'psychological'] },
+        { pattern: /\b(wholesome|heartwarming|menghangatkan hati|family friendly|keluarga|persahabatan|friendship)\b/, genres: ['slice of life', 'drama', 'comedy'] },
 
         // Romance
-        { pattern: /\b(romantis|romance|percintaan|cinta|kisah cinta|love story|couple|pacaran|manis|sweet)\b/g, genres: ['romance', 'school'] },
-        { pattern: /\b(bucin|salting|fluffy|cute romance|first love|cinta pertama|slow burn|slowburn)\b/g, genres: ['romance', 'slice of life'] },
-        { pattern: /\b(romcom|romance comedy|komedi romantis|love comedy|couple lucu)\b/g, genres: ['romance', 'comedy', 'school'] },
-        { pattern: /\b(cinta segitiga|triangle love|love triangle|harem|reverse harem|saingan cinta)\b/g, genres: ['romance', 'drama', 'comedy'] },
-        { pattern: /\b(adult romance|romance dewasa|josei romance|pasangan dewasa|relationship dewasa)\b/g, genres: ['romance', 'drama', 'josei'] },
+        { pattern: /\b(romantis|romance|percintaan|cinta|kisah cinta|love story|couple|pacaran|manis|sweet)\b/, genres: ['romance', 'school'] },
+        { pattern: /\b(bucin|salting|fluffy|cute romance|first love|cinta pertama|slow burn|slowburn)\b/, genres: ['romance', 'slice of life'] },
+        { pattern: /\b(romcom|romance comedy|komedi romantis|love comedy|couple lucu)\b/, genres: ['romance', 'comedy', 'school'] },
+        { pattern: /\b(cinta segitiga|triangle love|love triangle|harem|reverse harem|saingan cinta)\b/, genres: ['romance', 'drama', 'comedy'] },
+        { pattern: /\b(adult romance|romance dewasa|josei romance|pasangan dewasa|relationship dewasa)\b/, genres: ['romance', 'drama', 'josei'] },
 
         // Comedy / santai
-        { pattern: /\b(lucu|ngakak|kocak|komedi|comedy|funny|humor|hiburan|gokil|receh)\b/g, genres: ['comedy', 'slice of life'] },
-        { pattern: /\b(absurd|random|parody|parodi|satire|slapstick|chaos|lawak)\b/g, genres: ['comedy'] },
-        { pattern: /\b(chill|santai|healing|relax|relaxing|nyaman|cozy|iyashikei|adem|tenang)\b/g, genres: ['slice of life', 'comedy'] },
-        { pattern: /\b(slice of life|daily life|kehidupan sehari hari|sehari hari|ringan|easy watching)\b/g, genres: ['slice of life'] },
+        { pattern: /\b(lucu|ngakak|kocak|komedi|comedy|funny|humor|hiburan|gokil|receh)\b/, genres: ['comedy', 'slice of life'] },
+        { pattern: /\b(absurd|random|parody|parodi|satire|slapstick|chaos|lawak)\b/, genres: ['comedy'] },
+        { pattern: /\b(chill|santai|healing|relax|relaxing|nyaman|cozy|iyashikei|adem|tenang)\b/, genres: ['slice of life', 'comedy'] },
+        { pattern: /\b(slice of life|daily life|kehidupan sehari hari|sehari hari|ringan|easy watching)\b/, genres: ['slice of life'] },
 
         // Dark / psychological / mystery
-        { pattern: /\b(psikologi|psikologis|psychological|mental|mind game|mindgame|main pikiran|manipulasi)\b/g, genres: ['psychological', 'thriller', 'drama'] },
-        { pattern: /\b(dark|gelap|suram|thriller|tegang|suspense|menegangkan|intense)\b/g, genres: ['thriller', 'psychological'] },
-        { pattern: /\b(misteri|mystery|detektif|detective|investigasi|kasus|crime|kriminal|pembunuhan)\b/g, genres: ['mystery', 'psychological'] },
-        { pattern: /\b(teka teki|plot twist|twist|plot berat|cerita berat|rumit|bikin mikir)\b/g, genres: ['mystery', 'psychological', 'thriller'] },
-        { pattern: /\b(survival|death game|game kematian|battle royale|bertahan hidup|desperate)\b/g, genres: ['thriller', 'psychological', 'action'] },
+        { pattern: /\b(psikologi|psikologis|psychological|mental|mind game|mindgame|main pikiran|manipulasi)\b/, genres: ['psychological', 'thriller', 'drama'] },
+        { pattern: /\b(dark|gelap|suram|thriller|tegang|suspense|menegangkan|intense)\b/, genres: ['thriller', 'psychological'] },
+        { pattern: /\b(misteri|mystery|detektif|detective|investigasi|kasus|crime|kriminal|pembunuhan)\b/, genres: ['mystery', 'psychological'] },
+        { pattern: /\b(teka teki|plot twist|twist|plot berat|cerita berat|rumit|bikin mikir)\b/, genres: ['mystery', 'psychological', 'thriller'] },
+        { pattern: /\b(survival|death game|game kematian|battle royale|bertahan hidup|desperate)\b/, genres: ['thriller', 'psychological', 'action'] },
 
         // Horror / supernatural
-        { pattern: /\b(serem|menakutkan|horror|horor|hantu|creepy|disturbing|jumpscare|mistis)\b/g, genres: ['horror', 'supernatural'] },
-        { pattern: /\b(gore|darah|sadis|brutal|kejam|body horror|pembantaian|sadistic)\b/g, genres: ['horror', 'action'] },
-        { pattern: /\b(supernatural|supranatural|yokai|roh|arwah|spirit|kutukan|curse|exorcist)\b/g, genres: ['supernatural', 'horror'] },
-        { pattern: /\b(vampire|zombie|monster|kaiju|makhluk|iblis|demon|devil|akuma)\b/g, genres: ['supernatural', 'fantasy', 'horror'] },
+        { pattern: /\b(serem|menakutkan|horror|horor|hantu|creepy|disturbing|jumpscare|mistis)\b/, genres: ['horror', 'supernatural'] },
+        { pattern: /\b(gore|darah|sadis|brutal|kejam|body horror|pembantaian|sadistic)\b/, genres: ['horror', 'action'] },
+        { pattern: /\b(supernatural|supranatural|yokai|roh|arwah|spirit|kutukan|curse|exorcist)\b/, genres: ['supernatural', 'horror'] },
+        { pattern: /\b(vampire|zombie|monster|kaiju|makhluk|iblis|demon|devil|akuma)\b/, genres: ['supernatural', 'fantasy', 'horror'] },
 
         // Action / battle
-        { pattern: /\b(aksi|action|berantem|fight|fighting|battle|pertempuran|tarung|adu kuat)\b/g, genres: ['action', 'adventure'] },
-        { pattern: /\b(pedang|sword|samurai|ninja|katana|martial arts|bela diri|kungfu|karate)\b/g, genres: ['action', 'adventure'] },
-        { pattern: /\b(tournament|turnamen|kompetisi tarung|arena|rank battle|duel|rival kuat)\b/g, genres: ['action', 'sports'] },
-        { pattern: /\b(perang|war|military|militer|tentara|strategi perang|kerajaan perang)\b/g, genres: ['action', 'drama'] },
-        { pattern: /\b(overpower|overpowered|op mc|mc kuat|karakter kuat|power fantasy|cheat skill|imba)\b/g, genres: ['action', 'fantasy', 'adventure'] },
+        { pattern: /\b(aksi|action|berantem|fight|fighting|battle|pertempuran|tarung|adu kuat)\b/, genres: ['action', 'adventure'] },
+        { pattern: /\b(pedang|sword|samurai|ninja|katana|martial arts|bela diri|kungfu|karate)\b/, genres: ['action', 'adventure'] },
+        { pattern: /\b(tournament|turnamen|kompetisi tarung|arena|rank battle|duel|rival kuat)\b/, genres: ['action', 'sports'] },
+        { pattern: /\b(perang|war|military|militer|tentara|strategi perang|kerajaan perang)\b/, genres: ['action', 'drama'] },
+        { pattern: /\b(overpower|overpowered|op mc|mc kuat|karakter kuat|power fantasy|cheat skill|imba)\b/, genres: ['action', 'fantasy', 'adventure'] },
 
         // Fantasy / isekai
-        { pattern: /\b(isekai|dunia lain|reinkarnasi|reincarnation|summoned|dipanggil ke dunia lain|portal)\b/g, genres: ['isekai', 'fantasy', 'adventure'] },
-        { pattern: /\b(game world|dunia game|vrmmo|mmorpg|rpg|leveling|level up|status window)\b/g, genres: ['isekai', 'fantasy', 'adventure'] },
-        { pattern: /\b(sihir|magic|magical|mage|wizard|penyihir|fantasi|fantasy|spell)\b/g, genres: ['fantasy', 'adventure'] },
-        { pattern: /\b(dungeon|guild|petualang|adventurer|quest|party|hero|pahlawan|raja iblis)\b/g, genres: ['fantasy', 'adventure', 'action'] },
-        { pattern: /\b(kingdom|kerajaan|royal|princess|prince|noble|bangsawan|medieval)\b/g, genres: ['fantasy', 'drama', 'romance'] },
+        { pattern: /\b(isekai|dunia lain|reinkarnasi|reincarnation|summoned|dipanggil ke dunia lain|portal)\b/, genres: ['isekai', 'fantasy', 'adventure'] },
+        { pattern: /\b(game world|dunia game|vrmmo|mmorpg|rpg|leveling|level up|status window)\b/, genres: ['isekai', 'fantasy', 'adventure'] },
+        { pattern: /\b(sihir|magic|magical|mage|wizard|penyihir|fantasi|fantasy|spell)\b/, genres: ['fantasy', 'adventure'] },
+        { pattern: /\b(dungeon|guild|petualang|adventurer|quest|party|hero|pahlawan|raja iblis)\b/, genres: ['fantasy', 'adventure', 'action'] },
+        { pattern: /\b(kingdom|kerajaan|royal|princess|prince|noble|bangsawan|medieval)\b/, genres: ['fantasy', 'drama', 'romance'] },
 
         // Sci-fi / mecha
-        { pattern: /\b(sci fi|scifi|science fiction|futuristic|masa depan|teknologi|technology)\b/g, genres: ['sci-fi', 'action'] },
-        { pattern: /\b(robot|mecha|gundam|pilot|cyborg|android|ai robot)\b/g, genres: ['mecha', 'sci-fi', 'action'] },
-        { pattern: /\b(space|luar angkasa|alien|planet|galaxy|galaksi|spaceship)\b/g, genres: ['sci-fi', 'adventure'] },
-        { pattern: /\b(cyberpunk|dystopia|distopia|post apocalyptic|apocalypse|kiamat|survival future)\b/g, genres: ['sci-fi', 'thriller'] },
+        { pattern: /\b(sci fi|scifi|science fiction|futuristic|masa depan|teknologi|technology)\b/, genres: ['sci-fi', 'action'] },
+        { pattern: /\b(robot|mecha|gundam|pilot|cyborg|android|ai robot)\b/, genres: ['mecha', 'sci-fi', 'action'] },
+        { pattern: /\b(space|luar angkasa|alien|planet|galaxy|galaksi|spaceship)\b/, genres: ['sci-fi', 'adventure'] },
+        { pattern: /\b(cyberpunk|dystopia|distopia|post apocalyptic|apocalypse|kiamat|survival future)\b/, genres: ['sci-fi', 'thriller'] },
 
         // School / youth
-        { pattern: /\b(sekolah|school|school life|anak sma|sma|smp|kelas|murid|pelajar|student)\b/g, genres: ['school', 'romance', 'comedy'] },
-        { pattern: /\b(club sekolah|ekskul|festival sekolah|student council|osis|senpai|kouhai)\b/g, genres: ['school', 'slice of life', 'comedy'] },
-        { pattern: /\b(delinq|delinquent|berandalan|anak nakal|tawuran|geng sekolah)\b/g, genres: ['school', 'action', 'drama'] },
+        { pattern: /\b(sekolah|school|school life|anak sma|sma|smp|kelas|murid|pelajar|student)\b/, genres: ['school', 'romance', 'comedy'] },
+        { pattern: /\b(club sekolah|ekskul|festival sekolah|student council|osis|senpai|kouhai)\b/, genres: ['school', 'slice of life', 'comedy'] },
+        { pattern: /\b(delinq|delinquent|berandalan|anak nakal|tawuran|geng sekolah)\b/, genres: ['school', 'action', 'drama'] },
 
         // Sports / competition
-        { pattern: /\b(sport|sports|olahraga|kompetisi|teamwork|rival|latihan|training)\b/g, genres: ['sports'] },
-        { pattern: /\b(bola|sepak bola|football|soccer|basket|basketball|voli|volley|baseball)\b/g, genres: ['sports'] },
-        { pattern: /\b(balap|racing|race|mobil|motor|sepeda|tennis|badminton|renang)\b/g, genres: ['sports'] },
+        { pattern: /\b(sport|sports|olahraga|kompetisi|teamwork|rival|latihan|training)\b/, genres: ['sports'] },
+        { pattern: /\b(bola|sepak bola|football|soccer|basket|basketball|voli|volley|baseball)\b/, genres: ['sports'] },
+        { pattern: /\b(balap|racing|race|mobil|motor|sepeda|tennis|badminton|renang)\b/, genres: ['sports'] },
 
         // Work / hobby / idol
-        { pattern: /\b(workplace|kerja|kantor|office|karyawan|karir|career|adult life)\b/g, genres: ['slice of life', 'drama'] },
-        { pattern: /\b(masak|cooking|food|makanan|chef|restaurant|restoran|kuliner|cafe)\b/g, genres: ['slice of life', 'comedy'] },
-        { pattern: /\b(musik|music|band|idol|konser|lagu|penyanyi|gitar|piano)\b/g, genres: ['music', 'slice of life', 'drama'] },
-        { pattern: /\b(art|seni|gambar|melukis|manga artist|mangaka|cosplay|fashion)\b/g, genres: ['slice of life', 'drama'] },
+        { pattern: /\b(workplace|kerja|kantor|office|karyawan|karir|career|adult life)\b/, genres: ['slice of life', 'drama'] },
+        { pattern: /\b(masak|cooking|food|makanan|chef|restaurant|restoran|kuliner|cafe)\b/, genres: ['slice of life', 'comedy'] },
+        { pattern: /\b(musik|music|band|idol|konser|lagu|penyanyi|gitar|piano)\b/, genres: ['music', 'slice of life', 'drama'] },
+        { pattern: /\b(art|seni|gambar|melukis|manga artist|mangaka|cosplay|fashion)\b/, genres: ['slice of life', 'drama'] },
 
         // Demografi / vibe umum
-        { pattern: /\b(shounen|shonen|anak cowok|power up|nakama|persahabatan kuat)\b/g, genres: ['shounen', 'action', 'adventure'] },
-        { pattern: /\b(seinen|dewasa|mature|serius|cerita dewasa|adult)\b/g, genres: ['seinen', 'drama', 'psychological'] },
-        { pattern: /\b(shoujo|shojo|cewek|girly|romance cewek)\b/g, genres: ['shoujo', 'romance', 'school'] },
-        { pattern: /\b(josei|wanita dewasa|female adult|romance realistis)\b/g, genres: ['josei', 'romance', 'drama'] },
-        { pattern: /\b(kids|anak anak|family|keluarga|aman ditonton|friendly)\b/g, genres: ['comedy', 'adventure', 'slice of life'] },
+        { pattern: /\b(shounen|shonen|anak cowok|power up|nakama|persahabatan kuat)\b/, genres: ['shounen', 'action', 'adventure'] },
+        { pattern: /\b(seinen|dewasa|mature|serius|cerita dewasa|adult)\b/, genres: ['seinen', 'drama', 'psychological'] },
+        { pattern: /\b(shoujo|shojo|cewek|girly|romance cewek)\b/, genres: ['shoujo', 'romance', 'school'] },
+        { pattern: /\b(josei|wanita dewasa|female adult|romance realistis)\b/, genres: ['josei', 'romance', 'drama'] },
+        { pattern: /\b(kids|anak anak|family|keluarga|aman ditonton|friendly)\b/, genres: ['comedy', 'adventure', 'slice of life'] },
 
         // Preferensi karakter / archetype
-        { pattern: /\b(tsundere|kuudere|yandere|dandere|genki girl|cool girl|cewek dingin|cowok dingin)\b/g, genres: ['romance', 'comedy', 'school'] },
-        { pattern: /\b(waifu|best girl|husbu|husbando|karakter cantik|karakter ganteng|ikemen)\b/g, genres: ['romance', 'comedy', 'slice of life'] },
-        { pattern: /\b(antihero|anti hero|villain protagonist|mc jahat|mc abu abu|tokoh utama jahat)\b/g, genres: ['psychological', 'action', 'drama'] },
-        { pattern: /\b(mc pintar|genius mc|jenius|strategis|otak encer|manipulator|cerdas)\b/g, genres: ['psychological', 'mystery', 'thriller'] },
-        { pattern: /\b(mc lemah jadi kuat|zero to hero|from weak to strong|latihan keras|growth)\b/g, genres: ['action', 'adventure', 'shounen'] },
+        { pattern: /\b(tsundere|kuudere|yandere|dandere|genki girl|cool girl|cewek dingin|cowok dingin)\b/, genres: ['romance', 'comedy', 'school'] },
+        { pattern: /\b(waifu|best girl|husbu|husbando|karakter cantik|karakter ganteng|ikemen)\b/, genres: ['romance', 'comedy', 'slice of life'] },
+        { pattern: /\b(antihero|anti hero|villain protagonist|mc jahat|mc abu abu|tokoh utama jahat)\b/, genres: ['psychological', 'action', 'drama'] },
+        { pattern: /\b(mc pintar|genius mc|jenius|strategis|otak encer|manipulator|cerdas)\b/, genres: ['psychological', 'mystery', 'thriller'] },
+        { pattern: /\b(mc lemah jadi kuat|zero to hero|from weak to strong|latihan keras|growth)\b/, genres: ['action', 'adventure', 'shounen'] },
 
         // Setting dan atmosfer
-        { pattern: /\b(akademi sihir|magic academy|sekolah sihir|academy fantasy|akademi fantasy)\b/g, genres: ['fantasy', 'school', 'action'] },
-        { pattern: /\b(countryside|desa|pedesaan|kampung|rural|alam|nature|gunung|laut)\b/g, genres: ['slice of life', 'drama', 'adventure'] },
-        { pattern: /\b(kota besar|urban|city life|kehidupan kota|malam kota|night city)\b/g, genres: ['slice of life', 'drama', 'romance'] },
-        { pattern: /\b(apocalypse|apocalyptic|post apocalypse|dunia hancur|kiamat zombie|wabah)\b/g, genres: ['sci-fi', 'horror', 'action'] },
-        { pattern: /\b(political|politik|konspirasi|conspiracy|intrik|kerajaan politik|perebutan tahta)\b/g, genres: ['drama', 'mystery', 'fantasy'] },
+        { pattern: /\b(akademi sihir|magic academy|sekolah sihir|academy fantasy|akademi fantasy)\b/, genres: ['fantasy', 'school', 'action'] },
+        { pattern: /\b(countryside|desa|pedesaan|kampung|rural|alam|nature|gunung|laut)\b/, genres: ['slice of life', 'drama', 'adventure'] },
+        { pattern: /\b(kota besar|urban|city life|kehidupan kota|malam kota|night city)\b/, genres: ['slice of life', 'drama', 'romance'] },
+        { pattern: /\b(apocalypse|apocalyptic|post apocalypse|dunia hancur|kiamat zombie|wabah)\b/, genres: ['sci-fi', 'horror', 'action'] },
+        { pattern: /\b(political|politik|konspirasi|conspiracy|intrik|kerajaan politik|perebutan tahta)\b/, genres: ['drama', 'mystery', 'fantasy'] },
 
         // Konflik cerita
-        { pattern: /\b(revenge|balas dendam|dendam|pengkhianatan|betrayal|dikhianati|dibetray)\b/g, genres: ['action', 'drama', 'psychological'] },
-        { pattern: /\b(grief|duka|kehilangan|ditinggal|kematian orang tersayang|mourning)\b/g, genres: ['drama', 'psychological'] },
-        { pattern: /\b(bullying|dibully|perundungan|trauma sekolah|school trauma)\b/g, genres: ['drama', 'school', 'psychological'] },
-        { pattern: /\b(parenting|anak kecil|ngurus anak|ayah anak|ibu anak|single parent)\b/g, genres: ['slice of life', 'drama', 'comedy'] },
-        { pattern: /\b(rivalitas|rivalry|saingan|kompetitif|ambisi|ambition)\b/g, genres: ['sports', 'action', 'drama'] },
+        { pattern: /\b(revenge|balas dendam|dendam|pengkhianatan|betrayal|dikhianati|dibetray)\b/, genres: ['action', 'drama', 'psychological'] },
+        { pattern: /\b(grief|duka|kehilangan|ditinggal|kematian orang tersayang|mourning)\b/, genres: ['drama', 'psychological'] },
+        { pattern: /\b(bullying|dibully|perundungan|trauma sekolah|school trauma)\b/, genres: ['drama', 'school', 'psychological'] },
+        { pattern: /\b(parenting|anak kecil|ngurus anak|ayah anak|ibu anak|single parent)\b/, genres: ['slice of life', 'drama', 'comedy'] },
+        { pattern: /\b(rivalitas|rivalry|saingan|kompetitif|ambisi|ambition)\b/, genres: ['sports', 'action', 'drama'] },
 
         // Trope niche populer
-        { pattern: /\b(time travel|time loop|loop waktu|perjalanan waktu|ulang waktu|kembali ke masa lalu)\b/g, genres: ['sci-fi', 'mystery', 'drama'] },
-        { pattern: /\b(regression|regressor|kembali muda|second chance|kesempatan kedua)\b/g, genres: ['fantasy', 'drama', 'psychological'] },
-        { pattern: /\b(body swap|tukar tubuh|gender bend|genderbend|jiwa tertukar)\b/g, genres: ['comedy', 'romance', 'drama'] },
-        { pattern: /\b(amnesia|hilang ingatan|memory loss|ingatan hilang)\b/g, genres: ['drama', 'mystery', 'romance'] },
-        { pattern: /\b(mafia|yakuza|gangster|organisasi kriminal|underworld)\b/g, genres: ['action', 'drama', 'mystery'] },
+        { pattern: /\b(time travel|time loop|loop waktu|perjalanan waktu|ulang waktu|kembali ke masa lalu)\b/, genres: ['sci-fi', 'mystery', 'drama'] },
+        { pattern: /\b(regression|regressor|kembali muda|second chance|kesempatan kedua)\b/, genres: ['fantasy', 'drama', 'psychological'] },
+        { pattern: /\b(body swap|tukar tubuh|gender bend|genderbend|jiwa tertukar)\b/, genres: ['comedy', 'romance', 'drama'] },
+        { pattern: /\b(amnesia|hilang ingatan|memory loss|ingatan hilang)\b/, genres: ['drama', 'mystery', 'romance'] },
+        { pattern: /\b(mafia|yakuza|gangster|organisasi kriminal|underworld)\b/, genres: ['action', 'drama', 'mystery'] },
 
         // Hobi dan niche santai
-        { pattern: /\b(camping|kemah|camp|outdoor|jalan jalan|traveling|travelling)\b/g, genres: ['slice of life', 'adventure', 'comedy'] },
-        { pattern: /\b(fishing|mancing|memancing|aquarium|laut santai)\b/g, genres: ['slice of life', 'comedy'] },
-        { pattern: /\b(farming|berkebun|bertani|kebun|farm life|slow life)\b/g, genres: ['slice of life', 'fantasy', 'comedy'] },
-        { pattern: /\b(animal|hewan|kucing|anjing|pet|peliharaan|binatang)\b/g, genres: ['slice of life', 'comedy'] },
-        { pattern: /\b(game|gaming|esport|e sport|pro player|streamer)\b/g, genres: ['sports', 'comedy', 'slice of life'] },
+        { pattern: /\b(camping|kemah|camp|outdoor|jalan jalan|traveling|travelling)\b/, genres: ['slice of life', 'adventure', 'comedy'] },
+        { pattern: /\b(fishing|mancing|memancing|aquarium|laut santai)\b/, genres: ['slice of life', 'comedy'] },
+        { pattern: /\b(farming|berkebun|bertani|kebun|farm life|slow life)\b/, genres: ['slice of life', 'fantasy', 'comedy'] },
+        { pattern: /\b(animal|hewan|kucing|anjing|pet|peliharaan|binatang)\b/, genres: ['slice of life', 'comedy'] },
+        { pattern: /\b(game|gaming|esport|e sport|pro player|streamer)\b/, genres: ['sports', 'comedy', 'slice of life'] },
 
         // Preferensi vibe tontonan
-        { pattern: /\b(seru|keren|mantap|epic|epik|menarik|asik|asyik|nagih|bingeable)\b/g, genres: ['action', 'adventure', 'comedy'] },
-        { pattern: /\b(no drama|tanpa drama|minim drama|ringan banget|otak kosong|buat santai)\b/g, genres: ['comedy', 'slice of life'] },
-        { pattern: /\b(slow pace|slow paced|pelan|kalem|tenang banget|slow life)\b/g, genres: ['slice of life', 'drama'] },
-        { pattern: /\b(fast pace|fast paced|cepat|padat|nonstop|adrenalin)\b/g, genres: ['action', 'thriller'] },
-        { pattern: /\b(minim fanservice|tanpa fanservice|aman keluarga|aman publik|bersih)\b/g, genres: ['slice of life', 'adventure', 'comedy'] },
-        { pattern: /\b(no romance|tanpa romance|romance tipis|minim romance|bukan cinta cintaan)\b/g, genres: ['action', 'adventure', 'mystery'] },
+        { pattern: /\b(seru|keren|mantap|epic|epik|menarik|asik|asyik|nagih|bingeable)\b/, genres: ['action', 'adventure', 'comedy'] },
+        { pattern: /\b(no drama|tanpa drama|minim drama|ringan banget|otak kosong|buat santai)\b/, genres: ['comedy', 'slice of life'] },
+        { pattern: /\b(slow pace|slow paced|pelan|kalem|tenang banget|slow life)\b/, genres: ['slice of life', 'drama'] },
+        { pattern: /\b(fast pace|fast paced|cepat|padat|nonstop|adrenalin)\b/, genres: ['action', 'thriller'] },
+        { pattern: /\b(minim fanservice|tanpa fanservice|aman keluarga|aman publik|bersih)\b/, genres: ['slice of life', 'adventure', 'comedy'] },
+        { pattern: /\b(no romance|tanpa romance|romance tipis|minim romance|bukan cinta cintaan)\b/, genres: ['action', 'adventure', 'mystery'] },
 
         // Kualitas / tipe pencarian
-        { pattern: /\b(underrated|hidden gem|jarang dibahas|kurang terkenal|sepi|permata tersembunyi)\b/g, genres: ['drama', 'slice of life'] },
-        { pattern: /\b(populer|popular|terkenal|rame|hits|mainstream|viral)\b/g, genres: ['action', 'romance', 'comedy'] },
-        { pattern: /\b(rating tinggi|score tinggi|terbaik|best anime|bagus banget|wajib nonton)\b/g, genres: ['drama', 'action', 'romance'] },
-        { pattern: /\b(anime lama|old anime|classic|klasik|jadul|nostalgia)\b/g, genres: ['drama', 'action', 'adventure'] },
-        { pattern: /\b(anime baru|new anime|terbaru|musim ini|season ini|ongoing)\b/g, genres: ['action', 'romance', 'fantasy'] },
+        { pattern: /\b(underrated|hidden gem|jarang dibahas|kurang terkenal|sepi|permata tersembunyi)\b/, genres: ['drama', 'slice of life'] },
+        { pattern: /\b(populer|popular|terkenal|rame|hits|mainstream|viral)\b/, genres: ['action', 'romance', 'comedy'] },
+        { pattern: /\b(rating tinggi|score tinggi|terbaik|best anime|bagus banget|wajib nonton)\b/, genres: ['drama', 'action', 'romance'] },
+        { pattern: /\b(anime lama|old anime|classic|klasik|jadul|nostalgia)\b/, genres: ['drama', 'action', 'adventure'] },
+        { pattern: /\b(anime baru|new anime|terbaru|musim ini|season ini|ongoing)\b/, genres: ['action', 'romance', 'fantasy'] },
     ];
 }
 
@@ -309,10 +309,10 @@ function expandMoodGenreAliases(text) {
     const extraGenres = new Set();
 
     for (const alias of getMoodGenreAliases()) {
+        // Pattern tanpa flag /g (stateless .test); tidak perlu reset lastIndex.
         if (alias.pattern.test(expanded)) {
             alias.genres.forEach(genre => extraGenres.add(genre));
         }
-        alias.pattern.lastIndex = 0;
     }
 
     if (extraGenres.size) {
@@ -321,19 +321,30 @@ function expandMoodGenreAliases(text) {
     return expanded;
 }
 
-function levenshteinDistance(a, b) {
+// Early-exit: batasi max distance 2; return cepat bila selisih panjang > 2.
+const LEVENSHTEIN_MAX_DISTANCE = 2;
+function levenshteinDistance(a, b, maxDistance = LEVENSHTEIN_MAX_DISTANCE) {
     a = String(a || '');
     b = String(b || '');
-    const dp = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0));
-    for (let i = 0; i <= a.length; i++) dp[i][0] = i;
-    for (let j = 0; j <= b.length; j++) dp[0][j] = j;
-    for (let i = 1; i <= a.length; i++) {
-        for (let j = 1; j <= b.length; j++) {
+    if (Math.abs(a.length - b.length) > maxDistance) return maxDistance + 1;
+    if (a === b) return 0;
+    // Pastikan a string terpendek untuk hemat memori (2 baris saja).
+    if (a.length > b.length) { const t = a; a = b; b = t; }
+    let prev = new Array(a.length + 1);
+    let curr = new Array(a.length + 1);
+    for (let i = 0; i <= a.length; i++) prev[i] = i;
+    for (let j = 1; j <= b.length; j++) {
+        curr[0] = j;
+        let rowMin = curr[0];
+        for (let i = 1; i <= a.length; i++) {
             const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-            dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+            curr[i] = Math.min(prev[i] + 1, curr[i - 1] + 1, prev[i - 1] + cost);
+            if (curr[i] < rowMin) rowMin = curr[i];
         }
+        if (rowMin > maxDistance) return maxDistance + 1;
+        const tmp = prev; prev = curr; curr = tmp;
     }
-    return dp[a.length][b.length];
+    return prev[a.length];
 }
 
 function createAnimeRecommendationService({ fetchGenresList, fetchByGenre, saveRecentAnimeList }) {
@@ -374,7 +385,8 @@ function createAnimeRecommendationService({ fetchGenresList, fetchByGenre, saveR
                 if (matched.some(g => String(g.id) === String(genre.id))) continue;
                 const name = normalizeAnimeKey(genre.name).replace(/s$/, '');
                 for (const word of words) {
-                    const distance = levenshteinDistance(word, name);
+                    if (Math.abs(word.length - name.length) > 2) continue; // early-exit selisih panjang
+                    const distance = levenshteinDistance(word, name, 2);
                     const limit = name.length <= 6 ? 1 : 2;
                     if (distance <= limit) fuzzyMatches.push({ genre, distance });
                 }

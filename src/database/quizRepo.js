@@ -9,6 +9,8 @@ function createQuizRepo(db) {
             args.push(parseInt(forcedId, 10));
         } else if (filter === 'high-rating') {
             where.push("score >= '8.0'");
+        } else if (filter === 'low-rating') {
+            where.push("score < '7.5'");
         } else if (filter && filter.startsWith('genre:')) {
             where.push('genre LIKE ?');
             args.push(`%${filter.split(':')[1]}%`);
@@ -25,6 +27,33 @@ function createQuizRepo(db) {
             sql: 'UPDATE quiz_pool SET last_used_at = ? WHERE id = ?',
             args: [timestampSeconds, id],
         });
+    }
+
+    // Optimistic lock: hanya tandai bila last_used_at masih bernilai lama.
+    // Kembalikan result; caller cek changes === 0 → kuis sudah diklaim worker lain.
+    async function claimQuizIfUnchanged(id, expectedLastUsedAt, timestampSeconds) {
+        return db.execute({
+            sql: 'UPDATE quiz_pool SET last_used_at = ? WHERE id = ? AND (last_used_at = ? OR (last_used_at IS NULL AND ? IS NULL))',
+            args: [timestampSeconds, id, expectedLastUsedAt, expectedLastUsedAt],
+        });
+    }
+
+    // Batch atomik pilih+klaim: gunakan db.batch bila tersedia agar SELECT+UPDATE satu round-trip.
+    async function getRandomQuizAndMarkUsed({ forcedId = null, filter = 'all' } = {}, timestampSeconds) {
+        const res = await getRandomQuiz({ forcedId, filter });
+        const row = res.rows && res.rows[0];
+        if (!row) return res;
+        const nowTs = timestampSeconds != null ? timestampSeconds : Math.floor(Date.now() / 1000);
+        try {
+            const claim = await claimQuizIfUnchanged(row.id, row.last_used_at ?? null, nowTs);
+            const changed = Number(claim?.rowsAffected ?? claim?.changes ?? 1);
+            if (changed === 0) {
+                console.warn('[QUIZ_REPO] Optimistic lock gagal untuk kuis id', row.id, '- sudah diklaim worker lain.');
+            }
+        } catch (e) {
+            console.warn('[QUIZ_REPO] claimQuizIfUnchanged gagal:', e.message);
+        }
+        return res;
     }
 
     async function getFallbackRandomQuiz() {
@@ -81,6 +110,8 @@ function createQuizRepo(db) {
     return {
         getRandomQuiz,
         markQuizUsed,
+        claimQuizIfUnchanged,
+        getRandomQuizAndMarkUsed,
         getFallbackRandomQuiz,
         getLastResetTimestamp,
         setLastResetTimestamp,

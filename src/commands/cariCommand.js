@@ -1,6 +1,6 @@
 const axios = require('axios');
 const { formatCommandUsage } = require('../utils/messageFormatter');
-const { boxHeader } = require('../utils/textStyle');
+const { boxHeader, cleanAnimeText: cleanText } = require('../utils/textStyle');
 const { askNvidiaAi } = require('../services/nvidiaAiService');
 
 async function extractAdaptiveSearchQueryWithNvidia(rawQuery) {
@@ -25,14 +25,6 @@ async function extractAdaptiveSearchQueryWithNvidia(rawQuery) {
         console.warn('[AI Cari Query] NVIDIA AI error:', e.message);
     }
     return rawQuery;
-}
-
-function cleanText(value, maxLength = 32) {
-    const text = String(value || '-')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-    return text.length > maxLength ? `${text.slice(0, maxLength - 3)}...` : text;
 }
 
 function pickValue(...values) {

@@ -11,6 +11,9 @@ const shopCommand = require('./shopCommand');
 const buyCommand = require('./buyCommand');
 const guessCommand = require('./guessCommand');
 const hintCommand = require('./hintCommand');
+const turnamenCommand = require('./turnamenCommand');
+const { ensureCommandLimit } = require('./helpers');
+const { parseDifficulty, BLITZ_DURATION_MS, BLITZ_XP_MULTIPLIER } = require('../services/quizDifficulty');
 const imageCommand = require('./imageCommand');
 const jadwalCommand = require('./jadwalCommand');
 const hotCommand = require('./hotCommand');
@@ -21,6 +24,9 @@ const detailCommand = require('./detailCommand');
 const cariCommand = require('./cariCommand');
 const genreCommand = require('./genreCommand');
 const tasCommand = require('./tasCommand');
+const gachaCommand = require('./gachaCommand');
+const koleksiCommand = require('./koleksiCommand');
+const pajangCommand = require('./pajangCommand');
 const limitCommand = require('./limitCommand');
 const createImageCommand = require('./createImageCommand');
 const dataCommand = require('./dataCommand');
@@ -67,6 +73,34 @@ async function handleKuisCommand(ctx) {
         return quizStatusCommand.execute(ctx);
     }
 
+    if (lowerMsg.startsWith('.kuis ') || lowerMsg.startsWith('.kius ')) {
+        if (ctx.bot.isCooldown) return true;
+        if (!(await ensureCommandLimit(ctx))) return true;
+        const arg = lowerMsg.replace(/^\.ki?us\s+/, '').trim();
+        const difficulty = parseDifficulty(arg);
+        if (!difficulty) {
+            await ctx.sendChatMessage(ctx.bot, `📌 @${ctx.senderName.substring(0, 10)} Level tidak dikenal. Pilih: mudah | sedang | sulit\nContoh: .kuis sulit`, ctx.msg.id);
+            return true;
+        }
+        await ctx.incrementCommandUsage(ctx.senderUserId, ctx.senderName);
+        return ctx.startQuiz(ctx.bot, ctx.senderName, ctx.msg.id, null, { difficulty });
+    }
+
+    if (lowerMsg === '.blitz') {
+        if (ctx.bot.isCooldown) return true;
+        if (!(await ensureCommandLimit(ctx))) return true;
+        await ctx.incrementCommandUsage(ctx.senderUserId, ctx.senderName);
+        return ctx.startQuiz(ctx.bot, ctx.senderName, ctx.msg.id, null, {
+            durationMs: BLITZ_DURATION_MS,
+            blitz: true,
+            xpMultiplier: BLITZ_XP_MULTIPLIER,
+        });
+    }
+
+    if (lowerMsg === '.turnamen') {
+        return turnamenCommand.execute(ctx);
+    }
+
     if (lowerMsg === '.rank' || lowerMsg === '.leaderboard') {
         return rankCommand.execute(ctx);
     }
@@ -81,6 +115,18 @@ async function handleKuisCommand(ctx) {
 
     if (lowerMsg === '.tas') {
         return tasCommand.execute(ctx);
+    }
+
+    if (lowerMsg === '.gacha' || lowerMsg.startsWith('.gacha ')) {
+        return gachaCommand.execute(ctx);
+    }
+
+    if (lowerMsg === '.koleksi') {
+        return koleksiCommand.execute(ctx);
+    }
+
+    if (lowerMsg === '.pajang' || lowerMsg.startsWith('.pajang ')) {
+        return pajangCommand.execute(ctx);
     }
 
     if (lowerMsg === '.limit') {
@@ -149,7 +195,7 @@ async function handleInfoCommand(ctx) {
     }
     */
 
-    if (/\b\.?cari\b/i.test(lowerMsg) || lowerMsg === '.cari' || lowerMsg.startsWith('.cari ')) {
+    if (lowerMsg === '.cari' || lowerMsg.startsWith('.cari ')) {
         return cariCommand.execute(ctx);
     }
 
@@ -197,6 +243,7 @@ module.exports = {
     buyCommand,
     guessCommand,
     hintCommand,
+    turnamenCommand,
     imageCommand,
     jadwalCommand,
     hotCommand,
@@ -207,6 +254,9 @@ module.exports = {
     cariCommand,
     genreCommand,
     tasCommand,
+    gachaCommand,
+    koleksiCommand,
+    pajangCommand,
     limitCommand,
     createImageCommand,
     dataCommand,

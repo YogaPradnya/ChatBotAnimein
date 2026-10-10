@@ -21,8 +21,9 @@ function createCacheRepo(db) {
     }
 
     async function createResponse(questionKey, answer, domain) {
+        // UPSERT atomik agar konkuren tidak kena UNIQUE(question_key) violation.
         return db.execute({
-            sql: 'INSERT INTO response_cache (question_key, answer, domain) VALUES (?, ?, ?)',
+            sql: 'INSERT INTO response_cache (question_key, answer, domain) VALUES (?, ?, ?) ON CONFLICT(question_key) DO UPDATE SET answer = excluded.answer, domain = excluded.domain',
             args: [questionKey, answer, domain],
         });
     }
@@ -83,6 +84,7 @@ function createCacheRepo(db) {
             const res = await db.execute('SELECT item_id FROM anime_notif_cache');
             return (res.rows || []).map(r => String(r.item_id));
         } catch (e) {
+            console.warn('[CACHE_REPO] loadNotifiedAnimeIds gagal:', e.message);
             return [];
         }
     }
@@ -92,6 +94,7 @@ function createCacheRepo(db) {
             await initNotifCacheTable();
             return await db.execute("DELETE FROM anime_notif_cache WHERE item_id LIKE '%_eps_new' OR item_id LIKE '%_eps_N/A'");
         } catch (e) {
+            console.warn('[CACHE_REPO] cleanCorruptedNotifCache gagal:', e.message);
             return null;
         }
     }
@@ -104,6 +107,7 @@ function createCacheRepo(db) {
                 args: [String(itemId)],
             });
         } catch (e) {
+            console.warn('[CACHE_REPO] saveNotifiedAnimeId gagal:', e.message);
             return null;
         }
     }
@@ -118,12 +122,14 @@ function createCacheRepo(db) {
                 args: [keepCount],
             });
         } catch (e) {
+            console.warn('[CACHE_REPO] pruneNotifiedAnimeIds gagal:', e.message);
             return null;
         }
     }
 
     return {
         findResponseByQuestionKey,
+        findCacheByQuestionKey: findResponseByQuestionKey,
         getAnswerByQuestionKey,
         updateAnswer,
         createResponse,
