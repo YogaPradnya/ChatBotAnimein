@@ -1,4 +1,5 @@
 const { boxHeader } = require('../utils/textStyle');
+const { formatCommandUsage } = require('../utils/messageFormatter');
 const { ensureCommandLimit } = require('./helpers');
 
 async function execute(ctx) {
@@ -8,19 +9,35 @@ async function execute(ctx) {
     if (!(await ensureCommandLimit(ctx))) return true;
 
     await incrementCommandUsage(senderUserId, senderName);
-    // Format paragraf grup (bukan 1 baris per perintah) agar muat dalam limit pesan Animein.
+    // Samakan gaya dengan .help: mention di luar box, tanpa emoji, 1 kategori = 1 blok.
     const menu = [
         `┌── ${boxHeader('MENU ANIMEIN')}`,
-        `│ @${senderName.substring(0, 10)}! Semua perintah, ketik .help [topik] utk detail:`,
-        `│ 💬 AI & Anime: .ai/.rara [pesan], .rekomendasi [query], .cari [judul], .genre [nama], .jadwal, .hot, .baru, .populer, .random, .link, .waifu [@user]`,
-        `│ 👤 Akun: .profil, .cek @user, .rank, .limit, .data [isi/hapus/reset], .lapor [pesan]`,
-        `│ 🎮 Kuis: .tebak [jawab], .hint, .kuis [mudah|sedang|sulit], .turnamen`,
-        `│ 🃏 Kartu: .gacha, .gacha rate, .koleksi, .pajang [nama]`,
-        `│ ⚔️ Pokemon: .tas, .kombo, .meta | 🛒 Toko: .toko, .beli [nomor]`,
-        `│ 🖼️ Gambar: .gambar [key], .gambarkan [prompt] | Chatting = +XP`,
+        `│ Ketik .help [topik] utk detail.`,
+        `│`,
+        `│ AI & Anime:`,
+        `│ .ai, .rara, .rekomendasi, .cari, .genre`,
+        `│ .jadwal, .hot, .baru, .populer, .random`,
+        `│ .link, .waifu`,
+        `│`,
+        `│ Akun:`,
+        `│ .profil, .cek, .rank, .limit, .data, .lapor`,
+        `│`,
+        `│ Kuis:`,
+        `│ .tebak, .hint, .kuis, .turnamen`,
+        `│`,
+        `│ Kartu:`,
+        `│ .gacha, .koleksi, .pajang`,
+        `│`,
+        `│ Pokemon:`,
+        `│ .tas, .kombo, .meta`,
+        `│`,
+        `│ Toko & Gambar:`,
+        `│ .toko, .beli, .gambar, .gambarkan`,
+        `│`,
+        `│ Chatting = +XP`,
         `└───────────────────`,
     ].join('\n');
-    await sendChatMessage(bot, menu, msg.id);
+    await sendChatMessage(bot, formatCommandUsage(senderName, menu), msg.id);
     return true;
 }
 

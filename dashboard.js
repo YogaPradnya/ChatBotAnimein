@@ -510,9 +510,9 @@ function getDashboardHTML() {
   /* LEADERBOARD COMPACT: baris rapat + scroll horizontal di layar sempit */
   .leaderboard-scroll { flex: 1; overflow: auto; background: #fff; min-height: 0; }
   .leaderboard-scroll table { min-width: 460px; }
-  #userList td { padding: 8px 12px; vertical-align: middle; }
+  #userList td { padding: 4px 12px; vertical-align: middle; line-height: 1.3; }
   #userList tr:hover td { background: var(--canvas-soft); }
-  .lb-lvl-sub { font-size: 10px; font-weight: 600; color: var(--body); margin-top: 2px; white-space: nowrap; }
+  .lb-lvl-sub { font-size: 10px; font-weight: 600; color: var(--body); margin-top: 1px; white-space: nowrap; }
   .lb-xp-sub { font-size: 10px; font-weight: 500; color: var(--muted); white-space: nowrap; }
 
   /* MODAL */
@@ -3577,7 +3577,7 @@ async function updateStats() {
         const raraTotal = 20 + raraExtra;
         return \`<tr>
           <td style="font-weight:700; color:var(--muted); text-align:center;">\${i+1}</td>
-          <td style="font-weight:700; color:var(--accent); font-size:13px;">@\${escapeHTML(u.username)}<div style="font-size:10px; color:var(--muted); font-weight:500;">\${escapeHTML(title)}</div></td>
+          <td style="font-weight:700; color:var(--accent); font-size:12px;">@\${escapeHTML(u.username)}<div style="font-size:10px; color:var(--muted); font-weight:500; line-height:1.2;">\${escapeHTML(title)}</div></td>
           <td style="text-align:center;">
             <span class="prov-tag" style="background:var(--accent); color:#fff; border:none; padding:2px 6px;">Lv \${u.level}</span>
             <div class="lb-lvl-sub">Heart \${affLvl} · Chat \${raraUsed}/\${raraTotal}</div>

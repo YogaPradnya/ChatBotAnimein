@@ -1,5 +1,6 @@
 const { boxHeader } = require('../utils/textStyle');
 const { formatLimitExceeded } = require('../utils/messageFormatter');
+const { frameDownloadedImage } = require('../services/cardFrameService');
 
 async function execute(ctx) {
     const {
@@ -22,6 +23,8 @@ async function execute(ctx) {
         CONFIG,
         recordPath,
         isAnimeinApiBlocked,
+        sendChatWithImage,
+        downloadImageToTempFile,
     } = ctx;
 
     if (bot.isCooldown) return true;
@@ -94,15 +97,12 @@ async function execute(ctx) {
         let imgLimit = { used: 0, limit: IMAGE_DAILY_LIMIT_DEFAULT, remaining: IMAGE_DAILY_LIMIT_DEFAULT };
         try { imgLimit = await getImageLimitStatus(senderUserId, senderName); } catch(e) { handleError(e, { scope: 'PROFIL', detail: 'image limit status', stats, logEmitter }); }
 
-        let showcaseLine = null;
+        let showcase = null;
         try {
             const cardsRepo = ctx.cardsRepo
                 || (ctx.db ? require('../database/cardsRepo').createCardsRepo(ctx.db) : null);
             if (cardsRepo) {
-                const showcase = await cardsRepo.getShowcase(senderUserId);
-                if (showcase) {
-                    showcaseLine = `│ 🖼️ Pajangan: ${showcase.char_name} [${showcase.rarity}] ★${showcase.level} (Power ${showcase.power})`;
-                }
+                showcase = await cardsRepo.getShowcase(senderUserId);
             }
         } catch (e) { console.warn("[PROFIL] Showcase query failed:", e.message); }
 
@@ -117,7 +117,6 @@ async function execute(ctx) {
             `│ ⚡ XP    : ${xpStr}/${reqStr}`,
             `│ [${bar}] ${percentage}%`,
         ];
-        if (showcaseLine) profileLines.push(showcaseLine);
 
         if (extraProfile) {
             profileLines.push(`├── ${boxHeader('PERSONAL INFO')} 📜`);
@@ -142,7 +141,26 @@ async function execute(ctx) {
             `└──────────────────`
         );
 
-        await sendChatMessage(bot, profileLines.join('\n'), msg.id);
+        const profileText = profileLines.join('\n');
+
+        // Pajangan tidak lagi ditulis sebagai teks di profil.
+        // Kalau ada kartu pajangan + gambarnya, kirim gambar kartu (framed) dengan profil sebagai caption.
+        if (showcase && showcase.image_url
+            && typeof downloadImageToTempFile === 'function'
+            && typeof sendChatWithImage === 'function') {
+            try {
+                const tempImg = await downloadImageToTempFile(showcase.image_url);
+                if (tempImg) {
+                    const framedImg = await frameDownloadedImage(tempImg, showcase.rarity);
+                    const sent = await sendChatWithImage(bot, framedImg, profileText, msg.id);
+                    if (sent) return true;
+                }
+            } catch (e) {
+                console.warn('[PROFIL] Kirim gambar pajangan gagal, fallback teks:', e.message);
+            }
+        }
+
+        await sendChatMessage(bot, profileText, msg.id);
     } catch(e) {
         console.error("[PROFIL ERROR]", e);
     }

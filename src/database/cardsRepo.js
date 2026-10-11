@@ -8,7 +8,7 @@
  *   (sudah punya -> cari kartu lain, tidak bisa duplikat).
  * Duplikat -> LIMIT BREAK hanya untuk Rare & Common: level kartu +1 (max 5)
  *   + bonus XP (Rare +150 / Common +50).
- * Power kartu baru = base per tier (C40/R70/E100/L150/M200) + level*10 + random 0-9.
+ * Power kartu baru = base per tier (C40/R70/E100/L150/M200) + level*10 + varian tetap per nama (hash 0-9).
  * Batas: max 10 pull/hari per user (pulls_today + today_key zona Jakarta).
  * Gambar: prioritas override dashboard > Cloudinary > cardArt.json > live API.
  */
@@ -406,10 +406,30 @@ function pickCharacter(rarity, rng = Math.random, pools = getPoolsByTier()) {
     return pool[Math.floor(rng() * pool.length)];
 }
 
-/** Power kartu = base tier + level*10 + random 0-9. */
-function calcPower(rarity, level, rng = Math.random) {
+/** Hash deterministik nama kartu -> 0..2^32-1 (varian power tetap per kartu). */
+function hashCardName(name) {
+    const s = String(name || '').trim().toLowerCase();
+    let h = 0;
+    for (let i = 0; i < s.length; i++) {
+        h = (((h * 31) + s.charCodeAt(i)) >>> 0);
+    }
+    return h;
+}
+
+/** Varian tetap 0-9 per nama kartu. Nama kosong -> null (fallback random, kompatibel test lama). */
+function fixedVarianceForCard(charName) {
+    if (!String(charName || '').trim()) return null;
+    return hashCardName(charName) % 10;
+}
+
+/** Power kartu = base tier + level*10 + varian tetap per nama (0-9).
+ *  charName diisi -> Conan selalu sama di semua user, kartu beda tetap bisa beda.
+ *  charName kosong -> random 0-9 seperti dulu (kompatibel test lama). */
+function calcPower(rarity, level, rng = Math.random, charName = '') {
     const base = BASE_POWER[rarity] || 40;
-    return base + Number(level || 1) * 10 + Math.floor(rng() * 10);
+    const fixed = fixedVarianceForCard(charName);
+    const variance = fixed != null ? fixed : Math.floor(rng() * 10);
+    return base + Number(level || 1) * 10 + variance;
 }
 
 /** Default resolver gambar (lazy require agar mudah di-mock).
@@ -717,7 +737,7 @@ function createCardsRepo(db, options = {}) {
             let leveledUp = false;
 
             if (!isDuplicate) {
-                power = calcPower(rarity, 1, rng);
+                power = calcPower(rarity, 1, rng, picked.name);
                 // Reuse image_url yang sudah pernah di-resolve user lain (1 karakter = fetch sekali).
                 try {
                     const cached = await db.execute({
@@ -868,6 +888,8 @@ module.exports = {
     resolvePullRarity,
     pickCharacter,
     calcPower,
+    hashCardName,
+    fixedVarianceForCard,
     isEpicPlus,
     GACHA_COST,
     GACHA_DAILY_LIMIT,
