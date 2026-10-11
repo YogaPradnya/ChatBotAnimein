@@ -80,9 +80,6 @@ async function execute(ctx) {
         const barW = 10;
         const filled = Math.floor((percentage / 100) * barW);
         const bar = '\u2588'.repeat(filled) + '\u2591'.repeat(barW - filled);
-        const winRate = quizData.participations > 0
-            ? Math.floor((quizData.wins / quizData.participations) * 100)
-            : 0;
         const dn = senderName.substring(0, 10);
         const xpStr = xp.toLocaleString('id-ID');
         const reqStr = reqXP.toLocaleString('id-ID');
@@ -98,13 +95,41 @@ async function execute(ctx) {
         try { imgLimit = await getImageLimitStatus(senderUserId, senderName); } catch(e) { handleError(e, { scope: 'PROFIL', detail: 'image limit status', stats, logEmitter }); }
 
         let showcase = null;
+        let cardsRepoForProfil = ctx.cardsRepo || null;
         try {
-            const cardsRepo = ctx.cardsRepo
-                || (ctx.db ? require('../database/cardsRepo').createCardsRepo(ctx.db) : null);
-            if (cardsRepo) {
-                showcase = await cardsRepo.getShowcase(senderUserId);
+            if (!cardsRepoForProfil && ctx.db) {
+                cardsRepoForProfil = require('../database/cardsRepo').createCardsRepo(ctx.db);
+            }
+            if (cardsRepoForProfil) {
+                showcase = await cardsRepoForProfil.getShowcase(senderUserId);
             }
         } catch (e) { console.warn("[PROFIL] Showcase query failed:", e.message); }
+
+        let gachaLimit = null;
+        try {
+            if (cardsRepoForProfil && typeof cardsRepoForProfil.getPityState === 'function') {
+                let todayKey;
+                if (typeof ctx.getJakartaDateKey === 'function') {
+                    todayKey = ctx.getJakartaDateKey();
+                } else {
+                    try {
+                        todayKey = require('../utils').getJakartaDateKey();
+                    } catch (_) {
+                        todayKey = new Date().toISOString().slice(0, 10);
+                    }
+                }
+                let dailyLimit = 10;
+                try {
+                    if (typeof cardsRepoForProfil.getConfig === 'function') {
+                        const cfg = await cardsRepoForProfil.getConfig();
+                        if (Number.isFinite(Number(cfg.dailyLimit))) dailyLimit = Number(cfg.dailyLimit);
+                    }
+                } catch (_) { /* pakai default */ }
+                const st = await cardsRepoForProfil.getPityState(senderUserId);
+                const usedToday = st && st.today_key === todayKey ? (Number(st.pulls_today) || 0) : 0;
+                gachaLimit = { remaining: Math.max(0, dailyLimit - usedToday), limit: dailyLimit };
+            }
+        } catch (e) { console.warn("[PROFIL] Gacha limit query failed:", e.message); }
 
         const profileLines = [
             `┌── ${boxHeader('PROFIL USER')} 👤`,
@@ -127,10 +152,6 @@ async function execute(ctx) {
         }
 
         profileLines.push(
-            `├── ${boxHeader('STATISTIK KUIS')} 🎯`,
-            `│ 🎯 Win  : ${quizData.wins} (WR: ${winRate}%)`,
-            `│ 🎮 Main : ${quizData.participations}`,
-            `│ 💡 Hint : ${quizData.total_hints_used}`,
             `├── ${boxHeader('STREAK HARI')} 🔥`,
             `│ 🔥 Now  : ${quizData.current_streak} hari`,
             `│ 🏆 Best : ${quizData.best_streak} hari`,
@@ -138,6 +159,7 @@ async function execute(ctx) {
             `│ 📊 Cmd   : ${updatedLimit.remaining}/${updatedLimit.limit}`,
             `│ 🖼️ Img   : ${imgLimit.remaining}/${imgLimit.limit}`,
             `│ 🤖 Rara  : ${raraLimit.remaining}/${raraLimit.limit}`,
+            ...(gachaLimit ? [`│ 🎰 Gacha : ${gachaLimit.remaining}/${gachaLimit.limit}`] : []),
             `└──────────────────`
         );
 
