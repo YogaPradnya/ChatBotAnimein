@@ -3887,8 +3887,9 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
         history = [];
     }
 
-    // Hitung affection & susun dynamic system prompt dari JSON DB
-    const userAffection = userRepo ? await userRepo.addAffection(senderUserId, senderName, 1) : { points: 0, level: 0 };
+    // Affection/Heart Level DINONAKTIFKAN: semua user diperlakukan sama, tidak ada penambahan poin.
+    // Param affection dipertahankan (nilai netral) agar signature buildSystemPrompt tidak berubah.
+    const userAffection = { points: 0, level: 0 };
     // Freshness: tanggal Jakarta hari ini agar AI bisa menjawab jadwal/hari ini/kemarin/besok.
     // getJakartaDate() memberi field wall-clock WIB via getter lokal; getJakartaDateKey() default (now) aman dari double-shift tz.
     const jakartaNow = getJakartaDate();
