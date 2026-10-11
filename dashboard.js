@@ -1287,7 +1287,7 @@ function getDashboardHTML() {
     <!-- PAGE: MODEL -->
     <div class="page" id="page-model">
       <div class="card">
-        <div class="card-title">Daftar Otak (Groq Keys)</div>
+        <div class="card-title">Daftar Model AI</div>
         <div class="model-list" id="modelList">
           <div style="color:var(--muted);">Memuat...</div>
         </div>
@@ -2414,7 +2414,7 @@ async function updateStats() {
       if (mainQCard) mainQCard.style.display = 'none';
     }
 
-    if (d.otak) {
+    if (d.cerebras || d.nvidia || d.cloudflare) {
       const gList = document.getElementById('modelList');
       if (gList) {
         let html = '';
@@ -2442,7 +2442,7 @@ async function updateStats() {
           const nv = d.nvidia;
           html += \`
             <div class="model-card \${nv.active ? 'active' : 'inactive'}" style="border-left: 4px solid #10b981;">
-              <div class="model-num" style="color:#10b981;">PRIMARY BACKGROUND & FALLBACK 1: NVIDIA NIM AI (Llama 3.1 8B)</div>
+              <div class="model-num" style="color:#10b981;">FALLBACK 1: NVIDIA NIM AI (Llama 3.1 8B)</div>
               <div class="model-metrics">
                 <div class="m-stat"><div class="m-lbl">Requests</div><div class="m-val">\${nv.requests || 0}</div></div>
                 <div class="m-stat"><div class="m-lbl">Errors</div><div class="m-val">\${nv.errors || 0}</div></div>
@@ -2476,21 +2476,8 @@ async function updateStats() {
           \`;
         }
 
-        html += d.otak.map((g, i) => \`
-          <div class="model-card \${g.active ? 'active' : 'inactive'}">
-            <div class="model-num">OTAK #\${i+1} (GROQ FALLBACK 2)</div>
-            <div class="model-metrics">
-              <div class="m-stat"><div class="m-lbl">Requests</div><div class="m-val">\${g.requests || 0}</div></div>
-              <div class="m-stat"><div class="m-lbl">Success</div><div class="m-val">\${g.success || 0}</div></div>
-              <div class="m-stat"><div class="m-lbl">Errors</div><div class="m-val">\${g.errors || 0}</div></div>
-              <div class="m-stat"><div class="m-lbl">Token Sisa</div><div class="m-val">\${g.remainingTokensDay || '?'}</div></div>
-            </div>
-            <div class="toggle-pill \${!g.active ? 'is-off' : ''}" onclick="toggleGroq(\${i})">
-              <div class="pill-on">ON</div>
-              <div class="pill-off">OFF</div>
-            </div>
-          </div>
-        \`).join('');
+
+        gList.innerHTML = html;
 
         gList.innerHTML = html;
       }
@@ -2574,11 +2561,6 @@ async function updateStats() {
             }).join('');
         }
     }
-  }
-
-  async function toggleGroq(id) {
-    await fetch('/api/groq/toggle/' + id, { method: 'POST' });
-    refresh();
   }
 
   async function toggleCloudflare() {

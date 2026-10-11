@@ -1,5 +1,4 @@
 const axios = require('./src/httpClient');
-const Groq = require('groq-sdk');
 const fs = require('fs');
 const path = require('path');
 const FormData = require('form-data');
@@ -1085,18 +1084,6 @@ const stats = {
     cacheTotal: 0,
     lastMicrofetch: 0,
     pathStats: {},
-    lastUsedGroq: null,
-    otak: CONFIG.GROQ_KEYS.map((key, index) => ({
-        id: index + 1,
-        active: true,
-        cooldownUntil: 0,
-        requests: 0,
-        success: 0,
-        errors: 0,
-        lastError: null,
-        remainingReqs: '?',
-        remainingTokensDay: '?',
-    })),
 
     filter: {
         blocked: 0,
@@ -1190,7 +1177,6 @@ const imageService = createImageService({
 const aiHordeImageService = createAiHordeImageService({
     apiKey: CONFIG.AI_HORDE_API_KEY,
     apiKeys: CONFIG.AI_HORDE_API_KEYS,
-    groqKeys: CONFIG.GROQ_KEYS,
     projectRoot: __dirname,
     clientAgent: CONFIG.AI_HORDE_CLIENT_AGENT,
 });
@@ -1283,8 +1269,6 @@ function addActivity(type, from, text, response, provider, tokens = 0) {
 }
 
 
-
-const groqClients = CONFIG.GROQ_KEYS.map(key => new Groq({ apiKey: key }));
 
 let SYSTEM_PROMPT = '';
 
@@ -3167,79 +3151,32 @@ function resolveRaraTemperature(answerStyle) {
     return typeof global.RARA_TEMP_CHAT === 'number' ? global.RARA_TEMP_CHAT : fallback;
 }
 
-/** Groq (Llama 3.1) - kualitas lebih baik */
-async function askGroq(index, userMessage, senderName, contextData = '', chatHistory = [], replyText = '', senderUserId = null, overrideSystemPrompt = null, temperature = null) {
-    const client = groqClients[index];
-    const stat = stats.otak[index];
-    
-    stat.requests++;
-    
-    // Inject CORE MEMORY (Solution 3)
-    const userStats = USER_STATS_CACHE[senderUserId];
-    let coreMemory = '';
-    if (userStats && userStats.core_memory) {
-        const memoryLines = userStats.core_memory.split('\n').filter(l => l.trim()).slice(0, 5);
-        if (memoryLines.length > 0) {
-            coreMemory = `\n\n=== INFORMASI PENTING TENTANG USER @${senderName} ===\n` +
-                         `Kamu sedang berbicara dengan @${senderName}. Kamu WAJIB menyelaraskan jawabanmu dengan fakta & preferensi personal user di bawah ini:\n` +
-                         memoryLines.map(line => `- ${line}`).join('\n') +
-                         `\nInstruksi: Posisikan dirimu dan sesuaikan ingatanmu dengan informasi di atas saat merespon @${senderName}. Jangan menyangkal data tersebut.\n` +
-                         `==================================================\n\n`;
-        }
-    }
-    
-    const systemContent = overrideSystemPrompt || `${personalizeSystemPrompt(SYSTEM_PROMPT, senderName)}${coreMemory}${contextData}`;
-    const replyContext = sanitizeReplyContext(replyText);
-    const userContent = replyContext
-        ? `Pesan yang direply oleh ${senderName}: "${replyContext}"\n\n${senderName} berkata: "${userMessage}". Jadikan pesan reply sebagai konteks tambahan saat menjawab.`
-        : `${senderName} berkata: "${userMessage}".`;
-
-    const { data: completion, response } = await client.chat.completions.create({
-        model: 'llama-3.1-8b-instant',
-        messages: [
-            { role: 'system', content: systemContent },
-            ...chatHistory,
-            { role: 'user', content: userContent }
-        ],
-        max_tokens: 1024,
-        temperature: typeof temperature === 'number' ? temperature
-            : (typeof global.AI_TEMPERATURE === 'number' ? global.AI_TEMPERATURE : 1.0),
-    }).withResponse();
-
-    // Safety check: pastikan response memiliki choices yang valid
-    if (!completion.choices || completion.choices.length === 0 || !completion.choices[0].message) {
-        console.warn(`[GROQ] Otak #${index+1} mengembalikan response kosong untuk ${senderName}.`);
-        stat.errors++;
-        stat.lastError = 'Empty choices from API';
-        return { text: '', tokens: 0 };
-    }
-
-    const answer = completion.choices[0].message.content;
-
-    if (response && response.headers) {
+/** Helper LLM sekali-panggil (pengganti Groq): coba Cerebras -> NVIDIA -> Cloudflare.
+ *  Return teks jawaban atau null bila semua gagal. */
+async function askHelperLLM(systemContent, { temperature = 0.2 } = {}) {
+    const attempts = [
+        async () => {
+            const r = await askCerebrasAi({ userMessage: '', systemPrompt: systemContent, temperature });
+            return r?.text || null;
+        },
+        async () => {
+            const r = await askNvidiaAi({ userMessage: '', systemPrompt: systemContent, temperature });
+            return r?.answer || null;
+        },
+        async () => {
+            const r = await askCloudflareAi({ userMessage: '', systemPrompt: systemContent, temperature });
+            return r?.text || null;
+        },
+    ];
+    for (const attempt of attempts) {
         try {
-            const getHeader = typeof response.headers.get === 'function'
-                ? (key) => response.headers.get(key)
-                : (key) => response.headers[key];
-            stat.remainingReqs = getHeader('x-ratelimit-remaining-requests') || '?';
-            let rTokens = getHeader('x-ratelimit-remaining-tokens');
-            if (rTokens) {
-                stat.remainingTokensDay = parseInt(rTokens).toLocaleString('id-ID');
-            } else {
-                stat.remainingTokensDay = '?';
-            }
-        } catch (_) {
-            // Abaikan error parsing header
+            const text = await attempt();
+            if (text && String(text).trim()) return String(text);
+        } catch (err) {
+            console.warn('[HELPER LLM] gagal:', safeMessage(err, 80));
         }
     }
-
-    const tokens = completion.usage?.total_tokens || 0;
-    if (tokens) {
-        stats.totalTokensUsed += tokens;
-    }
-
-    stat.success++;
-    return { text: answer || '', tokens };
+    return null;
 }
 
 function parsePlannerJson(raw) {
@@ -3255,9 +3192,7 @@ function parsePlannerJson(raw) {
 }
 
 async function planAnimeRecommendationWithAI(userMessage) {
-    if (!groqClients.length) return null;
     const genreNames = (await fetchGenresList()).map(g => g.name).slice(0, 80).join(', ');
-    const client = groqClients[0];
     const prompt = `Kamu adalah planner pencarian rekomendasi anime untuk database Animein.
 Tugasmu HANYA menerjemahkan permintaan user menjadi JSON query. Jangan mengarang judul anime.
 Genre resmi yang tersedia: ${genreNames}
@@ -3276,13 +3211,8 @@ Contoh output:
 User: ${JSON.stringify(userMessage)}`;
 
     try {
-        const res = await client.chat.completions.create({
-            model: 'llama-3.1-8b-instant',
-            messages: [{ role: 'system', content: prompt }],
-            max_tokens: 350,
-            temperature: 0.2,
-        });
-        const plan = parsePlannerJson(res.choices?.[0]?.message?.content || '');
+        const text = await askHelperLLM(prompt, { temperature: 0.2 });
+        const plan = parsePlannerJson(text || '');
         if (!plan || typeof plan !== 'object') return null;
         return {
             genres: Array.isArray(plan.genres) ? plan.genres.map(String).slice(0, 5) : [],
@@ -3297,7 +3227,7 @@ User: ${JSON.stringify(userMessage)}`;
     }
 }
 async function generateQuizHintWithAI(activeQuiz, level = 1) {
-    if (!groqClients.length || !activeQuiz?.isRunning) return null;
+    if (!activeQuiz?.isRunning) return null;
     const title = String(activeQuiz.original || '').trim();
     const clues = activeQuiz.clues || {};
     if (!title || !clues.synopsis) return null;
@@ -3320,13 +3250,8 @@ Score: ${clues.score || '?'}
 Sinopsis: ${String(clues.synopsis || '').slice(0, 900)}`;
 
     try {
-        const res = await groqClients[0].chat.completions.create({
-            model: 'llama-3.1-8b-instant',
-            messages: [{ role: 'system', content: prompt }],
-            max_tokens: 120,
-            temperature: 0.35,
-        });
-        let hint = String(res.choices?.[0]?.message?.content || '')
+        const text = await askHelperLLM(prompt, { temperature: 0.35 });
+        let hint = String(text || '')
             .replace(/```[\s\S]*?```/g, '')
             .replace(/\s+/g, ' ')
             .trim()
@@ -3344,7 +3269,7 @@ Sinopsis: ${String(clues.synopsis || '').slice(0, 900)}`;
 }
 
 async function rerankAnimeRecommendationsWithAI(userMessage, candidates, limit = 10) {
-    if (!groqClients.length || !Array.isArray(candidates) || candidates.length <= 1) return null;
+    if (!Array.isArray(candidates) || candidates.length <= 1) return null;
     const compactCandidates = candidates.slice(0, 40).map((item, index) => ({
         index: index + 1,
         title: item.title || item.name || '',
@@ -3373,13 +3298,8 @@ Format output:
 {"selectedIndexes":[1,2,3],"reason":"ringkas"}`;
 
     try {
-        const res = await groqClients[0].chat.completions.create({
-            model: 'llama-3.1-8b-instant',
-            messages: [{ role: 'system', content: prompt }],
-            max_tokens: 220,
-            temperature: 0.15,
-        });
-        const parsed = parsePlannerJson(res.choices?.[0]?.message?.content || '');
+        const text = await askHelperLLM(prompt, { temperature: 0.15 });
+        const parsed = parsePlannerJson(text || '');
         const indexes = Array.isArray(parsed?.selectedIndexes)
             ? parsed.selectedIndexes.map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= compactCandidates.length)
             : [];
@@ -3785,7 +3705,7 @@ deterministicAnswerRouter = createDeterministicAnswerRouter([
     },
 ]);
 
-/** Main AI handler: Groq only */
+/** Main AI handler */
 async function getAIResponse(userMessage, senderName, isReply = false, senderUserId = null, replyText = '', options = {}) {
     // ANTI PROMPT-INJECTION: titik sentral sebelum AI dipanggil. Tolak dalam
     // karakter tanpa memanggil provider mana pun (hemat token).
@@ -4050,34 +3970,7 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
                 return { text: finalText, provider, tokens };
             }
         } catch (err) {
-            console.error(`[CEREBRAS AI] Error: ${err.message}. Fallback ke Groq.`);
-        }
-        return null;
-    };
-
-    // Fallback Kedua (3): Groq AI (Llama 3.1 8B)
-    const tryGroq = async () => {
-        for (let i = 0; i < groqClients.length; i++) {
-            const stat = stats.otak[i];
-            const nowLoop = Date.now();
-
-            if (!stat.active || nowLoop < stat.cooldownUntil) continue;
-
-            try {
-                const t0 = Date.now();
-                const { text, tokens } = await askGroq(i, userMessage, senderName, finalContext, history, replyText, senderUserId, dynamicSystemPrompt, resolveRaraTemperature(answerStyle));
-                recordProviderLatency('groq', Date.now() - t0);
-                const finalText = finalizeAiAnswer(text, userMessage, replyText, senderUserId);
-                if (finalText) {
-                    queueFactMemoryUpdate(finalText);
-                    stats.lastUsedGroq = i;
-                    return { text: finalText, provider: `Groq AI (Llama 3.1 8B)`, tokens };
-                }
-            } catch (err) {
-                stat.errors++;
-                stat.lastError = (err.message || '').slice(0, 100);
-                console.error(`[GROQ AI] Otak #${i+1} Error: ${err.message}.`);
-            }
+            console.error(`[CEREBRAS AI] Error: ${err.message}.`);
         }
         return null;
     };
@@ -4089,8 +3982,8 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
     const cfReady = cfStat.active && Boolean(CONFIG.CLOUDFLARE_API_KEY && CONFIG.CLOUDFLARE_ACCOUNT_ID) && Date.now() >= cfStat.cooldownUntil;
     const nvReady = nvStat.active && Boolean(CONFIG.NVIDIA_API_KEY) && Date.now() >= nvStat.cooldownUntil;
     const orderedAttempts = (isLightChat && cfReady && nvReady)
-        ? [tryNvidia, tryCloudflare, tryCerebras, tryGroq]
-        : [tryCloudflare, tryNvidia, tryCerebras, tryGroq];
+        ? [tryNvidia, tryCloudflare, tryCerebras]
+        : [tryCloudflare, tryNvidia, tryCerebras];
     if (isLightChat && cfReady && nvReady) console.log('[ROUTING] Obrolan ringan -> NVIDIA dulu, lalu Cloudflare.');
     for (const attempt of orderedAttempts) {
         const hit = await attempt();
@@ -4678,8 +4571,8 @@ function selectAnimeByTagNumber(items, tagNumber) {
 
 async function resolveAnimeTitleForTagWithAI(rawTitle, contextText = '') {
     const fallbackTitle = cleanAnimeTitleFromList(rawTitle);
-    if (!fallbackTitle || !groqClients.length) {
-        return fallbackTitle ? { title: fallbackTitle, altQueries: [] } : null;
+    if (!fallbackTitle) {
+        return null;
     }
 
     const prompt = `Kamu adalah resolver judul anime untuk fitur tag Animein.
@@ -4699,13 +4592,8 @@ Output JSON contoh:
 {"title":"Kimetsu no Yaiba","altQueries":["Demon Slayer","Kimetsu no Yaiba anime"]}`;
 
     try {
-        const res = await groqClients[0].chat.completions.create({
-            model: 'llama-3.1-8b-instant',
-            messages: [{ role: 'system', content: prompt }],
-            max_tokens: 160,
-            temperature: 0.1,
-        });
-        const parsed = parsePlannerJson(res.choices?.[0]?.message?.content || '');
+        const text = await askHelperLLM(prompt, { temperature: 0.1 });
+        const parsed = parsePlannerJson(text || '');
         const title = cleanAnimeTitleFromList(parsed?.title || fallbackTitle);
         const altQueries = Array.isArray(parsed?.altQueries)
             ? parsed.altQueries.map(q => cleanAnimeTitleFromList(q)).filter(Boolean).slice(0, 4)

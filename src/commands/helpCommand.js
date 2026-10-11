@@ -74,7 +74,7 @@ async function execute(ctx) {
     } else if (helpArg === 'login' || helpArg === 'pair') {
         helpMsg = wrapInBox('LOGIN', 'Masuk web book kartu tanpa password.\n\nCommand:\n• .login [kode]\n\nCara:\n• Buka web, tekan Dapatkan Kode\n• Ketik .login [kode] di chat ini\n• Kembali ke web, langsung masuk');
     } else if (helpArg === 'web' || helpArg === 'book' || helpArg === 'trade' || helpArg === 'battle') {
-        helpMsg = wrapInBox('WEB', 'Web book kartu (tanpa password).\n\nIsi:\n• Book: galeri 200 kartu, ketuk untuk stat\n• Trade: tukar kartu via kode angka\n• Battle: lawan AI / teman, menang +100 XP\n\nMasuk: buka web untuk kode, ketik .login [kode] di chat.');
+        helpMsg = wrapInBox('WEB', 'Web book kartu (tanpa password).\n\nIsi:\n• Book: galeri 200 kartu, ketuk untuk stat\n• Trade: tukar kartu via kode angka\n• Battle: vs AI (latihan) / PvP, PvP menang +100 XP\n\nMasuk: buka web untuk kode, ketik .login [kode] di chat.');
     } else if (helpArg === 'ban') {
         helpMsg = wrapInBox('BAN', 'Aturan bot:\n• Dilarang spam\n• Dilarang toxic\n• Dilarang abuse XP\n\nPelanggar akan di-ban permanen.');
     } else if (helpArg) {

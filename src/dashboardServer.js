@@ -1512,17 +1512,6 @@ function startDashboard(scope) {
         }
     });
 
-    app.post('/api/groq/toggle/:id', (req, res) => {
-        const id = parseInt(req.params.id);
-        if (stats.otak[id]) {
-            stats.otak[id].active = !stats.otak[id].active;
-            console.log(`[DASHBOARD] Otak #${id+1}: ${stats.otak[id].active ? 'ON' : 'OFF'}`);
-            res.json({ success: true, active: stats.otak[id].active });
-        } else {
-            res.status(404).json({ success: false });
-        }
-    });
-
     app.post('/api/cloudflare/toggle', (req, res) => {
         const cfStat = getCloudflareStat();
         cfStat.active = !cfStat.active;

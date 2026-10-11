@@ -13,19 +13,6 @@ function getNumberEnv(key, fallback) {
     return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function collectGroqKeys() {
-    const keys = [];
-    const primaryKey = getEnv('GROQ_API_KEY');
-    if (primaryKey) keys.push(primaryKey);
-
-    for (let i = 2; i <= 15; i++) {
-        const key = getEnv(`GROQ_API_KEY_${i}`);
-        if (key) keys.push(key);
-    }
-
-    return keys;
-}
-
 function collectAiHordeKeys() {
     const keys = [];
     const multiKeys = getEnv('AI_HORDE_API_KEYS');
@@ -59,10 +46,6 @@ function createEnvConfig() {
         },
         DISCORD: {
             WEBHOOK_URL: getEnv('DISCORD_WEBHOOK_URL'),
-        },
-        GROQ: {
-            KEYS: collectGroqKeys(),
-            COOLDOWN_MS: 45 * 60 * 1000,
         },
         DASHBOARD: {
             PORT: getNumberEnv('PORT', 3500),
@@ -113,7 +96,6 @@ function warnMissingEnv() {
     if (!ENV_CONFIG.ANIMEIN.KUIS_USERNAME) missing.push('ANIMEIN_KUIS_USERNAME');
     if (!ENV_CONFIG.ANIMEIN.IMG_USERNAME) missing.push('ANIMEIN_IMG_USERNAME');
     if (!ENV_CONFIG.ANIMEIN.NOTIF_USERNAME) missing.push('ANIMEIN_NOTIF_USERNAME');
-    if (!ENV_CONFIG.GROQ.KEYS.length) missing.push('GROQ_API_KEY');
 
     if (missing.length > 0) {
         console.warn(`[CONFIG] Env belum lengkap: ${missing.join(', ')}`);
