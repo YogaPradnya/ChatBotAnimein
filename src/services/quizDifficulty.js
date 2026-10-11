@@ -1,7 +1,5 @@
-// Konfigurasi level kesulitan kuis + mode blitz.
+// Konfigurasi level kesulitan kuis.
 // Dipakai quizService (pool filter & XP), index.js (parsing command), dan test.
-const BLITZ_DURATION_MS = 60 * 1000;
-const BLITZ_XP_MULTIPLIER = 1.2;
 
 const DIFFICULTY = {
     normal: { label: 'NORMAL', xpMultiplier: 1, filter: 'all' },
@@ -34,8 +32,6 @@ function getDifficultyConfig(name) {
 }
 
 module.exports = {
-    BLITZ_DURATION_MS,
-    BLITZ_XP_MULTIPLIER,
     DIFFICULTY,
     parseDifficulty,
     getDifficultyConfig,

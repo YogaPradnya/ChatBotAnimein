@@ -118,7 +118,7 @@ test('knowledgeAccuracy - system prompt: aturan 9 obrolan natural + aturan 10 an
 test('knowledgeAccuracy - system prompt: 1 kalimat boleh 3 kalimat untuk data faktual', () => {
     const prompt = buildSystemPrompt({ senderName: 'tester' });
     assert.ok(/maksimal 12-15 kata/.test(prompt), 'aturan lama 1 kalimat hilang');
-    assert.ok(/kecuali menjawab data faktual dari konteks: boleh sampai 3 kalimat pendek/.test(prompt), 'pengecualian faktual hilang');
+    assert.ok(/kecuali menjawab data faktual dari konteks ATAU dari \[KONTEKS WEB\]: boleh sampai 3 kalimat pendek/.test(prompt), 'pengecualian faktual hilang');
 });
 
 // --- Freshness ---

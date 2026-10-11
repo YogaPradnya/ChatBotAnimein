@@ -8,38 +8,19 @@ async function execute(ctx) {
     if (!(await ensureCommandLimit(ctx))) return true;
 
     await incrementCommandUsage(senderUserId, senderName);
+    // Format paragraf grup (bukan 1 baris per perintah) agar muat dalam limit pesan Animein.
     const menu = [
         `┌── ${boxHeader('MENU ANIMEIN')}`,
-        `│ 1. .ai / .rara [pesan]`,
-        `│ 2. .rekomendasi [query/genre]`,
-        `│ 3. .cari [judul]`,
-        `│ 4. .genre [nama]`,
-        `│ 5. .jadwal`,
-        `│ 6. .hot`,
-        `│ 7. .baru`,
-        `│ 8. .populer`,
-        `│ 9. .random`,
-        `│10. .waifu [@user]`,
-        `│11. .link`,
-        `│12. .data [isi/hapus/reset]`,
-        `│13. .profil`,
-        `│14. .cek @user`,
-        `│15. .rank`,
-        `│16. .tebak / .hint / .kuis [mudah|sedang|sulit]`,
-        `│17. .blitz (kuis kilat) / .turnamen`,
-        `│18. .toko / .beli [nomor]`,
-        `│19. .kombo / .meta / .tas`,
-        `│20. .gambar [key]`,
-        `│21. .gambarkan [prompt]`,
-        `│22. .limit`,
-        `│23. .gacha kartu / .koleksi / .pajang`,
-        `│24. .lapor [pesan]`,
-        `│25. .help [topik]`,
-        `├───────────────────`,
-        `│ Chatting = +XP`,
+        `│ @${senderName.substring(0, 10)}! Semua perintah, ketik .help [topik] utk detail:`,
+        `│ 💬 AI & Anime: .ai/.rara [pesan], .rekomendasi [query], .cari [judul], .genre [nama], .jadwal, .hot, .baru, .populer, .random, .link, .waifu [@user]`,
+        `│ 👤 Akun: .profil, .cek @user, .rank, .limit, .data [isi/hapus/reset], .lapor [pesan]`,
+        `│ 🎮 Kuis: .tebak [jawab], .hint, .kuis [mudah|sedang|sulit], .turnamen`,
+        `│ 🃏 Kartu: .gacha, .gacha rate, .koleksi, .pajang [nama]`,
+        `│ ⚔️ Pokemon: .tas, .kombo, .meta | 🛒 Toko: .toko, .beli [nomor]`,
+        `│ 🖼️ Gambar: .gambar [key], .gambarkan [prompt] | Chatting = +XP`,
         `└───────────────────`,
     ].join('\n');
-    await sendChatMessage(bot, `@${senderName.substring(0, 10)}\n${menu}`, msg.id);
+    await sendChatMessage(bot, menu, msg.id);
     return true;
 }
 

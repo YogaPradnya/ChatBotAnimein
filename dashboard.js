@@ -735,7 +735,8 @@ function getDashboardHTML() {
         <i data-lucide="chevron-down" class="nav-chevron"></i>
       </button>
       <div class="nav-group-items">
-        <button class="nav-item" onclick="showPage('kuis', this); toggleSidebar(false)"><i data-lucide="trophy"></i><span>Kuis & Leaderboard</span></button>
+        <button class="nav-item" onclick="showPage('kuis', this); toggleSidebar(false)"><i data-lucide="trophy"></i><span>Kuis & Turnamen</span></button>
+        <button class="nav-item" onclick="showPage('gacha', this); toggleSidebar(false)"><i data-lucide="layers"></i><span>Gacha & Kartu</span></button>
         <button class="nav-item" onclick="showPage('ekonomi', this); toggleSidebar(false)"><i data-lucide="coins"></i><span>Ekonomi & Toko</span></button>
         <button class="nav-item" onclick="showPage('gambar', this); toggleSidebar(false)"><i data-lucide="image"></i><span>Limit Manager</span></button>
       </div>
@@ -1687,29 +1688,6 @@ function getDashboardHTML() {
             </div>
           </div>
 
-          <!-- Statistik Gacha Card -->
-          <div class="card" style="margin-bottom: 0;">
-            <div class="card-title">🎴 Statistik Gacha</div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px;">
-              <div style="text-align:center; padding:12px; background:var(--bg); border-radius:8px;">
-                <div style="font-size:22px; font-weight:700; color:var(--accent);" id="gachaTotalPulls">0</div>
-                <div style="font-size:11px; color:var(--muted);">Total Pull</div>
-              </div>
-              <div style="text-align:center; padding:12px; background:var(--bg); border-radius:8px;">
-                <div style="font-size:22px; font-weight:700; color:#eab308;" id="gachaLegendaryPulls">0</div>
-                <div style="font-size:11px; color:var(--muted);">Legendary</div>
-              </div>
-              <div style="text-align:center; padding:12px; background:var(--bg); border-radius:8px;">
-                <div style="font-size:22px; font-weight:700; color:var(--green);" id="gachaCollectors">0</div>
-                <div style="font-size:11px; color:var(--muted);">Kolektor Unik</div>
-              </div>
-            </div>
-            <div style="font-size:11px; font-weight:700; color:var(--muted); margin-bottom:8px;">5 KARTU TERLANGKA</div>
-            <div id="gachaTopCards" style="display:flex; flex-direction:column; gap:8px;">
-              <div style="color: var(--muted); font-size: 12px;">Memuat statistik...</div>
-            </div>
-          </div>
-
           <div id="kuisPageCurrentCard" class="card" style="display:none; border: 1px solid var(--accent); background: var(--accent-light); margin-bottom: 10px;">
             <div class="card-title" style="color:var(--accent); border-bottom-color:rgba(249,115,22,0.1);">Kuis yang Sedang Berjalan</div>
             <div id="kuisPageContent"></div>
@@ -1776,6 +1754,81 @@ function getDashboardHTML() {
           </div>
         </div>
 
+      </div>
+    </div>
+
+    <div class="page" id="page-gacha">
+      <div class="adaptive-flex" style="display: flex; gap: 24px;">
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 20px; min-width: 300px;">
+          <!-- Statistik Gacha Card -->
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-title">🎴 Statistik Gacha</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+              <div style="text-align:center; padding:12px; background:var(--bg); border-radius:8px;">
+                <div style="font-size:22px; font-weight:700; color:var(--accent);" id="gachaTotalPulls">0</div>
+                <div style="font-size:11px; color:var(--muted);">Total Pull</div>
+              </div>
+              <div style="text-align:center; padding:12px; background:var(--bg); border-radius:8px;">
+                <div style="font-size:22px; font-weight:700; color:#eab308;" id="gachaLegendaryPulls">0</div>
+                <div style="font-size:11px; color:var(--muted);">Legendary</div>
+              </div>
+              <div style="text-align:center; padding:12px; background:var(--bg); border-radius:8px;">
+                <div style="font-size:22px; font-weight:700; color:var(--green);" id="gachaCollectors">0</div>
+                <div style="font-size:11px; color:var(--muted);">Kolektor Unik</div>
+              </div>
+            </div>
+            <div style="font-size:11px; font-weight:700; color:var(--muted); margin-bottom:8px;">5 KARTU TERLANGKA</div>
+            <div id="gachaTopCards" style="display:flex; flex-direction:column; gap:8px;">
+              <div style="color: var(--muted); font-size: 12px;">Memuat statistik...</div>
+            </div>
+          </div>
+        </div>
+        <div style="flex: 2; display: flex; flex-direction: column; gap: 20px; min-width: 0;">
+          <!-- Pengaturan Gacha Card -->
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-title">⚙️ Pengaturan Gacha</div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; margin-bottom:10px;">
+              <label style="font-size:11px; color:var(--muted);">Biaya (XP)<input type="number" id="gachaCfgCost" min="0" max="100000" value="500" style="width:100%; margin-top:4px; padding:6px 8px; border-radius:8px; border:1px solid var(--border);"></label>
+              <label style="font-size:11px; color:var(--muted);">Limit/hari<input type="number" id="gachaCfgDaily" min="1" max="100" value="10" style="width:100%; margin-top:4px; padding:6px 8px; border-radius:8px; border:1px solid var(--border);"></label>
+              <label style="font-size:11px; color:var(--muted);">🍀 Pure hoki, tanpa pity</label>
+            </div>
+            <div style="font-size:11px; font-weight:700; color:var(--muted); margin-bottom:6px;">RATE (%) — dinormalisasi ke 100%</div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr; gap:10px; margin-bottom:10px;">
+              <label style="font-size:11px; color:var(--muted);">⚪ Common<input type="number" id="gachaRateCommon" min="0" max="100" step="0.01" value="70" style="width:100%; margin-top:4px; padding:6px 8px; border-radius:8px; border:1px solid var(--border);"></label>
+              <label style="font-size:11px; color:var(--muted);">🔵 Rare<input type="number" id="gachaRateRare" min="0" max="100" step="0.01" value="25" style="width:100%; margin-top:4px; padding:6px 8px; border-radius:8px; border:1px solid var(--border);"></label>
+              <label style="font-size:11px; color:var(--muted);">🟣 Epic<input type="number" id="gachaRateEpic" min="0" max="100" step="0.01" value="4.89" style="width:100%; margin-top:4px; padding:6px 8px; border-radius:8px; border:1px solid var(--border);"></label>
+              <label style="font-size:11px; color:var(--muted);">🟡 Legendary<input type="number" id="gachaRateLegendary" min="0" max="100" step="0.01" value="0.1" style="width:100%; margin-top:4px; padding:6px 8px; border-radius:8px; border:1px solid var(--border);"></label>
+              <label style="font-size:11px; color:var(--muted);">🔴 Mythic<input type="number" id="gachaRateMythic" min="0" max="100" step="0.01" value="0.01" style="width:100%; margin-top:4px; padding:6px 8px; border-radius:8px; border:1px solid var(--border);"></label>
+            </div>
+            <div style="font-size:11px; font-weight:700; color:var(--muted); margin-bottom:6px;">STOK PER KARTU (pemilik global)</div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; margin-bottom:10px;">
+              <label style="font-size:11px; color:var(--muted);">🔴 Mythic<input type="number" id="gachaStockMythic" min="1" max="1000" value="1" style="width:100%; margin-top:4px; padding:6px 8px; border-radius:8px; border:1px solid var(--border);"></label>
+              <label style="font-size:11px; color:var(--muted);">🟡 Legendary<input type="number" id="gachaStockLegendary" min="1" max="1000" value="10" style="width:100%; margin-top:4px; padding:6px 8px; border-radius:8px; border:1px solid var(--border);"></label>
+              <label style="font-size:11px; color:var(--muted);">🟣 Epic<input type="number" id="gachaStockEpic" min="1" max="1000" value="50" style="width:100%; margin-top:4px; padding:6px 8px; border-radius:8px; border:1px solid var(--border);"></label>
+            </div>
+            <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
+              <button class="btn-sm btn-sm-toggle" onclick="saveGachaConfig()" style="background:var(--accent); border-color:var(--accent); color:#fff;">💾 Simpan Config</button>
+              <button class="btn-sm btn-sm-toggle" onclick="resetGachaPool()">♻️ Reset Pool Bawaan</button>
+            </div>
+            <div id="gachaPoolInfo" style="font-size:11px; color:var(--muted); margin-bottom:8px;">Memuat pool kartu...</div>
+            <div id="gachaCardsList" style="display:flex; flex-direction:column; gap:8px; max-height:480px; overflow-y:auto; margin-bottom:10px;">
+              <div style="color:var(--muted); font-size:12px;">Memuat kartu...</div>
+            </div>
+            <div style="display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap;">
+              <input type="text" id="gachaNewName" placeholder="Nama karakter" style="flex:2; min-width:120px; padding:6px 10px; border-radius:8px; border:1px solid var(--border); font-size:12px;">
+              <input type="text" id="gachaNewAnime" placeholder="Anime" style="flex:2; min-width:120px; padding:6px 10px; border-radius:8px; border:1px solid var(--border); font-size:12px;">
+              <select id="gachaNewTier" style="flex:1; min-width:100px; padding:6px 10px; border-radius:8px; border:1px solid var(--border); font-size:12px;">
+                <option value="Common">Common</option>
+                <option value="Rare">Rare</option>
+                <option value="Epic">Epic</option>
+                <option value="Legendary">Legendary</option>
+                <option value="Mythic">Mythic</option>
+              </select>
+              <button class="btn-sm btn-sm-toggle" onclick="addGachaCard()">➕ Tambah</button>
+            </div>
+            <button class="btn-sm btn-sm-toggle" onclick="saveGachaPool()" style="background:var(--accent); border-color:var(--accent); color:#fff;">💾 Simpan Pool</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -2162,7 +2215,7 @@ function getDashboardHTML() {
         parentGroup.classList.add('open');
       }
     }
-    const titles = { dashboard: 'Dashboard', model: 'Model AI', prompt: 'Prompt & Knowledge', gambar: 'Limit Manager', laporan: 'Laporan', banned: 'Blokir User', inspector: 'Cek & Setting Data User', filter: 'Filter Kata', kuis: 'Kuis & Leaderboard', logs: 'Realtime Logs', 'api-traffic': 'API Monitor', ekonomi: 'Ekonomi & Toko' };
+    const titles = { dashboard: 'Dashboard', model: 'Model AI', prompt: 'Prompt & Knowledge', gambar: 'Limit Manager', laporan: 'Laporan', banned: 'Blokir User', inspector: 'Cek & Setting Data User', filter: 'Filter Kata', kuis: 'Kuis & Turnamen', gacha: 'Gacha & Kartu', logs: 'Realtime Logs', 'api-traffic': 'API Monitor', ekonomi: 'Ekonomi & Toko' };
     document.getElementById('pageTitle').textContent = titles[id] || id;
     if (id === 'dashboard') refresh();
     if (id === 'prompt') loadPrompt();
@@ -2170,7 +2223,8 @@ function getDashboardHTML() {
     if (id === 'filter') loadFilter();
     if (id === 'gambar') { loadGlobalLimits(); loadCommandLimits(); loadImageLimits(); loadRaraChatLimits(); }
     if (id === 'banned') loadBannedPage();
-    if (id === 'kuis') { loadTitles(); loadUsers(); loadQuizPool(); loadWeeklyTournament(); loadGachaStats(); }
+    if (id === 'kuis') { loadTitles(); loadUsers(); loadQuizPool(); loadWeeklyTournament(); }
+    if (id === 'gacha') { loadGachaStats(); loadGachaConfig(); loadGachaCards(); }
     if (id === 'logs') renderRealtimeLogs();
     if (id === 'ekonomi') loadEkonomiSettings();
     if (id === 'model') {
@@ -3211,6 +3265,193 @@ async function updateStats() {
             '<span style="color:var(--muted);">' + escapeHTML(c.rarity || '') + ' &bull; ' + (Number(c.owners) || 0) + ' pemilik</span>' +
             '</div>').join('');
     } catch(e) { console.error(e); }
+  }
+
+  let cachedGachaPool = [];
+  const GACHA_TIERS = ['Common', 'Rare', 'Epic', 'Legendary', 'Mythic'];
+
+  async function loadGachaConfig() {
+    try {
+      const res = await fetch('/api/gacha/config');
+      const d = await res.json();
+      if (!d.success || !d.config) return;
+      const setV = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+      setV('gachaCfgCost', d.config.cost);
+      setV('gachaCfgDaily', d.config.dailyLimit);
+      const rates = d.config.rates || {};
+      setV('gachaRateCommon', rates.Common);
+      setV('gachaRateRare', rates.Rare);
+      setV('gachaRateEpic', rates.Epic);
+      setV('gachaRateLegendary', rates.Legendary);
+      setV('gachaRateMythic', rates.Mythic);
+      const stocks = d.config.stocks || {};
+      setV('gachaStockMythic', stocks.Mythic);
+      setV('gachaStockLegendary', stocks.Legendary);
+      setV('gachaStockEpic', stocks.Epic);
+    } catch(e) { console.error(e); }
+  }
+
+  async function saveGachaConfig() {
+    const num = (id) => parseFloat(document.getElementById(id)?.value);
+    const int = (id) => parseInt(document.getElementById(id)?.value);
+    const data = {
+      cost: int('gachaCfgCost'),
+      dailyLimit: int('gachaCfgDaily'),
+      rates: {
+        Common: num('gachaRateCommon'),
+        Rare: num('gachaRateRare'),
+        Epic: num('gachaRateEpic'),
+        Legendary: num('gachaRateLegendary'),
+        Mythic: num('gachaRateMythic'),
+      },
+      stocks: {
+        Mythic: int('gachaStockMythic'),
+        Legendary: int('gachaStockLegendary'),
+        Epic: int('gachaStockEpic'),
+      },
+    };
+    try {
+      const res = await fetch('/api/gacha/config', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.success) {
+        loadGachaConfig();
+        showToast('Config gacha disimpan.', 'success');
+      } else {
+        showToast(d.message || 'Gagal menyimpan config.', 'error');
+      }
+    } catch (err) {
+      showToast('Gagal terhubung ke server: ' + err.message, 'error');
+    }
+  }
+
+  function renderGachaCards() {
+    const box = document.getElementById('gachaCardsList');
+    const info = document.getElementById('gachaPoolInfo');
+    if (!box) return;
+    if (info) {
+      const count = {};
+      cachedGachaPool.forEach((c) => { count[c.tier] = (count[c.tier] || 0) + 1; });
+      info.textContent = cachedGachaPool.length + ' kartu (C:' + (count.Common || 0) + ' R:' + (count.Rare || 0) + ' E:' + (count.Epic || 0) + ' L:' + (count.Legendary || 0) + ')';
+    }
+    if (cachedGachaPool.length === 0) {
+      box.innerHTML = '<div style="color:var(--muted); font-size:12px;">Pool kosong.</div>';
+      return;
+    }
+    box.innerHTML = cachedGachaPool.map((c, i) => {
+      const opts = GACHA_TIERS.map((t) => '<option value="' + t + '"' + (c.tier === t ? ' selected' : '') + '>' + t + '</option>').join('');
+      const img = c.imageUrl
+        ? '<img src="' + escapeHTML(c.imageUrl) + '" style="width:40px; height:56px; object-fit:cover; border-radius:8px;" loading="lazy" onerror="this.remove()">'
+        : '<div style="width:40px; height:56px; border-radius:8px; background:var(--bg); display:flex; align-items:center; justify-content:center; font-size:16px;">❔</div>';
+      return '<div style="display:grid; grid-template-columns:40px minmax(0,1fr) auto; gap:4px 8px; align-items:center; padding:8px 12px; background:var(--bg); border-radius:8px; font-size:12px;">' +
+        '<div style="grid-row:span 2;">' + img + '</div>' +
+        '<div style="min-width:0;"><div style="font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="' + escapeHTML(c.name) + '">' + escapeHTML(c.name) + '</div>' +
+        '<div style="color:var(--muted); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="' + escapeHTML(c.anime || '-') + '">' + escapeHTML(c.anime || '-') + '</div></div>' +
+        '<div style="display:flex; gap:6px; align-items:center;">' +
+        '<select id="gachaTier' + i + '" onchange="changeGachaTier(' + i + ', this.value)" style="padding:4px 6px; border-radius:8px; border:1px solid var(--border); font-size:11px; max-width:110px;">' + opts + '</select>' +
+        '<button class="btn-sm btn-sm-edit" onclick="removeGachaCard(' + i + ')">✕</button>' +
+        '</div>' +
+        '<div style="grid-column:2 / 4; display:flex; gap:6px;">' +
+        '<input type="text" id="gachaArt' + i + '" value="' + escapeHTML(c.imageUrl || '') + '" placeholder="URL gambar..." style="flex:1; min-width:0; padding:4px 8px; border-radius:8px; border:1px solid var(--border); font-size:11px;">' +
+        '<button class="btn-sm btn-sm-toggle" onclick="saveGachaArt(' + i + ')">🖼️</button>' +
+        '</div>' +
+        '</div>';
+    }).join('');
+  }
+
+  async function loadGachaCards() {
+    const box = document.getElementById('gachaCardsList');
+    if (!box) return;
+    try {
+      const res = await fetch('/api/gacha/cards');
+      const d = await res.json();
+      if (!d.success) return;
+      cachedGachaPool = Array.isArray(d.cards) ? d.cards : [];
+      renderGachaCards();
+      const info = document.getElementById('gachaPoolInfo');
+      if (info && d.customized) info.textContent += ' (kustom dashboard)';
+    } catch(e) { console.error(e); }
+  }
+
+  function changeGachaTier(i, tier) {
+    if (cachedGachaPool[i] && GACHA_TIERS.includes(tier)) cachedGachaPool[i].tier = tier;
+  }
+
+  function removeGachaCard(i) {
+    cachedGachaPool.splice(i, 1);
+    renderGachaCards();
+  }
+
+  function addGachaCard() {
+    const name = (document.getElementById('gachaNewName')?.value || '').trim();
+    const anime = (document.getElementById('gachaNewAnime')?.value || '').trim();
+    const tier = document.getElementById('gachaNewTier')?.value || 'Common';
+    if (!name || !anime) return showToast('Isi nama karakter dan anime dulu.', 'warning');
+    if (cachedGachaPool.some((c) => c.name.toLowerCase() === name.toLowerCase())) {
+      return showToast('Kartu "' + name + '" sudah ada di pool.', 'warning');
+    }
+    cachedGachaPool.push({ name, anime, tier, imageUrl: null });
+    document.getElementById('gachaNewName').value = '';
+    document.getElementById('gachaNewAnime').value = '';
+    renderGachaCards();
+  }
+
+  async function saveGachaPool() {
+    try {
+      const res = await fetch('/api/gacha/cards', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pool: cachedGachaPool.map((c) => ({ name: c.name, anime: c.anime, tier: c.tier })) }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.success) {
+        loadGachaCards();
+        showToast('Pool kartu disimpan (' + d.count + ' kartu).', 'success');
+      } else {
+        showToast(d.message || 'Gagal menyimpan pool.', 'error');
+      }
+    } catch (err) {
+      showToast('Gagal terhubung ke server: ' + err.message, 'error');
+    }
+  }
+
+  async function resetGachaPool() {
+    const ok = await customConfirm('Kembalikan pool kartu ke bawaan (80 kartu)? Kartu yang sudah dimiliki user tidak berubah.', 'Reset Pool Gacha', 'Ya, Reset');
+    if (!ok) return;
+    try {
+      const res = await fetch('/api/gacha/cards/reset', { method: 'POST' });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.success) {
+        loadGachaCards();
+        showToast('Pool dikembalikan ke bawaan.', 'success');
+      } else {
+        showToast(d.message || 'Gagal reset pool.', 'error');
+      }
+    } catch (err) {
+      showToast('Gagal terhubung ke server: ' + err.message, 'error');
+    }
+  }
+
+  async function saveGachaArt(i) {
+    const card = cachedGachaPool[i];
+    if (!card) return;
+    const url = (document.getElementById('gachaArt' + i)?.value || '').trim();
+    try {
+      const res = await fetch('/api/gacha/art', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: card.name, imageUrl: url }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.success) {
+        cachedGachaPool[i].imageUrl = url || null;
+        renderGachaCards();
+        showToast(url ? 'Gambar kartu disimpan.' : 'Override gambar dihapus.', 'success');
+      } else {
+        showToast(d.message || 'Gagal menyimpan gambar.', 'error');
+      }
+    } catch (err) {
+      showToast('Gagal terhubung ke server: ' + err.message, 'error');
+    }
   }
 
   function filterQuizPool() {

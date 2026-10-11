@@ -1,5 +1,6 @@
 const { formatCommandUsage } = require('../utils/messageFormatter');
 const { boxHeader } = require('../utils/textStyle');
+const { frameDownloadedImage } = require('../services/cardFrameService');
 const { createCardsRepo, RARITY_EMOJI } = require('../database/cardsRepo');
 
 function formatShowcaseCard(card) {
@@ -19,6 +20,8 @@ async function execute(ctx) {
         checkCommandLimit,
         incrementCommandUsage,
         cardsRepo,
+        sendChatWithImage,
+        downloadImageToTempFile,
     } = ctx;
 
     if (bot.isCooldown) return true;
@@ -38,7 +41,7 @@ async function execute(ctx) {
         const repo = cardsRepo || createCardsRepo(ctx.db);
         const rawArg = String(cleanMsg || lowerMsg || '').replace(/^\.pajang/i, '').trim();
 
-        // Tanpa argumen: tampilkan pajangan saat ini.
+        // Tanpa argumen: tampilkan pajangan saat ini (kirim gambar bila ada art-nya).
         if (!rawArg) {
             const current = await repo.getShowcase(senderUserId);
             if (!current) {
@@ -47,8 +50,20 @@ async function execute(ctx) {
                     msg.id);
                 return true;
             }
+            const caption = `@${senderName.substring(0, 10)}\n┌── ${boxHeader('PAJANGAN')} 🖼️\n│ ${formatShowcaseCard(current)}\n│ 📖 ${current.anime}\n└───────────────────`;
+            if (current.image_url && typeof downloadImageToTempFile === 'function' && typeof sendChatWithImage === 'function') {
+                try {
+                    const tempImg = await downloadImageToTempFile(current.image_url);
+                    if (tempImg) {
+                        const sent = await sendChatWithImage(bot, await frameDownloadedImage(tempImg, current.rarity), caption, msg.id);
+                        if (sent) return true;
+                    }
+                } catch (e) {
+                    console.warn('[PAJANG] Kirim gambar gagal, fallback teks:', e.message);
+                }
+            }
             await sendChatMessage(bot,
-                `@${senderName.substring(0, 10)}\n┌── ${boxHeader('PAJANGAN')} 🖼️\n│ ${formatShowcaseCard(current)}\n│ 📖 ${current.anime}\n└───────────────────`,
+                current.image_url ? `${caption}\n🖼️ ${current.image_url}` : caption,
                 msg.id);
             return true;
         }
@@ -67,8 +82,20 @@ async function execute(ctx) {
             return true;
         }
 
+        const caption = `@${senderName.substring(0, 10)}\n┌── ${boxHeader('PAJANGAN')} 🖼️\n│ ${formatShowcaseCard(result)}\n│ Dipajang di .profil kamu! ✨\n└───────────────────`;
+        if (result.image_url && typeof downloadImageToTempFile === 'function' && typeof sendChatWithImage === 'function') {
+            try {
+                const tempImg = await downloadImageToTempFile(result.image_url);
+                if (tempImg) {
+                    const sent = await sendChatWithImage(bot, await frameDownloadedImage(tempImg, result.rarity), caption, msg.id);
+                    if (sent) return true;
+                }
+            } catch (e) {
+                console.warn('[PAJANG] Kirim gambar gagal, fallback teks:', e.message);
+            }
+        }
         await sendChatMessage(bot,
-            `@${senderName.substring(0, 10)}\n┌── ${boxHeader('PAJANGAN')} 🖼️\n│ ${formatShowcaseCard(result)}\n│ Dipajang di .profil kamu! ✨\n└───────────────────`,
+            result.image_url ? `${caption}\n🖼️ ${result.image_url}` : caption,
             msg.id);
     } catch (e) {
         console.error('[PAJANG ERROR]', e.message);

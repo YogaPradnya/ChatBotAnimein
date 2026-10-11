@@ -46,7 +46,6 @@ const COMMANDS = {
     LEADERBOARD: '.leaderboard',
     KUIS: '.kuis',
     KIUS: '.kius',
-    BLITZ: '.blitz',
     TURNAMEN: '.turnamen',
     META: '.meta',
     KOMBO: '.kombo',

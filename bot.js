@@ -57,6 +57,7 @@ const { repairPersonaReply, sanitizeUnicodeReply, DATA_CONTEXT_RE, MAX_EMOJI_PER
 const { buildRaraPreviewPayload } = require('./src/services/raraPreview');
 const { loadFactMemory, recordFacts, buildFactMemoryContext } = require('./src/services/factMemory');
 const { isInjectionAttempt, buildInjectionRefusal } = require('./src/services/injectionGuard');
+const { isWebSearchWorthy, fetchWebContext } = require('./src/services/webSearchService');
 let RARA_CHARACTER_CONFIG = null;
 // Default pengaturan respons Rara (ditimpa dari DB saat initDB; dipakai sebagai fallback).
 global.RARA_STYLE_INTENSITY = 70;
@@ -133,7 +134,6 @@ commandRouter
     .register([
         COMMANDS.HINT,
         COMMANDS.KUIS,
-        COMMANDS.BLITZ,
         COMMANDS.TURNAMEN,
         '.game',
         COMMANDS.PROFIL,
@@ -3825,12 +3825,19 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
     const knowledgeMatched = knowledgeResult.matched === true;
     const wantsPokemonShop = /pokemon|poke|pika|shop|toko|jual|dijual|jualan|harga|price|stok|stock/i.test(userMessage)
         && /shop|toko|jual|dijual|jualan|harga|price|stok|stock|beli/i.test(userMessage);
+    // WEB LUAR: pertanyaan umum/terkini yang tak ter-cover knowledge Animein
+    // dicarikan ringkasan web (DDG + Wikipedia) paralel dengan konteks lain.
+    // Persona tetap: fakta Animein HANYA dari konteks Animein (aturan prompt).
+    const webSearchEnabled = CONFIG.WEB_SEARCH_ENABLED !== false;
+    const shouldSearchWeb = webSearchEnabled
+        && isWebSearchWorthy(userMessage, { knowledgeMatched, intent });
     // LATENSI: 3 fetch async dijalankan paralel (dulu sekuensial). Gagal -> string kosong.
-    const [animeCtxRes, pokemonShopRes, extraCtxRes, factMemRes] = await Promise.allSettled([
+    const [animeCtxRes, pokemonShopRes, extraCtxRes, factMemRes, webCtxRes] = await Promise.allSettled([
         buildAnimeContext(intent, userMessage),
         wantsPokemonShop ? fetchPokemonShop(bots[0]) : Promise.resolve([]),
         buildAnimeinExtraContext(userMessage, bots[0], senderName),
         loadFactMemory(settingsRepo, senderUserId),
+        shouldSearchWeb ? fetchWebContext(userMessage) : Promise.resolve(''),
     ]);
     const animeContext = animeCtxRes.status === 'fulfilled' ? (animeCtxRes.value || '') : '';
     const pokemonShopContext = wantsPokemonShop
@@ -3840,8 +3847,10 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
     const factMemoryContext = factMemRes.status === 'fulfilled'
         ? buildFactMemoryContext(factMemRes.value && factMemRes.value.facts)
         : '';
-    console.log(`[CONTEXT-BUILD] ${(Date.now() - ctxBuildStart)}ms (paralel: anime+shop+extra+factmem)`);
-    const finalContext = animeContext + knowledgeContext + pokemonShopContext + animeinExtraContext + factMemoryContext;
+    const webSearchContext = webCtxRes.status === 'fulfilled' ? (webCtxRes.value || '') : '';
+    if (webSearchContext) console.log(`[CONTEXT] Web luar dipakai (${webSearchContext.length} char) untuk ${senderName}`);
+    console.log(`[CONTEXT-BUILD] ${(Date.now() - ctxBuildStart)}ms (paralel: anime+shop+extra+factmem+web)`);
+    const finalContext = animeContext + knowledgeContext + pokemonShopContext + animeinExtraContext + factMemoryContext + webSearchContext;
 
     // LEARNING LOOP: catat knowledge gap (fire-and-forget) + counter akurasi.
     if (!knowledgeMatched && !knowledgeContext && ANIMEIN_KNOWLEDGE.length > 0) {
@@ -3889,7 +3898,7 @@ async function getAIResponse(userMessage, senderName, isReply = false, senderUse
     // 'chat' untuk sapaan/obrolan biasa. (animeContext selalu membawa [Waktu],
     // jadi khusus dicek penanda DATA via DATA_CONTEXT_RE.)
     const hasAnimeData = DATA_CONTEXT_RE.test(animeContext || '');
-    const answerStyle = (intent || knowledgeContext || pokemonShopContext || animeinExtraContext || hasAnimeData) ? 'info' : 'chat';
+    const answerStyle = (intent || knowledgeContext || pokemonShopContext || animeinExtraContext || webSearchContext || hasAnimeData) ? 'info' : 'chat';
     const dynamicSystemPrompt = buildSystemPrompt({
         characterConfig: RARA_CHARACTER_CONFIG,
         senderName,

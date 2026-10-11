@@ -1,6 +1,6 @@
 const { boxHeader } = require('../utils/textStyle');
 const { askNvidiaAi } = require('./nvidiaAiService');
-const { DIFFICULTY, getDifficultyConfig, BLITZ_DURATION_MS, BLITZ_XP_MULTIPLIER } = require('./quizDifficulty');
+const { DIFFICULTY, getDifficultyConfig } = require('./quizDifficulty');
 
 async function generateQuizHintWithAI(activeQuiz, hintLevel = 1) {
     if (!activeQuiz || !activeQuiz.original) return null;
@@ -89,7 +89,7 @@ function createQuizService({
         }
     }
 
-    // Durasi efektif kuis yang sedang berjalan (mendukung blitz/level), fallback ke default closure.
+    // Durasi efektif kuis yang sedang berjalan, fallback ke default closure.
     function getEffectiveDuration() {
         const activeQuiz = getActiveQuiz();
         return (activeQuiz && activeQuiz.durationMs) || durationMs;
@@ -219,7 +219,7 @@ function createQuizService({
         await sendChatMessage(bot, timeoutMsg, lastMsgId);
     }
 
-    // opts opsional: { difficulty: 'mudah'|'sedang'|'sulit', durationMs, blitz: true, xpMultiplier, filter }
+    // opts opsional: { difficulty: 'mudah'|'sedang'|'sulit', durationMs, xpMultiplier, filter }
     // Signature lama startQuiz(bot, senderName, msgId, forcedId) tetap kompatibel.
     async function startQuiz(bot, senderName, msgId, forcedId = null, opts = {}) {
         // PENTING: bersihkan timer kuis LAMA sebelum setActiveQuiz agar tidak bocor/ganda.
@@ -242,9 +242,8 @@ function createQuizService({
         try {
             const difficulty = (opts.difficulty && DIFFICULTY[opts.difficulty]) ? opts.difficulty : 'normal';
             const diffCfg = getDifficultyConfig(difficulty);
-            const isBlitz = Boolean(opts.blitz);
-            const quizDurationMs = opts.durationMs || (isBlitz ? BLITZ_DURATION_MS : durationMs);
-            const xpMultiplier = opts.xpMultiplier != null ? opts.xpMultiplier : (isBlitz ? BLITZ_XP_MULTIPLIER : diffCfg.xpMultiplier);
+            const quizDurationMs = opts.durationMs || durationMs;
+            const xpMultiplier = opts.xpMultiplier != null ? opts.xpMultiplier : diffCfg.xpMultiplier;
             // Filter pool: opts.filter > mapping difficulty > filter global (dashboard).
             const quizFilter = opts.filter || (difficulty !== 'normal' ? diffCfg.filter : getQuizFilter());
             let anime = null;
@@ -305,7 +304,6 @@ function createQuizService({
                 difficulty,
                 xpMultiplier,
                 durationMs: quizDurationMs,
-                blitz: isBlitz,
             };
 
             setActiveQuiz(quizData);
@@ -314,9 +312,7 @@ function createQuizService({
                 .catch(e => handleError(e, { scope: 'QUIZ', detail: 'persist total_quizzes_started', stats, logEmitter }));
 
             let introMsg = buildHintMessage(0);
-            if (isBlitz) {
-                introMsg = `⚡ 𝗕𝗟𝗜𝗧𝗭! 60 detik, tanpa ampun!\nXP x${xpMultiplier}\n\n${introMsg}`;
-            } else if (difficulty !== 'normal') {
+            if (difficulty !== 'normal') {
                 introMsg = `🏷️ Mode ${diffCfg.label} (XP x${diffCfg.xpMultiplier})\n\n${introMsg}`;
             }
             await sendChatMessage(bot, introMsg, msgId);

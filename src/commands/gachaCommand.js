@@ -1,15 +1,23 @@
 const { formatCommandUsage } = require('../utils/messageFormatter');
 const { boxHeader } = require('../utils/textStyle');
+const { frameDownloadedImage } = require('../services/cardFrameService');
 const {
     createCardsRepo,
     GACHA_COST,
     GACHA_DAILY_LIMIT,
-    GACHA_PITY_LIMIT,
     MAX_CARD_LEVEL,
-    RARITY_RATES,
     RARITY_EMOJI,
+    RARITY_LIST,
+    DEFAULT_RATES,
+    DEFAULT_STOCKS,
     LIMIT_BREAK_XP_REWARD,
 } = require('../database/cardsRepo');
+
+function formatRate(n) {
+    const v = Number(n);
+    if (!Number.isFinite(v)) return '?';
+    return String(parseFloat(v.toFixed(4)));
+}
 
 function calcLevel(xp) {
     let lv = 1;
@@ -24,7 +32,10 @@ function buildCardLines(result, withImageUrl = true) {
         `│ ${emoji} ${result.charName} [${result.rarity}] ★${result.level}`,
         `│ 📖 ${result.anime} | ⚡ Power ${result.power}`,
     ];
-    if (result.forcedPity) lines.push(`│ ✨ PITY! Dijamin Epic+!`);
+    if (result.downgraded) lines.push(`│ 📉 Stok rarity atas habis, turun grade!`);
+    if (result.stockLimit != null && result.stockLeft != null) {
+        lines.push(`│ 📦 Stok: sisa ${result.stockLeft}/${result.stockLimit} global`);
+    }
     if (result.isDuplicate) {
         if (result.leveledUp) {
             lines.push(`│ ♻️ LIMIT BREAK! ★${result.level} +${result.xpBonus.toLocaleString('id-ID')} XP`);
@@ -34,12 +45,12 @@ function buildCardLines(result, withImageUrl = true) {
     } else {
         lines.push(`│ 🆕 Kartu baru! (.koleksi)`);
     }
-    if (withImageUrl && (result.rarity === 'Epic' || result.rarity === 'Legendary') && result.imageUrl) {
+    if (withImageUrl && result.imageUrl) {
         lines.push(`│ 🖼️ ${result.imageUrl}`);
     }
     lines.push(`├───────────────────`);
-    lines.push(`│ 📊 Pull #${result.total_pulls} | Pity ${result.pity_count}/${GACHA_PITY_LIMIT}`);
-    lines.push(`│ 🎯 Harian ${result.pulls_today}/${GACHA_DAILY_LIMIT} | XP -${GACHA_COST}`);
+    lines.push(`│ 📊 Total pull #${result.total_pulls}`);
+    lines.push(`│ 🎯 Harian ${result.pulls_today}/${result.dailyLimit ?? GACHA_DAILY_LIMIT} | XP -${result.cost ?? GACHA_COST}`);
     lines.push(`└───────────────────`);
     return lines;
 }
@@ -55,28 +66,35 @@ function resolveTodayKey(ctx) {
 
 async function showRate(ctx, repo, todayKey) {
     const { bot, msg, senderName, senderUserId, sendChatMessage } = ctx;
-    let pityCount = 0;
+    let cfg = { cost: GACHA_COST, dailyLimit: GACHA_DAILY_LIMIT };
+    try {
+        if (repo && typeof repo.getConfig === 'function') cfg = await repo.getConfig();
+    } catch (e) {
+        console.warn('[GACHA] Gagal baca config:', e.message);
+    }
     let pullsToday = 0;
     try {
         const state = await repo.getPityState(senderUserId);
-        pityCount = state.pity_count; // pity TIDAK reset harian, hanya pulls_today
         pullsToday = state.today_key === todayKey ? state.pulls_today : 0;
     } catch (e) {
-        console.warn('[GACHA] Gagal baca pity:', e.message);
+        console.warn('[GACHA] Gagal baca pulls:', e.message);
     }
-    const sisa = Math.max(0, GACHA_PITY_LIMIT - pityCount);
+    const sisa = Math.max(0, cfg.dailyLimit - pullsToday);
+    const rates = cfg.rates || DEFAULT_RATES;
+    const stocks = cfg.stocks || DEFAULT_STOCKS;
     const lines = [
         `┌── ${boxHeader('GACHA KARTU')} 💳`,
-        `│ Biaya : ${GACHA_COST} XP/pull`,
-        `│ Harian: ${pullsToday}/${GACHA_DAILY_LIMIT} (reset 00:00 WIB)`,
+        `│ 🍀 PURE HOKI — tanpa pity!`,
+        `│ Biaya : ${cfg.cost} XP/pull`,
+        `│ Harian: ${pullsToday}/${cfg.dailyLimit} (reset 00:00 WIB)`,
         `├───────────────────`,
-        ...RARITY_RATES.map((r) => `│ ${RARITY_EMOJI[r.rarity]} ${r.rarity.padEnd(9)} ${r.rate}%`),
+        ...RARITY_LIST.map((t) => `│ ${RARITY_EMOJI[t]} ${t.padEnd(9)} ${formatRate(rates[t])}%`),
         `├───────────────────`,
-        `│ ✨ Pity: Epic+ tiap ${GACHA_PITY_LIMIT} pull`,
-        `│ 🎯 Sisa : ${sisa} pull menuju pity`,
-        `│ ♻️ Limit Break (dupe):`,
-        `│    C +${LIMIT_BREAK_XP_REWARD.Common} / R +${LIMIT_BREAK_XP_REWARD.Rare}`,
-        `│    E +${LIMIT_BREAK_XP_REWARD.Epic} / L +${LIMIT_BREAK_XP_REWARD.Legendary} XP (max ★${MAX_CARD_LEVEL})`,
+        `│ 📦 Stok/kartu: 🔴Mythic ${stocks.Mythic} | 🟡Legend ${stocks.Legendary} | 🟣Epic ${stocks.Epic} | R/C ∞`,
+        `│ 🎯 Sisa : ${sisa} pull hari ini`,
+        `│ ♻️ Duplikat (Rare/Common):`,
+        `│    C +${LIMIT_BREAK_XP_REWARD.Common} / R +${LIMIT_BREAK_XP_REWARD.Rare} XP (max ★${MAX_CARD_LEVEL})`,
+        `│    Epic+ unik per user (tak bisa duplikat)`,
         `│ 🖼️ .pajang [nama] untuk pamer kartu`,
         `└───────────────────`,
     ];
@@ -127,6 +145,14 @@ async function execute(ctx) {
     }
 
     try {
+        // Config dinamis dari dashboard (fallback konstanta bila repo lama/mock).
+        let cost = GACHA_COST;
+        try {
+            if (repo && typeof repo.getConfig === 'function') cost = (await repo.getConfig()).cost;
+        } catch (e) {
+            console.warn('[GACHA] Gagal baca config:', e.message);
+        }
+
         // Cek saldo XP (pola buyCommand.js: cache dulu, fallback DB).
         const xpRes = await userRepo.getUserXP(senderUserId);
         const dbXP = xpRes.rows.length > 0 ? Number(xpRes.rows[0].xp) : 0;
@@ -135,24 +161,33 @@ async function execute(ctx) {
             : undefined;
         const currentXP = Number.isFinite(Number(cachedXP)) ? Number(cachedXP) : dbXP;
 
-        if (currentXP < GACHA_COST) {
+        if (currentXP < cost) {
             await sendChatMessage(bot,
-                `@${senderName.substring(0, 10)}\nH-hah?! XP kamu cuma ${currentXP.toLocaleString('id-ID')}, mau gacha ${GACHA_COST} XP? Sana grinding dulu, baka! 💢`,
+                `@${senderName.substring(0, 10)}\nH-hah?! XP kamu cuma ${currentXP.toLocaleString('id-ID')}, mau gacha ${cost} XP? Sana grinding dulu, baka! 💢`,
                 msg.id);
             return true;
         }
 
         const result = await repo.performPull(senderUserId, senderName, todayKey);
+        const pullCost = Number(result.cost ?? cost);
+
+        if (result.error === 'SOLD_OUT') {
+            await sendChatMessage(bot,
+                `@${senderName.substring(0, 10)}\nWaduh, semua stok kartu langka habis! Coba lagi nanti, hmph! 💢`,
+                msg.id);
+            return true;
+        }
 
         if (result.error === 'DAILY_CAP') {
+            const cap = Number(result.dailyLimit ?? GACHA_DAILY_LIMIT);
             await sendChatMessage(bot,
-                `@${senderName.substring(0, 10)}\nHmph! Jatah gacha harianmu habis (${GACHA_DAILY_LIMIT}/${GACHA_DAILY_LIMIT})! Balik lagi besok ya... b-bukan berarti aku peduli! 😤`,
+                `@${senderName.substring(0, 10)}\nHmph! Jatah gacha harianmu habis (${cap}/${cap})! Balik lagi besok ya... b-bukan berarti aku peduli! 😤`,
                 msg.id);
             return true;
         }
 
         // Potong biaya + bonus limit break dalam SATU setUserXP (pola buyCommand.js).
-        const nextXP = Math.max(0, currentXP - GACHA_COST + result.xpBonus);
+        const nextXP = Math.max(0, currentXP - pullCost + result.xpBonus);
         const nextLevel = calcLevel(nextXP);
         await userRepo.setUserXP(senderUserId, senderName, nextXP, nextLevel);
         if (USER_STATS_CACHE && USER_STATS_CACHE[senderUserId]) {
@@ -165,16 +200,17 @@ async function execute(ctx) {
 
         const caption = `@${senderName.substring(0, 10)}\n${buildCardLines(result, false).join('\n')}`;
 
-        // Epic+ → kirim gambar asli; gagal → fallback teks + URL.
-        const canSendImage = (result.rarity === 'Epic' || result.rarity === 'Legendary')
-            && result.imageUrl
+        // Semua rarity → kirim gambar asli bila ada; gagal → fallback teks + URL.
+        const canSendImage = result.imageUrl
             && typeof downloadImageToTempFile === 'function'
             && typeof sendChatWithImage === 'function';
         if (canSendImage) {
             try {
                 const tempImg = await downloadImageToTempFile(result.imageUrl);
                 if (tempImg) {
-                    const sent = await sendChatWithImage(bot, tempImg, caption, msg.id);
+                    // Tempel bingkai rarity (instan, fallback gambar asli bila gagal).
+                    const framedImg = await frameDownloadedImage(tempImg, result.rarity);
+                    const sent = await sendChatWithImage(bot, framedImg, caption, msg.id);
                     if (sent) return true;
                 }
             } catch (e) {
@@ -191,4 +227,4 @@ async function execute(ctx) {
     return true;
 }
 
-module.exports = { execute, buildCardLines };
+module.exports = { execute, buildCardLines, formatRate };

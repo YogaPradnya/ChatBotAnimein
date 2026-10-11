@@ -572,6 +572,77 @@ function startDashboard(scope) {
         }
     });
 
+    function requireCardsRepo(res) {
+        if (!cardsRepo) {
+            res.status(503).json({ success: false, message: 'Cards repo tidak tersedia.' });
+            return false;
+        }
+        return true;
+    }
+
+    app.get('/api/gacha/config', async (req, res) => {
+        if (!requireCardsRepo(res)) return;
+        try {
+            const config = await cardsRepo.getConfig();
+            res.json({ success: true, config });
+        } catch (e) {
+            safeError(res, e);
+        }
+    });
+
+    app.post('/api/gacha/config', async (req, res) => {
+        if (!requireCardsRepo(res)) return;
+        try {
+            const saved = await cardsRepo.saveConfig(req.body || {});
+            res.json({ success: true, config: saved });
+        } catch (e) {
+            safeError(res, e);
+        }
+    });
+
+    app.get('/api/gacha/cards', async (req, res) => {
+        if (!requireCardsRepo(res)) return;
+        try {
+            const data = await cardsRepo.getEffectiveCards();
+            res.json({ success: true, ...data });
+        } catch (e) {
+            safeError(res, e);
+        }
+    });
+
+    app.post('/api/gacha/cards', async (req, res) => {
+        if (!requireCardsRepo(res)) return;
+        try {
+            const result = await cardsRepo.savePool(req.body?.pool);
+            if (!result.ok) return res.status(400).json({ success: false, message: result.error });
+            res.json({ success: true, count: result.count });
+        } catch (e) {
+            safeError(res, e);
+        }
+    });
+
+    app.post('/api/gacha/cards/reset', async (req, res) => {
+        if (!requireCardsRepo(res)) return;
+        try {
+            await cardsRepo.resetPool();
+            res.json({ success: true });
+        } catch (e) {
+            safeError(res, e);
+        }
+    });
+
+    app.post('/api/gacha/art', async (req, res) => {
+        if (!requireCardsRepo(res)) return;
+        try {
+            const { name, imageUrl } = req.body || {};
+            const result = await cardsRepo.setArtOverride(name, imageUrl);
+            if (!result.ok) return res.status(400).json({ success: false, message: result.error });
+            res.json({ success: true, removed: result.removed });
+        } catch (e) {
+            safeError(res, e);
+        }
+    });
+
     app.get('/api/stats', async (req, res) => {
         try {
             const uptime = Math.floor((Date.now() - new Date(stats.startTime)) / 1000);
@@ -1580,11 +1651,14 @@ function startDashboard(scope) {
         const targetUserId = userId || user_id;
         const xpNum = Number(xp);
         const levelNum = Number(level);
-        if (!Number.isFinite(xpNum) || xpNum < 0 || xpNum > 1e9) {
-            return res.status(400).json({ success: false, message: 'XP tidak valid (0..1000000000).' });
+        // Batas sengaja longgar: admin boleh set bebas sampai 9.999.999.999 XP / level 9.999.999.
+        const MAX_EDIT_XP = 9999999999;
+        const MAX_EDIT_LEVEL = 9999999;
+        if (!Number.isFinite(xpNum) || xpNum < 0 || xpNum > MAX_EDIT_XP) {
+            return res.status(400).json({ success: false, message: `XP tidak valid (0..${MAX_EDIT_XP.toLocaleString('id-ID')}).` });
         }
-        if (!Number.isFinite(levelNum) || !Number.isInteger(levelNum) || levelNum < 1 || levelNum > 999) {
-            return res.status(400).json({ success: false, message: 'Level tidak valid (1..999).' });
+        if (!Number.isFinite(levelNum) || !Number.isInteger(levelNum) || levelNum < 1 || levelNum > MAX_EDIT_LEVEL) {
+            return res.status(400).json({ success: false, message: `Level tidak valid (1..${MAX_EDIT_LEVEL.toLocaleString('id-ID')}).` });
         }
         try {
             const finalTitle = custom_title === "" ? null : custom_title;

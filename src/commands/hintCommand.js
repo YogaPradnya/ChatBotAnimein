@@ -36,9 +36,7 @@ async function execute(ctx) {
                 await useItem(db, senderUserId, 'free_hint', 1);
                 console.log(`[SHOP] ${senderName} menggunakan free hint (sisa: ${freeHints - 1})`);
             } else {
-                // Blitz: penalty hint 2x lipat.
-                const blitzMult = activeQuiz.blitz ? 2 : 1;
-                penalty = (Math.floor(Math.random() * 5) + 1) * blitzMult;
+                penalty = Math.floor(Math.random() * 5) + 1;
                 await addXP(senderUserId, senderName, -penalty);
             }
             activeQuiz.hintsRevealed++;

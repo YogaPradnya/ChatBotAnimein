@@ -91,6 +91,12 @@ kecuali `/health`, `/login`, `/logout`. Rate-limit API: 60 req/menit/IP.
 | POST | `/api/cache/delete` | Hapus satu cache |
 | POST | `/api/notif/clear-cache` | Reset cache notifikasi anime |
 | GET | `/api/gacha/stats` | Total pull, legendary, kolektor unik, 5 kartu terlangka |
+| GET | `/api/gacha/config` | Config gacha (biaya, limit/hari, pity) |
+| POST | `/api/gacha/config` | Simpan config gacha (clamp otomatis) |
+| GET | `/api/gacha/cards` | Pool kartu efektif + art ter-resolve |
+| POST | `/api/gacha/cards` | Ganti seluruh pool kartu (validasi tier/duplikat) |
+| POST | `/api/gacha/cards/reset` | Kembalikan pool ke 80 kartu bawaan |
+| POST | `/api/gacha/art` | Set/hapus override gambar 1 kartu (`{name, imageUrl}`; URL kosong = hapus) |
 
 ## Provider AI
 

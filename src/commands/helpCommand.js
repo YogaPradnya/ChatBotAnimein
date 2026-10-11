@@ -17,9 +17,7 @@ async function execute(ctx) {
     let helpMsg = '';
 
     if (helpArg === 'kuis') {
-        helpMsg = wrapInBox('𝗞𝗨𝗜𝗦', 'Kuis otomatis setiap 3 jam.\n\nCommand:\n• .tebak [jawab]\n• .hint (minta clue)\n• .kuis (waktu kuis)\n• .kuis [mudah|sedang|sulit] (mulai + XP x1|x1.5|x2)\n• .blitz (kuis kilat 60 detik, XP x1.2, hint 2x)\n• .turnamen (papan peringkat mingguan)\n\nHadiah:\n• +500 XP (maks, x multiplier level)\n• Hint: -40 XP\n• Salah: -20 XP');
-    } else if (helpArg === 'blitz') {
-        helpMsg = wrapInBox('BLITZ', 'Kuis kilat 60 detik.\n\nCommand:\n• .blitz\n\nAturan:\n• XP menang x1.2\n• Penalty hint 2x lipat\n• Tanpa hadiah otomatis lain');
+        helpMsg = wrapInBox('𝗞𝗨𝗜𝗦', 'Kuis otomatis setiap 3 jam.\n\nCommand:\n• .tebak [jawab]\n• .hint (minta clue)\n• .kuis (waktu kuis)\n• .kuis [mudah|sedang|sulit] (mulai + XP x1|x1.5|x2)\n• .turnamen (papan peringkat mingguan)\n\nHadiah:\n• +500 XP (maks, x multiplier level)\n• Hint: -40 XP\n• Salah: -20 XP');
     } else if (helpArg === 'turnamen') {
         helpMsg = wrapInBox('TURNAMEN', 'Papan peringkat kuis mingguan (reset tiap Senin).\n\nCommand:\n• .turnamen\n\nTampilan:\n• Top 10 minggu berjalan\n• Juara minggu lalu\n• Total partisipasi');
     } else if (helpArg === 'gambar') {
@@ -57,7 +55,7 @@ async function execute(ctx) {
     } else if (helpArg === 'genre') {
         helpMsg = wrapInBox('GENRE', 'Cari rekomendasi anime berdasarkan genre.\n\nCommand:\n- .genre [nama]\n\nContoh:\n- .genre action\n- .genre romance\n\nData diambil dari Animein Explore.');
     } else if (helpArg === 'gacha' || helpArg === 'koleksi' || helpArg === 'pajang') {
-        helpMsg = wrapInBox('GACHA', 'Gacha kartu waifu/husbando pakai XP.\n\nCommand:\n- .gacha (500 XP/pull, maks 10/hari)\n- .gacha rate (rate + pity)\n- .koleksi (galeri kartumu)\n- .pajang [nama] (pamer kartu di .profil)\n\nRate: Common 60% / Rare 25%\nEpic 11% / Legendary 4%\nPity: Epic+ tiap 20 pull\nDupe = Limit Break ★ (max ★5) + bonus XP.');
+        helpMsg = wrapInBox('GACHA', 'Gacha kartu 200 koleksi pakai XP. PURE HOKI, tanpa pity!\n\nCommand:\n- .gacha (XP/pull, maks/hari ikut dashboard)\n- .gacha rate (rate + stok)\n- .koleksi (galeri kartumu)\n- .pajang [nama] (pamer kartu di .profil)\n\nRate: Common 70% / Rare 25%\nEpic 4.89% / Legendary 0.1% / Mythic 0.01%\nStok/kartu: Mythic 1 | Legend 10 | Epic 50 | R/C unlimited\nDupe = Limit Break ★ hanya Rare/Common (max ★5) + bonus XP.\nEpic+ unik per user, stok habis = turun grade.');
     } else if (helpArg === 'tas') {
         helpMsg = wrapInBox('TAS', 'Lihat ringkasan pokemon di tas kamu.\n\nCommand:\n- .tas\n\nData: total pokemon, jumlah per grade, dan top CP.\n\nLanjut: gunakan .kombo untuk rekomendasi tim.');
     } else if (helpArg === 'limit') {
@@ -85,26 +83,11 @@ async function execute(ctx) {
             helpMsg = `Topik "${helpArg}" tidak ditemukan.\nKetik .help untuk lihat daftar topik.`;
         }
     } else {
+        // Format paragraf (bukan 1 baris per topik) agar muat dalam limit pesan Animein.
         helpMsg = [
             `┌── ${boxHeader('HELP TOPIC')}`,
-            `│ Ketik: .help [topik]`,
-            `├───────────────────`,
-            `│ Topik:`,
-            `│ 1. rekomendasi  2. waifu`,
-            `│ 3. link         4. data`,
-            `│ 5. kuis         6. gambar`,
-            `│ 7. gambarkan    8. xp`,
-            `│ 9. shop        10. kombo`,
-            `│11. profil      12. cek`,
-            `│13. rank        14. streak`,
-            `│15. level       16. ai`,
-            `│17. jadwal      18. hot`,
-            `│19. baru        20. random`,
-            `│21. populer     22. cari`,
-            `│23. genre       24. tas`,
-            `│25. limit       26. ban`,
-            `│27. blitz       28. turnamen`,
-            `│27. gacha       28. koleksi`,
+            `│ Ketik .help [topik]. Daftar topik:`,
+            `│ rekomendasi, waifu, link, data, kuis, turnamen, gambar, gambarkan, xp, shop, kombo, profil, cek, rank, streak, level, ai, jadwal, hot, baru, random, populer, cari, genre, tas, limit, ban, gacha, koleksi, pajang`,
             `└───────────────────`,
         ].join('\n');
     }

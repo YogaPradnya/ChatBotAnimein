@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { DIFFICULTY, parseDifficulty, getDifficultyConfig, BLITZ_DURATION_MS, BLITZ_XP_MULTIPLIER } = require('../../src/services/quizDifficulty');
+const { DIFFICULTY, parseDifficulty, getDifficultyConfig } = require('../../src/services/quizDifficulty');
 const { createQuizRepo } = require('../../src/database/quizRepo');
 const { getWeekKey, getPrevWeekKey, sortLeaderboard, createQuizWeeklyRepo } = require('../../src/database/quizWeeklyRepo');
 const { createQuizService, createInitialQuizState } = require('../../src/services/quizService');
@@ -99,16 +99,15 @@ function buildQuizServiceHarness(durationMs = 300000) {
     return { service, getActive: () => activeQuiz, sent, getLastFilter: () => lastFilter };
 }
 
-test('QuizPlus - blitz duration default 60s', async () => {
+test('QuizPlus - startQuiz dukung durationMs & xpMultiplier kustom', async () => {
     const { service, getActive, sent } = buildQuizServiceHarness();
     try {
-        await service.startQuiz({}, 'Tester', '1', null, { blitz: true });
+        await service.startQuiz({}, 'Tester', '1', null, { durationMs: 60000, xpMultiplier: 1.2 });
         const q = getActive();
-        assert.strictEqual(q.blitz, true);
-        assert.strictEqual(q.durationMs, BLITZ_DURATION_MS);
-        assert.strictEqual(BLITZ_DURATION_MS, 60000);
-        assert.strictEqual(q.xpMultiplier, BLITZ_XP_MULTIPLIER);
-        assert.match(sent[0], /60 detik/);
+        assert.strictEqual(q.durationMs, 60000);
+        assert.strictEqual(q.xpMultiplier, 1.2);
+        assert.strictEqual(q.blitz, undefined);
+        assert.ok(sent[0].length > 0);
     } finally {
         service.clearQuizTimers();
     }

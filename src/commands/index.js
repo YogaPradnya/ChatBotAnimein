@@ -13,7 +13,7 @@ const guessCommand = require('./guessCommand');
 const hintCommand = require('./hintCommand');
 const turnamenCommand = require('./turnamenCommand');
 const { ensureCommandLimit } = require('./helpers');
-const { parseDifficulty, BLITZ_DURATION_MS, BLITZ_XP_MULTIPLIER } = require('../services/quizDifficulty');
+const { parseDifficulty } = require('../services/quizDifficulty');
 const imageCommand = require('./imageCommand');
 const jadwalCommand = require('./jadwalCommand');
 const hotCommand = require('./hotCommand');
@@ -84,17 +84,6 @@ async function handleKuisCommand(ctx) {
         }
         await ctx.incrementCommandUsage(ctx.senderUserId, ctx.senderName);
         return ctx.startQuiz(ctx.bot, ctx.senderName, ctx.msg.id, null, { difficulty });
-    }
-
-    if (lowerMsg === '.blitz') {
-        if (ctx.bot.isCooldown) return true;
-        if (!(await ensureCommandLimit(ctx))) return true;
-        await ctx.incrementCommandUsage(ctx.senderUserId, ctx.senderName);
-        return ctx.startQuiz(ctx.bot, ctx.senderName, ctx.msg.id, null, {
-            durationMs: BLITZ_DURATION_MS,
-            blitz: true,
-            xpMultiplier: BLITZ_XP_MULTIPLIER,
-        });
     }
 
     if (lowerMsg === '.turnamen') {

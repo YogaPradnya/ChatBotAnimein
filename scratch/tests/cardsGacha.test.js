@@ -9,10 +9,14 @@ const {
     calcPower,
     GACHA_COST,
     GACHA_DAILY_LIMIT,
-    GACHA_PITY_LIMIT,
     MAX_CARD_LEVEL,
     LIMIT_BREAK_XP_REWARD,
     BASE_POWER,
+    DEFAULT_RATES,
+    DEFAULT_STOCKS,
+    STOCK_LIMITS,
+    RARITY_DOWNGRADE,
+    isUniqueRarity,
 } = require('../../src/database/cardsRepo');
 const { getPoolsByTier } = require('../../src/data/waifuPool');
 
@@ -110,23 +114,24 @@ function mockImage(url = 'https://img.test/card.jpg') {
 
 const TODAY = '2026-10-10';
 
-test('Cards - pool valid: 80 entri, tier valid, distribusi 40/24/12/4', () => {
-    assert.strictEqual(WAIFU_POOL.length, 80);
-    const count = { Common: 0, Rare: 0, Epic: 0, Legendary: 0 };
+test('Cards - pool valid: 200 entri, tier valid, distribusi 90/56/30/14/10', () => {
+    assert.strictEqual(WAIFU_POOL.length, 200);
+    const count = { Common: 0, Rare: 0, Epic: 0, Legendary: 0, Mythic: 0 };
     const names = new Set();
     for (const e of WAIFU_POOL) {
         assert.ok(e.name && e.anime && e.tier, `entri tak lengkap: ${JSON.stringify(e)}`);
-        assert.ok(['Common', 'Rare', 'Epic', 'Legendary'].includes(e.tier), `tier invalid: ${e.tier}`);
+        assert.ok(['Common', 'Rare', 'Epic', 'Legendary', 'Mythic'].includes(e.tier), `tier invalid: ${e.tier}`);
         count[e.tier]++;
         assert.ok(!names.has(e.name), `nama duplikat: ${e.name}`);
         names.add(e.name);
     }
-    assert.deepStrictEqual(count, { Common: 40, Rare: 24, Epic: 12, Legendary: 4 });
+    assert.deepStrictEqual(count, { Common: 90, Rare: 56, Epic: 30, Legendary: 14, Mythic: 10 });
     const pools = getPoolsByTier();
-    assert.strictEqual(pools.Common.length, 40);
-    assert.strictEqual(pools.Rare.length, 24);
-    assert.strictEqual(pools.Epic.length, 12);
-    assert.strictEqual(pools.Legendary.length, 4);
+    assert.strictEqual(pools.Common.length, 90);
+    assert.strictEqual(pools.Rare.length, 56);
+    assert.strictEqual(pools.Epic.length, 30);
+    assert.strictEqual(pools.Legendary.length, 14);
+    assert.strictEqual(pools.Mythic.length, 10);
 });
 
 test('Cards - pool tanpa pokemon (nama & anime bersih)', () => {
@@ -140,25 +145,26 @@ test('Cards - pool tanpa pokemon (nama & anime bersih)', () => {
 
 test('Cards - distribusi rarity deterministik (mock rng)', () => {
     const cases = [
-        [0.0, 'Common'], [0.599, 'Common'],
-        [0.6, 'Rare'], [0.849, 'Rare'],
-        [0.85, 'Epic'], [0.959, 'Epic'],
-        [0.96, 'Legendary'], [0.999, 'Legendary'],
+        [0.0, 'Common'], [0.699, 'Common'],
+        [0.7, 'Rare'], [0.949, 'Rare'],
+        [0.95, 'Epic'], [0.998, 'Epic'],
+        [0.9995, 'Legendary'], [0.9998, 'Legendary'],
+        [0.99995, 'Mythic'], [0.99999, 'Mythic'],
     ];
     for (const [v, expected] of cases) {
         assert.strictEqual(rollRarity(() => v), expected, `rng=${v}`);
     }
 });
 
-test('Cards - pity: pull ke-20 dijamin Epic+ walau rng Common', async () => {
+test('Cards - pity DIHAPUS: pull ke-20 pun murni hoki (rng Common = Common)', async () => {
     const db = createMockDb({
         pity: { pity_count: 19, total_pulls: 19, pulls_today: 5, today_key: TODAY },
     });
     const repo = createCardsRepo(db, { imageResolver: mockImage() });
     const res = await repo.performPull('u1', 'Tester', TODAY, () => 0);
-    assert.strictEqual(res.forcedPity, true);
-    assert.ok(res.rarity === 'Epic' || res.rarity === 'Legendary', `dapat ${res.rarity}`);
-    assert.strictEqual(res.pity_count, 0);
+    assert.strictEqual(res.forcedPity, false);
+    assert.strictEqual(res.rarity, 'Common');
+    assert.strictEqual(res.pity_count, 19); // counter dibekukan
     assert.strictEqual(res.total_pulls, 20);
     assert.strictEqual(res.pulls_today, 6);
 });
@@ -179,7 +185,7 @@ test('Cards - kartu baru: level 1, power = base + 10 + rand(0-9)', async () => {
     assert.strictEqual(res.xpBonus, 0);
     assert.strictEqual(res.imageUrl, 'https://img.test/edward.jpg');
     assert.strictEqual(img.calls(), 1);
-    assert.strictEqual(res.pity_count, 4);
+    assert.strictEqual(res.pity_count, 3); // pity dihapus: counter dibekukan
 });
 
 test('Cards - gambar di-cache: user lain reuse tanpa fetch ulang', async () => {
@@ -267,15 +273,22 @@ test('Cards - showcase set/get (validasi milik user)', async () => {
 test('Cards - konstanta ekonomi sesuai spek', () => {
     assert.strictEqual(GACHA_COST, 500);
     assert.strictEqual(GACHA_DAILY_LIMIT, 10);
-    assert.strictEqual(GACHA_PITY_LIMIT, 20);
     assert.strictEqual(MAX_CARD_LEVEL, 5);
-    assert.deepStrictEqual(LIMIT_BREAK_XP_REWARD, { Common: 50, Rare: 150, Epic: 400, Legendary: 1000 });
-    assert.deepStrictEqual(BASE_POWER, { Common: 40, Rare: 70, Epic: 100, Legendary: 150 });
+    assert.deepStrictEqual(STOCK_LIMITS, { Common: Infinity, Rare: Infinity, Epic: 50, Legendary: 10, Mythic: 1 });
+    assert.deepStrictEqual(RARITY_DOWNGRADE, { Mythic: 'Legendary', Legendary: 'Epic', Epic: 'Rare', Rare: 'Common', Common: null });
+    assert.strictEqual(isUniqueRarity('Epic'), true);
+    assert.strictEqual(isUniqueRarity('Mythic'), true);
+    assert.strictEqual(isUniqueRarity('Rare'), false);
+    assert.deepStrictEqual(LIMIT_BREAK_XP_REWARD, { Common: 50, Rare: 150, Epic: 400, Legendary: 1000, Mythic: 2500 });
+    assert.deepStrictEqual(BASE_POWER, { Common: 40, Rare: 70, Epic: 100, Legendary: 150, Mythic: 200 });
+    assert.deepStrictEqual(DEFAULT_RATES, { Common: 70, Rare: 25, Epic: 4.89, Legendary: 0.1, Mythic: 0.01 });
+    assert.deepStrictEqual(DEFAULT_STOCKS, { Mythic: 1, Legendary: 10, Epic: 50 });
 });
 
-test('Cards - resolvePullRarity ambang pity + pickCharacter deterministik', () => {
+test('Cards - resolvePullRarity selalu murni rate (pity dihapus)', () => {
     assert.strictEqual(resolvePullRarity(18, () => 0).forcedPity, false);
-    assert.strictEqual(resolvePullRarity(19, () => 0).forcedPity, true);
+    assert.strictEqual(resolvePullRarity(19, () => 0).forcedPity, false);
+    assert.strictEqual(resolvePullRarity(99, () => 0.99999).rarity, 'Mythic');
     const pools = { Legendary: [{ name: 'A' }, { name: 'B' }] };
     assert.strictEqual(pickCharacter('Legendary', () => 0, pools).name, 'A');
     assert.strictEqual(pickCharacter('Legendary', () => 0.999, pools).name, 'B');
@@ -285,12 +298,13 @@ test('Cards - resolvePullRarity ambang pity + pickCharacter deterministik', () =
 
 test('Cards - buildCardLines tanpa URL untuk caption gambar', () => {
     const { buildCardLines } = require('../../src/commands/gachaCommand');
-    const result = { charName: 'Son Goku', anime: 'Dragon Ball', rarity: 'Legendary', level: 1, power: 169, forcedPity: true, isDuplicate: false, leveledUp: false, xpBonus: 0, imageUrl: 'https://x/y.jpg', total_pulls: 1, pity_count: 0, pulls_today: 1 };
+    const result = { charName: 'Son Goku', anime: 'Dragon Ball', rarity: 'Legendary', level: 1, power: 169, forcedPity: false, isDuplicate: false, leveledUp: false, xpBonus: 0, imageUrl: 'https://x/y.jpg', total_pulls: 1, pity_count: 0, pulls_today: 1, stockLeft: 9, stockLimit: 10 };
     const withUrl = buildCardLines(result, true).join('\n');
     const caption = buildCardLines(result, false).join('\n');
     assert.ok(withUrl.includes('https://x/y.jpg'));
     assert.ok(!caption.includes('https://x/y.jpg'));
-    assert.ok(caption.includes('Son Goku') && caption.includes('PITY'));
+    assert.ok(caption.includes('Son Goku') && !caption.includes('PITY'));
+    assert.ok(caption.includes('sisa 9/10'));
 });
 
 test('Cards - execute kirim gambar untuk Epic+ dan fallback teks saat gagal', async () => {

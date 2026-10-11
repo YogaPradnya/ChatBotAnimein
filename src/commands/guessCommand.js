@@ -90,7 +90,7 @@ async function execute(ctx) {
 
             const dn = senderName.substring(0, 10);
             const xpMul = XP_MULTIPLIER > 1 ? `(x${XP_MULTIPLIER})` : '';
-            const diffLabel = activeQuiz.blitz ? 'BLITZ' : String(activeQuiz.difficulty || 'normal').toUpperCase();
+            const diffLabel = String(activeQuiz.difficulty || 'normal').toUpperCase();
             const resultCard = [
                 `┌── ${boxHeader('🎉 MENANG')}`,
                 `│👤 @${dn}`,

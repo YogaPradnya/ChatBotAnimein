@@ -96,6 +96,7 @@ function createEnvConfig() {
         },
         BOT: {
             POLL_INTERVAL: 9000,
+            WEB_SEARCH_ENABLED: getEnv('WEB_SEARCH_ENABLED', '1') !== '0',
         },
     };
 }

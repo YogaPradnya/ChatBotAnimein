@@ -37,7 +37,7 @@ async function execute(ctx) {
 
         if (board.length === 0) {
             lines.push(`│ Belum ada peserta minggu ini.`);
-            lines.push(`│ Mainkan .kuis / .blitz!`);
+            lines.push(`│ Mainkan .kuis!`);
         } else {
             board.forEach((row, i) => {
                 const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
