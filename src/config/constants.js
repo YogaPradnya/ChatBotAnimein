@@ -66,6 +66,7 @@ const COMMANDS = {
     GACHA: '.gacha',
     KOLEKSI: '.koleksi',
     PAJANG: '.pajang',
+    LOGIN: '.login',
 
 };
 

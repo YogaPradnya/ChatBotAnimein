@@ -279,6 +279,30 @@ async function initDB() {
             )
         `);
 
+        // Tabel kode pairing web book kartu (1 kode aktif per user, sekali pakai, kedaluwarsa 10 menit).
+        await db.execute(`
+            CREATE TABLE IF NOT EXISTS web_pairing_codes (
+                code TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                username TEXT NOT NULL DEFAULT '',
+                expires_at INTEGER NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+        await db.execute(`CREATE INDEX IF NOT EXISTS idx_pairing_user ON web_pairing_codes (user_id)`);
+
+        // Tabel kode login web (dibuat di web, diklaim via .login di chat).
+        await db.execute(`
+            CREATE TABLE IF NOT EXISTS web_login_codes (
+                code TEXT PRIMARY KEY,
+                token_hash TEXT NOT NULL,
+                user_id TEXT DEFAULT NULL,
+                username TEXT NOT NULL DEFAULT '',
+                expires_at INTEGER NOT NULL,
+                created_at INTEGER NOT NULL
+            )
+        `);
+
         // Tabel statistik kuis per user
         await db.execute(`
             CREATE TABLE IF NOT EXISTS user_quiz_stats (

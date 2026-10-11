@@ -643,6 +643,53 @@ function startDashboard(scope) {
         }
     });
 
+    // === WEB KARTU: akun web (password hash, hanya reset) + setting sistem kartu ===
+    const CARD_SETTINGS_DEFAULTS = { battle_xp_win: 100, battle_xp_lose: 20, battle_daily_cap: 10 };
+
+    async function readCardSettings() {
+        const out = { ...CARD_SETTINGS_DEFAULTS };
+        for (const key of Object.keys(CARD_SETTINGS_DEFAULTS)) {
+            try {
+                const r = await db.execute({ sql: 'SELECT value FROM settings WHERE key = ?', args: [`web_${key}`] });
+                if (r.rows.length > 0 && r.rows[0].value != null && r.rows[0].value !== '') {
+                    const n = parseInt(r.rows[0].value, 10);
+                    if (Number.isFinite(n)) out[key] = n;
+                }
+            } catch (_) { /* default */ }
+        }
+        out.battle_xp_win = Math.min(10000, Math.max(0, out.battle_xp_win));
+        out.battle_xp_lose = Math.min(10000, Math.max(0, out.battle_xp_lose));
+        out.battle_daily_cap = Math.min(100, Math.max(1, out.battle_daily_cap));
+        return out;
+    }
+
+    app.get('/api/web/card-settings', async (req, res) => {
+        try {
+            res.json({ success: true, settings: await readCardSettings() });
+        } catch (e) {
+            safeError(res, e);
+        }
+    });
+
+    app.post('/api/web/card-settings', async (req, res) => {
+        try {
+            const clean = await readCardSettings();
+            const b = req.body || {};
+            if (b.battle_xp_win !== undefined) clean.battle_xp_win = Math.min(10000, Math.max(0, parseInt(b.battle_xp_win, 10) || 0));
+            if (b.battle_xp_lose !== undefined) clean.battle_xp_lose = Math.min(10000, Math.max(0, parseInt(b.battle_xp_lose, 10) || 0));
+            if (b.battle_daily_cap !== undefined) clean.battle_daily_cap = Math.min(100, Math.max(1, parseInt(b.battle_daily_cap, 10) || 1));
+            for (const [k, v] of Object.entries(clean)) {
+                await db.execute({
+                    sql: 'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+                    args: [`web_${k}`, String(v)],
+                });
+            }
+            res.json({ success: true, settings: clean });
+        } catch (e) {
+            safeError(res, e);
+        }
+    });
+
     app.get('/api/stats', async (req, res) => {
         try {
             const uptime = Math.floor((Date.now() - new Date(stats.startTime)) / 1000);

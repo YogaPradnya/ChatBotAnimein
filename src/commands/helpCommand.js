@@ -29,7 +29,7 @@ async function execute(ctx) {
     } else if (helpArg === 'kombo' || helpArg === 'combo') {
         helpMsg = wrapInBox('𝗞𝗢𝗠𝗕𝗢', 'Rekomendasi 3 Pokemon terbaik di tas kamu.\n\nCommand:\n• .kombo / .combo\n\nAturan:\n• Sesuai grade aktif\n• Banned diabaikan\n• Ambil LV tertinggi');
     } else if (helpArg === 'profil') {
-        helpMsg = wrapInBox('PROFIL', 'Cek statistikmu.\n\nCommand:\n• .profil\n\nTampilan:\n• Rank, Level, XP\n• Statistik kuis\n• Streak harian\n• Sisa limit hari ini');
+        helpMsg = wrapInBox('PROFIL', 'Cek statistikmu.\n\nCommand:\n• .profil\n\nTampilan:\n• Rank, Level, XP\n• Streak harian\n• Sisa limit (command, gambar, rara, gacha)\n• Kartu pajangan (gambar, bila dipasang via .pajang)');
     } else if (helpArg === 'cek') {
         helpMsg = wrapInBox('CEK', 'Intip profil user.\n\nCommand:\n• .cek @username\n\nContoh:\n• .cek @sashaww\n\nHadiah: +5 XP');
     } else if (helpArg === 'rank' || helpArg === 'leaderboard') {
@@ -55,7 +55,7 @@ async function execute(ctx) {
     } else if (helpArg === 'genre') {
         helpMsg = wrapInBox('GENRE', 'Cari rekomendasi anime berdasarkan genre.\n\nCommand:\n- .genre [nama]\n\nContoh:\n- .genre action\n- .genre romance\n\nData diambil dari Animein Explore.');
     } else if (helpArg === 'gacha' || helpArg === 'koleksi' || helpArg === 'pajang') {
-        helpMsg = wrapInBox('GACHA', 'Gacha kartu 200 koleksi pakai XP. PURE HOKI, tanpa pity!\n\nCommand:\n- .gacha (XP/pull, maks/hari ikut dashboard)\n- .gacha rate (rate + stok)\n- .koleksi (galeri kartumu)\n- .pajang [nama] (pamer kartu di .profil)\n\nRate: Common 70% / Rare 25%\nEpic 4.89% / Legendary 0.1% / Mythic 0.01%\nStok/kartu: Mythic 1 | Legend 10 | Epic 50 | R/C unlimited\nDupe = Limit Break ★ hanya Rare/Common (max ★5) + bonus XP.\nEpic+ unik per user, stok habis = turun grade.');
+        helpMsg = wrapInBox('GACHA', 'Gacha kartu 200 koleksi pakai XP. PURE HOKI, tanpa pity!\n\nCommand:\n- .gacha (XP/pull, maks/hari ikut dashboard)\n- .gacha rate (rate + stok)\n- .koleksi (galeri kartumu)\n- .pajang [nama] (pamer kartu di .profil)\n\nRate: Common 70% / Rare 25%\nEpic 4.89% / Legendary 0.1% / Mythic 0.01%\nStok/kartu: Mythic 1 | Legend 10 | Epic 50 | R/C unlimited\nDupe = Limit Break ★ hanya Rare/Common (max ★5) + bonus XP.\nEpic+ unik per user, stok habis = turun grade.\nPower tetap per kartu (sama di semua user).');
     } else if (helpArg === 'tas') {
         helpMsg = wrapInBox('TAS', 'Lihat ringkasan pokemon di tas kamu.\n\nCommand:\n- .tas\n\nData: total pokemon, jumlah per grade, dan top CP.\n\nLanjut: gunakan .kombo untuk rekomendasi tim.');
     } else if (helpArg === 'limit') {
@@ -71,6 +71,10 @@ async function execute(ctx) {
         helpMsg = wrapInBox('DATA', 'Pengaturan data pribadi (Core Memory) kamu.\n\nCommand:\n- .data [isi datamu]\n- .data hapus [nomor]\n- .data reset\n\nAturan:\n- Maksimal 5 list data per ID\n- Maksimal 80 karakter per item');
     } else if (helpArg === 'gambarkan') {
         helpMsg = wrapInBox('GAMBARKAN', 'Buat gambar AI berbasis deskripsi prompt.\n\nCommand:\n- .gambarkan [prompt]\n\nContoh:\n- .gambarkan anime girl playing guitar');
+    } else if (helpArg === 'login' || helpArg === 'pair') {
+        helpMsg = wrapInBox('LOGIN', 'Masuk web book kartu tanpa password.\n\nCommand:\n• .login [kode]\n\nCara:\n• Buka web, tekan Dapatkan Kode\n• Ketik .login [kode] di chat ini\n• Kembali ke web, langsung masuk');
+    } else if (helpArg === 'web' || helpArg === 'book' || helpArg === 'trade' || helpArg === 'battle') {
+        helpMsg = wrapInBox('WEB', 'Web book kartu (tanpa password).\n\nIsi:\n• Book: galeri 200 kartu, ketuk untuk stat\n• Trade: tukar kartu via kode angka\n• Battle: lawan AI / teman, menang +100 XP\n\nMasuk: buka web untuk kode, ketik .login [kode] di chat.');
     } else if (helpArg === 'ban') {
         helpMsg = wrapInBox('BAN', 'Aturan bot:\n• Dilarang spam\n• Dilarang toxic\n• Dilarang abuse XP\n\nPelanggar akan di-ban permanen.');
     } else if (helpArg) {
@@ -87,7 +91,7 @@ async function execute(ctx) {
         helpMsg = [
             `┌── ${boxHeader('HELP TOPIC')}`,
             `│ Ketik .help [topik]. Daftar topik:`,
-            `│ rekomendasi, waifu, link, data, kuis, turnamen, gambar, gambarkan, xp, shop, kombo, profil, cek, rank, streak, level, ai, jadwal, hot, baru, random, populer, cari, genre, tas, limit, ban, gacha, koleksi, pajang`,
+            `│ rekomendasi, waifu, link, data, kuis, turnamen, gambar, gambarkan, xp, shop, kombo, profil, cek, rank, streak, level, ai, jadwal, hot, baru, random, populer, cari, genre, tas, limit, ban, gacha, koleksi, pajang, pair, web`,
             `└───────────────────`,
         ].join('\n');
     }

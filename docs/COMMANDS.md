@@ -43,6 +43,7 @@ Command:
 .toko / .shop
 .beli
 .cek
+.pair
 ```
 
 ### `handleImageCommand(ctx)`
@@ -73,6 +74,7 @@ Command:
 | `shopCommand.js` | `.toko`, `.shop` | Tampilkan toko |
 | `buyCommand.js` | `.beli` | Pembelian item toko |
 | `imageCommand.js` | `.gambar` | Fetch dan kirim gambar |
+| `loginCommand.js` | `.login` | Klaim kode login web book kartu |
 
 ## Command Design Rules
 

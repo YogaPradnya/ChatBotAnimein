@@ -98,6 +98,9 @@ function createEnvConfig() {
             POLL_INTERVAL: 9000,
             WEB_SEARCH_ENABLED: getEnv('WEB_SEARCH_ENABLED', '1') !== '0',
         },
+        WEB: {
+            CARDS_URL: getEnv('CARDS_WEB_URL'),
+        },
     };
 }
 

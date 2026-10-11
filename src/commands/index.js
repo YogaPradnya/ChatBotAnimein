@@ -28,6 +28,7 @@ const gachaCommand = require('./gachaCommand');
 const koleksiCommand = require('./koleksiCommand');
 const pajangCommand = require('./pajangCommand');
 const limitCommand = require('./limitCommand');
+const loginCommand = require('./loginCommand');
 const createImageCommand = require('./createImageCommand');
 const dataCommand = require('./dataCommand');
 const rekomendasiCommand = require('./rekomendasiCommand');
@@ -120,6 +121,15 @@ async function handleKuisCommand(ctx) {
 
     if (lowerMsg === '.limit') {
         return limitCommand.execute(ctx);
+    }
+
+    if (lowerMsg === '.pair' || lowerMsg.startsWith('.pair ')) {
+        await ctx.sendChatMessage(ctx.bot, `📌 @${ctx.senderName.substring(0, 10)} .pair sudah tidak dipakai. Buka web untuk kode, lalu ketik .login [kode]`, ctx.msg.id);
+        return true;
+    }
+
+    if (lowerMsg === '.login' || lowerMsg.startsWith('.login ')) {
+        return loginCommand.execute(ctx);
     }
 
 
@@ -247,6 +257,7 @@ module.exports = {
     koleksiCommand,
     pajangCommand,
     limitCommand,
+    loginCommand,
     createImageCommand,
     dataCommand,
     rekomendasiCommand,

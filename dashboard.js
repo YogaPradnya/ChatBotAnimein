@@ -740,6 +740,7 @@ function getDashboardHTML() {
       <div class="nav-group-items">
         <button class="nav-item" onclick="showPage('kuis', this); toggleSidebar(false)"><i data-lucide="trophy"></i><span>Kuis & Turnamen</span></button>
         <button class="nav-item" onclick="showPage('gacha', this); toggleSidebar(false)"><i data-lucide="layers"></i><span>Gacha & Kartu</span></button>
+        <button class="nav-item" onclick="showPage('webkartu', this); toggleSidebar(false)"><i data-lucide="book-open"></i><span>Web Kartu</span></button>
         <button class="nav-item" onclick="showPage('ekonomi', this); toggleSidebar(false)"><i data-lucide="coins"></i><span>Ekonomi & Toko</span></button>
         <button class="nav-item" onclick="showPage('gambar', this); toggleSidebar(false)"><i data-lucide="image"></i><span>Limit Manager</span></button>
       </div>
@@ -1830,6 +1831,23 @@ function getDashboardHTML() {
               <button class="btn-sm btn-sm-toggle" onclick="addGachaCard()">➕ Tambah</button>
             </div>
             <button class="btn-sm btn-sm-toggle" onclick="saveGachaPool()" style="background:var(--accent); border-color:var(--accent); color:#fff;">💾 Simpan Pool</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page" id="page-webkartu">
+      <div class="adaptive-flex" style="display: flex; gap: 24px;">
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 20px; min-width: 280px; max-width: 560px;">
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-title">Setting Sistem Kartu (Battle)</div>
+            <div style="font-size:11px; color:var(--muted); margin-bottom:10px;">Login web tanpa password (kode klaim via .login), jadi tidak ada daftar akun di sini.</div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:10px;">
+              <label style="font-size:11px; color:var(--muted);">XP Menang<input type="number" id="cardSetWinXp" min="0" max="10000" value="100" style="width:100%; margin-top:4px; padding:6px 8px; border-radius:8px; border:1px solid var(--border);"></label>
+              <label style="font-size:11px; color:var(--muted);">XP Kalah<input type="number" id="cardSetLoseXp" min="0" max="10000" value="20" style="width:100%; margin-top:4px; padding:6px 8px; border-radius:8px; border:1px solid var(--border);"></label>
+              <label style="font-size:11px; color:var(--muted);">Battle ber-XP/hari<input type="number" id="cardSetDailyCap" min="1" max="100" value="10" style="width:100%; margin-top:4px; padding:6px 8px; border-radius:8px; border:1px solid var(--border);"></label>
+            </div>
+            <button class="btn-sm btn-sm-toggle" onclick="saveCardSettings()" style="background:var(--accent); border-color:var(--accent); color:#fff;">Simpan</button>
           </div>
         </div>
       </div>
@@ -3551,6 +3569,29 @@ async function updateStats() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ filter })
     });
+  }
+  async function loadCardSettings() {
+    try {
+      const res = await fetch('/api/web/card-settings');
+      const d = await res.json();
+      if (!d.success) return;
+      document.getElementById('cardSetWinXp').value = d.settings.battle_xp_win;
+      document.getElementById('cardSetLoseXp').value = d.settings.battle_xp_lose;
+      document.getElementById('cardSetDailyCap').value = d.settings.battle_daily_cap;
+    } catch (e) {}
+  }
+  async function saveCardSettings() {
+    const body = {
+      battle_xp_win: parseInt(document.getElementById('cardSetWinXp').value, 10),
+      battle_xp_lose: parseInt(document.getElementById('cardSetLoseXp').value, 10),
+      battle_daily_cap: parseInt(document.getElementById('cardSetDailyCap').value, 10),
+    };
+    const res = await fetch('/api/web/card-settings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const d = await res.json().catch(() => ({}));
+    showToast(d.success ? 'Setting kartu tersimpan.' : ('Gagal: ' + (d.message || '')), d.success ? 'success' : 'error');
   }
   async function loadUsers() {
     const q = document.getElementById('userSearch')?.value || '';
