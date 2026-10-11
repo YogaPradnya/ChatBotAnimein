@@ -1,9 +1,9 @@
 const { boxHeader } = require('../utils/textStyle');
 const { formatCommandUsage } = require('../utils/messageFormatter');
-const { ensureCommandLimit } = require('./helpers');
 
 // Klaim kode login web: `.login KODE` (kode dibuat di web, berlaku 5 menit, sekali pakai).
 // Mengikat user_id pengirim ke kode tersebut — bukti kepemilikan = akun chat sendiri.
+// SENGAJA tanpa limit: tidak cek & tidak potong jatah command harian (hanya cooldown anti-spam bot).
 const LOGIN_CODE_TTL_MS = 5 * 60 * 1000;
 
 function normalizeLoginCode(value) {
@@ -18,7 +18,6 @@ async function execute(ctx) {
         senderUserId,
         cleanMsg,
         sendChatMessage,
-        incrementCommandUsage,
         db,
         CONFIG,
     } = ctx;
@@ -28,8 +27,7 @@ async function execute(ctx) {
         await sendChatMessage(bot, formatCommandUsage(senderName, 'ID user tidak terbaca.'), msg.id);
         return true;
     }
-    if (!(await ensureCommandLimit(ctx))) return true;
-    await incrementCommandUsage(senderUserId, senderName);
+    // Tanpa ensureCommandLimit + incrementCommandUsage: .login bebas limit harian.
 
     try {
         const rawArg = String(cleanMsg || '').replace(/^\.login/i, '').trim();
