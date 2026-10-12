@@ -11,6 +11,7 @@ const { createLimitRepo } = require('./database/limitRepo');
 const { createShopRepo } = require('./database/shopRepo');
 const { createCardsRepo } = require('./database/cardsRepo');
 const { createDisplayRepo } = require('./database/displayRepo');
+const { createProfilePrefRepo } = require('./database/profilePrefRepo');
 const { createBanRepo } = require('./database/banRepo');
 const { createQuizRepo } = require('./database/quizRepo');
 const { createQuizWeeklyRepo, QUIZ_WEEKLY_TABLE_SQL } = require('./database/quizWeeklyRepo');
@@ -54,6 +55,7 @@ function initializeBootstrap(options = {}) {
     const shopRepo = createShopRepo(db);
     const cardsRepo = createCardsRepo(db);
     const displayRepo = createDisplayRepo(db);
+    const profilePrefRepo = createProfilePrefRepo(db);
     const banRepo = createBanRepo(db);
     const quizRepo = createQuizRepo(db);
     const weeklyRepo = createQuizWeeklyRepo(db);
@@ -73,6 +75,7 @@ function initializeBootstrap(options = {}) {
         shopRepo,
         cardsRepo,
         displayRepo,
+        profilePrefRepo,
         banRepo,
         quizRepo,
         weeklyRepo,
@@ -230,6 +233,10 @@ function initializeBootstrap(options = {}) {
                 await db.execute(`ALTER TABLE user_cards ADD COLUMN quantity INTEGER DEFAULT 1`).catch(e => ignoreExpectedError(e, { scope: 'DB MIGRATION', detail: 'user_cards.quantity' }));
                 await db.execute(`UPDATE user_cards SET quantity = 1 WHERE quantity IS NULL OR quantity < 1`).catch(e => ignoreExpectedError(e, { scope: 'DB MIGRATION', detail: 'user_cards.quantity_backfill' }));
                 try { await displayRepo.initTables(); } catch (e) { ignoreExpectedError(e, { scope: 'DB TABLE', detail: 'user_display_cards' }); }
+                try {
+                    const { createProfilePrefRepo } = require('./database/profilePrefRepo');
+                    await createProfilePrefRepo(db).initTables();
+                } catch (e) { ignoreExpectedError(e, { scope: 'DB TABLE', detail: 'user_profile_prefs' }); }
                 await db.execute(`
                     CREATE TABLE IF NOT EXISTS user_card_pity (
                         user_id TEXT PRIMARY KEY,

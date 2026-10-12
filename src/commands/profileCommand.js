@@ -2,6 +2,20 @@ const { boxHeader } = require('../utils/textStyle');
 const { formatLimitExceeded } = require('../utils/messageFormatter');
 const { frameDownloadedImage } = require('../services/cardFrameService');
 
+/**
+ * Pilih pajangan yang tampil di .profil (konsisten sesuai pilihan user).
+ * source: 'gacha' | 'display' | 'auto' (auto = display dulu, lalu gacha).
+ * Return { kind: 'gacha'|'display'|null, card }.
+ */
+function pickProfilShowcase(source, gacha, display) {
+    const s = String(source || 'auto').toLowerCase();
+    if (s === 'gacha') return gacha ? { kind: 'gacha', card: gacha } : { kind: null, card: null };
+    if (s === 'display') return display ? { kind: 'display', card: display } : { kind: null, card: null };
+    if (display) return { kind: 'display', card: display };
+    if (gacha) return { kind: 'gacha', card: gacha };
+    return { kind: null, card: null };
+}
+
 async function execute(ctx) {
     const {
         bot,
@@ -164,17 +178,26 @@ async function execute(ctx) {
         );
 
         const profileText = profileLines.join('\n');
-        const displaySuffix = displayShowcase
-            ? `\n🎁 Pajangan spesial: ${displayShowcase.name} [${displayShowcase.grade}]`
+
+        // Pajangan .profil: konsisten ikut pilihan user (display vs gacha).
+        let profilSource = 'auto';
+        try {
+            const prefRepo = ctx.profilePrefRepo
+                || (ctx.db ? require('../database/profilePrefRepo').createProfilePrefRepo(ctx.db) : null);
+            if (prefRepo) profilSource = await prefRepo.getSource(senderUserId);
+        } catch (e) { console.warn('[PROFIL] Pref showcase gagal, pakai auto:', e.message); }
+        const picked = pickProfilShowcase(profilSource, showcase, displayShowcase);
+        const displaySuffix = picked.kind === 'display'
+            ? `\n🎁 Pajangan spesial: ${picked.card.name} [${picked.card.grade}]`
             : '';
         const profileTextFull = profileText + displaySuffix;
 
-        // Pajangan display diprioritaskan bila ada gambar (slot terpisah dari gacha).
-        if (displayShowcase && displayShowcase.imageUrl
+        // Hanya slot terpilih yang dikirim sebagai gambar profil.
+        if (picked.kind === 'display' && picked.card.imageUrl
             && typeof downloadImageToTempFile === 'function'
             && typeof sendChatWithImage === 'function') {
             try {
-                const tempImg = await downloadImageToTempFile(displayShowcase.imageUrl);
+                const tempImg = await downloadImageToTempFile(picked.card.imageUrl);
                 if (tempImg) {
                     const framedImg = await frameDownloadedImage(tempImg, 'Common');
                     const sent = await sendChatWithImage(bot, framedImg, profileTextFull, msg.id);
@@ -187,13 +210,13 @@ async function execute(ctx) {
 
         // Pajangan tidak lagi ditulis sebagai teks di profil.
         // Kalau ada kartu pajangan + gambarnya, kirim gambar kartu (framed) dengan profil sebagai caption.
-        if (showcase && showcase.image_url
+        if (picked.kind === 'gacha' && picked.card.image_url
             && typeof downloadImageToTempFile === 'function'
             && typeof sendChatWithImage === 'function') {
             try {
-                const tempImg = await downloadImageToTempFile(showcase.image_url);
+                const tempImg = await downloadImageToTempFile(picked.card.image_url);
                 if (tempImg) {
-                    const framedImg = await frameDownloadedImage(tempImg, showcase.rarity);
+                    const framedImg = await frameDownloadedImage(tempImg, picked.card.rarity);
                     const sent = await sendChatWithImage(bot, framedImg, profileTextFull, msg.id);
                     if (sent) return true;
                 }
@@ -209,4 +232,4 @@ async function execute(ctx) {
     return true;
 }
 
-module.exports = { execute };
+module.exports = { execute, pickProfilShowcase };

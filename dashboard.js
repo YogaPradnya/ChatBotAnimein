@@ -1878,7 +1878,7 @@ function getDashboardHTML() {
             <label style="font-size:11px; color:var(--muted); margin-top:10px; display:block;">Gambar (URL https)<input type="text" id="displayImageUrl" placeholder="https://... atau hasil upload" style="width:100%; margin-top:4px; padding:8px 10px; border-radius:8px; border:1px solid var(--border); font-size:12px;" oninput="previewDisplayCard()"></label>
             <div style="display:flex; gap:8px; margin-top:8px; align-items:center; flex-wrap:wrap;">
               <input type="file" id="displayUploadFile" accept="image/png,image/jpeg,image/webp,image/gif" style="font-size:11px;">
-              <button class="btn-sm btn-sm-toggle" onclick="uploadDisplayImage()">⬆️ Upload</button>
+              <button class="btn-sm btn-sm-toggle" onclick="uploadDisplayImage()">⬆️ Upload (Cloudinary)</button>
             </div>
             <label style="font-size:11px; color:var(--muted); margin-top:10px; display:block;">Deskripsi flip (belakang kartu)<textarea id="displayDesc" maxlength="1000" placeholder="Cerita / pesan di balik kartu..." style="width:100%; margin-top:4px; padding:8px 10px; border-radius:8px; border:1px solid var(--border); font-size:12px; min-height:90px;" oninput="previewDisplayCard()"></textarea></label>
             <div style="display:flex; gap:8px; margin-top:12px;">
@@ -1906,6 +1906,9 @@ function getDashboardHTML() {
             <div style="display:flex; gap:8px; margin-bottom:10px;">
               <input type="text" id="displaySearch" placeholder="Cari nama / username / grade..." style="flex:1; padding:8px 10px; border-radius:8px; border:1px solid var(--border); font-size:12px;" oninput="loadDisplayCards(1)">
               <button class="btn-sm btn-sm-toggle" onclick="loadDisplayCards(1)">🔍</button>
+            </div>
+            <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+              <button class="btn-sm btn-sm-toggle" onclick="migrateDisplayImages()">☁️ Pindahkan gambar lokal ke Cloudinary</button>
             </div>
             <div id="displayList" style="display:flex; flex-direction:column; gap:8px; max-height:560px; overflow-y:auto;">
               <div style="color:var(--muted); font-size:12px;">Memuat...</div>
@@ -3682,12 +3685,14 @@ async function updateStats() {
           const borderLbl = c.borderType === 'custom' && c.borderColor
             ? 'custom ' + escapeHTML(c.borderColor)
             : escapeHTML(c.borderType || 'classic');
+          const isLocal = typeof c.imageUrl === 'string' && c.imageUrl.indexOf('/uploads/display/') === 0;
           return '<div style="display:grid; grid-template-columns:44px minmax(0,1fr) auto; gap:8px; align-items:center; padding:10px 12px; background:var(--bg); border-radius:8px; font-size:12px;">' +
             '<div>' + img + '</div>' +
             '<div style="min-width:0;"><div style="font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHTML(c.name) + '</div>' +
             '<div style="color:var(--muted); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">@' + escapeHTML(c.username || '-') + ' &bull; ' + escapeHTML(c.grade || '-') + ' &bull; ' + borderLbl + '</div>' +
             '<div style="color:var(--muted); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHTML(String(c.description || '').slice(0, 80)) + '</div></div>' +
             '<div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">' +
+            (isLocal ? '<button class="btn-sm btn-sm-toggle" onclick="migrateDisplayImages(' + Number(c.id) + ')">☁️</button>' : '') +
             '<button class="btn-sm btn-sm-toggle" onclick="editDisplayCard(' + Number(c.id) + ')">✏️</button>' +
             '<button class="btn-sm btn-sm-del" onclick="deleteDisplayCard(' + Number(c.id) + ', \\\'' + jsString(c.name) + '\\\')">🗑️</button>' +
             '</div></div>';
@@ -3732,8 +3737,29 @@ async function updateStats() {
       showToast('Gagal terhubung: ' + err.message, 'error');
     }
   }
-  async function deleteDisplayCard(id, name) {
-    const ok = await customConfirm('Hapus kartu pajangan "' + (name || id) + '" dari pemiliknya? Tidak bisa dibatalkan.', 'Hapus Kartu Pajangan', 'Ya, Hapus');
+  async function migrateDisplayImages(id) {
+    const ok = await customConfirm(
+      id ? 'Pindahkan gambar kartu ini ke Cloudinary?' : 'Pindahkan SEMUA gambar lokal ke Cloudinary?',
+      'Migrasi Cloudinary', 'Ya, Pindahkan');
+    if (!ok) return;
+    try {
+      const res = await fetch('/api/display/migrate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(id ? { id } : {}),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.success) {
+        const fails = (d.failed && d.failed.length > 0) ? d.failed.map((f) => f.name).join(', ') : '';
+        showToast('Migrasi selesai: ' + d.migrated + ' kartu.' + (fails ? ' Gagal: ' + fails : ''), (d.failed && d.failed.length > 0) ? 'warning' : 'success');
+        loadDisplayCards(displayPage);
+      } else {
+        showToast(d.message || 'Gagal migrasi.', 'error');
+      }
+    } catch (err) {
+      showToast('Gagal terhubung: ' + err.message, 'error');
+    }
+  }
+  async function deleteDisplayCard(id, name) {    const ok = await customConfirm('Hapus kartu pajangan "' + (name || id) + '" dari pemiliknya? Tidak bisa dibatalkan.', 'Hapus Kartu Pajangan', 'Ya, Hapus');
     if (!ok) return;
     try {
       const res = await fetch('/api/display/delete', {

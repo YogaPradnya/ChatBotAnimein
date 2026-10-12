@@ -69,6 +69,7 @@ const { createLimitRepo } = require('./src/database/limitRepo');
 const { createShopRepo } = require('./src/database/shopRepo');
 const { createCardsRepo } = require('./src/database/cardsRepo');
 const { createDisplayRepo } = require('./src/database/displayRepo');
+const { createProfilePrefRepo } = require('./src/database/profilePrefRepo');
 const { createBanRepo } = require('./src/database/banRepo');
 const { createQuizRepo } = require('./src/database/quizRepo');
 const { createQuizWeeklyRepo, QUIZ_WEEKLY_TABLE_SQL } = require('./src/database/quizWeeklyRepo');
@@ -117,6 +118,7 @@ const limitRepo = createLimitRepo(db);
 const shopRepo = createShopRepo(db);
 const cardsRepo = createCardsRepo(db);
 const displayRepo = createDisplayRepo(db);
+const profilePrefRepo = createProfilePrefRepo(db);
 let limitService;
 const banRepo = createBanRepo(db);
 const quizRepo = createQuizRepo(db);
@@ -428,6 +430,8 @@ async function initDB() {
         await db.execute(`UPDATE user_cards SET quantity = 1 WHERE quantity IS NULL OR quantity < 1`).catch(e => ignoreExpectedError(e, { scope: 'DB MIGRATION', detail: 'user_cards.quantity_backfill' }));
         // Tabel kartu pajangan (display-only, gift admin, 1 kartu = 1 orang).
         await displayRepo.initTables().catch(e => ignoreExpectedError(e, { scope: 'DB TABLE', detail: 'user_display_cards' }));
+        // Preferensi pajangan .profil (display vs gacha).
+        await profilePrefRepo.initTables().catch(e => ignoreExpectedError(e, { scope: 'DB TABLE', detail: 'user_profile_prefs' }));
         await db.execute(`
             CREATE TABLE IF NOT EXISTS user_card_pity (
                 user_id TEXT PRIMARY KEY,
@@ -4913,6 +4917,7 @@ async function processMessages(bot, messages) {
                 shopRepo,
                 cardsRepo,
                 displayRepo,
+                profilePrefRepo,
                 buyItem,
                 addXP,
                 USER_STATS_CACHE,

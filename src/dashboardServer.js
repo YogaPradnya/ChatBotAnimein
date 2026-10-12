@@ -670,17 +670,52 @@ function startDashboard(scope) {
     async function saveDisplayUpload(dataUrl) {
         const m = String(dataUrl || '').match(/^data:(image\/(png|jpe?g|webp|gif));base64,([A-Za-z0-9+/=]+)$/);
         if (!m) throw new Error('Format upload harus data URL gambar (png/jpg/webp/gif).');
-        const ext = m[2] === 'jpeg' ? 'jpg' : m[2];
         const buf = Buffer.from(m[3], 'base64');
         if (buf.length === 0 || buf.length > DISPLAY_UPLOAD_MAX_BYTES) {
             throw new Error('Ukuran gambar maksimal 3MB.');
         }
+        // Upload ke Cloudinary agar URL publik (bisa tampil di dashboard, bot, dan web).
+        let cloudinaryService = null;
+        try {
+            cloudinaryService = require('./services/cloudinaryService');
+        } catch (_) { cloudinaryService = null; }
+        const cfg = cloudinaryService ? cloudinaryService.loadCloudinaryEnv(process.env) : null;
+        if (!cloudinaryService || !cfg) {
+            throw new Error('Isi CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, dan CLOUDINARY_API_SECRET di .env bot dulu.');
+        }
+        const slug = (cloudinaryService.slugifyName(`display-${Date.now()}`) || 'display').slice(0, 60);
+        const { secureUrl } = await cloudinaryService.uploadImageBuffer(
+            buf, slug, { ...cfg, folder: 'animein/display' },
+        );
+        return secureUrl;
+    }
+
+    function isLocalDisplayPath(url) {
+        return typeof url === 'string' && url.startsWith(`/${DISPLAY_UPLOAD_DIR}/`);
+    }
+
+    async function migrateDisplayImageToCloud(card) {
+        if (!card || !isLocalDisplayPath(card.imageUrl)) return { ok: false, skipped: true };
+        let cloudinaryService = null;
+        try {
+            cloudinaryService = require('./services/cloudinaryService');
+        } catch (_) { cloudinaryService = null; }
+        const cfg = cloudinaryService ? cloudinaryService.loadCloudinaryEnv(process.env) : null;
+        if (!cloudinaryService || !cfg) {
+            return { ok: false, error: 'Isi CLOUDINARY_* di .env bot dulu.' };
+        }
         const fs = require('fs');
-        const dir = runtime.path.join(projectRoot, 'public', DISPLAY_UPLOAD_DIR);
-        fs.mkdirSync(dir, { recursive: true });
-        const fname = `display_${Date.now()}_${Math.floor(Math.random() * 1e6)}.${ext}`;
-        fs.writeFileSync(runtime.path.join(dir, fname), buf);
-        return `/${DISPLAY_UPLOAD_DIR}/${fname}`;
+        const filePath = runtime.path.join(projectRoot, 'public', String(card.imageUrl).replace(/^\//, ''));
+        if (!fs.existsSync(filePath)) return { ok: false, error: 'File lokal tidak ditemukan.' };
+        const buf = fs.readFileSync(filePath);
+        const slug = (cloudinaryService.slugifyName(`display-${card.name}`) || 'display').slice(0, 60);
+        const { secureUrl } = await cloudinaryService.uploadImageBuffer(
+            buf, `${slug}-${card.id}`, { ...cfg, folder: 'animein/display' },
+        );
+        const repo = displayRepo || resolveDisplayRepo();
+        await repo.updateDisplayCard(card.id, { imageUrl: secureUrl });
+        try { fs.unlinkSync(filePath); } catch (_) { /* non-kritis */ }
+        return { ok: true, url: secureUrl };
     }
 
     app.get('/api/display/cards', async (req, res) => {
@@ -764,6 +799,48 @@ function startDashboard(scope) {
             await repo.deleteDisplayCard(Number(id));
             console.log(`[DISPLAY] Hapus kartu id=${id}`);
             res.json({ success: true });
+        } catch (e) {
+            safeError(res, e);
+        }
+    });
+
+    // Pindahkan gambar lokal (/uploads/...) ke Cloudinary. {id} = satu kartu,
+    // tanpa id = semua kartu bergambar lokal.
+    app.post('/api/display/migrate', async (req, res) => {
+        const repo = displayRepo || resolveDisplayRepo();
+        if (!repo) return res.status(503).json({ success: false, message: 'Display repo tidak tersedia.' });
+        try {
+            await repo.initTables().catch(() => {});
+            const { id } = req.body || {};
+            let targets;
+            if (id) {
+                const one = await repo.getDisplayById(Number(id));
+                if (!one) return res.status(404).json({ success: false, message: 'Kartu tidak ditemukan.' });
+                targets = [one];
+            } else {
+                const all = await repo.listDisplayCards({ page: 1, limit: 50 });
+                targets = (all.cards || []).filter((c) => isLocalDisplayPath(c.imageUrl));
+                // Ambil sisa halaman bila banyak.
+                let page = 2;
+                while (all.pagination && page <= all.pagination.totalPages) {
+                    const next = await repo.listDisplayCards({ page, limit: 50 });
+                    targets.push(...(next.cards || []).filter((c) => isLocalDisplayPath(c.imageUrl)));
+                    page += 1;
+                }
+            }
+            let migrated = 0;
+            const failed = [];
+            for (const card of targets) {
+                try {
+                    const r = await migrateDisplayImageToCloud(card);
+                    if (r.ok) migrated += 1;
+                    else if (!r.skipped) failed.push({ id: card.id, name: card.name, error: r.error || 'Gagal' });
+                } catch (e) {
+                    failed.push({ id: card.id, name: card.name, error: e.message });
+                }
+            }
+            console.log(`[DISPLAY] Migrasi Cloudinary: ${migrated} ok, ${failed.length} gagal.`);
+            res.json({ success: true, migrated, failed });
         } catch (e) {
             safeError(res, e);
         }
