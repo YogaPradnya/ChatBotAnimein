@@ -1,6 +1,7 @@
 const { formatCommandUsage } = require('../utils/messageFormatter');
 const { boxHeader } = require('../utils/textStyle');
 const { createCardsRepo, RARITY_EMOJI, RARITY_ORDER } = require('../database/cardsRepo');
+const { createDisplayRepo } = require('../database/displayRepo');
 
 function resolveTodayKey(ctx) {
     if (ctx && typeof ctx.getJakartaDateKey === 'function') return ctx.getJakartaDateKey();
@@ -38,12 +39,14 @@ async function execute(ctx) {
 
     try {
         const repo = cardsRepo || createCardsRepo(ctx.db);
-        const [collection, pity] = await Promise.all([
+        const displayRepo = ctx.displayRepo || (ctx.db ? createDisplayRepo(ctx.db) : null);
+        const [collection, pity, displayCollection] = await Promise.all([
             repo.getCollection(senderUserId),
             repo.getPityState(senderUserId).catch(() => ({ total_pulls: 0 })),
+            displayRepo ? displayRepo.getDisplayCollection(senderUserId).catch(() => []) : Promise.resolve([]),
         ]);
 
-        if (collection.length === 0) {
+        if (collection.length === 0 && displayCollection.length === 0) {
             await sendChatMessage(bot,
                 formatCommandUsage(senderName, 'Koleksi masih kosong, hmph! Gacha dulu sana pakai .gacha (500 XP). 💢'),
                 msg.id);
@@ -62,9 +65,19 @@ async function execute(ctx) {
         ];
         sorted.slice(0, 15).forEach((c, i) => {
             const mark = c.is_showcase ? '🖼️' : `${i + 1}.`;
-            lines.push(`│ ${mark} ${RARITY_EMOJI[c.rarity] || '❔'} ${c.char_name} [${c.rarity}] ★${c.level} ⚡${c.power}`);
+            const qty = (Number(c.quantity) || 1) > 1 ? ` x${c.quantity}` : '';
+            lines.push(`│ ${mark} ${RARITY_EMOJI[c.rarity] || '❔'} ${c.char_name} [${c.rarity}] ★${c.level} ⚡${c.power}${qty}`);
         });
         if (sorted.length > 15) lines.push(`│ ... +${sorted.length - 15} lainnya`);
+        if (displayCollection.length > 0) {
+            lines.push(`├── ${boxHeader('PAJANGAN SPESIAL')} 🎁`);
+            displayCollection.slice(0, 10).forEach((c) => {
+                const mark = c.isShowcase ? '🖼️' : '🎁';
+                lines.push(`│ ${mark} ${c.name} [${c.grade}]`);
+            });
+            if (displayCollection.length > 10) lines.push(`│ ... +${displayCollection.length - 10} lainnya`);
+            lines.push(`│ 📝 .pajang [nama] --flip untuk balik kartu`);
+        }
         lines.push(`├───────────────────`);
         lines.push(`│ 🎰 .gacha | 🖼️ .pajang [nama]`);
         lines.push(`└───────────────────`);

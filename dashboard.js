@@ -651,6 +651,22 @@ function getDashboardHTML() {
   .bot-status-mini-label { font-size:11px; font-weight:600; letter-spacing:0.88px; color: var(--body); text-transform:uppercase; margin-bottom:8px; }
   .bot-status-mini-value { font-size:14px; font-weight:600; color:var(--ink); }
 
+  /* ---- Kartu Pajangan (display-only): border preset + flip preview ---- */
+  .display-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 12px; }
+  .display-card { border: 1px solid var(--hairline-strong); border-radius: var(--r-lg); padding: 12px; background: var(--surface); }
+  .display-art { width: 100%; aspect-ratio: 3/4; object-fit: cover; border-radius: 10px; background: var(--canvas-soft); }
+  .display-border-gold { border: 4px solid #eab308; box-shadow: 0 0 12px #eab30888; }
+  .display-border-rainbow { border: 4px solid transparent; background: linear-gradient(#fff, #fff) padding-box, linear-gradient(135deg,#ef4444,#eab308,#22c55e,#3b82f6,#a855f7) border-box; }
+  .display-border-neon { border: 3px solid #22d3ee; box-shadow: 0 0 14px #22d3ee; }
+  .display-border-sakura { border: 3px solid #f9a8d4; box-shadow: 0 0 10px #f9a8d488; }
+  .display-border-shadow { border: 3px solid #111827; box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+  .display-border-classic { border: 3px solid #9ca3af; }
+  .display-flip { perspective: 800px; cursor: pointer; }
+  .display-flip-inner { position: relative; transform-style: preserve-3d; transition: transform .5s; }
+  .display-flip.flipped .display-flip-inner { transform: rotateY(180deg); }
+  .display-face { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+  .display-back { position: absolute; inset: 0; transform: rotateY(180deg); background: #171717; color: #fff; border-radius: 10px; padding: 14px; font-size: 12px; line-height: 1.6; overflow-y: auto; }
+
   /* ---- Fluid-first responsive: only 2 breakpoints ---- */
   /* 1) Drawer sidebar di layar sempit (selaras dengan toggleSidebar() <=768px) */
   @media (max-width: 768px) {
@@ -740,6 +756,7 @@ function getDashboardHTML() {
       <div class="nav-group-items">
         <button class="nav-item" onclick="showPage('kuis', this); toggleSidebar(false)"><i data-lucide="trophy"></i><span>Kuis & Turnamen</span></button>
         <button class="nav-item" onclick="showPage('gacha', this); toggleSidebar(false)"><i data-lucide="layers"></i><span>Gacha & Kartu</span></button>
+        <button class="nav-item" onclick="showPage('display', this); toggleSidebar(false)"><i data-lucide="gift"></i><span>Kartu Pajangan</span></button>
         <button class="nav-item" onclick="showPage('webkartu', this); toggleSidebar(false)"><i data-lucide="book-open"></i><span>Web Kartu</span></button>
         <button class="nav-item" onclick="showPage('ekonomi', this); toggleSidebar(false)"><i data-lucide="coins"></i><span>Ekonomi & Toko</span></button>
         <button class="nav-item" onclick="showPage('gambar', this); toggleSidebar(false)"><i data-lucide="image"></i><span>Limit Manager</span></button>
@@ -1836,6 +1853,69 @@ function getDashboardHTML() {
       </div>
     </div>
 
+    <div class="page" id="page-display">
+      <div class="adaptive-flex" style="display: flex; gap: 24px;">
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 20px; min-width: 300px; max-width: 520px;">
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-title">🎁 Gift Kartu Pajangan (1 kartu = 1 orang)</div>
+            <p style="font-size: 12px; color: var(--muted); margin-bottom: 14px;">Kartu display-only: tidak bisa di-custom user, tidak bisa battle/gacha/trade, hanya dipajang. Nama global unik.</p>
+            <label style="font-size:11px; color:var(--muted);">Username tujuan (tanpa @)<input type="text" id="displayUsername" placeholder="contoh: yoga" style="width:100%; margin-top:4px; padding:8px 10px; border-radius:8px; border:1px solid var(--border); font-size:12px;" oninput="searchDisplayUser()"></label>
+            <div id="displayUserHint" style="font-size:11px; color:var(--muted); margin:4px 0 10px;"></div>
+            <label style="font-size:11px; color:var(--muted);">Nama kartu<input type="text" id="displayName" maxlength="80" placeholder="contoh: Rara Anniversary" style="width:100%; margin-top:4px; padding:8px 10px; border-radius:8px; border:1px solid var(--border); font-size:12px;" oninput="previewDisplayCard()"></label>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:10px;">
+              <label style="font-size:11px; color:var(--muted);">Grade (bebas)<input type="text" id="displayGrade" maxlength="40" placeholder="contoh: SP / Limited" style="width:100%; margin-top:4px; padding:8px 10px; border-radius:8px; border:1px solid var(--border); font-size:12px;" oninput="previewDisplayCard()"></label>
+              <label style="font-size:11px; color:var(--muted);">Border<select id="displayBorder" style="width:100%; margin-top:4px; padding:8px 10px; border-radius:8px; border:1px solid var(--border); font-size:12px;" onchange="previewDisplayCard()">
+                <option value="classic">classic</option>
+                <option value="gold">gold</option>
+                <option value="rainbow">rainbow</option>
+                <option value="neon">neon</option>
+                <option value="sakura">sakura</option>
+                <option value="shadow">shadow</option>
+                <option value="custom">custom (hex)</option>
+              </select></label>
+            </div>
+            <label style="font-size:11px; color:var(--muted); margin-top:10px; display:block;">Warna custom (hex, bila border=custom)<input type="text" id="displayBorderColor" placeholder="#ff00aa" style="width:100%; margin-top:4px; padding:8px 10px; border-radius:8px; border:1px solid var(--border); font-size:12px;" oninput="previewDisplayCard()"></label>
+            <label style="font-size:11px; color:var(--muted); margin-top:10px; display:block;">Gambar (URL https)<input type="text" id="displayImageUrl" placeholder="https://... atau hasil upload" style="width:100%; margin-top:4px; padding:8px 10px; border-radius:8px; border:1px solid var(--border); font-size:12px;" oninput="previewDisplayCard()"></label>
+            <div style="display:flex; gap:8px; margin-top:8px; align-items:center; flex-wrap:wrap;">
+              <input type="file" id="displayUploadFile" accept="image/png,image/jpeg,image/webp,image/gif" style="font-size:11px;">
+              <button class="btn-sm btn-sm-toggle" onclick="uploadDisplayImage()">⬆️ Upload</button>
+            </div>
+            <label style="font-size:11px; color:var(--muted); margin-top:10px; display:block;">Deskripsi flip (belakang kartu)<textarea id="displayDesc" maxlength="1000" placeholder="Cerita / pesan di balik kartu..." style="width:100%; margin-top:4px; padding:8px 10px; border-radius:8px; border:1px solid var(--border); font-size:12px; min-height:90px;" oninput="previewDisplayCard()"></textarea></label>
+            <div style="display:flex; gap:8px; margin-top:12px;">
+              <button class="btn-sm btn-sm-toggle" onclick="giftDisplayCard()" style="background:var(--accent); border-color:var(--accent); color:#fff;">🎁 Gift ke User</button>
+              <button class="btn-sm btn-sm-toggle" onclick="resetDisplayForm()">Reset</button>
+            </div>
+          </div>
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-title">👁️ Preview Flip (klik untuk flip)</div>
+            <div class="display-flip" id="displayPreviewFlip" onclick="this.classList.toggle('flipped')">
+              <div class="display-flip-inner">
+                <div class="display-face">
+                  <img id="displayPreviewImg" class="display-art display-border-classic" alt="preview" onerror="this.src=''; this.alt='(tanpa gambar)'">
+                  <div style="margin-top:8px; font-weight:700; font-size:13px;" id="displayPreviewName">(nama kartu)</div>
+                  <div style="font-size:11px; color:var(--muted);" id="displayPreviewGrade">(grade)</div>
+                </div>
+                <div class="display-face display-back" id="displayPreviewDesc">(deskripsi flip)</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="flex: 2; display: flex; flex-direction: column; gap: 20px; min-width: 0;">
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-title">📦 Kartu Pajangan Terdaftar</div>
+            <div style="display:flex; gap:8px; margin-bottom:10px;">
+              <input type="text" id="displaySearch" placeholder="Cari nama / username / grade..." style="flex:1; padding:8px 10px; border-radius:8px; border:1px solid var(--border); font-size:12px;" oninput="loadDisplayCards(1)">
+              <button class="btn-sm btn-sm-toggle" onclick="loadDisplayCards(1)">🔍</button>
+            </div>
+            <div id="displayList" style="display:flex; flex-direction:column; gap:8px; max-height:560px; overflow-y:auto;">
+              <div style="color:var(--muted); font-size:12px;">Memuat...</div>
+            </div>
+            <div id="displayPagination" style="font-size:11px; color:var(--muted); margin-top:8px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="page" id="page-webkartu">
       <div class="adaptive-flex" style="display: flex; gap: 24px;">
         <div style="flex: 1; display: flex; flex-direction: column; gap: 20px; min-width: 280px; max-width: 560px;">
@@ -2236,7 +2316,7 @@ function getDashboardHTML() {
         parentGroup.classList.add('open');
       }
     }
-    const titles = { dashboard: 'Dashboard', model: 'Model AI', prompt: 'Prompt & Knowledge', gambar: 'Limit Manager', laporan: 'Laporan', banned: 'Blokir User', inspector: 'Cek & Setting Data User', filter: 'Filter Kata', kuis: 'Kuis & Turnamen', gacha: 'Gacha & Kartu', logs: 'Realtime Logs', 'api-traffic': 'API Monitor', ekonomi: 'Ekonomi & Toko' };
+    const titles = { dashboard: 'Dashboard', model: 'Model AI', prompt: 'Prompt & Knowledge', gambar: 'Limit Manager', laporan: 'Laporan', banned: 'Blokir User', inspector: 'Cek & Setting Data User', filter: 'Filter Kata', kuis: 'Kuis & Turnamen', gacha: 'Gacha & Kartu', display: 'Kartu Pajangan', webkartu: 'Web Kartu', logs: 'Realtime Logs', 'api-traffic': 'API Monitor', ekonomi: 'Ekonomi & Toko' };
     document.getElementById('pageTitle').textContent = titles[id] || id;
     if (id === 'dashboard') refresh();
     if (id === 'prompt') loadPrompt();
@@ -2246,6 +2326,7 @@ function getDashboardHTML() {
     if (id === 'banned') loadBannedPage();
     if (id === 'kuis') { loadTitles(); loadUsers(); loadQuizPool(); loadWeeklyTournament(); }
     if (id === 'gacha') { loadGachaStats(); loadGachaConfig(); loadGachaCards(); }
+    if (id === 'display') { loadDisplayCards(1); }
     if (id === 'logs') renderRealtimeLogs();
     if (id === 'ekonomi') loadEkonomiSettings();
     if (id === 'model') {
@@ -3454,6 +3535,220 @@ async function updateStats() {
       }
     } catch (err) {
       showToast('Gagal terhubung ke server: ' + err.message, 'error');
+    }
+  }
+
+  /* ===== Kartu Pajangan (display-only) ===== */
+  let displayPage = 1;
+  function displayBorderClass(t, color) {
+    if (t === 'custom' && color) return '';
+    return 'display-border-' + (t || 'classic');
+  }
+  function previewDisplayCard() {
+    const name = (document.getElementById('displayName')?.value || '').trim() || '(nama kartu)';
+    const grade = (document.getElementById('displayGrade')?.value || '').trim() || '(grade)';
+    const border = document.getElementById('displayBorder')?.value || 'classic';
+    const color = (document.getElementById('displayBorderColor')?.value || '').trim();
+    const img = (document.getElementById('displayImageUrl')?.value || '').trim();
+    const desc = (document.getElementById('displayDesc')?.value || '').trim() || '(deskripsi flip)';
+    const nEl = document.getElementById('displayPreviewName');
+    const gEl = document.getElementById('displayPreviewGrade');
+    const iEl = document.getElementById('displayPreviewImg');
+    const dEl = document.getElementById('displayPreviewDesc');
+    if (nEl) nEl.textContent = name;
+    if (gEl) gEl.textContent = grade;
+    if (dEl) dEl.textContent = desc;
+    if (iEl) {
+      iEl.className = 'display-art ' + displayBorderClass(border);
+      if (border === 'custom' && /^#[0-9a-fA-F]{3,6}$/.test(color)) {
+        iEl.style.border = '4px solid ' + color;
+        iEl.style.boxShadow = '0 0 12px ' + color + '88';
+      } else {
+        iEl.style.border = '';
+        iEl.style.boxShadow = '';
+      }
+      if (img) { iEl.src = img; iEl.alt = name; }
+    }
+  }
+  let displayUserTimer = null;
+  async function searchDisplayUser() {
+    const hint = document.getElementById('displayUserHint');
+    const q = (document.getElementById('displayUsername')?.value || '').replace(/^@/, '').trim();
+    if (q.length < 2) { if (hint) hint.textContent = ''; return; }
+    clearTimeout(displayUserTimer);
+    displayUserTimer = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/display/users/search?q=' + encodeURIComponent(q));
+        const d = await res.json().catch(() => ({}));
+        if (!d.success) return;
+        const users = d.users || [];
+        if (hint) {
+          hint.textContent = users.length === 0
+            ? 'Username tidak ditemukan di user_stats.'
+            : users.map((u) => '@' + u.username).join(', ');
+        }
+      } catch (_) { /* abaikan */ }
+    }, 300);
+  }
+  function resetDisplayForm() {
+    for (const id of ['displayUsername', 'displayName', 'displayGrade', 'displayBorderColor', 'displayImageUrl', 'displayDesc']) {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    }
+    const b = document.getElementById('displayBorder');
+    if (b) b.value = 'classic';
+    const f = document.getElementById('displayUploadFile');
+    if (f) f.value = '';
+    previewDisplayCard();
+  }
+  async function uploadDisplayImage() {
+    const fileInput = document.getElementById('displayUploadFile');
+    const file = fileInput && fileInput.files && fileInput.files[0];
+    if (!file) return showToast('Pilih file gambar dulu.', 'warning');
+    if (file.size > 3 * 1024 * 1024) return showToast('Maksimal 3MB.', 'error');
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result || ''));
+        r.onerror = () => reject(new Error('Gagal baca file.'));
+        r.readAsDataURL(file);
+      });
+      const res = await fetch('/api/display/upload', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataUrl }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.success) {
+        const urlInput = document.getElementById('displayImageUrl');
+        if (urlInput) urlInput.value = d.url;
+        previewDisplayCard();
+        showToast('Upload berhasil: ' + d.url, 'success');
+      } else {
+        showToast(d.message || 'Upload gagal.', 'error');
+      }
+    } catch (err) {
+      showToast('Gagal terhubung ke server: ' + err.message, 'error');
+    }
+  }
+  async function giftDisplayCard() {
+    const body = {
+      username: (document.getElementById('displayUsername')?.value || '').trim(),
+      name: (document.getElementById('displayName')?.value || '').trim(),
+      grade: (document.getElementById('displayGrade')?.value || '').trim(),
+      borderType: document.getElementById('displayBorder')?.value || 'classic',
+      borderColor: (document.getElementById('displayBorderColor')?.value || '').trim(),
+      imageUrl: (document.getElementById('displayImageUrl')?.value || '').trim(),
+      description: (document.getElementById('displayDesc')?.value || '').trim(),
+    };
+    if (!body.username || !body.name || !body.grade || !body.description) {
+      return showToast('Username, nama, grade, dan deskripsi wajib diisi.', 'warning');
+    }
+    try {
+      const res = await fetch('/api/display/gift', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.success) {
+        showToast('Kartu "' + body.name + '" di-gift ke @' + body.username + '.', 'success');
+        resetDisplayForm();
+        loadDisplayCards(1);
+      } else {
+        showToast(d.message || 'Gagal gift kartu.', 'error');
+      }
+    } catch (err) {
+      showToast('Gagal terhubung ke server: ' + err.message, 'error');
+    }
+  }
+  async function loadDisplayCards(page) {
+    const box = document.getElementById('displayList');
+    if (!box) return;
+    displayPage = Math.max(1, page || 1);
+    const q = (document.getElementById('displaySearch')?.value || '').trim();
+    try {
+      const res = await fetch('/api/display/cards?q=' + encodeURIComponent(q) + '&page=' + displayPage + '&limit=20');
+      const d = await res.json().catch(() => ({}));
+      if (!d.success) {
+        box.innerHTML = '<div style="color:var(--muted); font-size:12px;">Gagal memuat.</div>';
+        return;
+      }
+      const cards = d.cards || [];
+      box.innerHTML = cards.length === 0
+        ? '<div style="color:var(--muted); font-size:12px;">Belum ada kartu pajangan.</div>'
+        : cards.map((c) => {
+          const img = c.imageUrl
+            ? '<img src="' + escapeHTML(c.imageUrl) + '" style="width:44px; height:60px; object-fit:cover; border-radius:8px;" loading="lazy" onerror="this.remove()">'
+            : '<div style="width:44px; height:60px; border-radius:8px; background:var(--bg); display:flex; align-items:center; justify-content:center;">🎁</div>';
+          const borderLbl = c.borderType === 'custom' && c.borderColor
+            ? 'custom ' + escapeHTML(c.borderColor)
+            : escapeHTML(c.borderType || 'classic');
+          return '<div style="display:grid; grid-template-columns:44px minmax(0,1fr) auto; gap:8px; align-items:center; padding:10px 12px; background:var(--bg); border-radius:8px; font-size:12px;">' +
+            '<div>' + img + '</div>' +
+            '<div style="min-width:0;"><div style="font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHTML(c.name) + '</div>' +
+            '<div style="color:var(--muted); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">@' + escapeHTML(c.username || '-') + ' &bull; ' + escapeHTML(c.grade || '-') + ' &bull; ' + borderLbl + '</div>' +
+            '<div style="color:var(--muted); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHTML(String(c.description || '').slice(0, 80)) + '</div></div>' +
+            '<div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">' +
+            '<button class="btn-sm btn-sm-toggle" onclick="editDisplayCard(' + Number(c.id) + ')">✏️</button>' +
+            '<button class="btn-sm btn-sm-del" onclick="deleteDisplayCard(' + Number(c.id) + ', \\\'' + jsString(c.name) + '\\\')">🗑️</button>' +
+            '</div></div>';
+        }).join('');
+      const pg = d.pagination || {};
+      const pag = document.getElementById('displayPagination');
+      if (pag) {
+        pag.textContent = 'Hal ' + (pg.page || 1) + '/' + (pg.totalPages || 1) + ' • ' + (pg.total || 0) + ' kartu' +
+          (pg.totalPages > 1 ? ' — pakai Prev/Next: ' : '');
+      }
+      if (pag && (pg.totalPages || 1) > 1) {
+        pag.innerHTML = 'Hal ' + (pg.page || 1) + '/' + (pg.totalPages || 1) + ' • ' + (pg.total || 0) + ' kartu ' +
+          '<button class="btn-sm btn-sm-toggle" ' + ((pg.page || 1) <= 1 ? 'disabled' : '') + ' onclick="loadDisplayCards(' + ((pg.page || 1) - 1) + ')">‹ Prev</button> ' +
+          '<button class="btn-sm btn-sm-toggle" ' + ((pg.page || 1) >= (pg.totalPages || 1) ? 'disabled' : '') + ' onclick="loadDisplayCards(' + ((pg.page || 1) + 1) + ')">Next ›</button>';
+      }
+    } catch (e) {
+      box.innerHTML = '<div style="color:var(--muted); font-size:12px;">Gagal terhubung.</div>';
+    }
+  }
+  async function editDisplayCard(id) {
+    const name = prompt('Nama baru (kosongkan = tidak diubah):');
+    const grade = prompt('Grade baru (kosongkan = tidak diubah):');
+    const description = prompt('Deskripsi flip baru (kosongkan = tidak diubah):');
+    const body = { id };
+    if (name) body.name = name;
+    if (grade) body.grade = grade;
+    if (description) body.description = description;
+    if (!body.name && !body.grade && !body.description) return;
+    try {
+      const res = await fetch('/api/display/update', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.success) {
+        showToast('Kartu diperbarui.', 'success');
+        loadDisplayCards(displayPage);
+      } else {
+        showToast(d.message || 'Gagal update.', 'error');
+      }
+    } catch (err) {
+      showToast('Gagal terhubung: ' + err.message, 'error');
+    }
+  }
+  async function deleteDisplayCard(id, name) {
+    const ok = await customConfirm('Hapus kartu pajangan "' + (name || id) + '" dari pemiliknya? Tidak bisa dibatalkan.', 'Hapus Kartu Pajangan', 'Ya, Hapus');
+    if (!ok) return;
+    try {
+      const res = await fetch('/api/display/delete', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.success) {
+        showToast('Kartu dihapus.', 'success');
+        loadDisplayCards(displayPage);
+      } else {
+        showToast(d.message || 'Gagal hapus.', 'error');
+      }
+    } catch (err) {
+      showToast('Gagal terhubung: ' + err.message, 'error');
     }
   }
 

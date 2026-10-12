@@ -55,7 +55,7 @@ async function execute(ctx) {
     } else if (helpArg === 'genre') {
         helpMsg = wrapInBox('GENRE', 'Cari rekomendasi anime berdasarkan genre.\n\nCommand:\n- .genre [nama]\n\nContoh:\n- .genre action\n- .genre romance\n\nData diambil dari Animein Explore.');
     } else if (helpArg === 'gacha' || helpArg === 'koleksi' || helpArg === 'pajang') {
-        helpMsg = wrapInBox('GACHA', 'Gacha kartu 200 koleksi pakai XP. PURE HOKI, tanpa pity!\n\nCommand:\n- .gacha (XP/pull, maks/hari ikut dashboard)\n- .gacha rate (rate + stok)\n- .koleksi (galeri kartumu)\n- .pajang [nama] (pamer kartu di .profil)\n\nRate: Common 70% / Rare 25%\nEpic 4.89% / Legendary 0.1% / Mythic 0.01%\nStok/kartu: Mythic 1 | Legend 10 | Epic 50 | R/C unlimited\nDupe = Limit Break ★ hanya Rare/Common (max ★5) + bonus XP.\nEpic+ unik per user, stok habis = turun grade.\nPower tetap per kartu (sama di semua user).');
+        helpMsg = wrapInBox('GACHA', 'Gacha kartu 200 koleksi pakai XP. PURE HOKI, tanpa pity!\n\nCommand:\n- .gacha (XP/pull, maks/hari ikut dashboard)\n- .gacha rate (rate + stok)\n- .koleksi (galeri kartumu)\n- .pajang [nama] (pamer kartu di .profil)\n\nRate: Common 70% / Rare 25%\nEpic 4.89% / Legendary 0.1% / Mythic 0.01%\nStok/kartu: Mythic 1 | Legend 10 | Epic 50 | R/C unlimited\nDupe = menumpuk (maks 999 copy).\nNaik ★ manual via Evolusi di web (butuh 3/3/3/5 copy).\nMythic unik per user, stok habis = turun grade.\nPower tetap per kartu (sama di semua user).');
     } else if (helpArg === 'tas') {
         helpMsg = wrapInBox('TAS', 'Lihat ringkasan pokemon di tas kamu.\n\nCommand:\n- .tas\n\nData: total pokemon, jumlah per grade, dan top CP.\n\nLanjut: gunakan .kombo untuk rekomendasi tim.');
     } else if (helpArg === 'limit') {

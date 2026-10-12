@@ -88,6 +88,7 @@ async function execute(ctx) {
         try { imgLimit = await getImageLimitStatus(senderUserId, senderName); } catch(e) { handleError(e, { scope: 'PROFIL', detail: 'image limit status', stats, logEmitter }); }
 
         let showcase = null;
+        let displayShowcase = null;
         let cardsRepoForProfil = ctx.cardsRepo || null;
         try {
             if (!cardsRepoForProfil && ctx.db) {
@@ -97,6 +98,13 @@ async function execute(ctx) {
                 showcase = await cardsRepoForProfil.getShowcase(senderUserId);
             }
         } catch (e) { console.warn("[PROFIL] Showcase query failed:", e.message); }
+        try {
+            const displayRepoForProfil = ctx.displayRepo
+                || (ctx.db ? require('../database/displayRepo').createDisplayRepo(ctx.db) : null);
+            if (displayRepoForProfil) {
+                displayShowcase = await displayRepoForProfil.getDisplayShowcase(senderUserId);
+            }
+        } catch (e) { console.warn("[PROFIL] Display showcase query failed:", e.message); }
 
         let gachaLimit = null;
         try {
@@ -156,6 +164,26 @@ async function execute(ctx) {
         );
 
         const profileText = profileLines.join('\n');
+        const displaySuffix = displayShowcase
+            ? `\n🎁 Pajangan spesial: ${displayShowcase.name} [${displayShowcase.grade}]`
+            : '';
+        const profileTextFull = profileText + displaySuffix;
+
+        // Pajangan display diprioritaskan bila ada gambar (slot terpisah dari gacha).
+        if (displayShowcase && displayShowcase.imageUrl
+            && typeof downloadImageToTempFile === 'function'
+            && typeof sendChatWithImage === 'function') {
+            try {
+                const tempImg = await downloadImageToTempFile(displayShowcase.imageUrl);
+                if (tempImg) {
+                    const framedImg = await frameDownloadedImage(tempImg, 'Common');
+                    const sent = await sendChatWithImage(bot, framedImg, profileTextFull, msg.id);
+                    if (sent) return true;
+                }
+            } catch (e) {
+                console.warn('[PROFIL] Kirim gambar display gagal, fallback teks:', e.message);
+            }
+        }
 
         // Pajangan tidak lagi ditulis sebagai teks di profil.
         // Kalau ada kartu pajangan + gambarnya, kirim gambar kartu (framed) dengan profil sebagai caption.
@@ -166,7 +194,7 @@ async function execute(ctx) {
                 const tempImg = await downloadImageToTempFile(showcase.image_url);
                 if (tempImg) {
                     const framedImg = await frameDownloadedImage(tempImg, showcase.rarity);
-                    const sent = await sendChatWithImage(bot, framedImg, profileText, msg.id);
+                    const sent = await sendChatWithImage(bot, framedImg, profileTextFull, msg.id);
                     if (sent) return true;
                 }
             } catch (e) {
@@ -174,7 +202,7 @@ async function execute(ctx) {
             }
         }
 
-        await sendChatMessage(bot, profileText, msg.id);
+        await sendChatMessage(bot, profileTextFull, msg.id);
     } catch(e) {
         console.error("[PROFIL ERROR]", e);
     }

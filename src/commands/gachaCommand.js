@@ -6,11 +6,11 @@ const {
     GACHA_COST,
     GACHA_DAILY_LIMIT,
     MAX_CARD_LEVEL,
+    MAX_CARD_COPIES,
     RARITY_EMOJI,
     RARITY_LIST,
     DEFAULT_RATES,
     DEFAULT_STOCKS,
-    LIMIT_BREAK_XP_REWARD,
 } = require('../database/cardsRepo');
 
 function formatRate(n) {
@@ -37,10 +37,11 @@ function buildCardLines(result, withImageUrl = true) {
         lines.push(`│ 📦 Stok: sisa ${result.stockLeft}/${result.stockLimit} global`);
     }
     if (result.isDuplicate) {
-        if (result.leveledUp) {
-            lines.push(`│ ♻️ LIMIT BREAK! ★${result.level} +${result.xpBonus.toLocaleString('id-ID')} XP`);
+        if (result.capped) {
+            lines.push(`│ 📦 Copy penuh (${MAX_CARD_COPIES})! +${result.xpBonus.toLocaleString('id-ID')} XP hiburan`);
         } else {
-            lines.push(`│ ♻️ Duplikat (max ★${MAX_CARD_LEVEL})! +${result.xpBonus.toLocaleString('id-ID')} XP`);
+            lines.push(`│ 📦 Menumpuk! Copy ke-${Number(result.quantity) || 1}/${MAX_CARD_COPIES}`);
+            lines.push(`│ 🛠️ Naik ★ manual via web (Evolusi)`);
         }
     } else {
         lines.push(`│ 🆕 Kartu baru! (.koleksi)`);
@@ -92,9 +93,9 @@ async function showRate(ctx, repo, todayKey) {
         `├───────────────────`,
         `│ 📦 Stok/kartu: 🔴Mythic ${stocks.Mythic} | 🟡Legend ${stocks.Legendary} | 🟣Epic ${stocks.Epic} | R/C ∞`,
         `│ 🎯 Sisa : ${sisa} pull hari ini`,
-        `│ ♻️ Duplikat (Rare/Common):`,
-        `│    C +${LIMIT_BREAK_XP_REWARD.Common} / R +${LIMIT_BREAK_XP_REWARD.Rare} XP (max ★${MAX_CARD_LEVEL})`,
-        `│    Epic+ unik per user (tak bisa duplikat)`,
+        `│ 📦 Duplikat menumpuk (maks ${MAX_CARD_COPIES} copy)`,
+        `│ 🛠️ Naik ★ manual via Evolusi di web`,
+        `│    Mythic unik per user (tak bisa duplikat)`,
         `│ 🖼️ .pajang [nama] untuk pamer kartu`,
         `└───────────────────`,
     ];
@@ -186,7 +187,7 @@ async function execute(ctx) {
             return true;
         }
 
-        // Potong biaya + bonus limit break dalam SATU setUserXP (pola buyCommand.js).
+        // Potong biaya + XP hiburan (cap penuh) dalam SATU setUserXP (pola buyCommand.js).
         const nextXP = Math.max(0, currentXP - pullCost + result.xpBonus);
         const nextLevel = calcLevel(nextXP);
         await userRepo.setUserXP(senderUserId, senderName, nextXP, nextLevel);

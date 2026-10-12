@@ -68,6 +68,7 @@ global.RARA_TEMP_INFO = 0.3;
 const { createLimitRepo } = require('./src/database/limitRepo');
 const { createShopRepo } = require('./src/database/shopRepo');
 const { createCardsRepo } = require('./src/database/cardsRepo');
+const { createDisplayRepo } = require('./src/database/displayRepo');
 const { createBanRepo } = require('./src/database/banRepo');
 const { createQuizRepo } = require('./src/database/quizRepo');
 const { createQuizWeeklyRepo, QUIZ_WEEKLY_TABLE_SQL } = require('./src/database/quizWeeklyRepo');
@@ -115,6 +116,7 @@ const userRepo = createUserRepo(db);
 const limitRepo = createLimitRepo(db);
 const shopRepo = createShopRepo(db);
 const cardsRepo = createCardsRepo(db);
+const displayRepo = createDisplayRepo(db);
 let limitService;
 const banRepo = createBanRepo(db);
 const quizRepo = createQuizRepo(db);
@@ -417,10 +419,15 @@ async function initDB() {
                 power INTEGER DEFAULT 0,
                 image_url TEXT DEFAULT NULL,
                 is_showcase INTEGER DEFAULT 0,
+                quantity INTEGER DEFAULT 1,
                 pulled_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         `);
         await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_cards_user_char ON user_cards (user_id, char_name)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_cards_user_char' }));
+        await db.execute(`ALTER TABLE user_cards ADD COLUMN quantity INTEGER DEFAULT 1`).catch(e => ignoreExpectedError(e, { scope: 'DB MIGRATION', detail: 'user_cards.quantity' }));
+        await db.execute(`UPDATE user_cards SET quantity = 1 WHERE quantity IS NULL OR quantity < 1`).catch(e => ignoreExpectedError(e, { scope: 'DB MIGRATION', detail: 'user_cards.quantity_backfill' }));
+        // Tabel kartu pajangan (display-only, gift admin, 1 kartu = 1 orang).
+        await displayRepo.initTables().catch(e => ignoreExpectedError(e, { scope: 'DB TABLE', detail: 'user_display_cards' }));
         await db.execute(`
             CREATE TABLE IF NOT EXISTS user_card_pity (
                 user_id TEXT PRIMARY KEY,
@@ -4905,6 +4912,7 @@ async function processMessages(bot, messages) {
                 getShopMessage,
                 shopRepo,
                 cardsRepo,
+                displayRepo,
                 buyItem,
                 addXP,
                 USER_STATS_CACHE,
@@ -5396,6 +5404,7 @@ startDashboard({
     settingsKeys: SETTINGS_KEYS,
     weeklyRepo,
     cardsRepo,
+    displayRepo,
     login,
     previewRaraReply,
 });

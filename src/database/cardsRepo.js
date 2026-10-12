@@ -4,10 +4,12 @@
  * Rate per pull (default, bisa diatur dashboard): Common 70% / Rare 25% /
  *   Epic 4.89% / Legendary 0.1% / Mythic 0.01%.
  * Stok global per kartu: Mythic 1 / Legendary 10 / Epic 50 / Rare & Common unlimited.
- * Stok habis -> otomatis turun ke rarity di bawahnya. Epic+ unik per user
+ * Stok habis -> otomatis turun ke rarity di bawahnya. Mythic unik per user
  *   (sudah punya -> cari kartu lain, tidak bisa duplikat).
- * Duplikat -> LIMIT BREAK hanya untuk Rare & Common: level kartu +1 (max 5)
- *   + bonus XP (Rare +150 / Common +50).
+ * EVO FULL MANUAL: duplikat TIDAK auto-naik-level — copy menumpuk via quantity
+ *   (maks 999/copy per kartu per user). Naik ★ hanya via Evolusi manual di web
+ *   (syarat copy: ★1->2 butuh 3, ★2->3 butuh 3, ★3->4 butuh 3, ★4->★5 butuh 5;
+ *   konsumsi N-1). Cap penuh -> XP hiburan (C+50/R+150/E+400/L+1000).
  * Power kartu baru = base per tier (C40/R70/E100/L150/M200) + level*10 + varian tetap per nama (hash 0-9).
  * Batas: max 10 pull/hari per user (pulls_today + today_key zona Jakarta).
  * Gambar: prioritas override dashboard > Cloudinary > cardArt.json > live API.
@@ -18,6 +20,20 @@ const { WAIFU_POOL, getPoolsByTier, VALID_TIERS } = require('../data/waifuPool')
 const GACHA_COST = 500;
 const GACHA_DAILY_LIMIT = 10;
 const MAX_CARD_LEVEL = 5;
+
+/** Maksimal tumpukan copy per kartu per user (evo full manual). */
+const MAX_CARD_COPIES = 999;
+
+/**
+ * Syarat Evolusi manual (web): { need: copy yang harus dimiliki, consume: copy yang dipakai }.
+ * Konsumsi N-1 (sisa 1 sebagai badan utama). Legendary/Mythic tidak bisa evo.
+ */
+const EVO_COST = {
+    1: { need: 3, consume: 2 },
+    2: { need: 3, consume: 2 },
+    3: { need: 3, consume: 2 },
+    4: { need: 5, consume: 4 },
+};
 
 /** Urutan rarity tetap (untuk threshold & tampilan). */
 const RARITY_LIST = ['Common', 'Rare', 'Epic', 'Legendary', 'Mythic'];
@@ -36,6 +52,7 @@ const DEFAULT_RATES = {
 
 const RARITY_RATES = RARITY_LIST.map((rarity) => ({ rarity, rate: DEFAULT_RATES[rarity] }));
 
+/** XP hiburan saat copy sudah cap 999 (duplikat hangus jadi XP). */
 const LIMIT_BREAK_XP_REWARD = {
     Common: 50,
     Rare: 150,
@@ -87,9 +104,19 @@ const RARITY_DOWNGRADE = {
     Common: null,
 };
 
-/** Rarity yang unik per user (tidak bisa duplikat, demi stok aman). */
+/** Rarity yang unik per user (tidak bisa duplikat/numuk, demi stok aman).
+ *  Hanya Mythic — Epic/Legendary boleh menumpuk (evo manual / convert). */
 function isUniqueRarity(rarity) {
-    return rarity === 'Epic' || rarity === 'Legendary' || rarity === 'Mythic';
+    return rarity === 'Mythic';
+}
+
+/** Cek syarat evo manual. Return {ok} atau {ok:false, need, have}. */
+function checkEvoCost(level, quantity) {
+    const cost = EVO_COST[Number(level)];
+    if (!cost) return { ok: false, error: 'LEVEL_MAX' };
+    const have = Math.max(0, Math.floor(Number(quantity) || 0));
+    if (have < cost.need) return { ok: false, error: 'NEED_MORE', need: cost.need, have };
+    return { ok: true, need: cost.need, consume: cost.consume };
 }
 
 /**
@@ -487,7 +514,7 @@ function createCardsRepo(db, options = {}) {
     }
 
     /**
-     * Pilih kartu yang masih tersedia: lewati yang sudah dimiliki (Epic+ unik
+     * Pilih kartu yang masih tersedia: lewati yang sudah dimiliki (Mythic unik
      * per user) dan yang stok globalnya habis. Bila rarity habis, otomatis
      * turun ke rarity di bawahnya. Return { picked, rarity, stockLeft }
      * atau null bila semua habis (praktis mustahil: Common unlimited).
@@ -537,6 +564,7 @@ function createCardsRepo(db, options = {}) {
                         power INTEGER DEFAULT 0,
                         image_url TEXT DEFAULT NULL,
                         is_showcase INTEGER DEFAULT 0,
+                        quantity INTEGER DEFAULT 1,
                         pulled_at DATETIME DEFAULT CURRENT_TIMESTAMP
                     )
                 `),
@@ -556,6 +584,10 @@ function createCardsRepo(db, options = {}) {
                 db.execute('ALTER TABLE user_cards ADD COLUMN image_url TEXT DEFAULT NULL')
                     .catch(() => {}),
                 db.execute('ALTER TABLE user_cards ADD COLUMN is_showcase INTEGER DEFAULT 0')
+                    .catch(() => {}),
+                db.execute('ALTER TABLE user_cards ADD COLUMN quantity INTEGER DEFAULT 1')
+                    .catch(() => {}),
+                db.execute('UPDATE user_cards SET quantity = 1 WHERE quantity IS NULL OR quantity < 1')
                     .catch(() => {}),
             ]);
         },
@@ -579,7 +611,7 @@ function createCardsRepo(db, options = {}) {
 
         async getCollection(userId) {
             const res = await db.execute({
-                sql: 'SELECT char_name, anime, rarity, level, power, image_url, is_showcase FROM user_cards WHERE user_id = ?',
+                sql: 'SELECT char_name, anime, rarity, level, power, image_url, is_showcase, quantity FROM user_cards WHERE user_id = ?',
                 args: [userId],
             });
             return res.rows.map((r) => ({
@@ -590,12 +622,13 @@ function createCardsRepo(db, options = {}) {
                 power: Number(r.power) || 0,
                 image_url: r.image_url || null,
                 is_showcase: Number(r.is_showcase) === 1,
+                quantity: Math.max(1, Number(r.quantity) || 1),
             }));
         },
 
         async getCard(userId, charName) {
             const res = await db.execute({
-                sql: 'SELECT char_name, anime, rarity, level, power, image_url, is_showcase FROM user_cards WHERE user_id = ? AND LOWER(char_name) = LOWER(?)',
+                sql: 'SELECT char_name, anime, rarity, level, power, image_url, is_showcase, quantity FROM user_cards WHERE user_id = ? AND LOWER(char_name) = LOWER(?)',
                 args: [userId, charName],
             });
             if (res.rows.length === 0) return null;
@@ -608,12 +641,13 @@ function createCardsRepo(db, options = {}) {
                 power: Number(r.power) || 0,
                 image_url: r.image_url || null,
                 is_showcase: Number(r.is_showcase) === 1,
+                quantity: Math.max(1, Number(r.quantity) || 1),
             };
         },
 
         async getShowcase(userId) {
             const res = await db.execute({
-                sql: 'SELECT char_name, anime, rarity, level, power, image_url, is_showcase FROM user_cards WHERE user_id = ? AND is_showcase = 1',
+                sql: 'SELECT char_name, anime, rarity, level, power, image_url, is_showcase, quantity FROM user_cards WHERE user_id = ? AND is_showcase = 1',
                 args: [userId],
             });
             if (res.rows.length === 0) return null;
@@ -626,6 +660,7 @@ function createCardsRepo(db, options = {}) {
                 power: Number(r.power) || 0,
                 image_url: r.image_url || null,
                 is_showcase: true,
+                quantity: Math.max(1, Number(r.quantity) || 1),
             };
         },
 
@@ -697,8 +732,9 @@ function createCardsRepo(db, options = {}) {
 
         /**
          * Satu pull gacha kartu PURE HOKI (tanpa urusan XP — XP ditangani command).
-         * Return { charName, anime, rarity, level, power, imageUrl, isDuplicate,
-         *          leveledUp, downgraded, stockLeft, stockLimit, xpBonus,
+         * EVO FULL MANUAL: duplikat menumpuk via quantity (maks 999), TIDAK naik level.
+         * Return { charName, anime, rarity, level, power, imageUrl, quantity, isDuplicate,
+         *          stacked, capped, leveledUp:false, downgraded, stockLeft, stockLimit, xpBonus,
          *          total_pulls, pulls_today, today_key }
          * atau { error: 'DAILY_CAP'|'SOLD_OUT', ... }.
          */
@@ -728,13 +764,16 @@ function createCardsRepo(db, options = {}) {
             const rarity = selection.rarity;
             const downgraded = selection.rarity !== rolledRarity;
 
-            // Epic+ dijamin unik per user (sudah difilter); cek duplikat hanya Rare/Common.
+            // Mythic unik per user (sudah difilter); sisanya boleh menumpuk.
             const existing = isUniqueRarity(rarity) ? null : await repo.getCard(userId, picked.name);
             const isDuplicate = Boolean(existing);
             let level = 1;
             let power;
             let imageUrl = null;
-            let leveledUp = false;
+            let quantity = 1;
+            let stacked = false;
+            let capped = false;
+            let xpBonus = 0;
 
             if (!isDuplicate) {
                 power = calcPower(rarity, 1, rng, picked.name);
@@ -757,19 +796,33 @@ function createCardsRepo(db, options = {}) {
                     }
                 }
                 await db.execute({
-                    sql: `INSERT INTO user_cards (user_id, username, char_name, anime, rarity, level, power, image_url, pulled_at)
-                          VALUES (?, ?, ?, ?, ?, 1, ?, ?, CURRENT_TIMESTAMP)`,
+                    sql: `INSERT INTO user_cards (user_id, username, char_name, anime, rarity, level, power, image_url, quantity, pulled_at)
+                          VALUES (?, ?, ?, ?, ?, 1, ?, ?, 1, CURRENT_TIMESTAMP)`,
                     args: [userId, username, picked.name, picked.anime, rarity, power, imageUrl],
                 });
             } else {
-                level = Math.min(MAX_CARD_LEVEL, existing.level + 1);
-                leveledUp = level > existing.level;
-                power = leveledUp ? existing.power + 10 : existing.power;
+                // Evo full manual: level/power tetap, copy menumpuk (maks 999).
+                level = existing.level;
+                power = existing.power;
                 imageUrl = existing.image_url;
-                await db.execute({
-                    sql: 'UPDATE user_cards SET level = ?, power = ?, username = ? WHERE user_id = ? AND LOWER(char_name) = LOWER(?)',
-                    args: [level, power, username, userId, existing.char_name],
-                });
+                const have = Math.max(1, Number(existing.quantity) || 1);
+                if (have >= MAX_CARD_COPIES) {
+                    // Cap penuh: copy hangus jadi XP hiburan.
+                    capped = true;
+                    quantity = have;
+                    xpBonus = LIMIT_BREAK_XP_REWARD[rarity] || 0;
+                    await db.execute({
+                        sql: 'UPDATE user_cards SET username = ? WHERE user_id = ? AND LOWER(char_name) = LOWER(?)',
+                        args: [username, userId, existing.char_name],
+                    });
+                } else {
+                    stacked = true;
+                    quantity = have + 1;
+                    await db.execute({
+                        sql: 'UPDATE user_cards SET quantity = quantity + 1, username = ? WHERE user_id = ? AND LOWER(char_name) = LOWER(?)',
+                        args: [username, userId, existing.char_name],
+                    });
+                }
             }
 
             const next = {
@@ -787,13 +840,16 @@ function createCardsRepo(db, options = {}) {
                 level,
                 power,
                 imageUrl,
+                quantity,
                 isDuplicate,
-                leveledUp,
+                stacked,
+                capped,
+                leveledUp: false,
                 forcedPity: false,
                 downgraded,
                 stockLeft: selection.stockLeft,
                 stockLimit: Number.isFinite(stockLimits[rarity]) ? stockLimits[rarity] : null,
-                xpBonus: isDuplicate ? (LIMIT_BREAK_XP_REWARD[rarity] || 0) : 0,
+                xpBonus,
                 cost: cfg.cost,
                 dailyLimit: cfg.dailyLimit,
                 ...next,
@@ -894,6 +950,9 @@ module.exports = {
     GACHA_COST,
     GACHA_DAILY_LIMIT,
     MAX_CARD_LEVEL,
+    MAX_CARD_COPIES,
+    EVO_COST,
+    checkEvoCost,
     RARITY_RATES,
     LIMIT_BREAK_XP_REWARD,
     BASE_POWER,

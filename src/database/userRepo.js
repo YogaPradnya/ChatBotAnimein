@@ -45,7 +45,7 @@ function createUserRepo(db) {
 
     /** Update username di semua tabel user saat user ganti nama */
     async function syncUsername(userId, username) {
-        const tables = ['user_stats', 'user_quiz_stats', 'user_memories', 'user_inventory', 'command_limits', 'image_limits', 'quiz_banned', 'user_cards', 'user_card_pity'];
+        const tables = ['user_stats', 'user_quiz_stats', 'user_memories', 'user_inventory', 'command_limits', 'image_limits', 'quiz_banned', 'user_cards', 'user_card_pity', 'user_display_cards'];
         for (const table of tables) {
             try {
                 await db.execute({

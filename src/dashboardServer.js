@@ -155,6 +155,7 @@ function createRuntime(scope) {
         get settingsRepo() { return scope.settingsRepo; },
         get settingsKeys() { return scope.settingsKeys; },
         get limitRepo() { return scope.limitRepo; },
+        get displayRepo() { return scope.displayRepo; },
         get baseXpRate() { return state.baseXpRate; },
         set baseXpRate(value) { state.baseXpRate = value; },
         get isDiscountEvent() { return state.isDiscountEvent; },
@@ -180,7 +181,7 @@ function startDashboard(scope) {
 
     // Eksplisit: referensi stabil di-destructure; state reaktif diakses via
     // `runtime.` agar tetap live (getter/setter), setara semantik `with(runtime)`.
-    const { projectRoot, state, CONFIG, db, bots, stats, cache, ANIMEIN_HEADERS, USER_STATS_CACHE, XP_PENDING_UPDATES, bannedUsers, sendChatMessage, sendChatWithImage, addActivity, startQuiz, resetAutoQuizTimer, fetchHomeAnime, clearQuizTimers, flushPendingXP, getImageLimitStatus, reportRepo, cacheRepo, settingsRepo, limitRepo, settingsKeys, login, logEmitter, weeklyRepo, cardsRepo } = runtime;
+    const { projectRoot, state, CONFIG, db, bots, stats, cache, ANIMEIN_HEADERS, USER_STATS_CACHE, XP_PENDING_UPDATES, bannedUsers, sendChatMessage, sendChatWithImage, addActivity, startQuiz, resetAutoQuizTimer, fetchHomeAnime, clearQuizTimers, flushPendingXP, getImageLimitStatus, reportRepo, cacheRepo, settingsRepo, limitRepo, settingsKeys, login, logEmitter, weeklyRepo, cardsRepo, displayRepo } = runtime;
     const app = express();
 
     if (helmet) {
@@ -202,8 +203,8 @@ function startDashboard(scope) {
         }));
     }
 
-    app.use(express.json());
-    app.use(express.urlencoded({ extended: true }));
+    app.use(express.json({ limit: '8mb' }));
+    app.use(express.urlencoded({ extended: true, limit: '8mb' }));
     // Block akses publik ke file prompt karakter
     app.get('/Prompt_Karakter_Rara.txt', (req, res) => res.status(404).send('Not found'));
     app.use(express.static(path.join(projectRoot, 'public')));
@@ -638,6 +639,131 @@ function startDashboard(scope) {
             const result = await cardsRepo.setArtOverride(name, imageUrl);
             if (!result.ok) return res.status(400).json({ success: false, message: result.error });
             res.json({ success: true, removed: result.removed });
+        } catch (e) {
+            safeError(res, e);
+        }
+    });
+
+    // === KARTU PAJANGAN (display-only, gift admin ke 1 user) ===
+    const DISPLAY_UPLOAD_DIR = 'uploads/display';
+    const DISPLAY_UPLOAD_MAX_BYTES = 3 * 1024 * 1024;
+
+    function requireDisplayRepo(res) {
+        if (!displayRepo) {
+            res.status(503).json({ success: false, message: 'Display repo tidak tersedia.' });
+            return false;
+        }
+        return true;
+    }
+
+    function resolveDisplayRepo() {
+        if (displayRepo) return displayRepo;
+        try {
+            // Fallback bila scope lama belum kirim displayRepo.
+            const { createDisplayRepo } = require('./database/displayRepo');
+            return createDisplayRepo(db);
+        } catch (_) {
+            return null;
+        }
+    }
+
+    async function saveDisplayUpload(dataUrl) {
+        const m = String(dataUrl || '').match(/^data:(image\/(png|jpe?g|webp|gif));base64,([A-Za-z0-9+/=]+)$/);
+        if (!m) throw new Error('Format upload harus data URL gambar (png/jpg/webp/gif).');
+        const ext = m[2] === 'jpeg' ? 'jpg' : m[2];
+        const buf = Buffer.from(m[3], 'base64');
+        if (buf.length === 0 || buf.length > DISPLAY_UPLOAD_MAX_BYTES) {
+            throw new Error('Ukuran gambar maksimal 3MB.');
+        }
+        const fs = require('fs');
+        const dir = runtime.path.join(projectRoot, 'public', DISPLAY_UPLOAD_DIR);
+        fs.mkdirSync(dir, { recursive: true });
+        const fname = `display_${Date.now()}_${Math.floor(Math.random() * 1e6)}.${ext}`;
+        fs.writeFileSync(runtime.path.join(dir, fname), buf);
+        return `/${DISPLAY_UPLOAD_DIR}/${fname}`;
+    }
+
+    app.get('/api/display/cards', async (req, res) => {
+        const repo = displayRepo || resolveDisplayRepo();
+        if (!repo) return res.status(503).json({ success: false, message: 'Display repo tidak tersedia.' });
+        try {
+            await repo.initTables().catch(() => {});
+            const data = await repo.listDisplayCards({
+                q: req.query.q || '',
+                page: req.query.page || 1,
+                limit: req.query.limit || 20,
+            });
+            res.json({ success: true, ...data });
+        } catch (e) {
+            safeError(res, e);
+        }
+    });
+
+    app.get('/api/display/users/search', async (req, res) => {
+        try {
+            const q = String(req.query.q || '').replace(/^@/, '').trim();
+            if (q.length < 2) return res.json({ success: true, users: [] });
+            const rows = await db.execute({
+                sql: 'SELECT user_id, username FROM user_stats WHERE username LIKE ? ORDER BY username ASC LIMIT 10',
+                args: [`%${q}%`],
+            });
+            res.json({
+                success: true,
+                users: (rows.rows || []).map((r) => ({ user_id: String(r.user_id), username: String(r.username || '') })),
+            });
+        } catch (e) {
+            safeError(res, e);
+        }
+    });
+
+    app.post('/api/display/upload', async (req, res) => {
+        try {
+            const { dataUrl } = req.body || {};
+            if (!dataUrl) return res.status(400).json({ success: false, message: 'dataUrl wajib diisi.' });
+            const url = await saveDisplayUpload(dataUrl);
+            res.json({ success: true, url });
+        } catch (e) {
+            res.status(400).json({ success: false, message: e.message || 'Upload gagal.' });
+        }
+    });
+
+    app.post('/api/display/gift', async (req, res) => {
+        const repo = displayRepo || resolveDisplayRepo();
+        if (!repo) return res.status(503).json({ success: false, message: 'Display repo tidak tersedia.' });
+        try {
+            await repo.initTables().catch(() => {});
+            const result = await repo.giftDisplayCard(req.body || {}, 'admin');
+            if (!result.ok) return res.status(400).json({ success: false, message: result.error });
+            console.log(`[DISPLAY] Gift "${result.card.name}" -> @${result.card.username}`);
+            res.json({ success: true, card: result.card });
+        } catch (e) {
+            safeError(res, e);
+        }
+    });
+
+    app.post('/api/display/update', async (req, res) => {
+        const repo = displayRepo || resolveDisplayRepo();
+        if (!repo) return res.status(503).json({ success: false, message: 'Display repo tidak tersedia.' });
+        try {
+            const { id, ...fields } = req.body || {};
+            if (!id) return res.status(400).json({ success: false, message: 'ID wajib diisi.' });
+            const result = await repo.updateDisplayCard(Number(id), fields);
+            if (!result.ok) return res.status(400).json({ success: false, message: result.error });
+            res.json({ success: true, card: result.card });
+        } catch (e) {
+            safeError(res, e);
+        }
+    });
+
+    app.post('/api/display/delete', async (req, res) => {
+        const repo = displayRepo || resolveDisplayRepo();
+        if (!repo) return res.status(503).json({ success: false, message: 'Display repo tidak tersedia.' });
+        try {
+            const { id } = req.body || {};
+            if (!id) return res.status(400).json({ success: false, message: 'ID wajib diisi.' });
+            await repo.deleteDisplayCard(Number(id));
+            console.log(`[DISPLAY] Hapus kartu id=${id}`);
+            res.json({ success: true });
         } catch (e) {
             safeError(res, e);
         }

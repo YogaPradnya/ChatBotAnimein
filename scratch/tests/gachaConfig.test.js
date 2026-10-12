@@ -230,7 +230,7 @@ function seqRng(values) {
     return () => values[i++ % values.length];
 }
 
-test('GachaConfig - Epic milik sendiri tidak duplikat, roll ke Epic lain', async () => {
+test('GachaConfig - Epic milik sendiri MENUMPUK (evo full manual, hanya Mythic unik)', async () => {
     invalidateGachaConfig();
     const db = createSettingsMockDb();
     db.state.cards.push({ user_id: 'u1', char_name: 'Epic A', anime: 'X', rarity: 'Epic', level: 1, power: 110, image_url: null });
@@ -239,15 +239,36 @@ test('GachaConfig - Epic milik sendiri tidak duplikat, roll ke Epic lain', async
         { name: 'Epic A', anime: 'X', tier: 'Epic' },
         { name: 'Epic B', anime: 'Y', tier: 'Epic' },
     ]);
-    // 0.97 = roll Epic; 0 = Epic A (punya, skip); 0.99 = Epic B.
+    // 0.97 = roll Epic; 0 = Epic A (punya -> menumpuk, bukan skip).
     const r = await repo.performPull('u1', 'U', '2026-10-11', seqRng([0.97, 0, 0.99]));
     assert.strictEqual(r.rarity, 'Epic');
-    assert.strictEqual(r.charName, 'Epic B');
-    assert.strictEqual(r.isDuplicate, false);
+    assert.strictEqual(r.charName, 'Epic A');
+    assert.strictEqual(r.isDuplicate, true);
+    assert.strictEqual(r.stacked, true);
+    assert.strictEqual(r.quantity, 2);
+    assert.strictEqual(r.level, 1);
     assert.strictEqual(r.xpBonus, 0);
     assert.strictEqual(r.downgraded, false);
-    assert.strictEqual(r.stockLeft, 49);
+    assert.strictEqual(r.stockLeft, 48); // stok 50 - 1 pemilik (diri sendiri) - 1
     assert.strictEqual(r.stockLimit, 50);
+});
+
+test('GachaConfig - Mythic milik sendiri tidak duplikat, roll ke Mythic lain', async () => {
+    invalidateGachaConfig();
+    const db = createSettingsMockDb();
+    db.state.cards.push({ user_id: 'u1', char_name: 'Mythic A', anime: 'X', rarity: 'Mythic', level: 1, power: 210, image_url: null });
+    const repo = createCardsRepo(db, { imageResolver: async () => null });
+    await repo.savePool([
+        { name: 'Mythic A', anime: 'X', tier: 'Mythic' },
+        { name: 'Mythic B', anime: 'Y', tier: 'Mythic' },
+        { name: 'Legend Y', anime: 'Y', tier: 'Legendary' },
+    ]);
+    // Roll Mythic; Mythic A (punya, skip karena unik); Mythic B diambil.
+    const r = await repo.performPull('u1', 'U', '2026-10-11', seqRng([0.99999, 0, 0.99]));
+    assert.strictEqual(r.rarity, 'Mythic');
+    assert.strictEqual(r.charName, 'Mythic B');
+    assert.strictEqual(r.isDuplicate, false);
+    assert.strictEqual(r.downgraded, false);
 });
 
 test('GachaConfig - Mythic stok 1 habis -> turun ke Legendary + flag downgraded', async () => {

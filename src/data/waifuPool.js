@@ -3,7 +3,7 @@
  * Tiap entri: { name, anime, tier } dengan tier Common | Rare | Epic | Legendary | Mythic.
  * Distribusi: Common 90 / Rare 56 / Epic 30 / Legendary 14 / Mythic 10.
  * Stok global per kartu: Mythic 1 / Legendary 10 / Epic 50 / Rare & Common unlimited.
- * Duplikat (limit break + XP) hanya untuk Rare & Common; Epic+ unik per user.
+ * Evo full manual: duplikat menumpuk (maks 999 copy); hanya Mythic unik per user.
  */
 
 const WAIFU_POOL = [

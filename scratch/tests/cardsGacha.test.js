@@ -10,6 +10,9 @@ const {
     GACHA_COST,
     GACHA_DAILY_LIMIT,
     MAX_CARD_LEVEL,
+    MAX_CARD_COPIES,
+    EVO_COST,
+    checkEvoCost,
     LIMIT_BREAK_XP_REWARD,
     BASE_POWER,
     DEFAULT_RATES,
@@ -57,7 +60,16 @@ function createMockDb(seed = {}, opts = {}) {
                     user_id: args[0], username: args[1], char_name: args[2],
                     anime: args[3], rarity: args[4], level: 1,
                     power: args[5], image_url: args[6] || null, is_showcase: 0,
+                    quantity: Math.max(1, Number(args[7]) || 1),
                 });
+                return { rows: [], rowsAffected: 1 };
+            }
+            if (sql.startsWith('UPDATE user_cards SET quantity = quantity + 1')) {
+                const hit = state.cards.find((c) =>
+                    c.user_id === args[1] && c.char_name.toLowerCase() === String(args[2]).toLowerCase());
+                assert.ok(hit, 'UPDATE quantity: kartu harus ada');
+                hit.quantity = Math.max(1, (Number(hit.quantity) || 1) + 1);
+                hit.username = args[0];
                 return { rows: [], rowsAffected: 1 };
             }
             if (sql.startsWith('UPDATE user_cards SET level')) {
@@ -79,6 +91,12 @@ function createMockDb(seed = {}, opts = {}) {
                 const hit = state.cards.find((c) =>
                     c.user_id === args[0] && c.char_name.toLowerCase() === String(args[1]).toLowerCase());
                 if (hit) hit.is_showcase = 1;
+                return { rows: [], rowsAffected: hit ? 1 : 0 };
+            }
+            if (sql.includes('UPDATE user_cards SET username') && sql.includes('LOWER(char_name)')) {
+                const hit = state.cards.find((c) =>
+                    c.user_id === args[1] && c.char_name.toLowerCase() === String(args[2]).toLowerCase());
+                if (hit) hit.username = args[0];
                 return { rows: [], rowsAffected: hit ? 1 : 0 };
             }
             if (sql.includes('UPDATE user_cards SET username')) {
@@ -200,32 +218,35 @@ test('Cards - gambar di-cache: user lain reuse tanpa fetch ulang', async () => {
     assert.strictEqual(img.calls(), 0);
 });
 
-test('Cards - duplikat -> limit break level+1 + bonus XP', async () => {
+test('Cards - duplikat -> MENUMPUK (evo full manual, level tetap, tanpa XP)', async () => {
     const db = createMockDb({
         pity: { pity_count: 0, total_pulls: 1, pulls_today: 1, today_key: TODAY },
-        cards: [{ user_id: 'u1', username: 'Tester', char_name: 'Edward Elric', anime: 'Fullmetal Alchemist', rarity: 'Common', level: 1, power: 55, image_url: null, is_showcase: 0 }],
+        cards: [{ user_id: 'u1', username: 'Tester', char_name: 'Edward Elric', anime: 'Fullmetal Alchemist', rarity: 'Common', level: 1, power: 55, image_url: null, is_showcase: 0, quantity: 1 }],
     });
     const repo = createCardsRepo(db, { imageResolver: mockImage() });
     const res = await repo.performPull('u1', 'Tester', TODAY, () => 0);
     assert.strictEqual(res.isDuplicate, true);
-    assert.strictEqual(res.leveledUp, true);
-    assert.strictEqual(res.level, 2);
-    assert.strictEqual(res.power, 65);
-    assert.strictEqual(res.xpBonus, LIMIT_BREAK_XP_REWARD.Common);
-    assert.strictEqual(res.xpBonus, 50);
+    assert.strictEqual(res.stacked, true);
+    assert.strictEqual(res.capped, false);
+    assert.strictEqual(res.leveledUp, false);
+    assert.strictEqual(res.level, 1);
+    assert.strictEqual(res.power, 55);
+    assert.strictEqual(res.quantity, 2);
+    assert.strictEqual(res.xpBonus, 0);
 });
 
-test('Cards - limit break mentok di ★5 tapi bonus tetap', async () => {
+test('Cards - cap 999: copy hangus jadi XP hiburan', async () => {
     const db = createMockDb({
         pity: { pity_count: 0, total_pulls: 9, pulls_today: 2, today_key: TODAY },
-        cards: [{ user_id: 'u1', username: 'Tester', char_name: 'Edward Elric', anime: 'Fullmetal Alchemist', rarity: 'Common', level: 5, power: 99, image_url: null, is_showcase: 0 }],
+        cards: [{ user_id: 'u1', username: 'Tester', char_name: 'Edward Elric', anime: 'Fullmetal Alchemist', rarity: 'Common', level: 1, power: 55, image_url: null, is_showcase: 0, quantity: 999 }],
     });
     const repo = createCardsRepo(db, { imageResolver: mockImage() });
     const res = await repo.performPull('u1', 'Tester', TODAY, () => 0);
     assert.strictEqual(res.isDuplicate, true);
-    assert.strictEqual(res.leveledUp, false);
-    assert.strictEqual(res.level, MAX_CARD_LEVEL);
-    assert.strictEqual(res.power, 99);
+    assert.strictEqual(res.stacked, false);
+    assert.strictEqual(res.capped, true);
+    assert.strictEqual(res.quantity, 999);
+    assert.strictEqual(res.level, 1);
     assert.strictEqual(res.xpBonus, 50);
 });
 
@@ -276,9 +297,22 @@ test('Cards - konstanta ekonomi sesuai spek', () => {
     assert.strictEqual(MAX_CARD_LEVEL, 5);
     assert.deepStrictEqual(STOCK_LIMITS, { Common: Infinity, Rare: Infinity, Epic: 50, Legendary: 10, Mythic: 1 });
     assert.deepStrictEqual(RARITY_DOWNGRADE, { Mythic: 'Legendary', Legendary: 'Epic', Epic: 'Rare', Rare: 'Common', Common: null });
-    assert.strictEqual(isUniqueRarity('Epic'), true);
     assert.strictEqual(isUniqueRarity('Mythic'), true);
+    assert.strictEqual(isUniqueRarity('Epic'), false);
+    assert.strictEqual(isUniqueRarity('Legendary'), false);
     assert.strictEqual(isUniqueRarity('Rare'), false);
+    assert.strictEqual(MAX_CARD_COPIES, 999);
+    assert.deepStrictEqual(EVO_COST, {
+        1: { need: 3, consume: 2 },
+        2: { need: 3, consume: 2 },
+        3: { need: 3, consume: 2 },
+        4: { need: 5, consume: 4 },
+    });
+    assert.deepStrictEqual(checkEvoCost(1, 3), { ok: true, need: 3, consume: 2 });
+    assert.strictEqual(checkEvoCost(1, 2).ok, false);
+    assert.strictEqual(checkEvoCost(4, 4).ok, false);
+    assert.deepStrictEqual(checkEvoCost(4, 5), { ok: true, need: 5, consume: 4 });
+    assert.strictEqual(checkEvoCost(5, 999).ok, false);
     assert.deepStrictEqual(LIMIT_BREAK_XP_REWARD, { Common: 50, Rare: 150, Epic: 400, Legendary: 1000, Mythic: 2500 });
     assert.deepStrictEqual(BASE_POWER, { Common: 40, Rare: 70, Epic: 100, Legendary: 150, Mythic: 200 });
     assert.deepStrictEqual(DEFAULT_RATES, { Common: 70, Rare: 25, Epic: 4.89, Legendary: 0.1, Mythic: 0.01 });
