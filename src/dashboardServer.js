@@ -644,6 +644,36 @@ function startDashboard(scope) {
         }
     });
 
+    app.post('/api/gacha/gift', async (req, res) => {
+        if (!requireCardsRepo(res)) return;
+        try {
+            const result = await cardsRepo.grantCard(req.body || {});
+            if (!result.ok) return res.status(400).json({ success: false, message: result.error });
+            console.log(`[GACHA] Gift "${result.card.char_name}" x${result.card.quantity} -> @${result.card.username}`);
+            res.json({ success: true, card: result.card });
+        } catch (e) {
+            safeError(res, e);
+        }
+    });
+
+    // Koleksi user target (untuk penanda milik/belum di form gift).
+    app.get('/api/gacha/owned', async (req, res) => {
+        if (!requireCardsRepo(res)) return;
+        try {
+            const username = String(req.query.username || '').replace(/^@/, '').trim();
+            if (!username) return res.json({ success: true, owned: [] });
+            const ures = await db.execute({
+                sql: 'SELECT user_id FROM user_stats WHERE LOWER(username) = LOWER(?) LIMIT 1',
+                args: [username],
+            });
+            if (ures.rows.length === 0) return res.json({ success: true, owned: [] });
+            const col = await cardsRepo.getCollection(String(ures.rows[0].user_id));
+            res.json({ success: true, owned: (col || []).map((c) => ({ name: c.char_name, quantity: c.quantity })) });
+        } catch (e) {
+            safeError(res, e);
+        }
+    });
+
     // === KARTU PAJANGAN (display-only, gift admin ke 1 user) ===
     const DISPLAY_UPLOAD_DIR = 'uploads/display';
     const DISPLAY_UPLOAD_MAX_BYTES = 3 * 1024 * 1024;

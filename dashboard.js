@@ -1803,6 +1803,24 @@ function getDashboardHTML() {
               <div style="color: var(--muted); font-size: 12px;">Memuat statistik...</div>
             </div>
           </div>
+          <!-- Gift Kartu Gacha (admin ke user) -->
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-title">🎁 Gift Kartu Gacha</div>
+            <p style="font-size: 12px; color: var(--muted); margin-bottom: 14px;">Kirim kartu pool gacha ke user. Duplikat menumpuk jadi quantity (maks 999).</p>
+            <label style="font-size:11px; color:var(--muted);">Username tujuan (tanpa @)<input type="text" id="gachaGiftUsername" placeholder="contoh: yoga" style="width:100%; margin-top:4px; padding:8px 10px; border-radius:8px; border:1px solid var(--border); font-size:12px;" oninput="searchGachaGiftUser()"></label>
+            <div id="gachaGiftUserHint" style="font-size:11px; color:var(--muted); margin:4px 0 10px;"></div>
+            <label style="font-size:11px; color:var(--muted);">Kartu<select id="gachaGiftCard" style="width:100%; margin-top:4px; padding:8px 10px; border-radius:8px; border:1px solid var(--border); font-size:12px;">
+              <option value="">Memuat pool...</option>
+            </select></label>
+            <label style="font-size:12px; color:var(--body); margin-top:8px; display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="gachaGiftOnlyMissing" onchange="refreshGachaGiftOptions()"> Hanya yang belum dimiliki</label>
+            <div id="gachaGiftOwnedInfo" style="font-size:11px; color:var(--muted); margin-top:6px;"></div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:10px;">
+              <label style="font-size:11px; color:var(--muted);">Jumlah<input type="number" id="gachaGiftQty" min="1" max="999" value="1" style="width:100%; margin-top:4px; padding:8px 10px; border-radius:8px; border:1px solid var(--border); font-size:12px;"></label>
+            </div>
+            <div style="display:flex; gap:8px; margin-top:12px;">
+              <button class="btn-sm btn-sm-toggle" onclick="giftGachaCard()" style="background:var(--accent); border-color:var(--accent); color:#fff;">🎁 Gift ke User</button>
+            </div>
+          </div>
         </div>
         <div style="flex: 2; display: flex; flex-direction: column; gap: 20px; min-width: 0;">
           <!-- Pengaturan Gacha Card -->
@@ -2001,6 +2019,66 @@ function getDashboardHTML() {
     <div class="modal-actions">
       <button class="btn-secondary" onclick="closeKwModal()">Batal</button>
       <button class="btn-primary" onclick="saveKw()">Simpan Knowledge</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Kartu Pajangan Modal -->
+<div class="modal-overlay" id="displayEditModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-icon">🎁</div>
+      <div class="modal-title">Edit Kartu Pajangan</div>
+    </div>
+    <input type="hidden" id="displayEditId">
+    <div class="form-group">
+      <label class="form-label">Nama kartu</label>
+      <input type="text" id="displayEditName" maxlength="80" oninput="previewDisplayEdit()">
+    </div>
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label">Grade</label>
+        <input type="text" id="displayEditGrade" maxlength="40" oninput="previewDisplayEdit()">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label">Border</label>
+        <select id="displayEditBorder" onchange="onDisplayEditBorder(); previewDisplayEdit()">
+          <option value="classic">classic</option>
+          <option value="gold">gold</option>
+          <option value="rainbow">rainbow</option>
+          <option value="neon">neon</option>
+          <option value="sakura">sakura</option>
+          <option value="shadow">shadow</option>
+          <option value="custom">custom (hex)</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group" id="displayEditColorWrap" style="display:none; margin-top:12px; margin-bottom:0;">
+      <label class="form-label">Warna custom (hex)</label>
+      <input type="text" id="displayEditBorderColor" placeholder="#ff00aa" oninput="previewDisplayEdit()">
+    </div>
+    <div class="form-group" style="margin-top:12px;">
+      <label class="form-label">Gambar (URL https — kosongkan = hapus gambar)</label>
+      <input type="text" id="displayEditImageUrl" placeholder="https://..." oninput="previewDisplayEdit()">
+      <div style="display:flex; gap:8px; margin-top:8px; align-items:center; flex-wrap:wrap;">
+        <input type="file" id="displayEditUploadFile" accept="image/png,image/jpeg,image/webp,image/gif" style="font-size:11px;">
+        <button class="btn-sm btn-sm-toggle" onclick="uploadDisplayEditImage()">⬆️ Upload (Cloudinary)</button>
+      </div>
+      <div style="margin-top:10px; display:flex; gap:12px; align-items:flex-start;">
+        <img id="displayEditPreviewImg" class="display-art display-border-classic" style="width:88px; height:120px; object-fit:cover;" alt="preview">
+        <div style="min-width:0;">
+          <div style="font-weight:700; font-size:13px;" id="displayEditPreviewName"></div>
+          <div style="font-size:11px; color:var(--muted);" id="displayEditPreviewGrade"></div>
+        </div>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Deskripsi flip (belakang kartu)</label>
+      <textarea id="displayEditDesc" maxlength="1000" style="min-height:90px;"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeDisplayEdit()">Batal</button>
+      <button class="btn-primary" onclick="saveDisplayEdit()">Simpan</button>
     </div>
   </div>
 </div>
@@ -3445,6 +3523,94 @@ async function updateStats() {
         '</div>' +
         '</div>';
     }).join('');
+    refreshGachaGiftOptions();
+  }
+
+  function refreshGachaGiftOptions() {
+    const sel = document.getElementById('gachaGiftCard');
+    if (!sel) return;
+    const keep = sel.value;
+    const onlyMissing = document.getElementById('gachaGiftOnlyMissing')?.checked;
+    const list = onlyMissing
+      ? cachedGachaPool.filter((c) => !(gachaGiftOwned[String(c.name || '').toLowerCase()] > 0))
+      : cachedGachaPool;
+    sel.innerHTML = list.length === 0
+      ? '<option value="">(tidak ada kartu' + (onlyMissing ? ' yang belum dimiliki' : '') + ')</option>'
+      : list.map((c) => {
+        const qty = gachaGiftOwned[String(c.name || '').toLowerCase()] || 0;
+        const mark = qty > 0 ? ' ✓x' + qty : ' ○';
+        return '<option value="' + escapeHTML(c.name) + '">' + escapeHTML(c.name) + ' [' + escapeHTML(c.tier) + ']' + mark + '</option>';
+      }).join('');
+    if (keep && list.some((c) => c.name === keep)) sel.value = keep;
+    const info = document.getElementById('gachaGiftOwnedInfo');
+    if (info) {
+      const ownedCount = cachedGachaPool.filter((c) => gachaGiftOwned[String(c.name || '').toLowerCase()] > 0).length;
+      info.textContent = Object.keys(gachaGiftOwned).length === 0 && !(document.getElementById('gachaGiftUsername')?.value || '').trim()
+        ? ''
+        : 'Koleksi target: ' + ownedCount + '/' + cachedGachaPool.length + ' kartu pool dimiliki.';
+    }
+  }
+
+  let gachaGiftOwned = {};
+
+  let gachaGiftUserTimer = null;
+  async function searchGachaGiftUser() {
+    const hint = document.getElementById('gachaGiftUserHint');
+    const q = (document.getElementById('gachaGiftUsername')?.value || '').replace(/^@/, '').trim();
+    if (q.length < 2) { if (hint) hint.textContent = ''; gachaGiftOwned = {}; refreshGachaGiftOptions(); return; }
+    clearTimeout(gachaGiftUserTimer);
+    gachaGiftUserTimer = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/display/users/search?q=' + encodeURIComponent(q));
+        const d = await res.json().catch(() => ({}));
+        if (!d.success) return;
+        const users = d.users || [];
+        if (hint) {
+          hint.textContent = users.length === 0
+            ? 'Username tidak ditemukan di user_stats.'
+            : users.map((u) => '@' + u.username).join(', ');
+        }
+      } catch (_) { /* abaikan */ }
+      try {
+        const res = await fetch('/api/gacha/owned?username=' + encodeURIComponent(q));
+        const d = await res.json().catch(() => ({}));
+        gachaGiftOwned = {};
+        for (const o of (d.owned || [])) {
+          gachaGiftOwned[String(o.name || '').toLowerCase()] = Number(o.quantity) || 1;
+        }
+        refreshGachaGiftOptions();
+      } catch (_) { /* abaikan */ }
+    }, 300);
+  }
+
+  async function giftGachaCard() {
+    const username = (document.getElementById('gachaGiftUsername')?.value || '').trim();
+    const charName = document.getElementById('gachaGiftCard')?.value || '';
+    const quantity = Math.min(999, Math.max(1, parseInt(document.getElementById('gachaGiftQty')?.value || '1', 10) || 1));
+    if (!username || !charName) {
+      return showToast('Username dan kartu wajib diisi.', 'warning');
+    }
+    const ok = await customConfirm('Gift "' + charName + '" x' + quantity + ' ke @' + username.replace(/^@/, '') + '?', 'Gift Kartu Gacha', 'Ya, Gift');
+    if (!ok) return;
+    try {
+      const res = await fetch('/api/gacha/gift', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, charName, quantity }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.success) {
+        showToast('Kartu "' + charName + '" x' + quantity + ' di-gift ke @' + username.replace(/^@/, '') + '.', 'success');
+        document.getElementById('gachaGiftUsername').value = '';
+        document.getElementById('gachaGiftUserHint').textContent = '';
+        document.getElementById('gachaGiftQty').value = '1';
+        gachaGiftOwned = {};
+        refreshGachaGiftOptions();
+      } else {
+        showToast(d.message || 'Gagal gift kartu.', 'error');
+      }
+    } catch (err) {
+      showToast('Gagal terhubung ke server: ' + err.message, 'error');
+    }
   }
 
   async function loadGachaCards() {
@@ -3543,6 +3709,7 @@ async function updateStats() {
 
   /* ===== Kartu Pajangan (display-only) ===== */
   let displayPage = 1;
+  let displayCache = [];
   function displayBorderClass(t, color) {
     if (t === 'custom' && color) return '';
     return 'display-border-' + (t || 'classic');
@@ -3609,31 +3776,49 @@ async function updateStats() {
     if (f) f.value = '';
     previewDisplayCard();
   }
+  async function uploadDisplayDataUrl(dataUrl) {
+    const res = await fetch('/api/display/upload', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dataUrl }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.success) return d.url;
+    throw new Error(d.message || 'Upload gagal.');
+  }
+  async function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result || ''));
+      r.onerror = () => reject(new Error('Gagal baca file.'));
+      r.readAsDataURL(file);
+    });
+  }
   async function uploadDisplayImage() {
     const fileInput = document.getElementById('displayUploadFile');
     const file = fileInput && fileInput.files && fileInput.files[0];
     if (!file) return showToast('Pilih file gambar dulu.', 'warning');
     if (file.size > 3 * 1024 * 1024) return showToast('Maksimal 3MB.', 'error');
     try {
-      const dataUrl = await new Promise((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => resolve(String(r.result || ''));
-        r.onerror = () => reject(new Error('Gagal baca file.'));
-        r.readAsDataURL(file);
-      });
-      const res = await fetch('/api/display/upload', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dataUrl }),
-      });
-      const d = await res.json().catch(() => ({}));
-      if (res.ok && d.success) {
-        const urlInput = document.getElementById('displayImageUrl');
-        if (urlInput) urlInput.value = d.url;
-        previewDisplayCard();
-        showToast('Upload berhasil: ' + d.url, 'success');
-      } else {
-        showToast(d.message || 'Upload gagal.', 'error');
-      }
+      const url = await uploadDisplayDataUrl(await readFileAsDataUrl(file));
+      const urlInput = document.getElementById('displayImageUrl');
+      if (urlInput) urlInput.value = url;
+      previewDisplayCard();
+      showToast('Upload berhasil: ' + url, 'success');
+    } catch (err) {
+      showToast('Gagal terhubung ke server: ' + err.message, 'error');
+    }
+  }
+  async function uploadDisplayEditImage() {
+    const fileInput = document.getElementById('displayEditUploadFile');
+    const file = fileInput && fileInput.files && fileInput.files[0];
+    if (!file) return showToast('Pilih file gambar dulu.', 'warning');
+    if (file.size > 3 * 1024 * 1024) return showToast('Maksimal 3MB.', 'error');
+    try {
+      const url = await uploadDisplayDataUrl(await readFileAsDataUrl(file));
+      const urlInput = document.getElementById('displayEditImageUrl');
+      if (urlInput) urlInput.value = url;
+      previewDisplayEdit();
+      showToast('Upload berhasil: ' + url, 'success');
     } catch (err) {
       showToast('Gagal terhubung ke server: ' + err.message, 'error');
     }
@@ -3681,6 +3866,7 @@ async function updateStats() {
         return;
       }
       const cards = d.cards || [];
+      displayCache = cards;
       box.innerHTML = cards.length === 0
         ? '<div style="color:var(--muted); font-size:12px;">Belum ada kartu pajangan.</div>'
         : cards.map((c) => {
@@ -3719,40 +3905,77 @@ async function updateStats() {
       box.innerHTML = '<div style="color:var(--muted); font-size:12px;">Gagal terhubung.</div>';
     }
   }
-  async function editDisplayCard(id) {
-    const name = prompt('Nama baru (kosongkan = tidak diubah):');
-    if (name === null) return;
-    const grade = prompt('Grade baru (kosongkan = tidak diubah):');
-    if (grade === null) return;
-    const description = prompt('Deskripsi flip baru (kosongkan = tidak diubah):');
-    if (description === null) return;
-    const borderType = prompt('Border baru: classic/gold/rainbow/neon/sakura/shadow/custom (kosongkan = tidak diubah):', '');
-    if (borderType === null) return;
-    const body = { id };
-    if (name) body.name = name;
-    if (grade) body.grade = grade;
-    if (description) body.description = description;
-    const bt = String(borderType || '').trim().toLowerCase();
-    if (bt) {
-      const valid = ['classic', 'gold', 'rainbow', 'neon', 'sakura', 'shadow', 'custom'];
-      if (!valid.includes(bt)) {
-        showToast('Border tidak valid. Pilih: ' + valid.join('/'), 'error');
-        return;
-      }
-      body.borderType = bt;
-      if (bt === 'custom') {
-        const bc = prompt('Warna hex custom (contoh #ff00aa):', '');
-        if (bc === null) return;
-        if (!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(String(bc || '').trim())) {
-          showToast('Warna hex custom tidak valid.', 'error');
-          return;
-        }
-        body.borderColor = String(bc).trim();
+  function editDisplayCard(id) {
+    const c = (displayCache || []).find((x) => Number(x.id) === Number(id));
+    if (!c) return showToast('Data kartu tidak ditemukan, muat ulang dulu.', 'error');
+    document.getElementById('displayEditId').value = c.id;
+    document.getElementById('displayEditName').value = c.name || '';
+    document.getElementById('displayEditGrade').value = c.grade || '';
+    const b = document.getElementById('displayEditBorder');
+    const valid = ['classic', 'gold', 'rainbow', 'neon', 'sakura', 'shadow', 'custom'];
+    b.value = valid.includes(c.borderType) ? c.borderType : 'classic';
+    document.getElementById('displayEditBorderColor').value = c.borderColor || '';
+    document.getElementById('displayEditImageUrl').value = c.imageUrl || '';
+    const f = document.getElementById('displayEditUploadFile');
+    if (f) f.value = '';
+    document.getElementById('displayEditDesc').value = c.description || '';
+    onDisplayEditBorder();
+    previewDisplayEdit();
+    document.getElementById('displayEditModal').classList.add('open');
+  }
+  function closeDisplayEdit() {
+    document.getElementById('displayEditModal').classList.remove('open');
+  }
+  function onDisplayEditBorder() {
+    const v = document.getElementById('displayEditBorder')?.value || 'classic';
+    const w = document.getElementById('displayEditColorWrap');
+    if (w) w.style.display = v === 'custom' ? 'block' : 'none';
+  }
+  function previewDisplayEdit() {
+    const name = (document.getElementById('displayEditName')?.value || '').trim() || '(nama kartu)';
+    const grade = (document.getElementById('displayEditGrade')?.value || '').trim() || '(grade)';
+    const border = document.getElementById('displayEditBorder')?.value || 'classic';
+    const color = (document.getElementById('displayEditBorderColor')?.value || '').trim();
+    const img = (document.getElementById('displayEditImageUrl')?.value || '').trim();
+    const nEl = document.getElementById('displayEditPreviewName');
+    const gEl = document.getElementById('displayEditPreviewGrade');
+    const iEl = document.getElementById('displayEditPreviewImg');
+    if (nEl) nEl.textContent = name;
+    if (gEl) gEl.textContent = grade;
+    if (iEl) {
+      iEl.className = 'display-art ' + displayBorderClass(border, color);
+      if (border === 'custom' && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(color)) {
+        iEl.style.border = '4px solid ' + color;
+        iEl.style.boxShadow = '0 0 12px ' + color + '88';
       } else {
-        body.borderColor = '';
+        iEl.style.border = '';
+        iEl.style.boxShadow = '';
       }
+      if (img) { iEl.src = img; iEl.alt = name; }
+      else { iEl.removeAttribute('src'); iEl.alt = '(tanpa gambar)'; }
     }
-    if (!body.name && !body.grade && !body.description && !body.borderType) return;
+  }
+  async function saveDisplayEdit() {
+    const id = Number(document.getElementById('displayEditId').value);
+    if (!id) return showToast('ID kartu tidak valid.', 'error');
+    const name = (document.getElementById('displayEditName')?.value || '').trim();
+    const grade = (document.getElementById('displayEditGrade')?.value || '').trim();
+    const borderType = document.getElementById('displayEditBorder')?.value || 'classic';
+    const borderColor = borderType === 'custom'
+      ? (document.getElementById('displayEditBorderColor')?.value || '').trim()
+      : '';
+    const imageUrl = (document.getElementById('displayEditImageUrl')?.value || '').trim();
+    const description = (document.getElementById('displayEditDesc')?.value || '').trim();
+    if (!name) return showToast('Nama kartu wajib diisi.', 'warning');
+    if (!grade) return showToast('Grade kartu wajib diisi.', 'warning');
+    if (!description) return showToast('Deskripsi flip wajib diisi.', 'warning');
+    if (borderType === 'custom' && !/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(borderColor)) {
+      return showToast('Warna hex custom tidak valid (contoh #ff00aa).', 'error');
+    }
+    if (imageUrl && imageUrl.indexOf('http://') !== 0 && imageUrl.indexOf('https://') !== 0 && imageUrl.indexOf('/uploads/display/') !== 0) {
+      return showToast('Gambar harus URL http(s).', 'error');
+    }
+    const body = { id, name, grade, borderType, borderColor, imageUrl, description };
     try {
       const res = await fetch('/api/display/update', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -3761,6 +3984,7 @@ async function updateStats() {
       const d = await res.json().catch(() => ({}));
       if (res.ok && d.success) {
         showToast('Kartu diperbarui.', 'success');
+        closeDisplayEdit();
         loadDisplayCards(displayPage);
       } else {
         showToast(d.message || 'Gagal update.', 'error');

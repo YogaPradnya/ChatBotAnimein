@@ -862,6 +862,75 @@ function createCardsRepo(db, options = {}) {
         },
 
         /**
+         * Gift kartu gacha dari dashboard (admin) ke 1 username.
+         * Kartu harus ada di pool efektif. Duplikat menumpuk via quantity (maks 999).
+         * Return {ok, card} atau {ok:false, error}.
+         */
+        async grantCard(input = {}) {
+            const username = String(input.username || '').replace(/^@/, '').trim().slice(0, 80);
+            if (!username) return { ok: false, error: 'Username tujuan wajib diisi.' };
+            const charName = String(input.charName || input.name || '').trim().slice(0, 80);
+            if (!charName) return { ok: false, error: 'Nama kartu wajib diisi.' };
+            let qty = parseInt(input.quantity ?? input.qty ?? 1, 10);
+            if (!Number.isFinite(qty)) qty = 1;
+            qty = Math.min(MAX_CARD_COPIES, Math.max(1, qty));
+            let target = null;
+            try {
+                const res = await db.execute({
+                    sql: 'SELECT user_id, username FROM user_stats WHERE LOWER(username) = LOWER(?) LIMIT 1',
+                    args: [username],
+                });
+                if (res.rows.length > 0) {
+                    target = { userId: String(res.rows[0].user_id), username: String(res.rows[0].username || username) };
+                }
+            } catch (_) { /* abaikan */ }
+            if (!target) return { ok: false, error: `Username @${username} tidak ditemukan di user_stats.` };
+            let poolEntry = null;
+            try {
+                const settings = await loadGachaSettings(db);
+                poolEntry = (settings.pool || []).find((e) => String(e.name || '').toLowerCase() === charName.toLowerCase()) || null;
+            } catch (_) { /* abaikan */ }
+            if (!poolEntry) return { ok: false, error: `Kartu "${charName}" tidak ada di pool gacha.` };
+            const rarity = poolEntry.tier;
+            const existing = await repo.getCard(target.userId, poolEntry.name);
+            if (!existing) {
+                const power = calcPower(rarity, 1, Math.random, poolEntry.name);
+                let imageUrl = null;
+                try {
+                    const cached = await db.execute({
+                        sql: 'SELECT image_url FROM user_cards WHERE char_name = ? AND image_url IS NOT NULL LIMIT 1',
+                        args: [poolEntry.name],
+                    });
+                    if (cached.rows.length > 0 && cached.rows[0].image_url) {
+                        imageUrl = String(cached.rows[0].image_url);
+                    }
+                } catch (_) { /* abaikan, lanjut resolve */ }
+                if (!imageUrl) {
+                    try {
+                        const resolved = await imageResolver(poolEntry.name);
+                        if (resolved) imageUrl = String(resolved);
+                    } catch (e) {
+                        console.warn('[CARDS] Gagal resolve gambar:', poolEntry.name, e.message);
+                    }
+                }
+                await db.execute({
+                    sql: `INSERT INTO user_cards (user_id, username, char_name, anime, rarity, level, power, image_url, quantity, pulled_at)
+                          VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, CURRENT_TIMESTAMP)`,
+                    args: [target.userId, target.username, poolEntry.name, poolEntry.anime, rarity, power, imageUrl, Math.min(qty, MAX_CARD_COPIES)],
+                });
+            } else {
+                const have = Math.max(1, Number(existing.quantity) || 1);
+                const nextQty = Math.min(MAX_CARD_COPIES, have + qty);
+                await db.execute({
+                    sql: 'UPDATE user_cards SET quantity = ?, username = ? WHERE user_id = ? AND LOWER(char_name) = LOWER(?)',
+                    args: [nextQty, target.username, target.userId, existing.char_name],
+                });
+            }
+            const card = await repo.getCard(target.userId, poolEntry.name);
+            return { ok: true, card: { ...card, username: target.username } };
+        },
+
+        /**
          * Daftar kartu efektif untuk dashboard: pool + art ter-resolve
          * (statis/override, tanpa fetch jaringan).
          * Return { customized, cards: [{name, anime, tier, imageUrl}] }.
