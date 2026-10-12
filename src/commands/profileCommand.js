@@ -1,6 +1,6 @@
 const { boxHeader } = require('../utils/textStyle');
 const { formatLimitExceeded } = require('../utils/messageFormatter');
-const { frameDownloadedImage } = require('../services/cardFrameService');
+const { frameDownloadedImage, frameDisplayImage } = require('../services/cardFrameService');
 
 /**
  * Pilih pajangan yang tampil di .profil (konsisten sesuai pilihan user).
@@ -199,7 +199,7 @@ async function execute(ctx) {
             try {
                 const tempImg = await downloadImageToTempFile(picked.card.imageUrl);
                 if (tempImg) {
-                    const framedImg = await frameDownloadedImage(tempImg, 'Common');
+                    const framedImg = await frameDisplayImage(tempImg, picked.card.borderType, picked.card.borderColor);
                     const sent = await sendChatWithImage(bot, framedImg, profileTextFull, msg.id);
                     if (sent) return true;
                 }

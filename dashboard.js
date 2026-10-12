@@ -3547,6 +3547,11 @@ async function updateStats() {
     if (t === 'custom' && color) return '';
     return 'display-border-' + (t || 'classic');
   }
+  function displayBorderColorOf(t, color) {
+    const solids = { gold: '#eab308', rainbow: '#a855f7', neon: '#22d3ee', sakura: '#f9a8d4', shadow: '#111827', classic: '#9ca3af' };
+    if (t === 'custom' && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(color || '')) return (color || '').trim();
+    return solids[t] || solids.classic;
+  }
   function previewDisplayCard() {
     const name = (document.getElementById('displayName')?.value || '').trim() || '(nama kartu)';
     const grade = (document.getElementById('displayGrade')?.value || '').trim() || '(grade)';
@@ -3562,8 +3567,8 @@ async function updateStats() {
     if (gEl) gEl.textContent = grade;
     if (dEl) dEl.textContent = desc;
     if (iEl) {
-      iEl.className = 'display-art ' + displayBorderClass(border);
-      if (border === 'custom' && /^#[0-9a-fA-F]{3,6}$/.test(color)) {
+      iEl.className = 'display-art ' + displayBorderClass(border, color);
+      if (border === 'custom' && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(color)) {
         iEl.style.border = '4px solid ' + color;
         iEl.style.boxShadow = '0 0 12px ' + color + '88';
       } else {
@@ -3679,9 +3684,11 @@ async function updateStats() {
       box.innerHTML = cards.length === 0
         ? '<div style="color:var(--muted); font-size:12px;">Belum ada kartu pajangan.</div>'
         : cards.map((c) => {
+          const bColor = displayBorderColorOf(c.borderType, c.borderColor);
+          const thumbStyle = 'width:44px; height:60px; object-fit:cover; border-radius:8px; border:3px solid ' + escapeHTML(bColor) + '; box-shadow:0 0 8px ' + escapeHTML(bColor) + '55;';
           const img = c.imageUrl
-            ? '<img src="' + escapeHTML(c.imageUrl) + '" style="width:44px; height:60px; object-fit:cover; border-radius:8px;" loading="lazy" onerror="this.remove()">'
-            : '<div style="width:44px; height:60px; border-radius:8px; background:var(--bg); display:flex; align-items:center; justify-content:center;">🎁</div>';
+            ? '<img src="' + escapeHTML(c.imageUrl) + '" style="' + thumbStyle + '" loading="lazy" onerror="this.remove()">'
+            : '<div style="width:44px; height:60px; border-radius:8px; background:var(--bg); display:flex; align-items:center; justify-content:center; border:3px solid ' + escapeHTML(bColor) + ';">🎁</div>';
           const borderLbl = c.borderType === 'custom' && c.borderColor
             ? 'custom ' + escapeHTML(c.borderColor)
             : escapeHTML(c.borderType || 'classic');
@@ -3714,13 +3721,38 @@ async function updateStats() {
   }
   async function editDisplayCard(id) {
     const name = prompt('Nama baru (kosongkan = tidak diubah):');
+    if (name === null) return;
     const grade = prompt('Grade baru (kosongkan = tidak diubah):');
+    if (grade === null) return;
     const description = prompt('Deskripsi flip baru (kosongkan = tidak diubah):');
+    if (description === null) return;
+    const borderType = prompt('Border baru: classic/gold/rainbow/neon/sakura/shadow/custom (kosongkan = tidak diubah):', '');
+    if (borderType === null) return;
     const body = { id };
     if (name) body.name = name;
     if (grade) body.grade = grade;
     if (description) body.description = description;
-    if (!body.name && !body.grade && !body.description) return;
+    const bt = String(borderType || '').trim().toLowerCase();
+    if (bt) {
+      const valid = ['classic', 'gold', 'rainbow', 'neon', 'sakura', 'shadow', 'custom'];
+      if (!valid.includes(bt)) {
+        showToast('Border tidak valid. Pilih: ' + valid.join('/'), 'error');
+        return;
+      }
+      body.borderType = bt;
+      if (bt === 'custom') {
+        const bc = prompt('Warna hex custom (contoh #ff00aa):', '');
+        if (bc === null) return;
+        if (!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(String(bc || '').trim())) {
+          showToast('Warna hex custom tidak valid.', 'error');
+          return;
+        }
+        body.borderColor = String(bc).trim();
+      } else {
+        body.borderColor = '';
+      }
+    }
+    if (!body.name && !body.grade && !body.description && !body.borderType) return;
     try {
       const res = await fetch('/api/display/update', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },

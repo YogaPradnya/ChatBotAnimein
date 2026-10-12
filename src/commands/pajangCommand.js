@@ -1,6 +1,6 @@
 const { formatCommandUsage } = require('../utils/messageFormatter');
 const { boxHeader } = require('../utils/textStyle');
-const { frameDownloadedImage } = require('../services/cardFrameService');
+const { frameDownloadedImage, frameDisplayImage } = require('../services/cardFrameService');
 const { createCardsRepo, RARITY_EMOJI } = require('../database/cardsRepo');
 const { createDisplayRepo } = require('../database/displayRepo');
 
@@ -67,8 +67,8 @@ async function sendDisplayShowcase(ctx, current, withFlip) {
         try {
             const tempImg = await downloadImageToTempFile(current.imageUrl);
             if (tempImg) {
-                // Display pakai border klasik agar tidak dikira rarity gacha.
-                const sent = await sendChatWithImage(bot, await frameDownloadedImage(tempImg, 'Common'), caption, msg.id);
+                // Display pakai border sesuai setting dashboard (gold/rainbow/neon/dll).
+                const sent = await sendChatWithImage(bot, await frameDisplayImage(tempImg, current.borderType, current.borderColor), caption, msg.id);
                 if (sent) return true;
             }
         } catch (e) {
@@ -153,7 +153,7 @@ async function execute(ctx) {
                     try {
                         const tempImg = await ctx.downloadImageToTempFile(ownedDisplay.imageUrl);
                         if (tempImg) {
-                            const sent = await ctx.sendChatWithImage(bot, await frameDownloadedImage(tempImg, 'Common'), caption, msg.id);
+                            const sent = await ctx.sendChatWithImage(bot, await frameDisplayImage(tempImg, ownedDisplay.borderType, ownedDisplay.borderColor), caption, msg.id);
                             if (sent) return true;
                         }
                     } catch (e) {

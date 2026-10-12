@@ -16,9 +16,35 @@ const path = require('path');
 
 const VALID_RARITIES = ['Common', 'Rare', 'Epic', 'Legendary', 'Mythic'];
 
+const DISPLAY_BORDER_TYPES = ['gold', 'rainbow', 'neon', 'sakura', 'shadow', 'classic', 'custom'];
+
+const DISPLAY_BORDER_SOLID = {
+    gold: '#eab308',
+    neon: '#22d3ee',
+    sakura: '#f9a8d4',
+    shadow: '#111827',
+    classic: '#9ca3af',
+};
+
+const DISPLAY_RAINBOW_STOPS = ['#ef4444', '#eab308', '#22c55e', '#3b82f6', '#a855f7'];
+
 function normalizeRarity(rarity) {
     const r = String(rarity || 'Common');
     return VALID_RARITIES.includes(r) ? r : 'Common';
+}
+
+function normalizeDisplayBorderType(v) {
+    const s = String(v || 'classic').trim().toLowerCase();
+    return DISPLAY_BORDER_TYPES.includes(s) ? s : 'classic';
+}
+
+function normalizeDisplayHex(v) {
+    const s = String(v || '').trim();
+    if (/^#[0-9a-fA-F]{6}$/.test(s)) return s.toLowerCase();
+    if (/^#[0-9a-fA-F]{3}$/.test(s)) {
+        return `#${s[1]}${s[1]}${s[2]}${s[2]}${s[3]}${s[3]}`.toLowerCase();
+    }
+    return '';
 }
 
 /** Ketebalan dasar proporsional ukuran gambar. */
@@ -149,6 +175,65 @@ function buildFrameSvg(rarity, w, h) {
 }
 
 /**
+ * Bingkai Kartu Pajangan (display-only) sesuai border yang diset admin di dashboard.
+ * Beda dari rarity gacha: hanya garis tepi + glow tipis sesuai warna border,
+ * supaya tidak dikira rarity. Rainbow memakai gradient stroke SVG.
+ */
+function buildDisplayFrameSvg(borderType, borderColor, w, h) {
+    const type = normalizeDisplayBorderType(borderType);
+    const t = baseThickness(w, h);
+    if (type === 'rainbow') {
+        const stops = DISPLAY_RAINBOW_STOPS.map((c, i) =>
+            `<stop offset="${(i / (DISPLAY_RAINBOW_STOPS.length - 1)).toFixed(2)}" stop-color="${c}"/>`
+        ).join('');
+        return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">` +
+            `<defs><linearGradient id="dbow" x1="0" y1="0" x2="1" y2="1">${stops}</linearGradient></defs>` +
+            rect(t, t, w - t * 2, h - t * 2, 'url(#dbow)', t * 2.2, ' opacity="0.35"') +
+            rect(t / 2, t / 2, w - t, h - t, 'url(#dbow)', t) +
+            rect(t * 2, t * 2, w - t * 4, h - t * 4, '#ffffff', Math.max(2, t * 0.22), ' opacity="0.9"') +
+            `</svg>`;
+    }
+    let color = DISPLAY_BORDER_SOLID[type] || DISPLAY_BORDER_SOLID.classic;
+    if (type === 'custom') {
+        color = normalizeDisplayHex(borderColor) || DISPLAY_BORDER_SOLID.classic;
+    }
+    const glowOpacity = type === 'shadow' ? '0.4' : '0.35';
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">` +
+        rect(t, t, w - t * 2, h - t * 2, color, t * 2.2, ` opacity="${glowOpacity}"`) +
+        rect(t / 2, t / 2, w - t, h - t, color, t) +
+        rect(t * 2, t * 2, w - t * 4, h - t * 4, '#ffffff', Math.max(2, t * 0.22), ' opacity="0.85"') +
+        `</svg>`;
+}
+
+/**
+ * Tempel bingkai display ke file gambar lokal.
+ */
+async function applyDisplayFrame(inputPath, borderType, borderColor, opts = {}) {
+    let sharp;
+    try {
+        sharp = require('sharp');
+    } catch (_) {
+        return { filePath: inputPath, mimeType: null, framed: false };
+    }
+    try {
+        const meta = await sharp(inputPath).metadata();
+        const w = meta.width || 512;
+        const h = meta.height || 512;
+        const svg = buildDisplayFrameSvg(borderType, borderColor, w, h);
+        const dir = opts.dir || path.dirname(inputPath);
+        const out = path.join(dir, `framed_display_${Date.now()}_${Math.floor(Math.random() * 1000)}.png`);
+        await sharp(inputPath)
+            .composite([{ input: Buffer.from(svg), top: 0, left: 0 }])
+            .png()
+            .toFile(out);
+        return { filePath: out, mimeType: 'image/png', framed: true };
+    } catch (e) {
+        console.warn('[CARDFRAME] Gagal pasang bingkai display, pakai gambar asli:', e.message);
+        return { filePath: inputPath, mimeType: null, framed: false };
+    }
+}
+
+/**
  * Tempel bingkai rarity ke file gambar lokal.
  * @param {string} inputPath - path file gambar sumber
  * @param {string} rarity - Common|Rare|Epic|Legendary
@@ -192,10 +277,28 @@ async function frameDownloadedImage(tempImg, rarity) {
     return { ...tempImg, filePath: res.filePath, mimeType: 'image/png' };
 }
 
+/**
+ * Helper khusus Kartu Pajangan: pakai borderType/borderColor dari dashboard.
+ * Fallback ke bingkai display classic bila sharp gagal.
+ */
+async function frameDisplayImage(tempImg, borderType, borderColor) {
+    if (!tempImg || !tempImg.filePath) return tempImg;
+    const res = await applyDisplayFrame(tempImg.filePath, borderType, borderColor);
+    if (!res.framed) return tempImg;
+    return { ...tempImg, filePath: res.filePath, mimeType: 'image/png' };
+}
+
 module.exports = {
     VALID_RARITIES,
     normalizeRarity,
     buildFrameSvg,
     applyCardFrame,
     frameDownloadedImage,
+    DISPLAY_BORDER_TYPES,
+    DISPLAY_BORDER_SOLID,
+    normalizeDisplayBorderType,
+    normalizeDisplayHex,
+    buildDisplayFrameSvg,
+    applyDisplayFrame,
+    frameDisplayImage,
 };
