@@ -48,7 +48,7 @@ async function execute(ctx) {
 
         if (collection.length === 0 && displayCollection.length === 0) {
             await sendChatMessage(bot,
-                formatCommandUsage(senderName, 'Koleksi masih kosong, hmph! Gacha dulu sana pakai .gacha (500 XP). 💢'),
+                formatCommandUsage(senderName, 'Koleksi masih kosong, hmph! Gacha dulu di web: https://kartu.yogaa.web.id/gacha 💢'),
                 msg.id);
             return true;
         }
@@ -80,7 +80,7 @@ async function execute(ctx) {
             lines.push(`│ 📝 .pajang [nama] --flip untuk balik kartu`);
         }
         lines.push(`├───────────────────`);
-        lines.push(`│ 🎰 .gacha | 🖼️ .pajang [nama]`);
+        lines.push(`│ 🎰 web/gacha | 🖼️ .pajang [nama]`);
         lines.push(`│ ✨ = skill-2 aktif | 🔒 buka S2 di ★5 (C/R/E)`);
         lines.push(`└───────────────────`);
 

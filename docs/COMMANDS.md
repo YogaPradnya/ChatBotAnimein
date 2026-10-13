@@ -82,7 +82,7 @@ Command:
 | `buyCommand.js` | `.beli` | Pembelian item toko |
 | `imageCommand.js` | `.gambar` | Fetch dan kirim gambar |
 | `loginCommand.js` | `.login` | Klaim kode login web book kartu |
-| `gachaCommand.js` | `.gacha` | Gacha kartu (pure hoki, XP/pull, cap harian) |
+| `gachaCommand.js` | `.gacha` | Redirect ke web gacha + `.gacha rate` (rate/stok di chat) |
 | `koleksiCommand.js` | `.koleksi` | Galeri kartu + penanda skill-2 |
 | `pajangCommand.js` | `.pajang` | Pajang kartu gacha/display di `.profil` |
 | _(link web)_ | `.battle` | Menampilkan link web battle kartu (engine chat dihapus) |

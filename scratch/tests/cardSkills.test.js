@@ -181,21 +181,14 @@ test('Skill - Legend ★1 dan Common ★5 punya skill-2', async () => {
     assert.strictEqual(ed.skills.locked, false);
 });
 
-test('Skill - buildCardLines tampilkan skill + kompatibel hasil lama', () => {
-    const { buildCardLines } = require('../../src/commands/gachaCommand');
+test('Skill - resolve kurasi Son Goku + fallback kartu baru', () => {
     const r = resolveSkills({ charName: 'Son Goku', anime: 'Dragon Ball', rarity: 'Legendary', level: 1 });
     const eff = effectivePower(169, r.skill1, r.skill2);
-    const withSkills = buildCardLines({
-        charName: 'Son Goku', anime: 'Dragon Ball', rarity: 'Legendary', level: 1, power: 169,
-        isDuplicate: false, xpBonus: 0, imageUrl: null, total_pulls: 1, pity_count: 0, pulls_today: 1,
-        skills: r, effectivePower: eff.effective,
-    }, false).join('\n');
-    assert.ok(withSkills.includes('S1 Kamehameha'), 'harus tampil skill-1 kurasi');
-    assert.ok(withSkills.includes('S2 Ultra Instinct'), 'Legend harus tampil skill-2');
-    // Hasil lama tanpa field skills tidak boleh crash.
-    const legacy = buildCardLines({
-        charName: 'A', anime: 'B', rarity: 'Common', level: 1, power: 50,
-        isDuplicate: false, xpBonus: 0, imageUrl: null, total_pulls: 1, pity_count: 0, pulls_today: 1,
-    }, false).join('\n');
-    assert.ok(legacy.includes('Power 50'));
+    assert.strictEqual(r.skill1.name, 'Kamehameha');
+    assert.strictEqual(r.skill2.name, 'Ultra Instinct');
+    assert.ok(eff.effective > 169);
+    // Kartu baru tanpa skill tersimpan tetap dapat fallback tanpa crash.
+    const legacy = resolveSkills({ charName: 'A', anime: 'B', rarity: 'Common', level: 1 });
+    assert.ok(legacy.skill1 && legacy.skill1.name);
+    assert.strictEqual(legacy.skill2, null);
 });

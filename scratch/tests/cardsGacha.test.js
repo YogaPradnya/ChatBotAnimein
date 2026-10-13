@@ -330,47 +330,43 @@ test('Cards - resolvePullRarity selalu murni rate (pity dihapus)', () => {
     assert.ok(calcPower('Legendary', 1, () => 0.999) <= 169);
 });
 
-test('Cards - buildCardLines tanpa URL untuk caption gambar', () => {
-    const { buildCardLines } = require('../../src/commands/gachaCommand');
-    const result = { charName: 'Son Goku', anime: 'Dragon Ball', rarity: 'Legendary', level: 1, power: 169, forcedPity: false, isDuplicate: false, leveledUp: false, xpBonus: 0, imageUrl: 'https://x/y.jpg', total_pulls: 1, pity_count: 0, pulls_today: 1, stockLeft: 9, stockLimit: 10 };
-    const withUrl = buildCardLines(result, true).join('\n');
-    const caption = buildCardLines(result, false).join('\n');
-    assert.ok(withUrl.includes('https://x/y.jpg'));
-    assert.ok(!caption.includes('https://x/y.jpg'));
-    assert.ok(caption.includes('Son Goku') && !caption.includes('PITY'));
-    assert.ok(caption.includes('sisa 9/10'));
+test('Chat .gacha redirect ke web tanpa potong limit/XP', async () => {
+    const { execute, GACHA_WEB_URL } = require('../../src/commands/gachaCommand');
+    let sent = '';
+    let limitChecked = false;
+    let limitUsed = false;
+    const ctx = {
+        bot: {}, msg: { id: '1' }, senderName: 'Tester', senderUserId: 'u1',
+        lowerMsg: '.gacha', sendChatMessage: async (b, text) => { sent = text; },
+        checkCommandLimit: async () => { limitChecked = true; return { remaining: 10 }; },
+        incrementCommandUsage: async () => { limitUsed = true; },
+        cardsRepo: { performPull: async () => { throw new Error('tidak boleh pull dari chat'); } },
+    };
+    await execute(ctx);
+    assert.ok(sent.includes(GACHA_WEB_URL), 'harus berisi link web gacha');
+    assert.ok(sent.includes('.gacha rate'), 'harus mengarahkan ke rate');
+    assert.strictEqual(limitChecked, false, 'redirect tidak boleh makan limit');
+    assert.strictEqual(limitUsed, false, 'redirect tidak boleh increment limit');
 });
 
-test('Cards - execute kirim gambar untuk Epic+ dan fallback teks saat gagal', async () => {
+test('Chat .gacha rate tetap di chat (pakai limit, tampilkan rate)', async () => {
     const { execute } = require('../../src/commands/gachaCommand');
-    const mkCtx = (opts = {}) => ({
+    let sent = '';
+    let used = 0;
+    const ctx = {
         bot: {}, msg: { id: '1' }, senderName: 'Tester', senderUserId: 'u1',
-        lowerMsg: '.gacha', sendChatMessage: async () => { opts.text = true; },
+        lowerMsg: '.gacha rate', sendChatMessage: async (b, text) => { sent = text; },
         checkCommandLimit: async () => ({ remaining: 10 }),
-        incrementCommandUsage: async () => {},
-        userRepo: { getUserXP: async () => ({ rows: [{ xp: 5000 }] }), setUserXP: async () => {} },
-        cardsRepo: { getPityState: async () => ({ pity_count: 0, pulls_today: 0, today_key: 'x' }) },
-        USER_STATS_CACHE: {},
-        sendChatWithImage: opts.sendImg,
-        downloadImageToTempFile: opts.dl,
-    });
-    const { createCardsRepo } = require('../../src/database/cardsRepo');
-    assert.ok(typeof createCardsRepo === 'function');
-    // Fallback teks: tanpa fungsi gambar di ctx
-    let textSent = false;
-    const base = mkCtx({});
-    base.sendChatMessage = async () => { textSent = true; };
-    base.cardsRepo = { getPityState: base.cardsRepo.getPityState, performPull: async () => ({ charName: 'A', anime: 'B', rarity: 'Epic', level: 1, power: 100, forcedPity: false, isDuplicate: false, xpBonus: 0, imageUrl: 'https://x/y.jpg', total_pulls: 1, pity_count: 0, pulls_today: 1 }) };
-    await execute(base);
-    assert.strictEqual(textSent, true);
-    // Gambar terkirim: tidak ada pesan teks
-    let imgSent = false; textSent = false;
-    const img = mkCtx({ sendImg: async () => { imgSent = true; return true; }, dl: async () => ({ filePath: '/tmp/f.jpg', mimeType: 'image/jpeg' }) });
-    img.sendChatMessage = async () => { textSent = true; };
-    img.cardsRepo = base.cardsRepo;
-    await execute(img);
-    assert.strictEqual(imgSent, true);
-    assert.strictEqual(textSent, false);
+        incrementCommandUsage: async () => { used++; },
+        cardsRepo: {
+            getConfig: async () => ({ cost: 500, dailyLimit: 10, rates: { ...DEFAULT_RATES }, stocks: { ...DEFAULT_STOCKS } }),
+            getPityState: async () => ({ pity_count: 0, total_pulls: 0, pulls_today: 0, today_key: 'x' }),
+        },
+    };
+    await execute(ctx);
+    assert.strictEqual(used, 1);
+    assert.ok(sent.includes('PURE HOKI'));
+    assert.ok(sent.includes('kartu.yogaa.web.id/gacha'));
 });
 
 test('Cards - getCardStats agregat global (COUNT + GROUP BY, parameterized)', async () => {
