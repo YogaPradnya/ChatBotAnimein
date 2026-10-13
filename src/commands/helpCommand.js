@@ -55,7 +55,7 @@ async function execute(ctx) {
     } else if (helpArg === 'genre') {
         helpMsg = wrapInBox('GENRE', 'Cari rekomendasi anime berdasarkan genre.\n\nCommand:\n- .genre [nama]\n\nContoh:\n- .genre action\n- .genre romance\n\nData diambil dari Animein Explore.');
     } else if (helpArg === 'gacha' || helpArg === 'koleksi' || helpArg === 'pajang') {
-        helpMsg = wrapInBox('GACHA', 'Gacha kartu 200 koleksi pakai XP. PURE HOKI, tanpa pity!\n\nCommand:\n- .gacha (XP/pull, maks/hari ikut dashboard)\n- .gacha rate (rate + stok)\n- .koleksi (galeri kartumu)\n- .pajang [nama] (pamer kartu di .profil)\n\nRate: Common 70% / Rare 25%\nEpic 4.89% / Legendary 0.1% / Mythic 0.01%\nStok/kartu: Mythic 1 | Legend 10 | Epic 50 | R/C unlimited\nDupe = menumpuk (maks 999 copy).\nNaik ★ manual via Evolusi di web (butuh 3/3/3/5 copy).\nMythic unik per user, stok habis = turun grade.\nPower tetap per kartu (sama di semua user).');
+        helpMsg = wrapInBox('GACHA', 'Gacha kartu 200 koleksi pakai XP. PURE HOKI, tanpa pity!\n\nCommand:\n- .gacha (XP/pull, maks/hari ikut dashboard)\n- .gacha rate (rate + stok)\n- .koleksi (galeri kartumu)\n- .pajang [nama] (pamer kartu di .profil)\n- .battle (link web battle kartu)\n\nRate: Common 70% / Rare 25%\nEpic 4.89% / Legendary 0.1% / Mythic 0.01%\nStok/kartu: Mythic 1 | Legend 10 | Epic 50 | R/C unlimited\nDupe = menumpuk (maks 999 copy).\nNaik ★ manual via Evolusi di web (butuh 3/3/3/5 copy).\nSkill: semua kartu bawa skill-1; skill-2 buka di ★5 (Legend/Mythic bawa 2 skill sejak ★1).\nMythic unik per user, stok habis = turun grade.\nPower tetap per kartu (sama di semua user).');
     } else if (helpArg === 'tas') {
         helpMsg = wrapInBox('TAS', 'Lihat ringkasan pokemon di tas kamu.\n\nCommand:\n- .tas\n\nData: total pokemon, jumlah per grade, dan top CP.\n\nLanjut: gunakan .kombo untuk rekomendasi tim.');
     } else if (helpArg === 'limit') {
@@ -73,7 +73,9 @@ async function execute(ctx) {
         helpMsg = wrapInBox('GAMBARKAN', 'Buat gambar AI berbasis deskripsi prompt.\n\nCommand:\n- .gambarkan [prompt]\n\nContoh:\n- .gambarkan anime girl playing guitar');
     } else if (helpArg === 'login' || helpArg === 'pair') {
         helpMsg = wrapInBox('LOGIN', 'Masuk web book kartu tanpa password.\n\nCommand:\n• .login [kode]\n\nCara:\n• Buka web, tekan Dapatkan Kode\n• Ketik .login [kode] di chat ini\n• Kembali ke web, langsung masuk');
-    } else if (helpArg === 'web' || helpArg === 'book' || helpArg === 'trade' || helpArg === 'battle') {
+    } else if (helpArg === 'battle') {
+        helpMsg = wrapInBox('BATTLE', 'Battle kartu sudah pindah ke web.\n\nCommand:\n- .battle (tampilkan link web battle)\n\nWeb:\n- https://kartu.yogaa.web.id/\n\nBuka link di atas untuk adu kartumu, hmph!');
+    } else if (helpArg === 'web' || helpArg === 'book' || helpArg === 'trade') {
         helpMsg = wrapInBox('WEB', 'Web book kartu (tanpa password).\n\nIsi:\n• Book: galeri 200 kartu, ketuk untuk stat\n• Trade: tukar kartu via kode angka\n• Battle: vs AI (latihan) / PvP, PvP menang +100 XP\n\nMasuk: buka web untuk kode, ketik .login [kode] di chat.');
     } else if (helpArg === 'ban') {
         helpMsg = wrapInBox('BAN', 'Aturan bot:\n• Dilarang spam\n• Dilarang toxic\n• Dilarang abuse XP\n\nPelanggar akan di-ban permanen.');
@@ -91,7 +93,7 @@ async function execute(ctx) {
         helpMsg = [
             `┌── ${boxHeader('HELP TOPIC')}`,
             `│ Ketik .help [topik]. Daftar topik:`,
-            `│ rekomendasi, waifu, link, data, kuis, turnamen, gambar, gambarkan, xp, shop, kombo, profil, cek, rank, streak, level, ai, jadwal, hot, baru, random, populer, cari, genre, tas, limit, ban, gacha, koleksi, pajang, pair, web`,
+            `│ rekomendasi, waifu, link, data, kuis, turnamen, gambar, gambarkan, xp, shop, kombo, profil, cek, rank, streak, level, ai, jadwal, hot, baru, random, populer, cari, genre, tas, limit, ban, gacha, koleksi, pajang, battle, pair, web`,
             `└───────────────────`,
         ].join('\n');
     }

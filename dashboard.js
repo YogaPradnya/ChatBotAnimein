@@ -1820,6 +1820,22 @@ function getDashboardHTML() {
             <div style="display:flex; gap:8px; margin-top:12px;">
               <button class="btn-sm btn-sm-toggle" onclick="giftGachaCard()" style="background:var(--accent); border-color:var(--accent); color:#fff;">🎁 Gift ke User</button>
             </div>
+            <div id="gachaGiftResult" style="font-size:11px; color:var(--muted); margin-top:8px;"></div>
+          </div>
+          <!-- Evolusi Kartu (naik ★ manual, konsumsi copy) -->
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-title">🛠️ Evolusi Kartu (Naik ★)</div>
+            <p style="font-size: 12px; color: var(--muted); margin-bottom: 14px;">C/R/E naik ★1→★5, biaya copy 3/3/3/5 (konsumsi N-1). Legend/Mythic tidak bisa evo. ★5 membuka skill-2.</p>
+            <label style="font-size:11px; color:var(--muted);">Username tujuan (tanpa @)<input type="text" id="evoUsername" placeholder="contoh: yoga" style="width:100%; margin-top:4px; padding:8px 10px; border-radius:8px; border:1px solid var(--border); font-size:12px;" oninput="loadEvoOwned()"></label>
+            <div id="evoUserHint" style="font-size:11px; color:var(--muted); margin:4px 0 10px;"></div>
+            <label style="font-size:11px; color:var(--muted);">Kartu user<select id="evoCard" onchange="refreshEvoInfo()" style="width:100%; margin-top:4px; padding:8px 10px; border-radius:8px; border:1px solid var(--border); font-size:12px;">
+              <option value="">Isi username dulu...</option>
+            </select></label>
+            <div id="evoInfo" style="font-size:11px; color:var(--muted); margin-top:6px;"></div>
+            <div style="display:flex; gap:8px; margin-top:12px;">
+              <button class="btn-sm btn-sm-toggle" onclick="evolveCard()" style="background:var(--accent); border-color:var(--accent); color:#fff;">⬆️ Evolusi (+1 ★)</button>
+            </div>
+            <div id="evoResult" style="font-size:11px; color:var(--muted); margin-top:8px;"></div>
           </div>
         </div>
         <div style="flex: 2; display: flex; flex-direction: column; gap: 20px; min-width: 0;">
@@ -3498,7 +3514,7 @@ async function updateStats() {
     if (info) {
       const count = {};
       cachedGachaPool.forEach((c) => { count[c.tier] = (count[c.tier] || 0) + 1; });
-      info.textContent = cachedGachaPool.length + ' kartu (C:' + (count.Common || 0) + ' R:' + (count.Rare || 0) + ' E:' + (count.Epic || 0) + ' L:' + (count.Legendary || 0) + ')';
+      info.textContent = cachedGachaPool.length + ' kartu (C:' + (count.Common || 0) + ' R:' + (count.Rare || 0) + ' E:' + (count.Epic || 0) + ' L:' + (count.Legendary || 0) + ' M:' + (count.Mythic || 0) + ')';
     }
     if (cachedGachaPool.length === 0) {
       box.innerHTML = '<div style="color:var(--muted); font-size:12px;">Pool kosong.</div>';
@@ -3509,10 +3525,17 @@ async function updateStats() {
       const img = c.imageUrl
         ? '<img src="' + escapeHTML(c.imageUrl) + '" style="width:40px; height:56px; object-fit:cover; border-radius:8px;" loading="lazy" onerror="this.remove()">'
         : '<div style="width:40px; height:56px; border-radius:8px; background:var(--bg); display:flex; align-items:center; justify-content:center; font-size:16px;">❔</div>';
+      const sk = c.skills || null;
+      const skillTxt = sk && sk.skill1
+        ? '⚔️ ' + sk.skill1.name + (sk.skill2 ? ' · ✨ ' + sk.skill2.name : ' · 🔒 S2 ' + (c.skill2Unlock || '★5'))
+        : '';
+      const skillRow = skillTxt
+        ? '<div style="color:var(--muted); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="' + escapeHTML(skillTxt) + '">' + escapeHTML(skillTxt) + '</div>'
+        : '';
       return '<div style="display:grid; grid-template-columns:40px minmax(0,1fr) auto; gap:4px 8px; align-items:center; padding:8px 12px; background:var(--bg); border-radius:8px; font-size:12px;">' +
         '<div style="grid-row:span 2;">' + img + '</div>' +
         '<div style="min-width:0;"><div style="font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="' + escapeHTML(c.name) + '">' + escapeHTML(c.name) + '</div>' +
-        '<div style="color:var(--muted); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="' + escapeHTML(c.anime || '-') + '">' + escapeHTML(c.anime || '-') + '</div></div>' +
+        '<div style="color:var(--muted); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="' + escapeHTML(c.anime || '-') + '">' + escapeHTML(c.anime || '-') + '</div>' + skillRow + '</div>' +
         '<div style="display:flex; gap:6px; align-items:center;">' +
         '<select id="gachaTier' + i + '" onchange="changeGachaTier(' + i + ', this.value)" style="padding:4px 6px; border-radius:8px; border:1px solid var(--border); font-size:11px; max-width:110px;">' + opts + '</select>' +
         '<button class="btn-sm btn-sm-edit" onclick="removeGachaCard(' + i + ')">✕</button>' +
@@ -3600,6 +3623,16 @@ async function updateStats() {
       const d = await res.json().catch(() => ({}));
       if (res.ok && d.success) {
         showToast('Kartu "' + charName + '" x' + quantity + ' di-gift ke @' + username.replace(/^@/, '') + '.', 'success');
+        try {
+          const c = d.card || {};
+          const sk = c.skills || {};
+          const skillTxt = sk.skill1
+            ? '⚔️ ' + sk.skill1.name + (sk.skill2 ? ' · ✨ ' + sk.skill2.name : ' · 🔒 S2 ★5')
+            : '';
+          document.getElementById('gachaGiftResult').textContent =
+            'Terkirim: ' + (c.char_name || charName) + ' [' + (c.rarity || '?') + '] ★' + (c.level || 1) +
+            ' x' + (c.quantity || quantity) + (skillTxt ? ' — ' + skillTxt : '');
+        } catch (_) { /* abaikan */ }
         document.getElementById('gachaGiftUsername').value = '';
         document.getElementById('gachaGiftUserHint').textContent = '';
         document.getElementById('gachaGiftQty').value = '1';
@@ -3607,6 +3640,99 @@ async function updateStats() {
         refreshGachaGiftOptions();
       } else {
         showToast(d.message || 'Gagal gift kartu.', 'error');
+      }
+    } catch (err) {
+      showToast('Gagal terhubung ke server: ' + err.message, 'error');
+    }
+  }
+
+  const EVO_NEED = { 1: { need: 3, consume: 2 }, 2: { need: 3, consume: 2 }, 3: { need: 3, consume: 2 }, 4: { need: 5, consume: 4 } };
+  let evoOwned = [];
+  let evoUserTimer = null;
+
+  async function refreshEvoOwned() {
+    const hint = document.getElementById('evoUserHint');
+    const sel = document.getElementById('evoCard');
+    const q = (document.getElementById('evoUsername')?.value || '').replace(/^@/, '').trim();
+    if (q.length < 2) {
+      if (hint) hint.textContent = '';
+      if (sel) sel.innerHTML = '<option value="">Isi username dulu...</option>';
+      evoOwned = [];
+      refreshEvoInfo();
+      return;
+    }
+    try {
+      const res = await fetch('/api/gacha/owned?username=' + encodeURIComponent(q));
+      const d = await res.json().catch(() => ({}));
+      evoOwned = Array.isArray(d.owned) ? d.owned : [];
+      if (hint) {
+        hint.textContent = evoOwned.length === 0
+          ? 'User tidak punya kartu / tidak ditemukan.'
+          : evoOwned.length + ' kartu dimiliki.';
+      }
+      if (sel) {
+        const keep = sel.value;
+        sel.innerHTML = evoOwned.length === 0
+          ? '<option value="">(tidak ada kartu)</option>'
+          : evoOwned.map((c) => '<option value="' + escapeHTML(c.name) + '">' + escapeHTML(c.name) + ' [' + escapeHTML(c.rarity || '?') + '] ★' + (c.level || 1) + ' x' + (c.quantity || 1) + '</option>').join('');
+        if (keep && evoOwned.some((c) => c.name === keep)) sel.value = keep;
+      }
+    } catch (_) { /* abaikan */ }
+    refreshEvoInfo();
+  }
+
+  function loadEvoOwned() {
+    clearTimeout(evoUserTimer);
+    evoUserTimer = setTimeout(refreshEvoOwned, 300);
+  }
+
+  function refreshEvoInfo() {
+    const info = document.getElementById('evoInfo');
+    if (!info) return;
+    const name = document.getElementById('evoCard')?.value || '';
+    const c = evoOwned.find((x) => x.name === name);
+    if (!c) { info.textContent = ''; return; }
+    if (c.rarity === 'Legendary' || c.rarity === 'Mythic') {
+      info.textContent = c.rarity + ' tidak bisa evolusi.';
+      return;
+    }
+    const cost = EVO_NEED[Number(c.level)];
+    if (!cost) {
+      info.textContent = 'Sudah ★5 (maks).' + (Number(c.level) >= 5 ? ' Skill-2 aktif.' : '');
+      return;
+    }
+    const qty = Number(c.quantity) || 1;
+    info.textContent = '★' + c.level + ' → ★' + (Number(c.level) + 1) + ': butuh ' + cost.need + ' copy (punya ' + qty + ', konsumsi ' + cost.consume + ')' +
+      ((Number(c.level) + 1) >= 5 ? ' — membuka ✨ skill-2!' : '');
+  }
+
+  async function evolveCard() {
+    const username = (document.getElementById('evoUsername')?.value || '').trim();
+    const charName = document.getElementById('evoCard')?.value || '';
+    const resBox = document.getElementById('evoResult');
+    if (!username || !charName) return showToast('Username dan kartu wajib diisi.', 'warning');
+    const ok = await customConfirm('Evolusikan "' + charName + '" milik @' + username.replace(/^@/, '') + ' (+1 ★)?', 'Evolusi Kartu', 'Ya, Evolusi');
+    if (!ok) return;
+    try {
+      const res = await fetch('/api/cards/evolve', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, charName }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.success) {
+        const c = d.card || {};
+        const sk = c.skills || {};
+        if (resBox) {
+          resBox.textContent = 'Berhasil: ' + (c.char_name || charName) + ' → ★' + c.level +
+            ' (konsumsi ' + (d.consume || 0) + ' copy)' +
+            (sk.skill1 ? ' — ⚔️ ' + sk.skill1.name : '') +
+            (sk.skill2 ? ' · ✨ ' + sk.skill2.name : '') +
+            (d.unlockedSkill2 ? ' — SKILL-2 TERBUKA!' : '');
+        }
+        showToast('Evolusi berhasil → ★' + c.level + '.', 'success');
+        refreshEvoOwned();
+      } else {
+        showToast(d.message || 'Gagal evolusi.', 'error');
       }
     } catch (err) {
       showToast('Gagal terhubung ke server: ' + err.message, 'error');
@@ -3669,7 +3795,7 @@ async function updateStats() {
   }
 
   async function resetGachaPool() {
-    const ok = await customConfirm('Kembalikan pool kartu ke bawaan (80 kartu)? Kartu yang sudah dimiliki user tidak berubah.', 'Reset Pool Gacha', 'Ya, Reset');
+    const ok = await customConfirm('Kembalikan pool kartu ke bawaan (200 kartu)? Kartu yang sudah dimiliki user tidak berubah.', 'Reset Pool Gacha', 'Ya, Reset');
     if (!ok) return;
     try {
       const res = await fetch('/api/gacha/cards/reset', { method: 'POST' });

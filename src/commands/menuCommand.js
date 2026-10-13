@@ -26,7 +26,7 @@ async function execute(ctx) {
         `│ .tebak, .hint, .kuis, .turnamen`,
         `│`,
         `│ Kartu:`,
-        `│ .gacha, .koleksi, .pajang`,
+        `│ .gacha, .koleksi, .pajang, .battle`,
         `│`,
         `│ Web (book/trade/battle):`,
         `│ buka web utk kode, ketik .login [kode]`,

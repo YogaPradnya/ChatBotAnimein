@@ -1,12 +1,23 @@
 const { formatCommandUsage } = require('../utils/messageFormatter');
 const { boxHeader } = require('../utils/textStyle');
+const { effectLabel } = require('../data/cardSkills');
 const { frameDownloadedImage, frameDisplayImage } = require('../services/cardFrameService');
 const { createCardsRepo, RARITY_EMOJI } = require('../database/cardsRepo');
 const { createDisplayRepo } = require('../database/displayRepo');
 
 function formatShowcaseCard(card) {
     const emoji = RARITY_EMOJI[card.rarity] || '❔';
-    return `${emoji} ${card.char_name} [${card.rarity}] ★${card.level} (Power ${card.power})`;
+    return `${emoji} ${card.char_name} [${card.rarity}] ★${card.level} (Power ${Number(card.effectivePower) || card.power})`;
+}
+
+/** Baris skill kartu gacha (kosong bila kartu lama tanpa skill). */
+function buildGachaSkillLines(card) {
+    const sk = card && card.skills;
+    if (!sk || !sk.skill1) return [];
+    const lines = [`│ ⚔️ S1 ${sk.skill1.name} (${effectLabel(sk.skill1)})`];
+    if (sk.skill2) lines.push(`│ ✨ S2 ${sk.skill2.name} (${effectLabel(sk.skill2)})`);
+    else if (sk.locked) lines.push(`│ 🔒 S2 (buka di ★5)`);
+    return lines;
 }
 
 function formatDisplayCard(card) {
@@ -31,7 +42,13 @@ function getDisplayRepo(ctx) {
 
 async function sendGachaShowcase(ctx, current) {
     const { bot, msg, senderName, sendChatMessage, sendChatWithImage, downloadImageToTempFile } = ctx;
-    const caption = `@${senderName.substring(0, 10)}\n┌── ${boxHeader('PAJANGAN')} 🖼️\n│ ${formatShowcaseCard(current)}\n│ 📖 ${current.anime}\n└───────────────────`;
+    const caption = [`@${senderName.substring(0, 10)}`,
+        `┌── ${boxHeader('PAJANGAN')} 🖼️`,
+        `│ ${formatShowcaseCard(current)}`,
+        `│ 📖 ${current.anime}`,
+        ...buildGachaSkillLines(current),
+        `└───────────────────`,
+    ].join('\n');
     if (current.image_url && typeof downloadImageToTempFile === 'function' && typeof sendChatWithImage === 'function') {
         try {
             const tempImg = await downloadImageToTempFile(current.image_url);
@@ -189,7 +206,13 @@ async function execute(ctx) {
             return true;
         }
 
-        const caption = `@${senderName.substring(0, 10)}\n┌── ${boxHeader('PAJANGAN')} 🖼️\n│ ${formatShowcaseCard(result)}\n│ Dipajang di .profil kamu! ✨\n└───────────────────`;
+        const caption = [`@${senderName.substring(0, 10)}`,
+            `┌── ${boxHeader('PAJANGAN')} 🖼️`,
+            `│ ${formatShowcaseCard(result)}`,
+            `│ Dipajang di .profil kamu! ✨`,
+            ...buildGachaSkillLines(result),
+            `└───────────────────`,
+        ].join('\n');
         if (result.image_url && typeof ctx.downloadImageToTempFile === 'function' && typeof ctx.sendChatWithImage === 'function') {
             try {
                 const tempImg = await ctx.downloadImageToTempFile(result.image_url);

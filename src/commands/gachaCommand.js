@@ -1,6 +1,7 @@
 const { formatCommandUsage } = require('../utils/messageFormatter');
 const { boxHeader } = require('../utils/textStyle');
 const { frameDownloadedImage } = require('../services/cardFrameService');
+const { effectLabel } = require('../data/cardSkills');
 const {
     createCardsRepo,
     GACHA_COST,
@@ -27,11 +28,18 @@ function calcLevel(xp) {
 
 function buildCardLines(result, withImageUrl = true) {
     const emoji = RARITY_EMOJI[result.rarity] || '❔';
+    const sk = result.skills || null;
+    const effPower = (sk && Number(result.effectivePower)) || result.power;
     const lines = [
         `┌── ${boxHeader('GACHA KARTU')} 💳`,
         `│ ${emoji} ${result.charName} [${result.rarity}] ★${result.level}`,
-        `│ 📖 ${result.anime} | ⚡ Power ${result.power}`,
+        `│ 📖 ${result.anime} | ⚡ Power ${effPower}`,
     ];
+    if (sk && sk.skill1) {
+        lines.push(`│ ⚔️ S1 ${sk.skill1.name} (${effectLabel(sk.skill1)})`);
+        if (sk.skill2) lines.push(`│ ✨ S2 ${sk.skill2.name} (${effectLabel(sk.skill2)})`);
+        else if (sk.locked) lines.push(`│ 🔒 S2 (buka di ★5)`);
+    }
     if (result.downgraded) lines.push(`│ 📉 Stok rarity atas habis, turun grade!`);
     if (result.stockLimit != null && result.stockLeft != null) {
         lines.push(`│ 📦 Stok: sisa ${result.stockLeft}/${result.stockLimit} global`);

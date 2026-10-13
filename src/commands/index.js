@@ -119,6 +119,12 @@ async function handleKuisCommand(ctx) {
         return pajangCommand.execute(ctx);
     }
 
+    // Battle kartu pindah ke web: .battle hanya menampilkan link.
+    if (lowerMsg === '.battle' || lowerMsg.startsWith('.battle ')) {
+        await ctx.sendChatMessage(ctx.bot, `@${ctx.senderName.substring(0, 10)}\nBattle kartu sudah pindah ke web, hmph! Adu kartumu di sini:\n🌐 https://kartu.yogaa.web.id/`, ctx.msg.id);
+        return true;
+    }
+
     if (lowerMsg === '.limit') {
         return limitCommand.execute(ctx);
     }

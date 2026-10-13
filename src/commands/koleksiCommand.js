@@ -66,7 +66,8 @@ async function execute(ctx) {
         sorted.slice(0, 15).forEach((c, i) => {
             const mark = c.is_showcase ? '🖼️' : `${i + 1}.`;
             const qty = (Number(c.quantity) || 1) > 1 ? ` x${c.quantity}` : '';
-            lines.push(`│ ${mark} ${RARITY_EMOJI[c.rarity] || '❔'} ${c.char_name} [${c.rarity}] ★${c.level} ⚡${c.power}${qty}`);
+            const skillMark = c.skills && c.skills.skill2 ? ' ✨' : '';
+            lines.push(`│ ${mark} ${RARITY_EMOJI[c.rarity] || '❔'} ${c.char_name} [${c.rarity}] ★${c.level} ⚡${Number(c.effectivePower) || c.power}${qty}${skillMark}`);
         });
         if (sorted.length > 15) lines.push(`│ ... +${sorted.length - 15} lainnya`);
         if (displayCollection.length > 0) {
@@ -80,6 +81,7 @@ async function execute(ctx) {
         }
         lines.push(`├───────────────────`);
         lines.push(`│ 🎰 .gacha | 🖼️ .pajang [nama]`);
+        lines.push(`│ ✨ = skill-2 aktif | 🔒 buka S2 di ★5 (C/R/E)`);
         lines.push(`└───────────────────`);
 
         await sendChatMessage(bot, `@${senderName.substring(0, 10)}\n${lines.join('\n')}`, msg.id);

@@ -16,6 +16,14 @@
  */
 
 const { WAIFU_POOL, getPoolsByTier, VALID_TIERS } = require('../data/waifuPool');
+const {
+    resolveSkills,
+    effectivePower,
+    skillToColumns,
+    skillFromColumns,
+    hasSecondSkill,
+    isHighTier,
+} = require('../data/cardSkills');
 
 const GACHA_COST = 500;
 const GACHA_DAILY_LIMIT = 10;
@@ -117,6 +125,40 @@ function checkEvoCost(level, quantity) {
     const have = Math.max(0, Math.floor(Number(quantity) || 0));
     if (have < cost.need) return { ok: false, error: 'NEED_MORE', need: cost.need, have };
     return { ok: true, need: cost.need, consume: cost.consume };
+}
+
+/** Kolom skill tambahan untuk SELECT kartu (migrasi di initTables). */
+const SKILL_COLUMNS = 'skill1_name, skill1_desc, skill1_kind, skill1_value, skill2_name, skill2_desc, skill2_kind, skill2_value';
+
+/**
+ * Tempel skill ke baris kartu: pakai kolom DB bila ada & valid,
+ * fallback resolve deterministik bila kolom null (kartu lama).
+ * Return baris + { skills: {skill1, skill2, locked}, effectivePower, skillBonusPct, skillBonusXp }.
+ * Power tersimpan tidak diubah; effectivePower = power + bonus % skill.
+ */
+function attachSkills(row) {
+    if (!row) return row;
+    const rarity = String(row.rarity || 'Common');
+    const level = Number(row.level) || 1;
+    const stored = skillFromColumns(row);
+    const expected = resolveSkills({ charName: row.char_name, anime: row.anime, rarity, level });
+    const skill1 = stored.skill1 || expected.skill1;
+    const skill2 = expected.locked ? null : (stored.skill2 || expected.skill2);
+    const eff = effectivePower(row.power, skill1, skill2);
+    return {
+        ...row,
+        skills: { skill1, skill2, locked: expected.locked },
+        effectivePower: eff.effective,
+        skillBonusPct: eff.bonusPct,
+        skillBonusXp: eff.bonusXp,
+    };
+}
+
+/** True bila baris DB belum menyimpan skill yang seharusnya ada (kartu lama / naik ★5). */
+function needsSkillPersist(row, attached) {
+    if (!row) return false;
+    if (row.skill1_name == null || row.skill1_kind == null) return true;
+    return Boolean(attached && !attached.skills.locked && attached.skills.skill2 && row.skill2_name == null);
 }
 
 /**
@@ -500,6 +542,24 @@ function createCardsRepo(db, options = {}) {
         ? options.imageResolver
         : ((name) => resolveCardImage(db, name));
 
+    /**
+     * Simpan skill ke baris kartu (best-effort: kolom belum ada / mock
+     * lama -> abaikan, skill tetap tersedia di memori via attachSkills).
+     */
+    async function persistSkills(userId, charName, skill1, skill2) {
+        try {
+            const cols = skillToColumns(skill1, skill2);
+            await db.execute({
+                sql: `UPDATE user_cards SET skill1_name = ?, skill1_desc = ?, skill1_kind = ?, skill1_value = ?,
+                      skill2_name = ?, skill2_desc = ?, skill2_kind = ?, skill2_value = ?
+                      WHERE user_id = ? AND LOWER(char_name) = LOWER(?)`,
+                args: [cols.skill1_name, cols.skill1_desc, cols.skill1_kind, cols.skill1_value,
+                    cols.skill2_name, cols.skill2_desc, cols.skill2_kind, cols.skill2_value,
+                    userId, charName],
+            });
+        } catch (_) { /* abaikan */ }
+    }
+
     /** Jumlah pemilik global satu kartu (untuk cek stok). */
     async function countCardOwners(charName) {
         try {
@@ -589,6 +649,23 @@ function createCardsRepo(db, options = {}) {
                     .catch(() => {}),
                 db.execute('UPDATE user_cards SET quantity = 1 WHERE quantity IS NULL OR quantity < 1')
                     .catch(() => {}),
+                // Kolom skill (semua kartu punya skill-1; skill-2 unlock ★5 / L-M sejak ★1).
+                db.execute('ALTER TABLE user_cards ADD COLUMN skill1_name TEXT DEFAULT NULL')
+                    .catch(() => {}),
+                db.execute('ALTER TABLE user_cards ADD COLUMN skill1_desc TEXT DEFAULT NULL')
+                    .catch(() => {}),
+                db.execute('ALTER TABLE user_cards ADD COLUMN skill1_kind TEXT DEFAULT NULL')
+                    .catch(() => {}),
+                db.execute('ALTER TABLE user_cards ADD COLUMN skill1_value INTEGER DEFAULT NULL')
+                    .catch(() => {}),
+                db.execute('ALTER TABLE user_cards ADD COLUMN skill2_name TEXT DEFAULT NULL')
+                    .catch(() => {}),
+                db.execute('ALTER TABLE user_cards ADD COLUMN skill2_desc TEXT DEFAULT NULL')
+                    .catch(() => {}),
+                db.execute('ALTER TABLE user_cards ADD COLUMN skill2_kind TEXT DEFAULT NULL')
+                    .catch(() => {}),
+                db.execute('ALTER TABLE user_cards ADD COLUMN skill2_value INTEGER DEFAULT NULL')
+                    .catch(() => {}),
             ]);
         },
 
@@ -611,10 +688,10 @@ function createCardsRepo(db, options = {}) {
 
         async getCollection(userId) {
             const res = await db.execute({
-                sql: 'SELECT char_name, anime, rarity, level, power, image_url, is_showcase, quantity FROM user_cards WHERE user_id = ?',
+                sql: `SELECT char_name, anime, rarity, level, power, image_url, is_showcase, quantity, ${SKILL_COLUMNS} FROM user_cards WHERE user_id = ?`,
                 args: [userId],
             });
-            return res.rows.map((r) => ({
+            return res.rows.map((r) => attachSkills({
                 char_name: String(r.char_name),
                 anime: String(r.anime || ''),
                 rarity: String(r.rarity || 'Common'),
@@ -623,17 +700,25 @@ function createCardsRepo(db, options = {}) {
                 image_url: r.image_url || null,
                 is_showcase: Number(r.is_showcase) === 1,
                 quantity: Math.max(1, Number(r.quantity) || 1),
+                skill1_name: r.skill1_name ?? null,
+                skill1_desc: r.skill1_desc ?? null,
+                skill1_kind: r.skill1_kind ?? null,
+                skill1_value: r.skill1_value ?? null,
+                skill2_name: r.skill2_name ?? null,
+                skill2_desc: r.skill2_desc ?? null,
+                skill2_kind: r.skill2_kind ?? null,
+                skill2_value: r.skill2_value ?? null,
             }));
         },
 
         async getCard(userId, charName) {
             const res = await db.execute({
-                sql: 'SELECT char_name, anime, rarity, level, power, image_url, is_showcase, quantity FROM user_cards WHERE user_id = ? AND LOWER(char_name) = LOWER(?)',
+                sql: `SELECT char_name, anime, rarity, level, power, image_url, is_showcase, quantity, ${SKILL_COLUMNS} FROM user_cards WHERE user_id = ? AND LOWER(char_name) = LOWER(?)`,
                 args: [userId, charName],
             });
             if (res.rows.length === 0) return null;
             const r = res.rows[0];
-            return {
+            const card = attachSkills({
                 char_name: String(r.char_name),
                 anime: String(r.anime || ''),
                 rarity: String(r.rarity || 'Common'),
@@ -642,17 +727,30 @@ function createCardsRepo(db, options = {}) {
                 image_url: r.image_url || null,
                 is_showcase: Number(r.is_showcase) === 1,
                 quantity: Math.max(1, Number(r.quantity) || 1),
-            };
+                skill1_name: r.skill1_name ?? null,
+                skill1_desc: r.skill1_desc ?? null,
+                skill1_kind: r.skill1_kind ?? null,
+                skill1_value: r.skill1_value ?? null,
+                skill2_name: r.skill2_name ?? null,
+                skill2_desc: r.skill2_desc ?? null,
+                skill2_kind: r.skill2_kind ?? null,
+                skill2_value: r.skill2_value ?? null,
+            });
+            // Backfill sekali untuk kartu lama yang belum menyimpan skill.
+            if (needsSkillPersist(r, card)) {
+                await persistSkills(userId, card.char_name, card.skills.skill1, card.skills.skill2);
+            }
+            return card;
         },
 
         async getShowcase(userId) {
             const res = await db.execute({
-                sql: 'SELECT char_name, anime, rarity, level, power, image_url, is_showcase, quantity FROM user_cards WHERE user_id = ? AND is_showcase = 1',
+                sql: `SELECT char_name, anime, rarity, level, power, image_url, is_showcase, quantity, ${SKILL_COLUMNS} FROM user_cards WHERE user_id = ? AND is_showcase = 1`,
                 args: [userId],
             });
             if (res.rows.length === 0) return null;
             const r = res.rows[0];
-            return {
+            const card = attachSkills({
                 char_name: String(r.char_name),
                 anime: String(r.anime || ''),
                 rarity: String(r.rarity || 'Common'),
@@ -661,7 +759,19 @@ function createCardsRepo(db, options = {}) {
                 image_url: r.image_url || null,
                 is_showcase: true,
                 quantity: Math.max(1, Number(r.quantity) || 1),
-            };
+                skill1_name: r.skill1_name ?? null,
+                skill1_desc: r.skill1_desc ?? null,
+                skill1_kind: r.skill1_kind ?? null,
+                skill1_value: r.skill1_value ?? null,
+                skill2_name: r.skill2_name ?? null,
+                skill2_desc: r.skill2_desc ?? null,
+                skill2_kind: r.skill2_kind ?? null,
+                skill2_value: r.skill2_value ?? null,
+            });
+            if (needsSkillPersist(r, card)) {
+                await persistSkills(userId, card.char_name, card.skills.skill1, card.skills.skill2);
+            }
+            return card;
         },
 
         /**
@@ -719,6 +829,53 @@ function createCardsRepo(db, options = {}) {
             return { ...owned, is_showcase: true };
         },
 
+        /**
+         * Evolusi manual: naik 1 ★ (maks ★5), power +10, konsumsi N-1 copy.
+         * Legend/Mythic tidak bisa evo. Naik ke ★5 membuka skill-2 (C/R/E).
+         * Return { ok:true, card, consume, unlockedSkill2 } atau { ok:false, error, ... }.
+         * error: 'NOT_OWNED' | 'NO_EVO_TIER' | 'LEVEL_MAX' | 'NEED_MORE'.
+         */
+        async evolveCard(userId, username, charName) {
+            const name = String(charName || '').trim();
+            if (!name) return { ok: false, error: 'EMPTY' };
+            const card = await repo.getCard(userId, name);
+            if (!card) return { ok: false, error: 'NOT_OWNED' };
+            if (isHighTier(card.rarity)) return { ok: false, error: 'NO_EVO_TIER' };
+            const checked = checkEvoCost(card.level, card.quantity);
+            if (!checked.ok) return { ok: false, ...checked };
+            const newLevel = card.level + 1;
+            const newPower = card.power + 10;
+            const newQty = Math.max(1, card.quantity - checked.consume);
+            await db.execute({
+                sql: 'UPDATE user_cards SET level = ?, power = ?, quantity = ? WHERE user_id = ? AND LOWER(char_name) = LOWER(?)',
+                args: [newLevel, newPower, newQty, userId, card.char_name],
+            });
+            try {
+                await db.execute({
+                    sql: 'UPDATE user_cards SET username = ? WHERE user_id = ?',
+                    args: [username, userId],
+                });
+            } catch (_) { /* non-kritis */ }
+            const skills = resolveSkills({ charName: card.char_name, anime: card.anime, rarity: card.rarity, level: newLevel });
+            await persistSkills(userId, card.char_name, skills.skill1, skills.skill2);
+            const eff = effectivePower(newPower, skills.skill1, skills.skill2);
+            return {
+                ok: true,
+                card: {
+                    ...card,
+                    level: newLevel,
+                    power: newPower,
+                    quantity: newQty,
+                    skills,
+                    effectivePower: eff.effective,
+                    skillBonusPct: eff.bonusPct,
+                    skillBonusXp: eff.bonusXp,
+                },
+                consume: checked.consume,
+                unlockedSkill2: newLevel >= 5,
+            };
+        },
+
         savePity(userId, username, state) {
             return db.execute({
                 sql: `INSERT INTO user_card_pity (user_id, username, pity_count, total_pulls, pulls_today, today_key, updated_at)
@@ -774,9 +931,17 @@ function createCardsRepo(db, options = {}) {
             let stacked = false;
             let capped = false;
             let xpBonus = 0;
+            let pullSkills = null;
+            let pullEffective = 0;
+            let pullSkillXp = 0;
 
             if (!isDuplicate) {
                 power = calcPower(rarity, 1, rng, picked.name);
+                // Skill: semua kartu bawa skill-1; L/M langsung bawa skill-2.
+                pullSkills = resolveSkills({ charName: picked.name, anime: picked.anime, rarity, level: 1 });
+                const newEff = effectivePower(power, pullSkills.skill1, pullSkills.skill2);
+                pullEffective = newEff.effective;
+                pullSkillXp = newEff.bonusXp;
                 // Reuse image_url yang sudah pernah di-resolve user lain (1 karakter = fetch sekali).
                 try {
                     const cached = await db.execute({
@@ -800,11 +965,15 @@ function createCardsRepo(db, options = {}) {
                           VALUES (?, ?, ?, ?, ?, 1, ?, ?, 1, CURRENT_TIMESTAMP)`,
                     args: [userId, username, picked.name, picked.anime, rarity, power, imageUrl],
                 });
+                await persistSkills(userId, picked.name, pullSkills.skill1, pullSkills.skill2);
             } else {
                 // Evo full manual: level/power tetap, copy menumpuk (maks 999).
                 level = existing.level;
                 power = existing.power;
                 imageUrl = existing.image_url;
+                pullSkills = existing.skills || resolveSkills({ charName: existing.char_name, anime: existing.anime, rarity: existing.rarity, level });
+                pullEffective = Number(existing.effectivePower) || power;
+                pullSkillXp = Number(existing.skillBonusXp) || 0;
                 const have = Math.max(1, Number(existing.quantity) || 1);
                 if (have >= MAX_CARD_COPIES) {
                     // Cap penuh: copy hangus jadi XP hiburan.
@@ -850,6 +1019,9 @@ function createCardsRepo(db, options = {}) {
                 stockLeft: selection.stockLeft,
                 stockLimit: Number.isFinite(stockLimits[rarity]) ? stockLimits[rarity] : null,
                 xpBonus,
+                skills: pullSkills,
+                effectivePower: pullEffective,
+                skillBonusXp: pullSkillXp,
                 cost: cfg.cost,
                 dailyLimit: cfg.dailyLimit,
                 ...next,
@@ -918,6 +1090,10 @@ function createCardsRepo(db, options = {}) {
                           VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, CURRENT_TIMESTAMP)`,
                     args: [target.userId, target.username, poolEntry.name, poolEntry.anime, rarity, power, imageUrl, Math.min(qty, MAX_CARD_COPIES)],
                 });
+                try {
+                    const giftSkills = resolveSkills({ charName: poolEntry.name, anime: poolEntry.anime, rarity, level: 1 });
+                    await persistSkills(target.userId, poolEntry.name, giftSkills.skill1, giftSkills.skill2);
+                } catch (_) { /* abaikan */ }
             } else {
                 const have = Math.max(1, Number(existing.quantity) || 1);
                 const nextQty = Math.min(MAX_CARD_COPIES, have + qty);
@@ -941,11 +1117,14 @@ function createCardsRepo(db, options = {}) {
             const cloudArt = getCloudCardArt();
             const cards = settings.pool.map((e) => {
                 const key = String(e.name).toLowerCase();
+                const preview = resolveSkills({ charName: e.name, anime: e.anime, rarity: e.tier, level: 1 });
                 return {
                     name: e.name,
                     anime: e.anime,
                     tier: e.tier,
                     imageUrl: settings.art[key] || cloudArt[key] || staticArt[key] || null,
+                    skills: preview,
+                    skill2Unlock: isHighTier(e.tier) ? '★1' : '★5',
                 };
             });
             return { customized: settings.poolCustomized, cards };
@@ -1016,6 +1195,12 @@ module.exports = {
     hashCardName,
     fixedVarianceForCard,
     isEpicPlus,
+    resolveSkills,
+    hasSecondSkill,
+    isHighTier,
+    effectivePower,
+    attachSkills,
+    needsSkillPersist,
     GACHA_COST,
     GACHA_DAILY_LIMIT,
     MAX_CARD_LEVEL,

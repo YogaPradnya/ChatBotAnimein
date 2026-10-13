@@ -232,6 +232,15 @@ function initializeBootstrap(options = {}) {
                 await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_cards_user_char ON user_cards (user_id, char_name)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_cards_user_char' }));
                 await db.execute(`ALTER TABLE user_cards ADD COLUMN quantity INTEGER DEFAULT 1`).catch(e => ignoreExpectedError(e, { scope: 'DB MIGRATION', detail: 'user_cards.quantity' }));
                 await db.execute(`UPDATE user_cards SET quantity = 1 WHERE quantity IS NULL OR quantity < 1`).catch(e => ignoreExpectedError(e, { scope: 'DB MIGRATION', detail: 'user_cards.quantity_backfill' }));
+                // Kolom skill kartu (skill-1 semua kartu; skill-2 unlock ★5 / L-M sejak ★1).
+                await db.execute(`ALTER TABLE user_cards ADD COLUMN skill1_name TEXT DEFAULT NULL`).catch(e => ignoreExpectedError(e, { scope: 'DB MIGRATION', detail: 'user_cards.skill1_name' }));
+                await db.execute(`ALTER TABLE user_cards ADD COLUMN skill1_desc TEXT DEFAULT NULL`).catch(e => ignoreExpectedError(e, { scope: 'DB MIGRATION', detail: 'user_cards.skill1_desc' }));
+                await db.execute(`ALTER TABLE user_cards ADD COLUMN skill1_kind TEXT DEFAULT NULL`).catch(e => ignoreExpectedError(e, { scope: 'DB MIGRATION', detail: 'user_cards.skill1_kind' }));
+                await db.execute(`ALTER TABLE user_cards ADD COLUMN skill1_value INTEGER DEFAULT NULL`).catch(e => ignoreExpectedError(e, { scope: 'DB MIGRATION', detail: 'user_cards.skill1_value' }));
+                await db.execute(`ALTER TABLE user_cards ADD COLUMN skill2_name TEXT DEFAULT NULL`).catch(e => ignoreExpectedError(e, { scope: 'DB MIGRATION', detail: 'user_cards.skill2_name' }));
+                await db.execute(`ALTER TABLE user_cards ADD COLUMN skill2_desc TEXT DEFAULT NULL`).catch(e => ignoreExpectedError(e, { scope: 'DB MIGRATION', detail: 'user_cards.skill2_desc' }));
+                await db.execute(`ALTER TABLE user_cards ADD COLUMN skill2_kind TEXT DEFAULT NULL`).catch(e => ignoreExpectedError(e, { scope: 'DB MIGRATION', detail: 'user_cards.skill2_kind' }));
+                await db.execute(`ALTER TABLE user_cards ADD COLUMN skill2_value INTEGER DEFAULT NULL`).catch(e => ignoreExpectedError(e, { scope: 'DB MIGRATION', detail: 'user_cards.skill2_value' }));
                 try { await displayRepo.initTables(); } catch (e) { ignoreExpectedError(e, { scope: 'DB TABLE', detail: 'user_display_cards' }); }
                 try {
                     const { createProfilePrefRepo } = require('./database/profilePrefRepo');

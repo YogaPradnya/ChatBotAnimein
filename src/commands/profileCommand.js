@@ -1,4 +1,5 @@
 const { boxHeader } = require('../utils/textStyle');
+const { effectLabel } = require('../data/cardSkills');
 const { formatLimitExceeded } = require('../utils/messageFormatter');
 const { frameDownloadedImage, frameDisplayImage } = require('../services/cardFrameService');
 
@@ -190,7 +191,18 @@ async function execute(ctx) {
         const displaySuffix = picked.kind === 'display'
             ? `\n🎁 Pajangan spesial: ${picked.card.name} [${picked.card.grade}]`
             : '';
-        const profileTextFull = profileText + displaySuffix;
+        let gachaSuffix = '';
+        if (picked.kind === 'gacha' && picked.card) {
+            const gc = picked.card;
+            const sk = gc.skills || null;
+            gachaSuffix = `\n🖼️ Pajangan: ${gc.char_name} [${gc.rarity}] ★${gc.level} ⚡${Number(gc.effectivePower) || gc.power}`;
+            if (sk && sk.skill1) {
+                gachaSuffix += `\n⚔️ S1 ${sk.skill1.name} (${effectLabel(sk.skill1)})`;
+                if (sk.skill2) gachaSuffix += `\n✨ S2 ${sk.skill2.name} (${effectLabel(sk.skill2)})`;
+                else if (sk.locked) gachaSuffix += `\n🔒 S2 (buka di ★5)`;
+            }
+        }
+        const profileTextFull = profileText + displaySuffix + gachaSuffix;
 
         // Hanya slot terpilih yang dikirim sebagai gambar profil.
         if (picked.kind === 'display' && picked.card.imageUrl

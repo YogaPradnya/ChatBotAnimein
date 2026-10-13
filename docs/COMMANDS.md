@@ -44,6 +44,13 @@ Command:
 .beli
 .cek
 .pair
+.tas
+.limit
+.gacha
+.koleksi
+.pajang
+.battle
+.login
 ```
 
 ### `handleImageCommand(ctx)`
@@ -75,6 +82,19 @@ Command:
 | `buyCommand.js` | `.beli` | Pembelian item toko |
 | `imageCommand.js` | `.gambar` | Fetch dan kirim gambar |
 | `loginCommand.js` | `.login` | Klaim kode login web book kartu |
+| `gachaCommand.js` | `.gacha` | Gacha kartu (pure hoki, XP/pull, cap harian) |
+| `koleksiCommand.js` | `.koleksi` | Galeri kartu + penanda skill-2 |
+| `pajangCommand.js` | `.pajang` | Pajang kartu gacha/display di `.profil` |
+| _(link web)_ | `.battle` | Menampilkan link web battle kartu (engine chat dihapus) |
+
+## Skill Kartu & Evolusi
+
+- Semua kartu punya **skill-1** sejak ★1. **Skill-2** unlock saat ★5; Legendary/Mythic bawa 2 skill sejak ★1.
+- Satu skill = `{ name, desc, effectKind, effectValue }`; `effectKind` = `power_pct` (+% power) atau `bonus_xp` (+XP menang battle).
+- Skill kurasi 24 kartu L/M di `src/data/cardSkills.js`; sisanya fallback deterministik per tier.
+- Power tersimpan tidak berubah; power efektif = `power + bonus % skill` (dipakai `.battle` dan tampilan).
+- Evolusi manual C/R/E (biaya copy 3/3/3/5, konsumsi N-1, power +10) via dashboard (`POST /api/cards/evolve`) atau `cardsRepo.evolveCard()`. L/M tidak bisa evo.
+- `.battle` hanya menampilkan link web battle kartu (`https://kartu.yogaa.web.id/`); engine battle chat dihapus.
 
 ## Command Design Rules
 

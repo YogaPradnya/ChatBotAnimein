@@ -97,6 +97,9 @@ kecuali `/health`, `/login`, `/logout`. Rate-limit API: 60 req/menit/IP.
 | POST | `/api/gacha/cards` | Ganti seluruh pool kartu (validasi tier/duplikat) |
 | POST | `/api/gacha/cards/reset` | Kembalikan pool ke 80 kartu bawaan |
 | POST | `/api/gacha/art` | Set/hapus override gambar 1 kartu (`{name, imageUrl}`; URL kosong = hapus) |
+| POST | `/api/gacha/gift` | Gift kartu pool ke user (duplikat menumpuk, maks 999) |
+| GET | `/api/gacha/owned?username=` | Koleksi user (`name, quantity, level, rarity`) untuk gift/evolve |
+| POST | `/api/cards/evolve` | Evolusi manual (`{username, charName}`): +1 ★, konsumsi N-1 copy; L/M ditolak; ★5 buka skill-2 |
 
 ## Provider AI
 

@@ -668,7 +668,42 @@ function startDashboard(scope) {
             });
             if (ures.rows.length === 0) return res.json({ success: true, owned: [] });
             const col = await cardsRepo.getCollection(String(ures.rows[0].user_id));
-            res.json({ success: true, owned: (col || []).map((c) => ({ name: c.char_name, quantity: c.quantity })) });
+            res.json({ success: true, owned: (col || []).map((c) => ({ name: c.char_name, quantity: c.quantity, level: c.level, rarity: c.rarity })) });
+        } catch (e) {
+            safeError(res, e);
+        }
+    });
+
+    // Evolusi manual kartu gacha (C/R/E naik ★, konsumsi N-1 copy; L/M ditolak).
+    app.post('/api/cards/evolve', async (req, res) => {
+        if (!requireCardsRepo(res)) return;
+        try {
+            const username = String(req.body?.username || '').replace(/^@/, '').trim().slice(0, 80);
+            const charName = String(req.body?.charName || req.body?.name || '').trim().slice(0, 80);
+            if (!username || !charName) {
+                return res.status(400).json({ success: false, message: 'Username dan nama kartu wajib diisi.' });
+            }
+            const ures = await db.execute({
+                sql: 'SELECT user_id, username FROM user_stats WHERE LOWER(username) = LOWER(?) LIMIT 1',
+                args: [username],
+            });
+            if (ures.rows.length === 0) {
+                return res.status(404).json({ success: false, message: `Username @${username} tidak ditemukan di user_stats.` });
+            }
+            const result = await cardsRepo.evolveCard(
+                String(ures.rows[0].user_id), String(ures.rows[0].username || username), charName);
+            if (!result.ok) {
+                const msg = {
+                    EMPTY: 'Nama kartu wajib diisi.',
+                    NOT_OWNED: `User belum punya kartu "${charName}".`,
+                    NO_EVO_TIER: 'Legend/Mythic tidak bisa evolusi.',
+                    LEVEL_MAX: 'Sudah ★5 (maksimal).',
+                    NEED_MORE: `Copy kurang: butuh ${result.need}, baru punya ${result.have}.`,
+                }[result.error] || 'Evolusi gagal.';
+                return res.status(400).json({ success: false, message: msg, detail: result });
+            }
+            console.log(`[EVO] "${result.card.char_name}" -> ★${result.card.level} @${username}${result.unlockedSkill2 ? ' (SKILL-2 UNLOCK)' : ''}`);
+            res.json({ success: true, card: result.card, consume: result.consume, unlockedSkill2: result.unlockedSkill2 });
         } catch (e) {
             safeError(res, e);
         }
