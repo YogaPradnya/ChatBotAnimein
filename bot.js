@@ -656,11 +656,11 @@ async function initDB() {
         console.log(`[ECONOMY] Loaded Base XP Rate: ${global.baseXpRate}%, Discount Event: ${global.isDiscountEvent} (${global.discountPercent}%), AI Temp: ${global.AI_TEMPERATURE}`);
         console.log(`[RARA] Loaded style intensity=${global.RARA_STYLE_INTENSITY}, words chat/info=${global.RARA_MAX_WORDS_CHAT}/${global.RARA_MAX_WORDS_INFO}, emoji=${global.RARA_EMOJI_BUDGET}, temp chat/info=${global.RARA_TEMP_CHAT}/${global.RARA_TEMP_INFO}`);
 
-        // Load Banned Users from DB (user_id + username lowercase agar ban by username tetap menggigit)
+        // Load Banned Users from DB (user_id + username lowercase tanpa @ agar ban by username tetap menggigit)
         const bannedRes = await banRepo.listBannedUsers();
         bannedRes.rows.forEach(r => {
             bannedUsers.add(String(r.user_id));
-            if (r.username) bannedUsers.add(String(r.username).toLowerCase());
+            if (r.username) bannedUsers.add(String(r.username).replace(/^@/, '').toLowerCase());
         });
         console.log(`[BAN] Loaded ${bannedUsers.size} banned users.`);
 
