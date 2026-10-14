@@ -10,6 +10,7 @@ const {
     groupPoolByTier,
     getGachaConfig,
     resolveCardImage,
+    stockExcludedUsernames,
 } = require('../../src/database/cardsRepo');
 
 // Mock db: settings (key->value) + pity/cards minimal untuk performPull.
@@ -45,7 +46,7 @@ function createSettingsMockDb(seedSettings = {}) {
                 return { rows: [] };
             }
             if (sql.includes('INSERT INTO user_cards')) {
-                state.cards.push({ user_id: args[0], char_name: args[2], anime: args[3], rarity: args[4], image_url: args[6] || null });
+                state.cards.push({ user_id: args[0], username: args[1], char_name: args[2], anime: args[3], rarity: args[4], image_url: args[6] || null });
                 return { rows: [], rowsAffected: 1 };
             }
             if (sql.includes('FROM user_cards WHERE user_id = ? AND LOWER(char_name)')) {
@@ -54,7 +55,10 @@ function createSettingsMockDb(seedSettings = {}) {
                 return { rows: hit ? [{ ...hit }] : [] };
             }
             if (sql.includes('COUNT(*)')) {
-                const n = state.cards.filter((c) => c.char_name === args[0]).length;
+                const excl = String(process.env.STOCK_EXCLUDE_USERNAMES ?? 'yogaa')
+                    .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+                const n = state.cards.filter((c) =>
+                    c.char_name === args[0] && !excl.includes(String(c.username || '').toLowerCase())).length;
                 return { rows: [{ c: n }] };
             }
             return { rows: [], rowsAffected: 1 };
@@ -340,4 +344,52 @@ test('GachaConfig - saveConfig rates+stocks roundtrip + performPull pakai keduan
     const r = await repo.performPull('u1', 'U', '2026-10-11', () => 0.99999);
     assert.strictEqual(r.rarity, 'Common');
     assert.strictEqual(r.cost, 250);
+});
+
+test('GachaConfig - stockExcludedUsernames parse env (default yogaa)', () => {
+    assert.deepStrictEqual(stockExcludedUsernames('Yogaa, ADMIN ,, '), ['yogaa', 'admin']);
+    assert.deepStrictEqual(stockExcludedUsernames(''), []);
+    const prev = process.env.STOCK_EXCLUDE_USERNAMES;
+    delete process.env.STOCK_EXCLUDE_USERNAMES;
+    assert.deepStrictEqual(stockExcludedUsernames(), ['yogaa']);
+    if (prev === undefined) delete process.env.STOCK_EXCLUDE_USERNAMES;
+    else process.env.STOCK_EXCLUDE_USERNAMES = prev;
+});
+
+test('GachaConfig - pemilik ter-exclude tidak makan stok (Mythic yogaa tetap bisa dipull)', async () => {
+    invalidateGachaConfig();
+    const db = createSettingsMockDb();
+    // yogaa sudah punya Mythic X (stok 1) -> bagi user lain stok dianggap masih ada.
+    db.state.cards.push({ user_id: 'u-yogaa', username: 'yogaa', char_name: 'Mythic X', anime: 'X', rarity: 'Mythic', level: 1, power: 210, image_url: null });
+    const repo = createCardsRepo(db, { imageResolver: async () => null });
+    await repo.savePool([
+        { name: 'Mythic X', anime: 'X', tier: 'Mythic' },
+        { name: 'Legend Y', anime: 'Y', tier: 'Legendary' },
+    ]);
+    const r = await repo.performPull('u1', 'U', '2026-10-11', seqRng([0.99995, 0, 0]));
+    assert.strictEqual(r.rarity, 'Mythic');
+    assert.strictEqual(r.charName, 'Mythic X');
+    assert.strictEqual(r.downgraded, false);
+    assert.strictEqual(r.stockLeft, 0); // limit 1 - 0 pemilik valid - 1
+});
+
+test('GachaConfig - tanpa exclusion, pemilik yogaa menghabiskan stok Mythic', async () => {
+    const prev = process.env.STOCK_EXCLUDE_USERNAMES;
+    process.env.STOCK_EXCLUDE_USERNAMES = '';
+    try {
+        invalidateGachaConfig();
+        const db = createSettingsMockDb();
+        db.state.cards.push({ user_id: 'u-yogaa', username: 'yogaa', char_name: 'Mythic X', anime: 'X', rarity: 'Mythic', level: 1, power: 210, image_url: null });
+        const repo = createCardsRepo(db, { imageResolver: async () => null });
+        await repo.savePool([
+            { name: 'Mythic X', anime: 'X', tier: 'Mythic' },
+            { name: 'Legend Y', anime: 'Y', tier: 'Legendary' },
+        ]);
+        const r = await repo.performPull('u1', 'U', '2026-10-11', seqRng([0.99995, 0, 0]));
+        assert.strictEqual(r.rarity, 'Legendary');
+        assert.strictEqual(r.downgraded, true);
+    } finally {
+        if (prev === undefined) delete process.env.STOCK_EXCLUDE_USERNAMES;
+        else process.env.STOCK_EXCLUDE_USERNAMES = prev;
+    }
 });

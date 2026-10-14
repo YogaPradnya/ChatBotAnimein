@@ -103,6 +103,13 @@ const DEFAULT_STOCKS = {
     Epic: 50,
 };
 
+/** Username yang diabaikan dari hitungan stok global (akun tes/admin).
+ *  Env STOCK_EXCLUDE_USERNAMES="yogaa,admin" (koma). Default: yogaa. */
+function stockExcludedUsernames(raw) {
+    const src = raw !== undefined ? raw : (process.env.STOCK_EXCLUDE_USERNAMES ?? 'yogaa');
+    return String(src).split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+}
+
 /** Bila stok/unik habis, turun ke rarity di bawahnya. */
 const RARITY_DOWNGRADE = {
     Mythic: 'Legendary',
@@ -560,12 +567,14 @@ function createCardsRepo(db, options = {}) {
         } catch (_) { /* abaikan */ }
     }
 
-    /** Jumlah pemilik global satu kartu (untuk cek stok). */
+    /** Jumlah pemilik global satu kartu (untuk cek stok). Akun tes/admin diabaikan. */
     async function countCardOwners(charName) {
         try {
+            const excl = stockExcludedUsernames();
+            const notIn = excl.length ? ` AND LOWER(username) NOT IN (${excl.map(() => '?').join(',')})` : '';
             const res = await db.execute({
-                sql: 'SELECT COUNT(*) AS c FROM user_cards WHERE char_name = ?',
-                args: [charName],
+                sql: `SELECT COUNT(*) AS c FROM user_cards WHERE char_name = ?${notIn}`,
+                args: [charName, ...excl],
             });
             return Number(res.rows[0]?.c || 0);
         } catch (_) {
@@ -1217,6 +1226,7 @@ module.exports = {
     DEFAULT_STOCKS,
     normalizeRates,
     STOCK_LIMITS,
+    stockExcludedUsernames,
     RARITY_DOWNGRADE,
     isUniqueRarity,
     getStaticCardArt,
