@@ -393,3 +393,45 @@ test('GachaConfig - tanpa exclusion, pemilik yogaa menghabiskan stok Mythic', as
         else process.env.STOCK_EXCLUDE_USERNAMES = prev;
     }
 });
+
+test('GachaConfig - grantFullCollection lengkapi yang kurang, tolak non-exclude', async () => {
+    invalidateGachaConfig();
+    const db = createSettingsMockDb();
+    db.state.userStats = [{ user_id: 'u-yogaa', username: 'yogaa' }, { user_id: 'u2', username: 'budi' }];
+    const origExecute = db.execute.bind(db);
+    db.execute = async (query) => {
+        const sql = typeof query === 'string' ? query : query.sql;
+        const args = typeof query === 'string' ? [] : (query.args || []);
+        if (sql.includes('FROM user_stats WHERE LOWER(username)')) {
+            const hit = db.state.userStats.find((u) => u.username.toLowerCase() === String(args[0]).toLowerCase());
+            return { rows: hit ? [{ user_id: hit.user_id, username: hit.username }] : [] };
+        }
+        if (sql.includes('FROM user_cards') && sql.includes('user_id = ?') && !sql.includes('COUNT')) {
+            if (sql.includes('LOWER(char_name)')) return { rows: [] };
+            return { rows: db.state.cards.filter((c) => c.user_id === args[0]).map((c) => ({ ...c })) };
+        }
+        return origExecute(query);
+    };
+    const repo = createCardsRepo(db, { imageResolver: async () => null });
+    // Pool kecil via savePool.
+    await repo.savePool([
+        { name: 'A', anime: 'X', tier: 'Common' },
+        { name: 'B', anime: 'X', tier: 'Common' },
+    ]);
+    // Non-exclude ditolak.
+    const no = await repo.grantFullCollection({ username: 'budi' });
+    assert.strictEqual(no.ok, false);
+    // Exclude: grant 2 kartu.
+    const r = await repo.grantFullCollection({ username: 'yogaa' });
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.granted, 2);
+    assert.strictEqual(r.total, 2);
+    // Idempoten: kedua kali granted 0.
+    const r2 = await repo.grantFullCollection({ username: '@yogaa' });
+    assert.strictEqual(r2.ok, true);
+    assert.strictEqual(r2.granted, 0);
+    assert.strictEqual(r2.already, 2);
+    // User tak dikenal ditolak.
+    const r3 = await repo.grantFullCollection({ username: 'hantu' });
+    assert.strictEqual(r3.ok, false);
+});

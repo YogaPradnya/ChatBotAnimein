@@ -680,6 +680,19 @@ function startDashboard(scope) {
         }
     });
 
+    // Lengkapi koleksi akun exclude sekaligus (tanpa ganggu stok).
+    app.post('/api/gacha/grant-all', async (req, res) => {
+        if (!requireCardsRepo(res)) return;
+        try {
+            const result = await cardsRepo.grantFullCollection(req.body || {});
+            if (!result.ok) return res.status(400).json({ success: false, message: result.error });
+            console.log(`[GACHA] Full collection @${req.body?.username}: +${result.granted} kartu.`);
+            res.json({ success: true, ...result });
+        } catch (e) {
+            safeError(res, e);
+        }
+    });
+
     // Koleksi user target (untuk penanda milik/belum di form gift).
     app.get('/api/gacha/owned', async (req, res) => {
         if (!requireCardsRepo(res)) return;

@@ -1855,6 +1855,16 @@ function getDashboardHTML() {
             </div>
             <div id="gachaGiftResult" style="font-size:11px; color:var(--muted); margin-top:8px;"></div>
           </div>
+          <!-- Lengkapi koleksi akun exclude (tanpa ganggu stok) -->
+          <div class="card" style="margin-bottom: 0; margin-top: 20px;">
+            <div class="card-title">📦 Lengkapi Koleksi Exclude</div>
+            <p style="font-size: 12px; color: var(--muted); margin-bottom: 14px;">Berikan semua kartu pool yang belum dimiliki ke akun exclude (STOCK_EXCLUDE_USERNAMES). Tanpa XP, tanpa pity, tidak mengurangi stok global.</p>
+            <label style="font-size:11px; color:var(--muted);">Username exclude (tanpa @)<input type="text" id="gachaGrantAllUsername" value="yogaa" placeholder="contoh: yogaa" style="width:100%; margin-top:4px; padding:8px 10px; border-radius:8px; border:1px solid var(--border); font-size:12px;"></label>
+            <div style="display:flex; gap:8px; margin-top:12px;">
+              <button class="btn-sm btn-sm-toggle" onclick="grantFullCollection()" style="background:var(--accent); border-color:var(--accent); color:#fff;">📦 Lengkapi Koleksi</button>
+            </div>
+            <div id="gachaGrantAllResult" style="font-size:11px; color:var(--muted); margin-top:8px;"></div>
+          </div>
           <!-- Evolusi Kartu (naik ★ manual, konsumsi copy) -->
           <div class="card" style="margin-bottom: 0;">
             <div class="card-title">🛠️ Evolusi Kartu (Naik ★)</div>
@@ -3718,6 +3728,31 @@ async function updateStats() {
         refreshGachaGiftOptions();
       } else {
         showToast(d.message || 'Gagal gift kartu.', 'error');
+      }
+    } catch (err) {
+      showToast('Gagal terhubung ke server: ' + err.message, 'error');
+    }
+  }
+
+  async function grantFullCollection() {
+    const username = (document.getElementById('gachaGrantAllUsername')?.value || '').trim();
+    if (!username) {
+      return showToast('Username wajib diisi.', 'warning');
+    }
+    const ok = await customConfirm('Lengkapi SEMUA kartu pool yang belum dimiliki @' + username.replace(/^@/, '') + '? Tanpa XP, tanpa ganggu stok.', 'Lengkapi Koleksi', 'Ya, Lengkapi');
+    if (!ok) return;
+    try {
+      const res = await fetch('/api/gacha/grant-all', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.success) {
+        showToast('Koleksi @' + username.replace(/^@/, '') + ' dilengkapi: +' + d.granted + ' kartu.', 'success');
+        document.getElementById('gachaGrantAllResult').textContent =
+          'Ditambah: ' + d.granted + ' kartu. Sudah punya: ' + d.already + '. Total pool: ' + d.total + '.';
+      } else {
+        showToast(d.message || 'Gagal melengkapi koleksi.', 'error');
       }
     } catch (err) {
       showToast('Gagal terhubung ke server: ' + err.message, 'error');

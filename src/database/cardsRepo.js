@@ -1037,6 +1037,78 @@ function createCardsRepo(db, options = {}) {
             };
         },
 
+        /**
+         * Lengkapi koleksi akun exclude (STOCK_EXCLUDE_USERNAMES) sekaligus.
+         * Hanya kartu yang belum dimiliki yang di-INSERT (level 1, qty 1).
+         * Tanpa XP/pity, tanpa cek stok (baris akun exclude tidak dihitung stok).
+         * Return {ok, granted, already, total} atau {ok:false, error}.
+         */
+        async grantFullCollection(input = {}) {
+            const username = String(input.username || '').replace(/^@/, '').trim().slice(0, 80);
+            if (!username) return { ok: false, error: 'Username tujuan wajib diisi.' };
+            if (!stockExcludedUsernames().includes(username.toLowerCase())) {
+                return { ok: false, error: `@${username} bukan akun exclude (STOCK_EXCLUDE_USERNAMES).` };
+            }
+            let target = null;
+            try {
+                const res = await db.execute({
+                    sql: 'SELECT user_id, username FROM user_stats WHERE LOWER(username) = LOWER(?) LIMIT 1',
+                    args: [username],
+                });
+                if (res.rows.length > 0) {
+                    target = { userId: String(res.rows[0].user_id), username: String(res.rows[0].username || username) };
+                }
+            } catch (_) { /* abaikan */ }
+            if (!target) return { ok: false, error: `Username @${username} tidak ditemukan di user_stats.` };
+            let pool = [];
+            try {
+                const settings = await loadGachaSettings(db);
+                pool = settings.pool || [];
+            } catch (_) { pool = []; }
+            if (pool.length === 0) return { ok: false, error: 'Pool gacha kosong.' };
+            let owned = new Set();
+            try {
+                const col = await repo.getCollection(target.userId);
+                owned = new Set((col || []).map((c) => String(c.char_name || '').toLowerCase()));
+            } catch (_) { owned = new Set(); }
+            let granted = 0;
+            for (const entry of pool) {
+                const name = String(entry.name || '').trim();
+                if (!name || owned.has(name.toLowerCase())) continue;
+                const rarity = entry.tier;
+                const power = calcPower(rarity, 1, Math.random, name);
+                let imageUrl = null;
+                try {
+                    const cached = await db.execute({
+                        sql: 'SELECT image_url FROM user_cards WHERE char_name = ? AND image_url IS NOT NULL LIMIT 1',
+                        args: [name],
+                    });
+                    if (cached.rows.length > 0 && cached.rows[0].image_url) {
+                        imageUrl = String(cached.rows[0].image_url);
+                    }
+                } catch (_) { /* abaikan, lanjut resolve */ }
+                if (!imageUrl) {
+                    try {
+                        const resolved = await imageResolver(name);
+                        if (resolved) imageUrl = String(resolved);
+                    } catch (e) {
+                        console.warn('[CARDS] Gagal resolve gambar:', name, e.message);
+                    }
+                }
+                await db.execute({
+                    sql: `INSERT INTO user_cards (user_id, username, char_name, anime, rarity, level, power, image_url, quantity, pulled_at)
+                          VALUES (?, ?, ?, ?, ?, 1, ?, ?, 1, CURRENT_TIMESTAMP)`,
+                    args: [target.userId, target.username, name, entry.anime || '', rarity, power, imageUrl],
+                });
+                const skills = resolveSkills({ charName: name, anime: entry.anime || '', rarity, level: 1 });
+                await persistSkills(target.userId, name, skills.skill1, skills.skill2);
+                owned.add(name.toLowerCase());
+                granted += 1;
+            }
+            console.log(`[GACHA] Full collection @${target.username}: +${granted} kartu.`);
+            return { ok: true, granted, already: pool.length - granted, total: pool.length };
+        },
+
         /** Config gacha efektif (dashboard override atau default). */
         async getConfig() {
             return getGachaConfig(db);
