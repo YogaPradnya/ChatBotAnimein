@@ -3964,7 +3964,7 @@ async function updateStats() {
         const d = await res.json().catch(() => ({}));
         const users = (d.success && d.users) || [];
         if (users.length === 0) { box.innerHTML = ''; box.style.display = 'none'; return; }
-        box.innerHTML = users.map((u) => '<div onclick="pickBanUser(\'' + jsString(u.username) + '\')" style="padding:8px 12px; font-size:12px; font-weight:700; color:var(--accent); cursor:pointer; border-bottom:1px solid var(--border);" onmouseover="this.style.background=\'var(--bg)\'" onmouseout="this.style.background=\'\'">' + '@' + escapeHTML(u.username) + '</div>').join('');
+        box.innerHTML = users.map((u) => '<div onclick="pickBanUser(\\\'' + jsString(u.username) + '\\\')" style="padding:8px 12px; font-size:12px; font-weight:700; color:var(--accent); cursor:pointer; border-bottom:1px solid var(--border);" onmouseover="this.style.background=\\\'var(--bg)\\\'" onmouseout="this.style.background=\\\\\\">' + '@' + escapeHTML(u.username) + '</div>').join('');
         box.style.display = 'block';
       } catch (_) { /* abaikan */ }
     }, 300);
@@ -4260,34 +4260,6 @@ async function updateStats() {
     } catch (err) {
       showToast('Gagal terhubung: ' + err.message, 'error');
     }
-  }
-
-  function filterQuizPool() {
-    const tbody = document.getElementById('quizPoolList');
-    const q = document.getElementById('quizPoolSearch')?.value.toLowerCase() || '';
-    const filtered = cachedQuizPool.filter(item => 
-      item.title.toLowerCase().includes(q) || 
-      (item.genre || '').toLowerCase().includes(q)
-    );
-    
-    document.getElementById('quizPoolCount').innerText = filtered.length;
-    
-    tbody.innerHTML = filtered.map(item => {
-      return \`<tr>
-        <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
-          <div style="font-weight:700; color:#1e293b; font-size:12px;">\${escapeHTML(item.title)}</div>
-          <div style="font-size:9px; color:var(--muted);">ID: \${escapeHTML(item.id)}</div>
-        </td>
-        <td style="padding:12px; border-bottom:1px solid #f1f5f9; color:#64748b; font-size:11px;">\${escapeHTML(item.genre || '-')}</td>
-        <td style="padding:12px; border-bottom:1px solid #f1f5f9; text-align:center; font-weight:700; color:var(--accent); font-size:12px;">\${escapeHTML(item.score || '0.0')}</td>
-        <td style="padding:12px; border-bottom:1px solid #f1f5f9; text-align:right;">
-          <button class="btn-primary" onclick="triggerSpecificQuiz(\${item.id}, '\${jsString(item.title)}')" 
-            style="padding:6px 12px; font-size:10px; border-radius:6px; background:var(--accent); border:none; box-shadow:none;">
-            Kirim
-          </button>
-        </td>
-      </tr>\`;
-    }).join('');
   }
 
   async function triggerSpecificQuiz(id, title) {
