@@ -1,4 +1,12 @@
 function createUserRepo(db) {
+    async function getUserProfile(userId) {
+        return db.execute({
+            sql: `SELECT user_id, username, xp, level, custom_title
+                  FROM user_stats WHERE user_id = ?`,
+            args: [userId],
+        });
+    }
+
     async function getUserProfileWithRank(userId) {
         return db.execute({
             sql: `SELECT user_id, username, xp, level, custom_title,
@@ -104,6 +112,7 @@ function createUserRepo(db) {
     }
 
     return {
+        getUserProfile,
         getUserProfileWithRank,
         getNextRankForNewUser,
         getQuizStats,

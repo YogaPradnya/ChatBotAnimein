@@ -60,13 +60,12 @@ async function execute(ctx) {
             }
         }
 
-        const res = await userRepo.getUserProfileWithRank(senderUserId);
+        const res = await userRepo.getUserProfile(senderUserId);
         let userData;
         if (res.rows.length > 0) {
             userData = res.rows[0];
         } else {
-            const totalRes = await userRepo.getNextRankForNewUser();
-            userData = { xp: 0, level: 1, custom_title: null, rank: totalRes.rows[0].total };
+            userData = { xp: 0, level: 1, custom_title: null };
         }
 
         let quizData = { wins: 0, participations: 0, total_hints_used: 0, total_images: 0, current_streak: 0, best_streak: 0 };
@@ -88,16 +87,10 @@ async function execute(ctx) {
         }
 
         const updatedLimit = await checkCommandLimit(senderUserId, senderName);
-        const {xp, level, custom_title, rank} = userData;
+        const {xp, level, custom_title} = userData;
         const gelar = getGelar(level, custom_title);
-        const reqXP = Math.floor(20 * Math.pow(level, 3));
-        const percentage = Math.min(100, Math.floor((xp / reqXP) * 100));
-        const barW = 10;
-        const filled = Math.floor((percentage / 100) * barW);
-        const bar = '\u2588'.repeat(filled) + '\u2591'.repeat(barW - filled);
         const dn = senderName.substring(0, 10);
-        const xpStr = xp.toLocaleString('id-ID');
-        const reqStr = reqXP.toLocaleString('id-ID');
+        const xpStr = Number(xp || 0).toLocaleString('id-ID');
 
         let imgLimit = { used: 0, limit: IMAGE_DAILY_LIMIT_DEFAULT, remaining: IMAGE_DAILY_LIMIT_DEFAULT };
         try { imgLimit = await getImageLimitStatus(senderUserId, senderName); } catch(e) { handleError(e, { scope: 'PROFIL', detail: 'image limit status', stats, logEmitter }); }
@@ -121,41 +114,12 @@ async function execute(ctx) {
             }
         } catch (e) { console.warn("[PROFIL] Display showcase query failed:", e.message); }
 
-        let gachaLimit = null;
-        try {
-            if (cardsRepoForProfil && typeof cardsRepoForProfil.getPityState === 'function') {
-                let todayKey;
-                if (typeof ctx.getJakartaDateKey === 'function') {
-                    todayKey = ctx.getJakartaDateKey();
-                } else {
-                    try {
-                        todayKey = require('../utils').getJakartaDateKey();
-                    } catch (_) {
-                        todayKey = new Date().toISOString().slice(0, 10);
-                    }
-                }
-                let dailyLimit = 10;
-                try {
-                    if (typeof cardsRepoForProfil.getConfig === 'function') {
-                        const cfg = await cardsRepoForProfil.getConfig();
-                        if (Number.isFinite(Number(cfg.dailyLimit))) dailyLimit = Number(cfg.dailyLimit);
-                    }
-                } catch (_) { /* pakai default */ }
-                const st = await cardsRepoForProfil.getPityState(senderUserId);
-                const usedToday = st && st.today_key === todayKey ? (Number(st.pulls_today) || 0) : 0;
-                gachaLimit = { remaining: Math.max(0, dailyLimit - usedToday), limit: dailyLimit };
-            }
-        } catch (e) { console.warn("[PROFIL] Gacha limit query failed:", e.message); }
-
         const profileLines = [
             `┌── ${boxHeader('PROFIL USER')} 👤`,
             `│ @${dn}`,
             `│ Gelar : ${gelar || 'Wibu Baru'}`,
             `├───────────────────`,
-            `│ 🏆 Rank  : #${rank}`,
-            `│ 🌟 Level : ${level}`,
-            `│ ⚡ XP    : ${xpStr}/${reqStr}`,
-            `│ [${bar}] ${percentage}%`,
+            `│ ⚡ XP    : ${xpStr}`,
         ];
 
         if (extraProfile) {
@@ -174,7 +138,6 @@ async function execute(ctx) {
             `│ 📊 Cmd   : ${updatedLimit.remaining}/${updatedLimit.limit}`,
             `│ 🖼️ Img   : ${imgLimit.remaining}/${imgLimit.limit}`,
             `│ 🤖 Rara  : ${raraLimit.remaining}/${raraLimit.limit}`,
-            ...(gachaLimit ? [`│ 🎰 Gacha : ${gachaLimit.remaining}/${gachaLimit.limit}`] : []),
             `└──────────────────`
         );
 
@@ -189,7 +152,7 @@ async function execute(ctx) {
         } catch (e) { console.warn('[PROFIL] Pref showcase gagal, pakai auto:', e.message); }
         const picked = pickProfilShowcase(profilSource, showcase, displayShowcase);
         const displaySuffix = picked.kind === 'display'
-            ? `\n🎁 Pajangan spesial: ${picked.card.name} [${picked.card.grade}]`
+            ? `\nPajangan spesial: ${picked.card.name} [${picked.card.grade}]`
             : '';
         let gachaSuffix = '';
         if (picked.kind === 'gacha' && picked.card) {
