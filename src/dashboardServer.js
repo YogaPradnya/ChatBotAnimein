@@ -511,7 +511,8 @@ function startDashboard(scope) {
         const u = String(username || '').replace(/^@/, '').trim();
         if (!targetUserId && u) {
             try {
-                const row = await db.execute({ sql: "SELECT user_id FROM user_stats WHERE username = ?", args: [u] });
+                // Case-insensitive: username chat bisa beda kapital dengan ketikan admin.
+                const row = await db.execute({ sql: "SELECT user_id FROM user_stats WHERE LOWER(username) = LOWER(?) LIMIT 1", args: [u] });
                 if (row.rows.length > 0) {
                     targetUserId = row.rows[0].user_id;
                 } else {
@@ -527,9 +528,13 @@ function startDashboard(scope) {
                 sql: "INSERT OR REPLACE INTO quiz_banned (user_id, username, reason) VALUES (?, ?, ?)",
                 args: [String(targetUserId), u, reason || '']
             });
+            // Daftarkan BOTH user_id dan username (lowercase): enforcement di bot
+            // cek keduanya, jadi ban by username tetap menggigit walau user_id
+            // belum ketahuan (belum pernah chat).
             bannedUsers.add(String(targetUserId));
+            if (u) bannedUsers.add(u.toLowerCase());
             console.log(`[BAN] ${u}(${targetUserId}) dibanned dari kuis. Alasan: ${reason || '-'}`);
-            res.json({ success: true });
+            res.json({ success: true, resolvedUserId: String(targetUserId) !== u });
         } catch(e) {
             res.json({ success: false, message: e.message });
         }
@@ -541,7 +546,7 @@ function startDashboard(scope) {
         const u = String(username || '').replace(/^@/, '').trim();
         if (!targetUserId && u) {
             try {
-                const row = await db.execute({ sql: "SELECT user_id FROM user_stats WHERE username = ?", args: [u] });
+                const row = await db.execute({ sql: "SELECT user_id FROM user_stats WHERE LOWER(username) = LOWER(?) LIMIT 1", args: [u] });
                 if (row.rows.length > 0) {
                     targetUserId = row.rows[0].user_id;
                 } else {
@@ -553,9 +558,12 @@ function startDashboard(scope) {
         }
         if (!targetUserId) return res.json({ success: false, message: 'User ID atau Username wajib diisi' });
         try {
-            await db.execute({ sql: "DELETE FROM quiz_banned WHERE user_id = ? OR username = ?", args: [String(targetUserId), u] });
+            await db.execute({ sql: "DELETE FROM quiz_banned WHERE user_id = ? OR username = ? OR LOWER(username) = LOWER(?)", args: [String(targetUserId), u, u] });
             bannedUsers.delete(String(targetUserId));
-            if (u) bannedUsers.delete(u);
+            if (u) {
+                bannedUsers.delete(u);
+                bannedUsers.delete(u.toLowerCase());
+            }
             console.log(`[BAN] User ID ${targetUserId} / @${u} di-unban dari kuis.`);
             res.json({ success: true });
         } catch(e) {

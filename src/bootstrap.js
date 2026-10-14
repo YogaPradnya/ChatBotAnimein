@@ -290,6 +290,7 @@ function initializeBootstrap(options = {}) {
                 if (stateContainer.bannedUsers) {
                     bannedRes.rows.forEach(r => {
                         stateContainer.bannedUsers.add(String(r.user_id));
+                        if (r.username) stateContainer.bannedUsers.add(String(r.username).toLowerCase());
                     });
                     console.log(`[BAN] Loaded ${stateContainer.bannedUsers.size} banned users.`);
                 }

@@ -656,10 +656,11 @@ async function initDB() {
         console.log(`[ECONOMY] Loaded Base XP Rate: ${global.baseXpRate}%, Discount Event: ${global.isDiscountEvent} (${global.discountPercent}%), AI Temp: ${global.AI_TEMPERATURE}`);
         console.log(`[RARA] Loaded style intensity=${global.RARA_STYLE_INTENSITY}, words chat/info=${global.RARA_MAX_WORDS_CHAT}/${global.RARA_MAX_WORDS_INFO}, emoji=${global.RARA_EMOJI_BUDGET}, temp chat/info=${global.RARA_TEMP_CHAT}/${global.RARA_TEMP_INFO}`);
 
-        // Load Banned Users from DB
+        // Load Banned Users from DB (user_id + username lowercase agar ban by username tetap menggigit)
         const bannedRes = await banRepo.listBannedUsers();
         bannedRes.rows.forEach(r => {
             bannedUsers.add(String(r.user_id));
+            if (r.username) bannedUsers.add(String(r.username).toLowerCase());
         });
         console.log(`[BAN] Loaded ${bannedUsers.size} banned users.`);
 
@@ -4878,8 +4879,11 @@ async function processMessages(bot, messages) {
         const cleanMsg = msgText.replace(mentionRegex, '').trim();
         const lowerMsg = cleanMsg.toLowerCase();
 
-        // --- GLOBAL BAN CHECK (berlaku untuk semua bot) ---
+        // --- GLOBAL BAN CHECK (berlaku untuk semua bot, cocokkan user_id ATAU username) ---
         if (senderUserId && bannedUsers.has(String(senderUserId))) {
+            continue;
+        }
+        if (senderName && bannedUsers.has(String(senderName).replace(/^@/, '').toLowerCase())) {
             continue;
         }
         
