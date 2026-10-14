@@ -9,6 +9,7 @@ const {
     buildFrameSvg,
     applyCardFrame,
     frameDownloadedImage,
+    frameOverlaySize,
 } = require('../../src/services/cardFrameService');
 
 test('CardFrame - normalize rarity asing jadi Common', () => {
@@ -38,7 +39,19 @@ test('CardFrame - SVG tiap rarity bawa warna khas + dimensi benar', () => {
     assert.match(buildFrameSvg('Ngawur', 200, 300), /COMMON/);
 });
 
-test('CardFrame - applyCardFrame hasilkan PNG berbingkai seukuran asli', async () => {
+test('CardFrame - frameOverlaySize cover + bleed (proporsional, boleh negatif)', () => {
+    // Art portrait mirip jendela desain: overlay sedikit lebih besar, tengah.
+    const a = frameOverlaySize(230, 345);
+    assert.ok(a.ow >= 230 && a.oh >= 345);
+    assert.ok(a.top <= 0 && a.left <= 0);
+    // Art kotak: overlay cover penuh, output tetap ukuran art.
+    const b = frameOverlaySize(120, 160);
+    assert.ok(b.ow >= 120 && b.oh >= 160);
+    // Proporsi overlay selalu 280:400 (tidak gepeng).
+    assert.ok(Math.abs(b.ow / b.oh - 280 / 400) < 0.01);
+});
+
+test('CardFrame - applyCardFrame hasilkan PNG berbingkai + bleed', async () => {
     const sharp = require('sharp');
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'frame-test-'));
     const input = path.join(dir, 'base.png');
@@ -52,8 +65,10 @@ test('CardFrame - applyCardFrame hasilkan PNG berbingkai seukuran asli', async (
         assert.strictEqual(res.mimeType, 'image/png');
         assert.ok(fs.existsSync(res.filePath));
         const meta = await sharp(res.filePath).metadata();
-        assert.strictEqual(meta.width, 120);
-        assert.strictEqual(meta.height, 160);
+        const { ow, oh } = frameOverlaySize(120, 160);
+        assert.strictEqual(meta.width, ow);
+        assert.strictEqual(meta.height, oh);
+        assert.ok(meta.width >= 120 && meta.height >= 160);
         fs.unlinkSync(res.filePath);
     }
     fs.unlinkSync(input);

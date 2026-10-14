@@ -48,9 +48,28 @@ function normalizeDisplayHex(v) {
     return '';
 }
 
-/** Ketebalan dasar proporsional ukuran gambar. */
+/** Ketebalan dasar proporsional ukuran gambar (bingkai display). */
 function baseThickness(w, h) {
     return Math.max(6, Math.round(Math.min(w, h) * 0.035));
+}
+
+/** Kanvas desain CSV. */
+const FRAME_W = 280;
+const FRAME_H = 400;
+/** Zoom ekstra agar bingkai sedikit lebih besar dari kartu (bleed). */
+const FRAME_ZOOM = 1.05;
+
+/**
+ * Ukuran overlay + offset tengah (cover-fit proporsional, tanpa gepeng).
+ * Overlay boleh lebih besar dari art (negatif = bleed terpotong).
+ */
+function frameOverlaySize(w, h) {
+    const W = Math.max(1, Math.round(Number(w) || FRAME_W));
+    const H = Math.max(1, Math.round(Number(h) || FRAME_H));
+    const s = Math.max(W / FRAME_W, H / FRAME_H) * FRAME_ZOOM;
+    const ow = Math.max(1, Math.round(FRAME_W * s));
+    const oh = Math.max(1, Math.round(FRAME_H * s));
+    return { ow, oh, top: Math.round((H - oh) / 2), left: Math.round((W - ow) / 2) };
 }
 
 function rect(x, y, w, h, stroke, sw, extra = '') {
@@ -158,10 +177,19 @@ async function applyCardFrame(inputPath, rarity, opts = {}) {
         const meta = await sharp(inputPath).metadata();
         const w = meta.width || 512;
         const h = meta.height || 512;
-        const svg = buildFrameSvg(rarity, w, h);
+        const { ow, oh, top, left } = frameOverlaySize(w, h);
+        const svg = buildFrameSvg(rarity, ow, oh);
         const dir = opts.dir || path.dirname(inputPath);
         const out = path.join(dir, `framed_${Date.now()}_${Math.floor(Math.random() * 1000)}.png`);
+        // Kanvas diperbesar (bleed) agar bingkai sedikit lebih besar dari art.
         await sharp(inputPath)
+            .extend({
+                top: Math.max(0, -top),
+                left: Math.max(0, -left),
+                bottom: Math.max(0, oh - h + top),
+                right: Math.max(0, ow - w + left),
+                background: '#0b0b10',
+            })
             .composite([{ input: Buffer.from(svg), top: 0, left: 0 }])
             .png()
             .toFile(out);
@@ -197,6 +225,9 @@ async function frameDisplayImage(tempImg, borderType, borderColor) {
 module.exports = {
     VALID_RARITIES,
     normalizeRarity,
+    FRAME_W,
+    FRAME_H,
+    frameOverlaySize,
     buildFrameSvg,
     applyCardFrame,
     frameDownloadedImage,
