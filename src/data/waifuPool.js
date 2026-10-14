@@ -1,7 +1,7 @@
 /**
- * Pool kartu waifu/husbando lokal untuk gacha (total 200).
+ * Pool kartu waifu/husbando lokal untuk gacha (total 250).
  * Tiap entri: { name, anime, tier } dengan tier Common | Rare | Epic | Legendary | Mythic.
- * Distribusi: Common 90 / Rare 56 / Epic 30 / Legendary 14 / Mythic 10.
+ * Distribusi: Common 110 / Rare 76 / Epic 40 / Legendary 14 / Mythic 10.
  * Stok global per kartu: Mythic 1 / Legendary 10 / Epic 50 / Rare & Common unlimited.
  * Evo full manual: duplikat menumpuk (maks 999 copy); hanya Mythic unik per user.
  */
@@ -35,7 +35,7 @@ const WAIFU_POOL = [
     { name: 'Beerus', anime: 'Dragon Ball', tier: 'Legendary' },
     { name: 'Gildarts Clive', anime: 'Fairy Tail', tier: 'Legendary' },
 
-    // ---- Epic (12) ----
+    // ---- Epic (40) ----
     { name: 'Naruto Uzumaki', anime: 'Naruto', tier: 'Epic' },
     { name: 'Eren Yeager', anime: 'Attack on Titan', tier: 'Epic' },
     { name: 'Tanjiro Kamado', anime: 'Demon Slayer', tier: 'Epic' },
@@ -67,7 +67,18 @@ const WAIFU_POOL = [
     { name: 'Josuke Higashikata', anime: "JoJo's Bizarre Adventure", tier: 'Epic' },
     { name: 'Erza Scarlet', anime: 'Fairy Tail', tier: 'Epic' },
 
-    // ---- Rare (24) ----
+    { name: 'Holo', anime: 'Spice and Wolf', tier: 'Epic' },
+    { name: 'Kurumi Tokisaki', anime: 'Date A Live', tier: 'Epic' },
+    { name: 'Mai Sakurajima', anime: 'Rascal Does Not Dream of Bunny Girl Senpai', tier: 'Epic' },
+    { name: 'Miku Nakano', anime: 'The Quintessential Quintuplets', tier: 'Epic' },
+    { name: 'Raphtalia', anime: 'The Rising of the Shield Hero', tier: 'Epic' },
+    { name: 'Rias Gremory', anime: 'High School DxD', tier: 'Epic' },
+    { name: 'Megumin', anime: 'KonoSuba', tier: 'Epic' },
+    { name: 'Aqua', anime: 'KonoSuba', tier: 'Epic' },
+    { name: 'Echidna', anime: 'Re:Zero', tier: 'Epic' },
+    { name: 'Shiro', anime: 'No Game No Life', tier: 'Epic' },
+
+    // ---- Rare (76) ----
     { name: 'Yuji Itadori', anime: 'Jujutsu Kaisen', tier: 'Rare' },
     { name: 'Nobara Kugisaki', anime: 'Jujutsu Kaisen', tier: 'Rare' },
     { name: 'Mikasa Ackerman', anime: 'Attack on Titan', tier: 'Rare' },
@@ -125,7 +136,28 @@ const WAIFU_POOL = [
     { name: 'Wendy Marvell', anime: 'Fairy Tail', tier: 'Rare' },
     { name: 'Happy', anime: 'Fairy Tail', tier: 'Rare' },
 
-    // ---- Common (40) ----
+    { name: 'Nino Nakano', anime: 'The Quintessential Quintuplets', tier: 'Rare' },
+    { name: 'Ichika Nakano', anime: 'The Quintessential Quintuplets', tier: 'Rare' },
+    { name: 'Itsuki Nakano', anime: 'The Quintessential Quintuplets', tier: 'Rare' },
+    { name: 'Yotsuba Nakano', anime: 'The Quintessential Quintuplets', tier: 'Rare' },
+    { name: 'Darkness', anime: 'KonoSuba', tier: 'Rare' },
+    { name: 'Akeno Himejima', anime: 'High School DxD', tier: 'Rare' },
+    { name: 'Koneko Toujou', anime: 'High School DxD', tier: 'Rare' },
+    { name: 'Asia Argento', anime: 'High School DxD', tier: 'Rare' },
+    { name: 'Erina Nakiri', anime: 'Food Wars', tier: 'Rare' },
+    { name: 'Alice Nakiri', anime: 'Food Wars', tier: 'Rare' },
+    { name: 'Reze', anime: 'Chainsaw Man', tier: 'Rare' },
+    { name: 'Asa Mitaka', anime: 'Chainsaw Man', tier: 'Rare' },
+    { name: 'Quanxi', anime: 'Chainsaw Man', tier: 'Rare' },
+    { name: 'Rukia Kuchiki', anime: 'Bleach', tier: 'Rare' },
+    { name: 'Shalltear Bloodfallen', anime: 'Overlord', tier: 'Rare' },
+    { name: 'Narberal Gamma', anime: 'Overlord', tier: 'Rare' },
+    { name: 'Shouko Nishimiya', anime: 'A Silent Voice', tier: 'Rare' },
+    { name: 'Mitsuha Miyamizu', anime: 'Your Name', tier: 'Rare' },
+    { name: 'Yui Hirasawa', anime: 'K-On!', tier: 'Rare' },
+    { name: 'Nana Oosaki', anime: 'NANA', tier: 'Rare' },
+
+    // ---- Common (110) ----
     { name: 'Edward Elric', anime: 'Fullmetal Alchemist', tier: 'Common' },
     { name: 'Roy Mustang', anime: 'Fullmetal Alchemist', tier: 'Common' },
     { name: 'Spike Spiegel', anime: 'Cowboy Bebop', tier: 'Common' },
@@ -216,6 +248,26 @@ const WAIFU_POOL = [
     { name: 'Fiona Frost', anime: 'Spy x Family', tier: 'Common' },
     { name: 'Bond Forger', anime: 'Spy x Family', tier: 'Common' },
     { name: 'Reigen Arataka', anime: 'Mob Psycho 100', tier: 'Common' },
+    { name: 'Kobeni Higashiyama', anime: 'Chainsaw Man', tier: 'Common' },
+    { name: 'Fami', anime: 'Chainsaw Man', tier: 'Common' },
+    { name: 'Nayuta', anime: 'Chainsaw Man', tier: 'Common' },
+    { name: 'Akane Sawatari', anime: 'Chainsaw Man', tier: 'Common' },
+    { name: 'Fumiko Mifune', anime: 'Chainsaw Man', tier: 'Common' },
+    { name: 'Suzume Iwato', anime: 'Suzume', tier: 'Common' },
+    { name: 'Chizuru Ichinose', anime: 'Rent-a-Girlfriend', tier: 'Common' },
+    { name: 'Mami Nanami', anime: 'Rent-a-Girlfriend', tier: 'Common' },
+    { name: 'Ruka Sarashina', anime: 'Rent-a-Girlfriend', tier: 'Common' },
+    { name: 'Sumi Sakurasawa', anime: 'Rent-a-Girlfriend', tier: 'Common' },
+    { name: 'Kayo Hinazuki', anime: 'Erased', tier: 'Common' },
+    { name: 'Airi Katagiri', anime: 'Erased', tier: 'Common' },
+    { name: 'Akemi Hinazuki', anime: 'Erased', tier: 'Common' },
+    { name: 'Sachiko Fujinuma', anime: 'Erased', tier: 'Common' },
+    { name: 'Sakura Matou', anime: 'Fate/stay night', tier: 'Common' },
+    { name: 'Illyasviel von Einzbern', anime: 'Fate/stay night', tier: 'Common' },
+    { name: 'Miyu Edelfelt', anime: 'Fate/kaleid liner Prisma Illya', tier: 'Common' },
+    { name: 'Chloe von Einzbern', anime: 'Fate/kaleid liner Prisma Illya', tier: 'Common' },
+    { name: 'Caren Hortensia', anime: 'Fate/hollow ataraxia', tier: 'Common' },
+    { name: 'Mei Misaki', anime: 'Another', tier: 'Common' },
 ];
 
 const VALID_TIERS = ['Common', 'Rare', 'Epic', 'Legendary', 'Mythic'];

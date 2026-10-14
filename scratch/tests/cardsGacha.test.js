@@ -132,8 +132,8 @@ function mockImage(url = 'https://img.test/card.jpg') {
 
 const TODAY = '2026-10-10';
 
-test('Cards - pool valid: 200 entri, tier valid, distribusi 90/56/30/14/10', () => {
-    assert.strictEqual(WAIFU_POOL.length, 200);
+test('Cards - pool valid: 250 entri, tier valid, distribusi 110/76/40/14/10', () => {
+    assert.strictEqual(WAIFU_POOL.length, 250);
     const count = { Common: 0, Rare: 0, Epic: 0, Legendary: 0, Mythic: 0 };
     const names = new Set();
     for (const e of WAIFU_POOL) {
@@ -143,11 +143,11 @@ test('Cards - pool valid: 200 entri, tier valid, distribusi 90/56/30/14/10', () 
         assert.ok(!names.has(e.name), `nama duplikat: ${e.name}`);
         names.add(e.name);
     }
-    assert.deepStrictEqual(count, { Common: 90, Rare: 56, Epic: 30, Legendary: 14, Mythic: 10 });
+    assert.deepStrictEqual(count, { Common: 110, Rare: 76, Epic: 40, Legendary: 14, Mythic: 10 });
     const pools = getPoolsByTier();
-    assert.strictEqual(pools.Common.length, 90);
-    assert.strictEqual(pools.Rare.length, 56);
-    assert.strictEqual(pools.Epic.length, 30);
+    assert.strictEqual(pools.Common.length, 110);
+    assert.strictEqual(pools.Rare.length, 76);
+    assert.strictEqual(pools.Epic.length, 40);
     assert.strictEqual(pools.Legendary.length, 14);
     assert.strictEqual(pools.Mythic.length, 10);
 });

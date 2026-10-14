@@ -1,5 +1,5 @@
 /**
- * Gacha Kartu Waifu/Husbando — ekonomi sink + koleksi kartu lokal (200 kartu).
+ * Gacha Kartu Waifu/Husbando — ekonomi sink + koleksi kartu lokal (250 kartu).
  * PURE HOKI: tanpa pity, tanpa jaminan — setiap pull roll rate murni.
  * Rate per pull (default, bisa diatur dashboard): Common 70% / Rare 25% /
  *   Epic 4.89% / Legendary 0.1% / Mythic 0.01%.
@@ -1152,7 +1152,7 @@ function createCardsRepo(db, options = {}) {
             return { ok: true, count: checked.pool.length };
         },
 
-        /** Kembalikan pool ke default 80 kartu bawaan. */
+        /** Kembalikan pool ke default 250 kartu bawaan. */
         async resetPool() {
             await db.execute({
                 sql: 'DELETE FROM settings WHERE key = ?',

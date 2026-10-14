@@ -147,7 +147,7 @@ test('GachaConfig - savePool/customized lalu resetPool ke default', async () => 
     await repo.resetPool();
     eff = await repo.getEffectiveCards();
     assert.strictEqual(eff.customized, false);
-    assert.strictEqual(eff.cards.length, 200);
+    assert.strictEqual(eff.cards.length, 250);
 });
 
 test('GachaConfig - groupPoolByTier kelompokkan list kustom', () => {
@@ -212,13 +212,13 @@ test('GachaConfig - performPull pakai pool kustom dashboard', async () => {
     assert.strictEqual(r.rarity, 'Common');
 });
 
-test('GachaConfig - getEffectiveCards default 200 + ada imageUrl statis', async () => {
+test('GachaConfig - getEffectiveCards default 250 + ada imageUrl statis', async () => {
     invalidateGachaConfig();
     const db = createSettingsMockDb();
     const repo = createCardsRepo(db, { imageResolver: async () => null });
     const eff = await repo.getEffectiveCards();
     assert.strictEqual(eff.customized, false);
-    assert.strictEqual(eff.cards.length, 200);
+    assert.strictEqual(eff.cards.length, 250);
     for (const c of eff.cards) {
         assert.ok(c.name && c.anime && c.tier);
     }
