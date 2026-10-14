@@ -1702,7 +1702,15 @@ function getDashboardHTML() {
 
           <!-- Turnamen Mingguan Card -->
           <div class="card" style="margin-bottom: 0;">
-            <div class="card-title">🏆 Turnamen Mingguan <span id="weeklyTournamentKey" style="font-size:11px; background:var(--accent); color:#fff; padding:2px 8px; border-radius:10px; font-weight:600;"></span></div>
+            <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">🏆 Turnamen Mingguan <span id="weeklyTournamentKey" style="font-size:11px; background:var(--accent); color:#fff; padding:2px 8px; border-radius:10px; font-weight:600;"></span></div>
+            <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px; font-size:11px; color:var(--muted);">
+              <span>Tampilkan</span>
+              <select id="weeklyLimit" onchange="weeklyLimit=parseInt(this.value,10);loadWeeklyTournament()" style="padding:4px 8px; border-radius:8px; border:1px solid var(--border); font-size:11px;">
+                <option value="10">10</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+            </div>
             <div id="weeklyChampion" style="font-size:12px; color:var(--muted); margin-bottom:12px;">Memuat juara minggu lalu...</div>
             <div id="weeklyTournamentList" style="display:flex; flex-direction:column; gap:8px; max-height:320px; overflow-y:auto;">
               <div style="color: var(--muted); font-size: 12px;">Memuat turnamen...</div>
@@ -1723,7 +1731,12 @@ function getDashboardHTML() {
                 <span id="quizPoolCount" style="font-size:11px; background:var(--accent); color:#fff; padding:2px 8px; border-radius:10px;">0</span>
               </div>
               <div style="display:flex; gap:10px;">
-                <input type="text" id="quizPoolSearch" placeholder="Cari anime..." oninput="filterQuizPool()" style="padding:6px 12px; border-radius:8px; border:1px solid var(--border); font-size:12px; width:180px;">
+                <input type="text" id="quizPoolSearch" placeholder="Cari anime..." oninput="quizPoolPage=1;loadQuizPool()" style="padding:6px 12px; border-radius:8px; border:1px solid var(--border); font-size:12px; width:180px;">
+                <select id="quizPoolLimit" onchange="quizPoolLimit=parseInt(this.value,10);quizPoolPage=1;loadQuizPool()" style="padding:6px 8px; border-radius:8px; border:1px solid var(--border); font-size:12px;">
+                  <option value="10">10</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
                 <button class="btn-sm btn-sm-toggle" onclick="loadQuizPool()" title="Refresh Pool" style="background:var(--accent); border-color:var(--accent); color:#fff;">🔄</button>
               </div>
             </div>
@@ -1742,6 +1755,13 @@ function getDashboardHTML() {
                 </tbody>
               </table>
             </div>
+            <div style="display:flex; gap:8px; align-items:center; margin-top:10px; flex-shrink:0; font-size:11px; color:var(--muted);">
+              <span id="quizPoolPageInfo">Hal 1/1</span>
+              <span style="margin-left:auto; display:flex; gap:6px;">
+                <button class="btn-sm btn-sm-toggle" id="quizPoolPrevBtn" onclick="quizPoolPage=Math.max(1,quizPoolPage-1);loadQuizPool()">‹ Prev</button>
+                <button class="btn-sm btn-sm-toggle" id="quizPoolNextBtn" onclick="quizPoolPage=quizPoolPage+1;loadQuizPool()">Next ›</button>
+              </span>
+            </div>
           </div>
         </div>
 
@@ -1751,7 +1771,12 @@ function getDashboardHTML() {
             <div style="padding: 24px 24px 16px; border-bottom: 1px solid var(--border); display:flex; justify-content:space-between; align-items:center; flex-shrink: 0; background: #fff; z-index: 10;">
               <span style="font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; display: flex; align-items: center; gap: 8px;">🏆 Leaderboard</span>
               <div style="display:flex; gap:8px;">
-                <input type="text" id="userSearch" placeholder="Cari user..." oninput="loadUsers()" style="padding:8px 14px; border:1.5px solid var(--border); border-radius:10px; background:#f8fafc; font-size:12px; width:150px; outline: none;">
+                <input type="text" id="userSearch" placeholder="Cari user..." oninput="userPage=1;loadUsers()" style="padding:8px 14px; border:1.5px solid var(--border); border-radius:10px; background:#f8fafc; font-size:12px; width:150px; outline: none;">
+                <select id="userLimit" onchange="userLimit=parseInt(this.value,10);userPage=1;loadUsers()" style="padding:8px; border:1.5px solid var(--border); border-radius:10px; background:#f8fafc; font-size:12px;">
+                  <option value="10">10</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
                 <button class="btn-sm btn-sm-toggle" onclick="loadUsers()" title="Refresh" style="padding: 8px 12px; border-radius: 10px;">🔄</button>
                 <button class="btn-sm btn-sm-del" onclick="resetAllUsers()" title="Reset All EXP & Level" style="padding: 8px 12px; border-radius: 10px; background: var(--red); border-color: var(--red);">🔥 Reset All</button>
               </div>
@@ -1771,6 +1796,13 @@ function getDashboardHTML() {
                   <tr><td colspan="5" style="text-align:center; padding:40px; color:var(--muted); font-size: 12px;">Memuat data...</td></tr>
                 </tbody>
               </table>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center; padding:10px 24px; border-top:1px solid var(--border); flex-shrink:0; font-size:11px; color:var(--muted); background:#fff;">
+              <span id="userPageInfo">Hal 1/1</span>
+              <span style="margin-left:auto; display:flex; gap:6px;">
+                <button class="btn-sm btn-sm-toggle" id="userPrevBtn" onclick="userPage=Math.max(1,userPage-1);loadUsers()">‹ Prev</button>
+                <button class="btn-sm btn-sm-toggle" id="userNextBtn" onclick="userPage=userPage+1;loadUsers()">Next ›</button>
+              </span>
             </div>
           </div>
         </div>
@@ -3386,17 +3418,62 @@ async function updateStats() {
   }
 
   let cachedQuizPool = [];
+  let quizPoolPage = 1;
+  let quizPoolLimit = 10;
+
   async function loadQuizPool() {
     const tbody = document.getElementById('quizPoolList');
     if (!tbody) return;
     try {
-      const res = await fetch('/api/quiz/pool');
+      const q = document.getElementById('quizPoolSearch')?.value || '';
+      const res = await fetch('/api/quiz/pool?page=' + quizPoolPage + '&limit=' + quizPoolLimit + '&q=' + encodeURIComponent(q));
       const d = await res.json();
       if (!d.success) return;
       cachedQuizPool = d.data || [];
-      filterQuizPool();
+      const pg = d.pagination || { page: 1, limit: quizPoolLimit, total: cachedQuizPool.length, totalPages: 1 };
+      quizPoolPage = pg.page || 1;
+      const info = document.getElementById('quizPoolPageInfo');
+      if (info) info.textContent = 'Hal ' + pg.page + '/' + pg.totalPages + ' • ' + (pg.total || 0) + ' soal';
+      const prev = document.getElementById('quizPoolPrevBtn');
+      const next = document.getElementById('quizPoolNextBtn');
+      if (prev) prev.disabled = pg.page <= 1;
+      if (next) next.disabled = pg.page >= pg.totalPages;
+      renderQuizPoolRows();
     } catch(e) { console.error(e); }
   }
+
+  function renderQuizPoolRows() {
+    const tbody = document.getElementById('quizPoolList');
+    if (!tbody) return;
+    document.getElementById('quizPoolCount').innerText = cachedQuizPool.length;
+
+    tbody.innerHTML = cachedQuizPool.length === 0
+      ? '<tr><td colspan="4" style="text-align:center; padding:40px; color:var(--muted); font-size: 12px;">Tidak ada soal.</td></tr>'
+      : cachedQuizPool.map(item => {
+      return \`<tr>
+        <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
+          <div style="font-weight:700; color:#1e293b; font-size:12px;">\${escapeHTML(item.title)}</div>
+          <div style="font-size:9px; color:var(--muted);">ID: \${escapeHTML(item.id)}</div>
+        </td>
+        <td style="padding:12px; border-bottom:1px solid #f1f5f9; color:#64748b; font-size:11px;">\${escapeHTML(item.genre || '-')}</td>
+        <td style="padding:12px; border-bottom:1px solid #f1f5f9; text-align:center; font-weight:700; color:var(--accent); font-size:12px;">\${escapeHTML(item.score || '0.0')}</td>
+        <td style="padding:12px; border-bottom:1px solid #f1f5f9; text-align:right;">
+          <button class="btn-primary" onclick="triggerSpecificQuiz(\${item.id}, '\${jsString(item.title)}')"
+            style="padding:6px 12px; font-size:10px; border-radius:6px; background:var(--accent); border:none; box-shadow:none;">
+            Kirim
+          </button>
+        </td>
+      </tr>\`;
+    }).join('');
+  }
+
+  // Kompat: search input memanggil ini (reset ke hal 1, search server-side).
+  function filterQuizPool() {
+    quizPoolPage = 1;
+    loadQuizPool();
+  }
+
+  let weeklyLimit = 10;
 
   async function loadWeeklyTournament() {
     const list = document.getElementById('weeklyTournamentList');
@@ -3404,7 +3481,7 @@ async function updateStats() {
     const keyEl = document.getElementById('weeklyTournamentKey');
     if (!list) return;
     try {
-      const res = await fetch('/api/quiz/weekly');
+      const res = await fetch('/api/quiz/weekly?limit=' + weeklyLimit);
       const d = await res.json();
       if (!d.success) return;
       if (keyEl) keyEl.textContent = d.weekKey || '';
@@ -4278,13 +4355,24 @@ async function updateStats() {
     const d = await res.json().catch(() => ({}));
     showToast(d.success ? 'Setting kartu tersimpan.' : ('Gagal: ' + (d.message || '')), d.success ? 'success' : 'error');
   }
+  let userPage = 1;
+  let userLimit = 10;
+
   async function loadUsers() {
     const q = document.getElementById('userSearch')?.value || '';
     try {
-      const res = await fetch('/api/users/list?q=' + encodeURIComponent(q));
+      const res = await fetch('/api/users/list?q=' + encodeURIComponent(q) + '&page=' + userPage + '&limit=' + userLimit);
       const d = await res.json();
       const tbody = document.getElementById('userList');
       if (!tbody || !d.success) return;
+      const pg = d.pagination || { page: 1, limit: userLimit, total: (d.data || []).length, totalPages: 1 };
+      userPage = pg.page || 1;
+      const info = document.getElementById('userPageInfo');
+      if (info) info.textContent = 'Hal ' + pg.page + '/' + pg.totalPages + ' • ' + (pg.total || 0) + ' user';
+      const prev = document.getElementById('userPrevBtn');
+      const next = document.getElementById('userNextBtn');
+      if (prev) prev.disabled = pg.page <= 1;
+      if (next) next.disabled = pg.page >= pg.totalPages;
       if (d.data.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:var(--muted);">Tidak ada user ditemukan.</td></tr>';
         return;
@@ -4293,6 +4381,7 @@ async function updateStats() {
       updateModalTitleDropdown();
       renderTitlesList();
 
+      const offset = (pg.page - 1) * pg.limit;
       tbody.innerHTML = d.data.map((u, i) => {
         const req = Math.floor(20 * Math.pow(u.level, 3));
         const title = getUserTitle(u.level, u.custom_title);
@@ -4307,7 +4396,7 @@ async function updateStats() {
         const fullUsername = String(u.username || '');
         const shortUsername = fullUsername.length > 20 ? fullUsername.slice(0, 20) + '...' : fullUsername;
         return \`<tr>
-          <td style="font-weight:700; color:var(--muted); text-align:center;">\${i+1}</td>
+          <td style="font-weight:700; color:var(--muted); text-align:center;">\${offset + i + 1}</td>
           <td class="lb-user" style="font-weight:700; color:var(--accent); font-size:12px;"><span class="lb-user-name" title="@\${escapeHTML(fullUsername)}">@\${escapeHTML(shortUsername)}</span><div class="lb-user-title" style="font-size:10px; color:var(--muted); font-weight:500; line-height:1.2;">\${escapeHTML(title)}</div></td>
           <td style="text-align:center;">
             <span class="prov-tag" style="background:var(--accent); color:#fff; border:none; padding:2px 6px;">Lv \${u.level}</span>

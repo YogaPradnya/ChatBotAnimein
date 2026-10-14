@@ -445,8 +445,21 @@ function startDashboard(scope) {
 
     app.get('/api/quiz/pool', async (req, res) => {
         try {
-            const rows = await db.execute("SELECT * FROM quiz_pool ORDER BY last_used_at DESC");
-            res.json({ success: true, data: rows.rows });
+            const q = String(req.query.q || '').trim();
+            const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+            const allowed = [10, 50, 100];
+            const rawLimit = parseInt(req.query.limit, 10) || 10;
+            const limit = allowed.includes(rawLimit) ? rawLimit : 10;
+            const offset = (page - 1) * limit;
+            const whereSql = q ? " WHERE title LIKE ? OR genre LIKE ?" : "";
+            const args = q ? [`%${q}%`, `%${q}%`] : [];
+            const countRes = await db.execute({ sql: `SELECT COUNT(*) as total FROM quiz_pool${whereSql}`, args });
+            const total = Number(countRes.rows[0]?.total || 0);
+            const rows = await db.execute({
+                sql: `SELECT * FROM quiz_pool${whereSql} ORDER BY last_used_at DESC LIMIT ? OFFSET ?`,
+                args: [...args, limit, offset]
+            });
+            res.json({ success: true, data: rows.rows, pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) }, q });
         } catch(e) {
             res.json({ success: false, message: e.message });
         }
@@ -552,11 +565,14 @@ function startDashboard(scope) {
 
     app.get('/api/quiz/weekly', async (req, res) => {
         try {
+            const allowed = [10, 50, 100];
+            const rawLimit = parseInt(req.query.limit, 10) || 10;
+            const limit = allowed.includes(rawLimit) ? rawLimit : 10;
             const weekKey = getWeekKey();
             const prevKey = getPrevWeekKey();
-            const top = weeklyRepo ? await weeklyRepo.getLeaderboard(weekKey, 10) : [];
+            const top = weeklyRepo ? await weeklyRepo.getLeaderboard(weekKey, limit) : [];
             const winner = weeklyRepo ? await weeklyRepo.getTopUser(prevKey) : null;
-            res.json({ success: true, weekKey, top, prevWeek: { weekKey: prevKey, winner } });
+            res.json({ success: true, weekKey, top, prevWeek: { weekKey: prevKey, winner }, limit });
         } catch (e) {
             safeError(res, e);
         }
@@ -1884,12 +1900,23 @@ function startDashboard(scope) {
 
     app.get('/api/users/list', async (req, res) => {
         const q = req.query.q || '';
+        const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+        const allowed = [10, 50, 100];
+        const rawLimit = parseInt(req.query.limit, 10) || 10;
+        const limit = allowed.includes(rawLimit) ? rawLimit : 10;
+        const offset = (page - 1) * limit;
         try {
-            let sql = "SELECT s.*, m.content as core_memory, r.used_count as rara_chat_used, r.extra_limit as rara_chat_extra, r.usage_date as rara_usage_date FROM user_stats s LEFT JOIN user_memories m ON s.user_id = m.user_id LEFT JOIN rara_chat_limits r ON s.user_id = r.user_id ORDER BY s.level DESC, s.xp DESC LIMIT 100";
-            let args = [];
+            const whereSql = q ? " WHERE s.username LIKE ?" : "";
+            const countRes = await db.execute({
+                sql: `SELECT COUNT(*) as total FROM user_stats s${whereSql}`,
+                args: q ? [`%${q}%`] : []
+            });
+            const total = Number(countRes.rows[0]?.total || 0);
+            let sql = `SELECT s.*, m.content as core_memory, r.used_count as rara_chat_used, r.extra_limit as rara_chat_extra, r.usage_date as rara_usage_date FROM user_stats s LEFT JOIN user_memories m ON s.user_id = m.user_id LEFT JOIN rara_chat_limits r ON s.user_id = r.user_id ORDER BY s.level DESC, s.xp DESC LIMIT ? OFFSET ?`;
+            let args = [limit, offset];
             if (q) {
-                sql = "SELECT s.*, m.content as core_memory, r.used_count as rara_chat_used, r.extra_limit as rara_chat_extra, r.usage_date as rara_usage_date FROM user_stats s LEFT JOIN user_memories m ON s.user_id = m.user_id LEFT JOIN rara_chat_limits r ON s.user_id = r.user_id WHERE s.username LIKE ? ORDER BY s.level DESC, s.xp DESC LIMIT 100";
-                args = [`%${q}%`];
+                sql = `SELECT s.*, m.content as core_memory, r.used_count as rara_chat_used, r.extra_limit as rara_chat_extra, r.usage_date as rara_usage_date FROM user_stats s LEFT JOIN user_memories m ON s.user_id = m.user_id LEFT JOIN rara_chat_limits r ON s.user_id = r.user_id WHERE s.username LIKE ? ORDER BY s.level DESC, s.xp DESC LIMIT ? OFFSET ?`;
+                args = [`%${q}%`, limit, offset];
             }
             const result = await db.execute({ sql, args });
             
@@ -1902,7 +1929,7 @@ function startDashboard(scope) {
             const userTitles = userTitlesRes.rows.map(r => r.custom_title);
             const mergedTitles = Array.from(new Set([...titles, ...userTitles]));
 
-            res.json({ success: true, data: result.rows, availableTitles: mergedTitles });
+            res.json({ success: true, data: result.rows, availableTitles: mergedTitles, pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) }, q });
         } catch (e) { safeError(res, e); }
     });
 
