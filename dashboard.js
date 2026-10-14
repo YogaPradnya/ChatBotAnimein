@@ -3960,7 +3960,7 @@ async function updateStats() {
     clearTimeout(banUserTimer);
     banUserTimer = setTimeout(async () => {
       try {
-        const res = await fetch('/api/display/users/search?q=' + encodeURIComponent(q));
+        const res = await fetch('/api/display/users/search?q=' + encodeURIComponent(q) + '&excludeBanned=1');
         const d = await res.json().catch(() => ({}));
         const users = (d.success && d.users) || [];
         if (users.length === 0) { box.innerHTML = ''; box.style.display = 'none'; return; }

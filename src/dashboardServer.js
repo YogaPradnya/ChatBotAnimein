@@ -827,8 +827,13 @@ function startDashboard(scope) {
         try {
             const q = String(req.query.q || '').replace(/^@/, '').trim();
             if (q.length < 2) return res.json({ success: true, users: [] });
+            // excludeBanned=1: sembunyikan user yang sudah di-ban (cocok by user_id ATAU username).
+            const excludeBanned = String(req.query.excludeBanned || '') === '1';
+            const baseSql = excludeBanned
+                ? 'SELECT s.user_id, s.username FROM user_stats s LEFT JOIN quiz_banned b ON b.user_id = s.user_id OR LOWER(b.username) = LOWER(s.username) WHERE s.username LIKE ? AND b.user_id IS NULL'
+                : 'SELECT user_id, username FROM user_stats WHERE username LIKE ?';
             const rows = await db.execute({
-                sql: 'SELECT user_id, username FROM user_stats WHERE username LIKE ? ORDER BY username ASC LIMIT 10',
+                sql: baseSql + ' ORDER BY username ASC LIMIT 10',
                 args: [`%${q}%`],
             });
             res.json({
