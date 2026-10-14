@@ -21,18 +21,21 @@ test('CardFrame - normalize rarity asing jadi Common', () => {
 
 test('CardFrame - SVG tiap rarity bawa warna khas + dimensi benar', () => {
     const common = buildFrameSvg('Common', 200, 300);
-    assert.match(common, /#9ca3af/);
+    assert.match(common, /#33373b/);
+    assert.match(common, /COMMON/);
     assert.match(common, /width="200" height="300"/);
-    assert.match(buildFrameSvg('Rare', 200, 300), /#2563eb/);
-    assert.match(buildFrameSvg('Epic', 200, 300), /#7e22ce/);
+    assert.match(common, /viewBox="0 0 280 400"/);
+    assert.match(buildFrameSvg('Rare', 200, 300), /#2b5b84/);
+    assert.match(buildFrameSvg('Epic', 200, 300), /#4a154b/);
     const leg = buildFrameSvg('Legendary', 200, 300);
-    assert.match(leg, /#b8860b/);
-    assert.match(leg, /polygon/); // permata sudut
+    assert.match(leg, /#ffd700/);
+    assert.match(leg, /polygon/); // ornamen sudut
     const myth = buildFrameSvg('Mythic', 200, 300);
-    assert.match(myth, /#450a0a/);
-    assert.match(myth, /polygon/); // permata putih
+    assert.match(myth, /#ff0055/);
+    assert.match(myth, /polygon/); // permata
     // Rarity asing -> fallback Common.
-    assert.match(buildFrameSvg('Ngawur', 200, 300), /#9ca3af/);
+    assert.match(buildFrameSvg('Ngawur', 200, 300), /#33373b/);
+    assert.match(buildFrameSvg('Ngawur', 200, 300), /COMMON/);
 });
 
 test('CardFrame - applyCardFrame hasilkan PNG berbingkai seukuran asli', async () => {

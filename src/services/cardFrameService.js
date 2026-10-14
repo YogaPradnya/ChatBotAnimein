@@ -2,14 +2,15 @@
  * Bingkai kartu gacha per rarity — overlay SVG transparan yang ditempel
  * di atas art kartu via sharp, instan saat gambar dikirim (.gacha/.pajang).
  *
- * Tidak butuh file aset: bingkai digambar murni dari vektor (rect + ornamen
- * sudut). Tengah overlay selalu transparan, jadi karakter tidak tertutup —
- * hanya tepi + sudut yang dihias. Makin tinggi rarity, makin mewah:
- *   Common    : 1 garis abu tipis
- *   Rare      : garis biru ganda + glow + kotak sudut
- *   Epic      : garis ungu 3 lapis + glow + permata sudut
- *   Legendary : garis emas tebal + ornamen sudut ganda + permata + titik cahaya
- *   Mythic    : merah darah + hitam + glow + permata putih (paling mewah)
+ * Desain dari CSV: kanvas 280x400, jendela kartu x=25 y=25 w=230 h=345,
+ * plat nama grade di bawah tengah. Tengah transparan agar art terlihat.
+ * viewBox tetap 0 0 280 400; width/height diisi ukuran gambar target
+ * sehingga overlay pas (tengah overlay selalu transparan).
+ *   Common    : batu + perunggu
+ *   Rare      : baja biru + safir
+ *   Epic      : ungu + emas + amethyst
+ *   Legendary : api + emas + ruby
+ *   Mythic    : kosmik + emas langit + permata mythic (paling mewah)
  */
 
 const path = require('path');
@@ -56,122 +57,27 @@ function rect(x, y, w, h, stroke, sw, extra = '') {
     return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="${stroke}" stroke-width="${sw}"${extra}/>`;
 }
 
+/**
+ * Desain bingkai per grade (dari CSV desain):
+ * kanvas 280x400, jendela kartu di x=25 y=25 w=230 h=345,
+ * plat nama grade di bawah tengah. Tengah transparan agar art terlihat.
+ * viewBox tetap 0 0 280 400; width/height diisi ukuran gambar target
+ * sehingga sharp menskala overlay pas ke art.
+ */
+const FRAME_DESIGNS = {
+Common: `<defs><linearGradient id="stoneGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#7a8288"/><stop offset="50%" stop-color="#4e5459"/><stop offset="100%" stop-color="#33373b"/></linearGradient><linearGradient id="bronzeGrad" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#a8896c"/><stop offset="100%" stop-color="#5c4632"/></linearGradient><filter id="shadow" x="-10%" y="-10%" width="120%" height="120%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.7"/></filter></defs><path d="M 15,15 H 265 V 380 H 15 Z M 25,25 V 370 H 255 V 25 Z" fill="url(#stoneGrad)" stroke="#26292c" stroke-width="2" fill-rule="evenodd" filter="url(#shadow)"/><rect x="23" y="23" width="234" height="349" fill="none" stroke="url(#bronzeGrad)" stroke-width="3" rx="2"/><rect x="17" y="17" width="246" height="361" fill="none" stroke="#8c949a" stroke-width="1" opacity="0.5"/><g fill="url(#bronzeGrad)" stroke="#2b1f14" stroke-width="1.5"><polygon points="12,12 40,12 35,20 20,20 20,35 12,40"/><polygon points="268,12 240,12 245,20 260,20 260,35 268,40"/><polygon points="12,383 40,383 35,375 20,375 20,360 12,355"/><polygon points="268,383 240,383 245,375 260,375 260,360 268,355"/></g><g filter="url(#shadow)"><polygon points="85,358 195,358 205,373 195,388 85,388 75,373" fill="url(#bronzeGrad)" stroke="#2b1f14" stroke-width="2"/><polygon points="90,362 190,362 198,373 190,384 90,384 82,373" fill="#3d352e"/><text x="140" y="378" font-family="serif" font-size="14" font-weight="bold" fill="#d9cbb8" text-anchor="middle" letter-spacing="2">COMMON</text></g>`,
+Rare: `<defs><linearGradient id="silverGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#e0eaf5"/><stop offset="50%" stop-color="#8ca0b5"/><stop offset="100%" stop-color="#495a6e"/></linearGradient><linearGradient id="blueSteel" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#2b5b84"/><stop offset="100%" stop-color="#132c42"/></linearGradient><radialGradient id="sapphire" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#70d6ff"/><stop offset="60%" stop-color="#0077cc"/><stop offset="100%" stop-color="#003366"/></radialGradient><filter id="shadow" x="-10%" y="-10%" width="120%" height="120%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.8"/></filter></defs><path d="M 14,14 H 266 V 381 H 14 Z M 25,25 V 370 H 255 V 25 Z" fill="url(#blueSteel)" stroke="url(#silverGrad)" stroke-width="2" fill-rule="evenodd" filter="url(#shadow)"/><rect x="23" y="23" width="234" height="349" fill="none" stroke="url(#silverGrad)" stroke-width="3"/><g fill="url(#silverGrad)" stroke="#1d2b3a" stroke-width="1.2"><polygon points="8,8 48,12 35,24 24,24 24,35 12,48"/><polygon points="272,8 232,12 245,24 256,24 256,35 268,48"/><polygon points="8,387 48,383 35,371 24,371 24,360 12,347"/><polygon points="272,387 232,383 245,371 256,371 256,360 268,347"/><polygon points="105,12 140,20 175,12 160,26 120,26"/></g><g stroke="#ffffff" stroke-width="0.5"><polygon points="140,5 150,18 140,31 130,18" fill="url(#sapphire)"/><polygon points="14,14 26,18 22,26 14,22" fill="url(#sapphire)"/><polygon points="266,14 254,18 258,26 266,22" fill="url(#sapphire)"/><polygon points="14,381 26,377 22,369 14,373" fill="url(#sapphire)"/><polygon points="266,381 254,377 258,369 266,373" fill="url(#sapphire)"/></g><g filter="url(#shadow)"><polygon points="80,356 200,356 212,373 200,390 80,390 68,373" fill="url(#silverGrad)" stroke="#1d2b3a" stroke-width="1.5"/><polygon points="85,360 195,360 205,373 195,386 85,386 75,373" fill="url(#blueSteel)"/><text x="140" y="378" font-family="serif" font-size="15" font-weight="bold" fill="#e0f2fe" text-anchor="middle" letter-spacing="3">RARE</text></g>`,
+Epic: `<defs><linearGradient id="epicPurple" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#4a154b"/><stop offset="50%" stop-color="#2b0938"/><stop offset="100%" stop-color="#14031c"/></linearGradient><linearGradient id="darkGold" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#f3d078"/><stop offset="50%" stop-color="#b8860b"/><stop offset="100%" stop-color="#6b4c00"/></linearGradient><radialGradient id="amethyst" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#f8b4ff"/><stop offset="50%" stop-color="#b829ff"/><stop offset="100%" stop-color="#4c0070"/></radialGradient><filter id="purpleGlow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="#d946ef" flood-opacity="0.7"/></filter></defs><path d="M 12,12 H 268 V 383 H 12 Z M 25,25 V 370 H 255 V 25 Z" fill="url(#epicPurple)" stroke="url(#darkGold)" stroke-width="2" fill-rule="evenodd" filter="url(#purpleGlow)"/><rect x="24" y="24" width="232" height="347" fill="none" stroke="#e879f9" stroke-width="1.5" filter="url(#purpleGlow)"/><rect x="22" y="22" width="236" height="351" fill="none" stroke="url(#darkGold)" stroke-width="2"/><g fill="url(#darkGold)" stroke="#2e1035" stroke-width="1"><polygon points="4,4 50,10 35,18 55,22 25,25 22,55 18,35 10,50"/><polygon points="276,4 230,10 245,18 225,22 255,25 258,55 262,35 270,50"/><polygon points="4,391 50,385 35,377 55,373 25,370 22,340 18,360 10,345"/><polygon points="276,391 230,385 245,377 225,373 255,370 258,340 262,360 270,345"/><polygon points="95,8 125,18 140,4 155,18 185,8 165,26 115,26"/></g><g stroke="#fae8ff" stroke-width="0.7" filter="url(#purpleGlow)"><polygon points="140,2 152,18 140,34 128,18" fill="url(#amethyst)"/><polygon points="8,8 28,14 22,22 14,28" fill="url(#amethyst)"/><polygon points="272,8 252,14 258,22 266,28" fill="url(#amethyst)"/><polygon points="8,387 28,381 22,373 14,367" fill="url(#amethyst)"/><polygon points="272,387 252,381 258,373 266,367" fill="url(#amethyst)"/></g><g filter="url(#purpleGlow)"><polygon points="75,354 140,348 205,354 220,373 205,392 140,396 75,392 60,373" fill="url(#darkGold)" stroke="#2e1035" stroke-width="1.5"/><polygon points="82,358 140,353 198,358 210,373 198,388 140,391 82,388 70,373" fill="url(#epicPurple)" stroke="#d946ef" stroke-width="1"/><text x="140" y="378" font-family="serif" font-size="15" font-weight="bold" fill="#f5d0fe" text-anchor="middle" letter-spacing="4">EPIC</text></g>`,
+Legendary: `<defs><linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#fff3a1"/><stop offset="35%" stop-color="#ffd700"/><stop offset="70%" stop-color="#cca100"/><stop offset="100%" stop-color="#805a00"/></linearGradient><linearGradient id="fireGrad" x1="0%" y1="100%" x2="0%" y2="0%"><stop offset="0%" stop-color="#7f1d1d"/><stop offset="50%" stop-color="#dc2626"/><stop offset="100%" stop-color="#f59e0b"/></linearGradient><radialGradient id="ruby" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#ff9999"/><stop offset="50%" stop-color="#ff0000"/><stop offset="100%" stop-color="#660000"/></radialGradient><filter id="goldGlow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#f59e0b" flood-opacity="0.6"/></filter></defs><path d="M 10,10 H 270 V 385 H 10 Z M 25,25 V 370 H 255 V 25 Z" fill="url(#fireGrad)" stroke="url(#goldGrad)" stroke-width="3" fill-rule="evenodd" filter="url(#goldGlow)"/><rect x="22" y="22" width="236" height="351" fill="none" stroke="url(#goldGrad)" stroke-width="4"/><rect x="16" y="16" width="248" height="363" fill="none" stroke="#fef08a" stroke-width="1" opacity="0.8"/><g fill="url(#goldGrad)" stroke="#5c3a00" stroke-width="1.2"><path d="M 4,4 C 25,4 45,8 65,18 L 50,24 L 30,24 L 24,50 L 18,65 C 8,45 4,25 4,4 Z"/><path d="M 10,45 L 25,35 L 25,75 L 12,85 Z"/><path d="M 276,4 C 255,4 235,8 215,18 L 230,24 L 250,24 L 256,50 L 262,65 C 272,45 276,25 276,4 Z"/><path d="M 270,45 L 255,35 L 255,75 L 268,85 Z"/><path d="M 4,391 C 25,391 45,387 65,377 L 50,371 L 30,371 L 24,345 L 18,330 C 8,350 4,370 4,391 Z"/><path d="M 276,391 C 255,391 235,387 215,377 L 230,371 L 250,371 L 256,345 L 262,330 C 272,350 276,370 276,391 Z"/><path d="M 80,10 Q 110,24 140,6 Q 170,24 200,10 L 180,26 L 100,26 Z"/></g><g stroke="#fff" stroke-width="0.8"><polygon points="140,2 154,17 140,32 126,17" fill="url(#ruby)"/><circle cx="20" cy="20" r="7" fill="url(#ruby)"/><circle cx="260" cy="20" r="7" fill="url(#ruby)"/><circle cx="20" cy="375" r="7" fill="url(#ruby)"/><circle cx="260" cy="375" r="7" fill="url(#ruby)"/></g><g filter="url(#goldGlow)"><polygon points="60,352 140,344 220,352 235,373 220,394 140,398 60,394 45,373" fill="url(#goldGrad)" stroke="#5c3a00" stroke-width="2"/><polygon points="68,357 140,350 212,357 224,373 212,389 140,393 68,389 56,373" fill="url(#fireGrad)" stroke="#5c3a00" stroke-width="1.5"/><text x="140" y="378" font-family="serif" font-size="14" font-weight="bold" fill="#fef08a" text-anchor="middle" letter-spacing="2.5">LEGENDARY</text></g>`,
+Mythic: `<defs><linearGradient id="mythicCosmic" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#ff0055"/><stop offset="35%" stop-color="#7000ff"/><stop offset="70%" stop-color="#1f004d"/><stop offset="100%" stop-color="#ff6600"/></linearGradient><linearGradient id="celestialGold" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#ffffff"/><stop offset="25%" stop-color="#ffe875"/><stop offset="60%" stop-color="#ff9900"/><stop offset="100%" stop-color="#993300"/></linearGradient><radialGradient id="mythicGem" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#ffffff"/><stop offset="40%" stop-color="#ff33cc"/><stop offset="80%" stop-color="#990066"/><stop offset="100%" stop-color="#330033"/></radialGradient><filter id="mythicGlow" x="-25%" y="-25%" width="150%" height="150%"><feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#ff0055" flood-opacity="0.8"/><feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="#ff9900" flood-opacity="0.6"/></filter></defs><path d="M 8,8 H 272 V 387 H 8 Z M 25,25 V 370 H 255 V 25 Z" fill="url(#mythicCosmic)" stroke="url(#celestialGold)" stroke-width="2.5" fill-rule="evenodd" filter="url(#mythicGlow)"/><rect x="23" y="23" width="234" height="349" fill="none" stroke="url(#celestialGold)" stroke-width="3.5" filter="url(#mythicGlow)"/><g fill="url(#celestialGold)" stroke="#4a0e2e" stroke-width="1"><path d="M 2,60 L 24,80 L 24,180 L 4,140 L 12,130 L 2,100 L 14,95 Z"/><path d="M 278,60 L 256,80 L 256,180 L 276,140 L 268,130 L 278,100 L 266,95 Z"/><polygon points="2,2 65,10 50,18 75,24 25,25 24,75 18,50 10,65"/><polygon points="278,2 215,10 230,18 205,24 255,25 256,75 262,50 270,65"/><polygon points="2,395 65,385 50,377 75,371 25,370 24,320 18,345 10,330"/><polygon points="278,395 215,385 230,377 205,371 255,370 256,320 262,345 270,330"/><polygon points="65,4 115,16 140,0 165,16 215,4 190,26 90,26"/></g><g stroke="#ffffff" stroke-width="1" filter="url(#mythicGlow)"><polygon points="140,0 156,18 140,36 124,18" fill="url(#mythicGem)"/><polygon points="14,185 24,197 14,210 4,197" fill="url(#mythicGem)"/><polygon points="266,185 276,197 266,210 256,197" fill="url(#mythicGem)"/><polygon points="12,12 28,16 24,24 16,28" fill="url(#mythicGem)"/><polygon points="268,12 252,16 256,24 264,28" fill="url(#mythicGem)"/><polygon points="12,383 28,379 24,371 16,367" fill="url(#mythicGem)"/><polygon points="268,383 252,379 256,371 264,367" fill="url(#mythicGem)"/></g><g filter="url(#mythicGlow)"><polygon points="55,350 140,340 225,350 242,373 225,396 140,400 55,396 38,373" fill="url(#celestialGold)" stroke="#4a0e2e" stroke-width="2"/><polygon points="65,355 140,346 215,355 230,373 215,391 140,395 65,391 50,373" fill="url(#mythicCosmic)" stroke="#ffffff" stroke-width="1"/><polygon points="140,336 146,345 140,354 134,345" fill="url(#mythicGem)" stroke="#fff" stroke-width="0.7"/><text x="140" y="379" font-family="serif" font-size="16" font-weight="bold" fill="#ffffff" text-anchor="middle" letter-spacing="4">MYTHIC</text></g>`,
+};
+
 function buildFrameSvg(rarity, w, h) {
     const r = normalizeRarity(rarity);
-    const t = baseThickness(w, h);
-    const parts = [];
-
-    if (r === 'Common') {
-        parts.push(rect(t / 2, t / 2, w - t, h - t, '#9ca3af', t));
-        const inner = t * 2;
-        parts.push(rect(inner, inner, w - inner * 2, h - inner * 2, '#d1d5db', Math.max(2, t * 0.22)));
-    } else if (r === 'Rare') {
-        parts.push(rect(t, t, w - t * 2, h - t * 2, 'rgba(37,99,235,0.35)', t * 2.2));
-        parts.push(rect(t / 2, t / 2, w - t, h - t, '#2563eb', t));
-        const inner = t * 2;
-        parts.push(rect(inner, inner, w - inner * 2, h - inner * 2, '#93c5fd', Math.max(2, t * 0.25)));
-        // Kotak aksen di 4 sudut.
-        const s = t * 1.7;
-        const o = t * 0.9;
-        parts.push(
-            `<g fill="#2563eb">`,
-            `<rect x="${o}" y="${o}" width="${s}" height="${s}"/>`,
-            `<rect x="${w - o - s}" y="${o}" width="${s}" height="${s}"/>`,
-            `<rect x="${o}" y="${h - o - s}" width="${s}" height="${s}"/>`,
-            `<rect x="${w - o - s}" y="${h - o - s}" width="${s}" height="${s}"/>`,
-            `</g>`
-        );
-    } else if (r === 'Epic') {
-        parts.push(rect(t * 1.2, t * 1.2, w - t * 2.4, h - t * 2.4, 'rgba(168,85,247,0.45)', t * 2.4));
-        parts.push(rect(t / 2, t / 2, w - t, h - t, '#7e22ce', t));
-        const mid = t * 2.1;
-        parts.push(rect(mid, mid, w - mid * 2, h - mid * 2, '#a855f7', Math.max(2, t * 0.35)));
-        const inner = t * 3.1;
-        parts.push(rect(inner, inner, w - inner * 2, h - inner * 2, '#d8b4fe', Math.max(2, t * 0.22)));
-        // Permata diamond di 4 sudut.
-        const o = t * 1.1;
-        const gr = t * 1.15;
-        const diamond = (cx, cy) =>
-            `<polygon points="${cx},${cy - gr} ${cx + gr},${cy} ${cx},${cy + gr} ${cx - gr},${cy}" fill="#c084fc" stroke="#f5f3ff" stroke-width="${Math.max(1, t * 0.18)}"/>`;
-        parts.push(`<g>${diamond(o + gr, o + gr)}${diamond(w - o - gr, o + gr)}${diamond(o + gr, h - o - gr)}${diamond(w - o - gr, h - o - gr)}</g>`);
-    } else if (r === 'Legendary') {
-        // Legendary: emas berlapis + ornamen mewah.
-        parts.push(rect(t * 1.4, t * 1.4, w - t * 2.8, h - t * 2.8, 'rgba(245,158,11,0.5)', t * 2.6));
-        parts.push(rect(t / 2, t / 2, w - t, h - t, '#b8860b', t * 1.15));
-        const mid = t * 2.3;
-        parts.push(rect(mid, mid, w - mid * 2, h - mid * 2, '#fbbf24', Math.max(2, t * 0.35)));
-        const inner = t * 3.4;
-        parts.push(rect(inner, inner, w - inner * 2, h - inner * 2, '#fde68a', Math.max(2, t * 0.22)));
-        // Garis-L ganda + permata + titik cahaya di tiap sudut.
-        const o = t * 1.15;
-        const s = t * 3.2;
-        const lw = Math.max(2, t * 0.32);
-        const L = (pts) => `<polyline points="${pts}" fill="none" stroke="#fbbf24" stroke-width="${lw}" stroke-linecap="square"/>`;
-        const L2 = (pts) => `<polyline points="${pts}" fill="none" stroke="#fef3c7" stroke-width="${Math.max(1, lw * 0.45)}" stroke-linecap="square"/>`;
-        const gr = t * 1.05;
-        const gem = (cx, cy) =>
-            `<polygon points="${cx},${cy - gr} ${cx + gr},${cy} ${cx},${cy + gr} ${cx - gr},${cy}" fill="#f59e0b" stroke="#fffbeb" stroke-width="${Math.max(1, t * 0.16)}"/>`;
-        const dot = (cx, cy, rr) => `<circle cx="${cx}" cy="${cy}" r="${rr}" fill="#fef3c7"/>`;
-        const corners = [
-            { x: o, y: o, sx: 1, sy: 1 },
-            { x: w - o, y: o, sx: -1, sy: 1 },
-            { x: o, y: h - o, sx: 1, sy: -1 },
-            { x: w - o, y: h - o, sx: -1, sy: -1 },
-        ];
-        for (const c of corners) {
-            parts.push(L(`${c.x},${c.y + c.sy * s} ${c.x},${c.y} ${c.x + c.sx * s},${c.y}`));
-            const o2 = t * 1.15 + lw * 2.2;
-            parts.push(L2(`${c.x},${c.y + c.sy * (s * 0.62)} ${c.x},${c.y} ${c.x + c.sx * (s * 0.62)},${c.y}`));
-            void o2;
-            const gx = c.x + c.sx * (s * 0.62 + gr * 1.4);
-            const gy = c.y + c.sy * (s * 0.62 + gr * 1.4);
-            parts.push(gem(gx, gy));
-            parts.push(dot(c.x + c.sx * (s + t * 0.9), c.y, Math.max(1.5, t * 0.22)));
-            parts.push(dot(c.x, c.y + c.sy * (s + t * 0.9), Math.max(1.5, t * 0.22)));
-        }
-        // Permata tengah atas & bawah.
-        const mgr = t * 1.3;
-        parts.push(gem(w / 2, t * 1.15 + mgr * 0.4));
-        parts.push(gem(w / 2, h - t * 1.15 - mgr * 0.4));
-    } else {
-        // Mythic: merah darah + hitam pekat + permata putih, paling mewah.
-        parts.push(rect(t * 1.4, t * 1.4, w - t * 2.8, h - t * 2.8, 'rgba(220,38,38,0.55)', t * 2.8));
-        parts.push(rect(t / 2, t / 2, w - t, h - t, '#450a0a', t * 1.2));
-        const mid = t * 2.4;
-        parts.push(rect(mid, mid, w - mid * 2, h - mid * 2, '#dc2626', Math.max(2, t * 0.4)));
-        const mid2 = t * 3.3;
-        parts.push(rect(mid2, mid2, w - mid2 * 2, h - mid2 * 2, '#111111', Math.max(2, t * 0.3)));
-        const inner = t * 4.2;
-        parts.push(rect(inner, inner, w - inner * 2, h - inner * 2, '#fecaca', Math.max(2, t * 0.22)));
-        // Ornamen sudut: garis-L merah ganda + permata putih + titik api.
-        const o = t * 1.2;
-        const s = t * 3.4;
-        const lw = Math.max(2, t * 0.34);
-        const L = (pts) => `<polyline points="${pts}" fill="none" stroke="#ef4444" stroke-width="${lw}" stroke-linecap="square"/>`;
-        const L2 = (pts) => `<polyline points="${pts}" fill="none" stroke="#fecaca" stroke-width="${Math.max(1, lw * 0.45)}" stroke-linecap="square"/>`;
-        const gr = t * 1.1;
-        const gem = (cx, cy) =>
-            `<polygon points="${cx},${cy - gr} ${cx + gr},${cy} ${cx},${cy + gr} ${cx - gr},${cy}" fill="#ffffff" stroke="#fca5a5" stroke-width="${Math.max(1, t * 0.16)}"/>`;
-        const dot = (cx, cy, rr) => `<circle cx="${cx}" cy="${cy}" r="${rr}" fill="#f87171"/>`;
-        const corners = [
-            { x: o, y: o, sx: 1, sy: 1 },
-            { x: w - o, y: o, sx: -1, sy: 1 },
-            { x: o, y: h - o, sx: 1, sy: -1 },
-            { x: w - o, y: h - o, sx: -1, sy: -1 },
-        ];
-        for (const c of corners) {
-            parts.push(L(`${c.x},${c.y + c.sy * s} ${c.x},${c.y} ${c.x + c.sx * s},${c.y}`));
-            parts.push(L2(`${c.x},${c.y + c.sy * (s * 0.62)} ${c.x},${c.y} ${c.x + c.sx * (s * 0.62)},${c.y}`));
-            parts.push(gem(c.x + c.sx * (s * 0.62 + gr * 1.4), c.y + c.sy * (s * 0.62 + gr * 1.4)));
-            parts.push(dot(c.x + c.sx * (s + t * 0.9), c.y, Math.max(1.5, t * 0.24)));
-            parts.push(dot(c.x, c.y + c.sy * (s + t * 0.9), Math.max(1.5, t * 0.24)));
-        }
-        const mmgr = t * 1.35;
-        parts.push(gem(w / 2, t * 1.2 + mmgr * 0.4));
-        parts.push(gem(w / 2, h - t * 1.2 - mmgr * 0.4));
-    }
-
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${parts.join('')}</svg>`;
+    const width = Math.max(1, Math.round(Number(w) || 280));
+    const height = Math.max(1, Math.round(Number(h) || 400));
+    const head = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 400" width="${width}" height="${height}">`;
+    return head + FRAME_DESIGNS[r] + '</svg>';
 }
 
 /**
