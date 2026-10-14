@@ -1534,9 +1534,10 @@ function getDashboardHTML() {
         <div class="card-title">Blokir User</div>
         <p style="font-size:12px; color:var(--muted); margin-top:-12px; margin-bottom:16px;">User yang diblokir tidak bisa mengakses semua fitur bot (AI, Kuis, Gambar).</p>
         <div class="control-row" style="align-items:flex-end; flex-wrap:wrap;">
-          <div style="flex:1; min-width:180px;">
+          <div style="flex:1; min-width:180px; position:relative;">
             <label class="form-label">Username</label>
-            <input type="text" id="banUsername" placeholder="contoh: username123">
+            <input type="text" id="banUsername" placeholder="contoh: username123" oninput="searchBanUser()" autocomplete="off">
+            <div id="banUserSuggest" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:50; background:var(--surface); border:1px solid var(--border); border-radius:10px; margin-top:4px; max-height:220px; overflow-y:auto; box-shadow:0 8px 24px rgba(0,0,0,0.12);"></div>
           </div>
           <div style="flex:2; min-width:220px;">
             <label class="form-label">Alasan (opsional)</label>
@@ -3949,8 +3950,32 @@ async function updateStats() {
     }
   }
   let displayUserTimer = null;
-  async function searchDisplayUser() {
-    const hint = document.getElementById('displayUserHint');
+  let banUserTimer = null;
+  async function searchBanUser() {
+    const input = document.getElementById('banUsername');
+    const box = document.getElementById('banUserSuggest');
+    if (!input || !box) return;
+    const q = (input.value || '').replace(/^@/, '').trim();
+    if (q.length < 2) { box.innerHTML = ''; box.style.display = 'none'; return; }
+    clearTimeout(banUserTimer);
+    banUserTimer = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/display/users/search?q=' + encodeURIComponent(q));
+        const d = await res.json().catch(() => ({}));
+        const users = (d.success && d.users) || [];
+        if (users.length === 0) { box.innerHTML = ''; box.style.display = 'none'; return; }
+        box.innerHTML = users.map((u) => '<div onclick="pickBanUser(\'' + jsString(u.username) + '\')" style="padding:8px 12px; font-size:12px; font-weight:700; color:var(--accent); cursor:pointer; border-bottom:1px solid var(--border);" onmouseover="this.style.background=\'var(--bg)\'" onmouseout="this.style.background=\'\'">' + '@' + escapeHTML(u.username) + '</div>').join('');
+        box.style.display = 'block';
+      } catch (_) { /* abaikan */ }
+    }, 300);
+  }
+  function pickBanUser(username) {
+    const input = document.getElementById('banUsername');
+    if (input) input.value = username;
+    const box = document.getElementById('banUserSuggest');
+    if (box) { box.innerHTML = ''; box.style.display = 'none'; }
+  }
+  async function searchDisplayUser() {    const hint = document.getElementById('displayUserHint');
     const q = (document.getElementById('displayUsername')?.value || '').replace(/^@/, '').trim();
     if (q.length < 2) { if (hint) hint.textContent = ''; return; }
     clearTimeout(displayUserTimer);
@@ -5217,6 +5242,15 @@ async function updateStats() {
   window.clearRaraLimitSearch = clearRaraLimitSearch;
 
   document.addEventListener('click', function(event) {
+    // Tutup saran username ban saat klik di luar.
+    try {
+      const t = event.target;
+      const inside = t && t.closest && (t.closest('#banUsername') || t.closest('#banUserSuggest'));
+      if (!inside) {
+        const box = document.getElementById('banUserSuggest');
+        if (box) { box.innerHTML = ''; box.style.display = 'none'; }
+      }
+    } catch (_) { /* abaikan */ }
     // Image limit buttons
     const editBtn = event.target.closest('.image-limit-edit');
     if (editBtn) {
