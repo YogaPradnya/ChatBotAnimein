@@ -55,7 +55,7 @@ async function execute(ctx) {
     } else if (helpArg === 'genre') {
         helpMsg = wrapInBox('GENRE', 'Cari rekomendasi anime berdasarkan genre.\n\nCommand:\n- .genre [nama]\n\nContoh:\n- .genre action\n- .genre romance\n\nData diambil dari Animein Explore.');
     } else if (helpArg === 'gacha' || helpArg === 'koleksi' || helpArg === 'pajang') {
-        helpMsg = wrapInBox('GACHA', 'Gacha kartu pindah ke web (200 koleksi, PURE HOKI tanpa pity).\n\nCommand:\n- .gacha (link web gacha)\n- .gacha rate (rate + stok, tetap di chat)\n- .koleksi (galeri kartumu)\n- .pajang [nama] (pamer kartu di .profil)\n- .battle (link web battle kartu)\n\nWeb:\n- https://kartu.yogaa.web.id/gacha\n\nRate: Common 70% / Rare 25%\nEpic 4.89% / Legendary 0.1% / Mythic 0.01%\nStok/kartu: Mythic 1 | Legend 10 | Epic 50 | R/C unlimited\nDupe = menumpuk (maks 999 copy).\nNaik ★ manual via Evolusi di web (butuh 3/3/3/5 copy).');
+        helpMsg = wrapInBox('GACHA', 'Gacha kartu pindah ke web (265 koleksi, PURE HOKI tanpa pity).\n\nCommand:\n- .gacha (link web gacha)\n- .gacha rate (rate + stok, tetap di chat)\n- .koleksi (galeri kartumu)\n- .pajang [nama] (pamer kartu di .profil)\n- .battle (link web battle kartu)\n\nWeb:\n- https://kartu.yogaa.web.id/gacha\n\nRate: Common 70% / Rare 25%\nEpic 4.89% / Legendary 0.1% / Mythic 0.01%\nStok/kartu: Mythic 1 | Legend 10 | Epic 50 | R/C unlimited\nDupe = menumpuk (maks 999 copy).\nNaik ★ manual via Evolusi di web (butuh 3/3/3/5 copy).');
     } else if (helpArg === 'tas') {
         helpMsg = wrapInBox('TAS', 'Lihat ringkasan pokemon di tas kamu.\n\nCommand:\n- .tas\n\nData: total pokemon, jumlah per grade, dan top CP.\n\nLanjut: gunakan .kombo untuk rekomendasi tim.');
     } else if (helpArg === 'limit') {
@@ -76,7 +76,7 @@ async function execute(ctx) {
     } else if (helpArg === 'battle') {
         helpMsg = wrapInBox('BATTLE', 'Battle kartu sudah pindah ke web.\n\nCommand:\n- .battle (tampilkan link web battle)\n\nWeb:\n- https://kartu.yogaa.web.id/\n\nBuka link di atas untuk adu kartumu, hmph!');
     } else if (helpArg === 'web' || helpArg === 'book' || helpArg === 'trade') {
-        helpMsg = wrapInBox('WEB', 'Web book kartu (tanpa password).\n\nIsi:\n• Book: galeri 250 kartu, ketuk untuk stat\n• Trade: tukar kartu via kode angka\n• Battle: vs AI (latihan) / PvP, PvP menang +100 XP\n\nMasuk: buka web untuk kode, ketik .login [kode] di chat.');
+        helpMsg = wrapInBox('WEB', 'Web book kartu (tanpa password).\n\nIsi:\n• Book: galeri 265 kartu, ketuk untuk stat\n• Trade: tukar kartu via kode angka\n• Battle: vs AI (latihan) / PvP, PvP menang +100 XP\n\nMasuk: buka web untuk kode, ketik .login [kode] di chat.');
     } else if (helpArg === 'ban') {
         helpMsg = wrapInBox('BAN', 'Aturan bot:\n• Dilarang spam\n• Dilarang toxic\n• Dilarang abuse XP\n\nPelanggar akan di-ban permanen.');
     } else if (helpArg) {

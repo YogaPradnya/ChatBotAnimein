@@ -3908,7 +3908,7 @@ async function updateStats() {
   }
 
   async function resetGachaPool() {
-    const ok = await customConfirm('Kembalikan pool kartu ke bawaan (250 kartu)? Kartu yang sudah dimiliki user tidak berubah.', 'Reset Pool Gacha', 'Ya, Reset');
+    const ok = await customConfirm('Kembalikan pool kartu ke bawaan (265 kartu)? Kartu yang sudah dimiliki user tidak berubah.', 'Reset Pool Gacha', 'Ya, Reset');
     if (!ok) return;
     try {
       const res = await fetch('/api/gacha/cards/reset', { method: 'POST' });

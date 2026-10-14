@@ -1,7 +1,7 @@
 /**
- * Pool kartu waifu/husbando lokal untuk gacha (total 250).
+ * Pool kartu waifu/husbando lokal untuk gacha (total 265).
  * Tiap entri: { name, anime, tier } dengan tier Common | Rare | Epic | Legendary | Mythic.
- * Distribusi: Common 110 / Rare 76 / Epic 40 / Legendary 14 / Mythic 10.
+ * Distribusi: Common 110 / Rare 76 / Epic 50 / Legendary 19 / Mythic 10.
  * Stok global per kartu: Mythic 1 / Legendary 10 / Epic 50 / Rare & Common unlimited.
  * Evo full manual: duplikat menumpuk (maks 999 copy); hanya Mythic unik per user.
  */
@@ -19,7 +19,7 @@ const WAIFU_POOL = [
     { name: 'All Might', anime: 'My Hero Academia', tier: 'Mythic' },
     { name: 'Guts', anime: 'Berserk', tier: 'Mythic' },
 
-    // ---- Legendary (14, stok 10) ----
+    // ---- Legendary (19, stok 10) ----
     { name: 'Gojo Satoru', anime: 'Jujutsu Kaisen', tier: 'Legendary' },
     { name: 'Levi Ackerman', anime: 'Attack on Titan', tier: 'Legendary' },
     { name: 'Monkey D. Luffy', anime: 'One Piece', tier: 'Legendary' },
@@ -34,8 +34,13 @@ const WAIFU_POOL = [
     { name: 'Escanor', anime: 'The Seven Deadly Sins', tier: 'Legendary' },
     { name: 'Beerus', anime: 'Dragon Ball', tier: 'Legendary' },
     { name: 'Gildarts Clive', anime: 'Fairy Tail', tier: 'Legendary' },
+    { name: 'Frieren', anime: "Frieren: Beyond Journey's End", tier: 'Legendary' },
+    { name: 'Ai Hoshino', anime: 'Oshi no Ko', tier: 'Legendary' },
+    { name: 'Kurisu Makise', anime: 'Steins;Gate', tier: 'Legendary' },
+    { name: 'C.C.', anime: 'Code Geass', tier: 'Legendary' },
+    { name: 'Yuno Gasai', anime: 'Future Diary', tier: 'Legendary' },
 
-    // ---- Epic (40) ----
+    // ---- Epic (50) ----
     { name: 'Naruto Uzumaki', anime: 'Naruto', tier: 'Epic' },
     { name: 'Eren Yeager', anime: 'Attack on Titan', tier: 'Epic' },
     { name: 'Tanjiro Kamado', anime: 'Demon Slayer', tier: 'Epic' },
@@ -66,6 +71,16 @@ const WAIFU_POOL = [
     { name: 'Dio Brando', anime: "JoJo's Bizarre Adventure", tier: 'Epic' },
     { name: 'Josuke Higashikata', anime: "JoJo's Bizarre Adventure", tier: 'Epic' },
     { name: 'Erza Scarlet', anime: 'Fairy Tail', tier: 'Epic' },
+    { name: 'Ram', anime: 'Re:Zero', tier: 'Epic' },
+    { name: 'Mash Kyrielight', anime: 'Fate/Grand Order', tier: 'Epic' },
+    { name: 'Mordred', anime: 'Fate/Apocrypha', tier: 'Epic' },
+    { name: 'Sinon', anime: 'Sword Art Online', tier: 'Epic' },
+    { name: 'Tohka Yatogami', anime: 'Date A Live', tier: 'Epic' },
+    { name: 'Shokuhou Misaki', anime: 'A Certain Scientific Railgun', tier: 'Epic' },
+    { name: 'Kushina Uzumaki', anime: 'Naruto', tier: 'Epic' },
+    { name: 'Konan', anime: 'Naruto', tier: 'Epic' },
+    { name: 'Rangiku Matsumoto', anime: 'Bleach', tier: 'Epic' },
+    { name: 'Kana Arima', anime: 'Oshi no Ko', tier: 'Epic' },
 
     { name: 'Holo', anime: 'Spice and Wolf', tier: 'Epic' },
     { name: 'Kurumi Tokisaki', anime: 'Date A Live', tier: 'Epic' },

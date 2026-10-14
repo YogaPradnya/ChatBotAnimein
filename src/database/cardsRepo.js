@@ -1,5 +1,5 @@
 /**
- * Gacha Kartu Waifu/Husbando — ekonomi sink + koleksi kartu lokal (250 kartu).
+ * Gacha Kartu Waifu/Husbando — ekonomi sink + koleksi kartu lokal (265 kartu).
  * PURE HOKI: tanpa pity, tanpa jaminan — setiap pull roll rate murni.
  * Rate per pull (default, bisa diatur dashboard): Common 70% / Rare 25% /
  *   Epic 4.89% / Legendary 0.1% / Mythic 0.01%.
