@@ -95,7 +95,10 @@ function buildFrameSvg(rarity, w, h) {
     const r = normalizeRarity(rarity);
     const width = Math.max(1, Math.round(Number(w) || 280));
     const height = Math.max(1, Math.round(Number(h) || 400));
-    const head = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 400" width="${width}" height="${height}">`;
+    // slice (bukan meet): bingkai selalu COVER penuh, tidak letterbox.
+    // Mencegah regresi bug lama: art 230x345 bocor di atas/bawah bingkai
+    // karena SVG dipaksa seukuran art dengan viewBox 280x400.
+    const head = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 400" width="${width}" height="${height}" preserveAspectRatio="xMidYMid slice">`;
     return head + FRAME_DESIGNS[r] + '</svg>';
 }
 

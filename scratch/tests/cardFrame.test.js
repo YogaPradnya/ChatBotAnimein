@@ -26,6 +26,9 @@ test('CardFrame - SVG tiap rarity bawa warna khas + dimensi benar', () => {
     assert.match(common, /COMMON/);
     assert.match(common, /width="200" height="300"/);
     assert.match(common, /viewBox="0 0 280 400"/);
+    // Anti-regresi: slice agar bingkai selalu cover (kasus .profil: art 230x345
+    // bocor di atas/bawah karena letterbox meet).
+    assert.match(common, /preserveAspectRatio="xMidYMid slice"/);
     assert.match(buildFrameSvg('Rare', 200, 300), /#2b5b84/);
     assert.match(buildFrameSvg('Epic', 200, 300), /#4a154b/);
     const leg = buildFrameSvg('Legendary', 200, 300);
