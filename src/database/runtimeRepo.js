@@ -1,10 +1,17 @@
-// PENTING: JANGAN tambah db.batch()/transaction() di sini atau di request path
+// PENTING: JANGAN pakai db.batch()/transaction() di sini atau di request path
 // mana pun. Insiden 17 Okt 2026: batch Turso macet 23-68 dtk/statement dan
-// transaksi tulis pertama 12-35 dtk -> endpoint timeout 503 massal.
+// transaksi tulis pertama 12-35 dtk -> endpoint/worker timeout massal.
 // Aturan lengkap: web-cards/db/SCHEMA_OWNERSHIP.md.
-// (batchWrite lama dihapus: dead code + rawan dipakai ulang.)
 function createRuntimeRepo(db) {
     return {
+        // Tulis sekelompok statement sebagai execute() tunggal PARALEL.
+        // Upsert di sini independen per user -> aman paralel (~0,5-1 dtk/statement).
+        // Nama batchWrite dipertahankan karena pemanggil lama (bot.js:flushPendingXP).
+        async batchWrite(statements) {
+            if (!statements || statements.length === 0) return;
+            await Promise.all(statements.map((s) => db.execute(s)));
+        },
+
         buildUserStatsUpsert(userId, username, stats) {
             return {
                 sql: "INSERT INTO user_stats (user_id, username, xp, level, custom_title) VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET xp = ?, level = ?, custom_title = ?, username = ?",
