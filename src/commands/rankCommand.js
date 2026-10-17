@@ -23,14 +23,12 @@ async function execute(ctx) {
             const medal = i < 3 ? medals[i] : `${i+1}.`;
             const nm = String(r.username || '').substring(0, 10);
             const xp = fmtXP(r.xp) + ' XP';
-            const lv = `LV${r.level || 1}`;
 
             const medalStr = padVisual(medal, 2);
             const nmStr = padVisual(nm, 10);
             const xpStr = padVisual(xp, 9, true);
-            const lvStr = padVisual(lv, 5, true);
 
-            const rowContent = `${medalStr} ${nmStr} ${xpStr} ${lvStr}`;
+            const rowContent = `${medalStr} ${nmStr} ${xpStr}`;
             rankMsg.push(`│ ${rowContent}`);
         });
         rankMsg.push(`└───────────────────`);
