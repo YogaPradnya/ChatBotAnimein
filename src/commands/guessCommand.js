@@ -104,7 +104,6 @@ async function execute(ctx) {
                 const gelar = getGelar(xpRes.level, xpRes.custom_title);
                 resultCard.push(
                     `├── ${boxHeader('⬆️ LEVEL UP')}`,
-                    `│📊 Lv.${xpRes.level}`,
                     `│🎖️ ${gelar || 'Wibu Baru'}`,
                 );
             }

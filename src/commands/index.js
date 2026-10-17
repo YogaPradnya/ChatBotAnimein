@@ -33,6 +33,7 @@ const createImageCommand = require('./createImageCommand');
 const dataCommand = require('./dataCommand');
 const rekomendasiCommand = require('./rekomendasiCommand');
 const linkCommand = require('./linkCommand');
+const waifuCommand = require('./waifuCommand');
 
 // Cooldown global untuk .hint (30 detik)
 const HINT_COOLDOWN_MS = 30 * 1000;
@@ -212,6 +213,10 @@ async function handleInfoCommand(ctx) {
         return dataCommand.execute(ctx);
     }
 
+    if (lowerMsg === '.waifu' || lowerMsg.startsWith('.waifu ')) {
+        return waifuCommand.execute(ctx);
+    }
+
     if (
         /\b(\.?(rekomendasi|rekomen|rekom|recommendation|recommend|saranin|cariin|carikan))\b/i.test(lowerMsg) ||
         (/\b(saran|rekomen|rekom|rekomendasi|recommendation|recommend)\b/i.test(lowerMsg) && /anime/i.test(lowerMsg))
@@ -268,6 +273,7 @@ module.exports = {
     dataCommand,
     rekomendasiCommand,
     linkCommand,
+    waifuCommand,
 
     handleKuisCommand,
     handleInfoCommand,

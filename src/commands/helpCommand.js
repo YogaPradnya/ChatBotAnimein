@@ -29,7 +29,7 @@ async function execute(ctx) {
     } else if (helpArg === 'kombo' || helpArg === 'combo') {
         helpMsg = wrapInBox('𝗞𝗢𝗠𝗕𝗢', 'Rekomendasi 3 Pokemon terbaik di tas kamu.\n\nCommand:\n• .kombo / .combo\n\nAturan:\n• Sesuai grade aktif\n• Banned diabaikan\n• Ambil LV tertinggi');
     } else if (helpArg === 'profil') {
-        helpMsg = wrapInBox('PROFIL', 'Cek statistikmu.\n\nCommand:\n• .profil\n\nTampilan:\n• Rank, Level, XP\n• Streak harian\n• Sisa limit (command, gambar, rara, gacha)\n• Kartu pajangan (gambar, bila dipasang via .pajang)');
+        helpMsg = wrapInBox('PROFIL', 'Cek statistikmu.\n\nCommand:\n• .profil\n\nTampilan:\n• Gelar & XP\n• Streak harian\n• Sisa limit (command, gambar, rara, gacha)\n• Kartu pajangan (gambar, bila dipasang via .pajang)');
     } else if (helpArg === 'cek') {
         helpMsg = wrapInBox('CEK', 'Intip profil user.\n\nCommand:\n• .cek @username\n\nContoh:\n• .cek @sashaww\n\nHadiah: +5 XP');
     } else if (helpArg === 'rank' || helpArg === 'leaderboard') {

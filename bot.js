@@ -4857,194 +4857,205 @@ Instruksi Penjelasan:
     return true;
 }
 
+// Satu pesan diproses di fungsi terpisah agar error pada satu pesan tidak
+// menggagalkan (dan menyembunyikan) pesan lain dalam batch yang sama.
 async function processMessages(bot, messages) {
     for (const msg of messages) {
         const msgId = parseInt(msg.id || 0);
         if (!msgId || msgId <= bot.lastMessageId) continue;
+        // At-most-once: penanda dimajukan SEBELUM proses agar error permanen
+        // tidak membuat pesan yang sama diulang terus tiap siklus polling.
         bot.lastMessageId = msgId;
+        try {
+            await processOneMessage(bot, msg);
+        } catch (e) {
+            console.error(`[HANDLER] ${bot.role} gagal memproses pesan ${msgId}: ${e && e.message ? e.message : e}`);
+        }
+    }
+}
 
-        // Cek active state masing-masing bot
-        if (bot.role === 'info' && !isBotInfoActive) continue;
-        if (bot.role === 'kuis' && !isBotKuisActive) continue;
+async function processOneMessage(bot, msg) {
+    // Cek active state masing-masing bot
+    if (bot.role === 'info' && !isBotInfoActive) return;
+    if (bot.role === 'kuis' && !isBotKuisActive) return;
 
-        if (String(msg.user_id) === String(bot.auth.userId)) continue;
+    if (String(msg.user_id) === String(bot.auth.userId)) return;
 
-        const senderName = msg.username || msg.user_username || msg.user_login || msg.user_name || 'User';
-        const senderUserId = msg.user_id || msg.id_user || msg.userId || msg.user?.id || msg.user?.id_user || null;
-        let msgText = msg.text || msg.caption || msg.comment || msg.content || msg.message || msg.body || msg.text_chat || '';
+    const senderName = msg.username || msg.user_username || msg.user_login || msg.user_name || 'User';
+    const senderUserId = msg.user_id || msg.id_user || msg.userId || msg.user?.id || msg.user?.id_user || null;
+    let msgText = msg.text || msg.caption || msg.comment || msg.content || msg.message || msg.body || msg.text_chat || '';
+    
+    // --- 1. NORMALISASI PESAN (Strip Mentions) ---
+    const botName = bot.username.toLowerCase();
+    const mentionRegex = new RegExp(`@${botName}\\s*:?|${botName}\\s*:?|@AnimeinAi\\s*:?|@AnimeinBot\\s*:?`, 'gi');
+    const cleanMsg = msgText.replace(mentionRegex, '').trim();
+    const lowerMsg = cleanMsg.toLowerCase();
+
+    // --- GLOBAL BAN CHECK (berlaku untuk semua bot, cocokkan user_id ATAU username) ---
+    if (senderUserId && bannedUsers.has(String(senderUserId))) {
+        return;
+    }
+    if (senderName && bannedUsers.has(String(senderName).replace(/^@/, '').toLowerCase())) {
+        return;
+    }
+    
+    // AKUN KUIS (AnimeinKuis): Hanya memproses game
+    if (bot.role === 'kuis') {
+
+
+        const kuisCommandContext = {
+            bot,
+            msg,
+            senderName,
+            senderUserId,
+            cleanMsg,
+            lowerMsg,
+            db,
+            CONFIG,
+            recordPath,
+            pokemonData,
+            animeinClient,
+            sendChatMessage,
+            checkCommandLimit,
+            incrementCommandUsage,
+            fetchOtherUserProfile,
+            isAnimeinApiBlocked,
+            getPokemonComboMessage,
+            getPokemonComboWithTargetMessage,
+            fetchBattleMeta,
+            formatMetaMessage,
+            userRepo,
+            fmtXP,
+            padVisual,
+            activeQuiz,
+            getGelar,
+            getImageLimitStatus,
+            downloadImageToTempFile,
+            sendChatWithImage,
+            checkRaraChatLimit,
+            IMAGE_DAILY_LIMIT_DEFAULT,
+            handleError,
+            stats,
+            logEmitter,
+            getShopMessage,
+            shopRepo,
+            cardsRepo,
+            displayRepo,
+            profilePrefRepo,
+            buyItem,
+            addXP,
+            USER_STATS_CACHE,
+            limitRepo,
+            getJakartaDateKey,
+            bots,
+            formatOtherUserProfile,
+            durationMs: QUIZ_DURATION_MS,
+            expireQuiz,
+            clearQuizTimers,
+            startQuiz,
+            quizRepo,
+            weeklyRepo,
+            trackQuizStat,
+            trackStreak,
+            levenshtein,
+            XP_MULTIPLIER,
+            getItemCount,
+            useItem,
+            buildHintMessage,
+            generateQuizHintWithAI,
+            get nextQuizTime() { return nextQuizTime; },
+        };
+        if (await commands.handleKuisCommand(kuisCommandContext)) return;
         
-        // --- 1. NORMALISASI PESAN (Strip Mentions) ---
-        const botName = bot.username.toLowerCase();
-        const mentionRegex = new RegExp(`@${botName}\\s*:?|${botName}\\s*:?|@AnimeinAi\\s*:?|@AnimeinBot\\s*:?`, 'gi');
-        const cleanMsg = msgText.replace(mentionRegex, '').trim();
-        const lowerMsg = cleanMsg.toLowerCase();
+        // Bot kuis mengabaikan semua pesan lain agar tidak berisik
+        return;
+    } 
 
-        // --- GLOBAL BAN CHECK (berlaku untuk semua bot, cocokkan user_id ATAU username) ---
-        if (senderUserId && bannedUsers.has(String(senderUserId))) {
-            continue;
+    // AKUN GAMBAR (AnimeinIMG): Khusus memproses command .gambar
+    if (bot.role === 'image') {
+        const imageCommandContext = {
+            bot,
+            msg,
+            senderName,
+            senderUserId,
+            cleanMsg,
+            lowerMsg,
+            sendChatMessage,
+            isImageCommandActive,
+            getLastImageCommandAt: () => lastImageCommandAt,
+            setLastImageCommandAt: (value) => { lastImageCommandAt = value; },
+            imageCommandCooldownMs: IMAGE_COMMAND_COOLDOWN_MS,
+            getImageLimitStatus,
+            fetchPinterestImage,
+            fetchAndDownloadPinterestImage,
+            downloadImageToTempFile,
+            sendChatWithImage,
+            incrementImageLimitUsage,
+            addActivity,
+            addXP,
+            trackImageRequest,
+            trackStreak,
+            cleanupTempImage,
+            aiHordeImageService,
+            statusBot: bots.find(item => item.role === 'info' && item.auth?.userId && item.auth?.userKey) || null,
+            getFilterData: () => FILTER_DATA,
+            stats,
+        };
+        if (await commands.handleImageCommand(imageCommandContext)) return;
+        return;
+    }
+    
+    // AKUN INFO (AnimeinAI): Memproses AI, AutoReply, dan Lapor
+    if (bot.role === 'info') {
+        // Abaikan command kuis agar tidak dobel respons
+        if (commandRouter.resolve(lowerMsg)) {
+            return;
         }
-        if (senderName && bannedUsers.has(String(senderName).replace(/^@/, '').toLowerCase())) {
-            continue;
-        }
-        
-        // AKUN KUIS (AnimeinKuis): Hanya memproses game
-        if (bot.role === 'kuis') {
 
+        const infoCommandContext = {
+            bot,
+            msg,
+            senderName,
+            senderUserId,
+            cleanMsg,
+            lowerMsg,
+            sendChatMessage,
+            checkCommandLimit,
+            incrementCommandUsage,
+            reportRepo,
+            wrapInBox,
+            ANIMEIN_KNOWLEDGE,
+            fetchSchedule,
+            fetchAnimeinList,
+            fetchAnimeSearchResults,
+            fetchAnimeDetailByQuery,
+            fetchGenresList,
+            fetchByGenre,
+            USER_STATS_CACHE,
+            XP_PENDING_UPDATES,
+            runtimeRepo,
+            saveRecentAnimeList,
+            getRecentAnimeListText,
+            getRecentAnimeList,
+            fetchOtherUserProfile,
+            bots,
+            CONFIG,
+            recordPath,
+            isAnimeinApiBlocked
+        };
+        if (await handleAnimeNumberExplanationInstruction(infoCommandContext)) return;
+        if (await handleAnimeTagInstruction(infoCommandContext)) return;
+        if (await commands.handleInfoCommand(infoCommandContext)) return;
 
-            const kuisCommandContext = {
-                bot,
-                msg,
-                senderName,
-                senderUserId,
-                cleanMsg,
-                lowerMsg,
-                db,
-                CONFIG,
-                recordPath,
-                pokemonData,
-                animeinClient,
-                sendChatMessage,
-                checkCommandLimit,
-                incrementCommandUsage,
-                fetchOtherUserProfile,
-                isAnimeinApiBlocked,
-                getPokemonComboMessage,
-                getPokemonComboWithTargetMessage,
-                fetchBattleMeta,
-                formatMetaMessage,
-                userRepo,
-                fmtXP,
-                padVisual,
-                activeQuiz,
-                getGelar,
-                getImageLimitStatus,
-                downloadImageToTempFile,
-                sendChatWithImage,
-                checkRaraChatLimit,
-                IMAGE_DAILY_LIMIT_DEFAULT,
-                handleError,
-                stats,
-                logEmitter,
-                getShopMessage,
-                shopRepo,
-                cardsRepo,
-                displayRepo,
-                profilePrefRepo,
-                buyItem,
-                addXP,
-                USER_STATS_CACHE,
-                limitRepo,
-                getJakartaDateKey,
-                bots,
-                formatOtherUserProfile,
-                durationMs: QUIZ_DURATION_MS,
-                expireQuiz,
-                clearQuizTimers,
-                startQuiz,
-                quizRepo,
-                weeklyRepo,
-                trackQuizStat,
-                trackStreak,
-                levenshtein,
-                XP_MULTIPLIER,
-                getItemCount,
-                useItem,
-                buildHintMessage,
-                generateQuizHintWithAI,
-                get nextQuizTime() { return nextQuizTime; },
-            };
-            if (await commands.handleKuisCommand(kuisCommandContext)) continue;
-            
-            // Bot kuis mengabaikan semua pesan lain agar tidak berisik
-            continue;
-        } 
+        const aiMessageContext = {
+            bot,
+            msg,
+            msgText,
+            senderName,
+            senderUserId,
+        };
+        if (await aiService.handleInfoMessage(aiMessageContext)) return;
 
-        // AKUN GAMBAR (AnimeinIMG): Khusus memproses command .gambar
-        if (bot.role === 'image') {
-            const imageCommandContext = {
-                bot,
-                msg,
-                senderName,
-                senderUserId,
-                cleanMsg,
-                lowerMsg,
-                sendChatMessage,
-                isImageCommandActive,
-                getLastImageCommandAt: () => lastImageCommandAt,
-                setLastImageCommandAt: (value) => { lastImageCommandAt = value; },
-                imageCommandCooldownMs: IMAGE_COMMAND_COOLDOWN_MS,
-                getImageLimitStatus,
-                fetchPinterestImage,
-                fetchAndDownloadPinterestImage,
-                downloadImageToTempFile,
-                sendChatWithImage,
-                incrementImageLimitUsage,
-                addActivity,
-                addXP,
-                trackImageRequest,
-                trackStreak,
-                cleanupTempImage,
-                aiHordeImageService,
-                statusBot: bots.find(item => item.role === 'info' && item.auth?.userId && item.auth?.userKey) || null,
-                getFilterData: () => FILTER_DATA,
-                stats,
-            };
-            if (await commands.handleImageCommand(imageCommandContext)) continue;
-            continue;
-        }
-        
-        // AKUN INFO (AnimeinAI): Memproses AI, AutoReply, dan Lapor
-        if (bot.role === 'info') {
-            // Abaikan command kuis agar tidak dobel respons
-            if (commandRouter.resolve(lowerMsg)) {
-                continue;
-            }
-
-            const infoCommandContext = {
-                bot,
-                msg,
-                senderName,
-                senderUserId,
-                cleanMsg,
-                lowerMsg,
-                sendChatMessage,
-                checkCommandLimit,
-                incrementCommandUsage,
-                reportRepo,
-                wrapInBox,
-                ANIMEIN_KNOWLEDGE,
-                fetchSchedule,
-                fetchAnimeinList,
-                fetchAnimeSearchResults,
-                fetchAnimeDetailByQuery,
-                fetchGenresList,
-                fetchByGenre,
-                USER_STATS_CACHE,
-                XP_PENDING_UPDATES,
-                runtimeRepo,
-                saveRecentAnimeList,
-                getRecentAnimeListText,
-                getRecentAnimeList,
-                fetchOtherUserProfile,
-                bots,
-                CONFIG,
-                recordPath,
-                isAnimeinApiBlocked
-            };
-            if (await handleAnimeNumberExplanationInstruction(infoCommandContext)) continue;
-            if (await handleAnimeTagInstruction(infoCommandContext)) continue;
-            if (await commands.handleInfoCommand(infoCommandContext)) continue;
-
-            const aiMessageContext = {
-                bot,
-                msg,
-                msgText,
-                senderName,
-                senderUserId,
-            };
-            if (await aiService.handleInfoMessage(aiMessageContext)) continue;
-
-        }
     }
 }
 async function startBot() {
