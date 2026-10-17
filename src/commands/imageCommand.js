@@ -2,7 +2,7 @@ const { safeMessage } = require('../services/errorHandler');
 const { formatCommandUsage, formatSimpleError } = require('../utils/messageFormatter');
 const { validateImagePrompt } = require('../utils/contentFilter');
 const { enqueueImageJob } = require('../utils/imageJobQueue');
-const { ensureImageCommandLimit } = require('./helpers');
+const { ensureImageCommandLimit, handleImagePromptRejection } = require('./helpers');
 const { resolveImagePromptFromHistory, setImagePromptHistory } = require('../utils/imagePromptHistory');
 
 async function execute(ctx) {
@@ -28,7 +28,6 @@ async function execute(ctx) {
         trackStreak,
         cleanupTempImage,
         getFilterData,
-        stats,
     } = ctx;
 
     if (!isImageCommandActive) return true;
@@ -57,11 +56,13 @@ async function execute(ctx) {
     const filterData = typeof getFilterData === 'function' ? getFilterData() : {};
     const imagePromptCheck = validateImagePrompt(imageQuery, filterData.profanities || []);
     if (!imagePromptCheck.allowed) {
-        const response = filterData.response || 'Prompt gambar ditolak. Gunakan kata kunci yang aman dan sopan.';
-        if (stats?.filter) stats.filter.blocked++;
-        addActivity('blocked', senderName, imageQuery, response, 'ImageFilter');
-        await sendChatMessage(bot, `@${senderName} ${response}`, msg.id);
-        return true;
+        return handleImagePromptRejection(ctx, {
+            logTag: '𝗚𝗔𝗠𝗕𝗔𝗥',
+            prompt: imageQuery,
+            matchedWord: imagePromptCheck.matchedWord,
+            category: imagePromptCheck.category,
+            source: 'ImageFilter',
+        });
     }
 
     const now = Date.now();

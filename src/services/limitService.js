@@ -109,6 +109,26 @@ function createLimitService({
         }
     }
 
+    /** Potong limit gambar `amount` slot sekaligus (penalti NSFW). */
+    async function penalizeImageLimitUsage(userId, username, amount) {
+        const userIdStr = String(userId || '');
+        const usernameClean = String(username || '').replace(/^@/, '').trim();
+        const today = getJakartaDateKey();
+        const defaultLimit = getDefaultImageLimit();
+        const amt = Math.max(1, Math.floor(Number(amount) || 1));
+        try {
+            // Single-statement UPSERT atomik, sama seperti increment.
+            await limitRepo.penalizeImageLimitUsage(userIdStr, usernameClean, today, defaultLimit, amt);
+        } catch (e) {
+            handleError(e, { scope: 'IMG LIMIT', detail: 'penalize usage', stats, logEmitter });
+        }
+        try {
+            return await getImageLimitStatus(userId, username);
+        } catch (e) {
+            return defaultImageStatus(userIdStr, usernameClean, today);
+        }
+    }
+
     const RARA_CHAT_DAILY_LIMIT = 20;
 
     async function checkRaraChatLimit(userId, username) {
@@ -157,6 +177,7 @@ function createLimitService({
         incrementCommandUsage,
         getImageLimitStatus,
         incrementImageLimitUsage,
+        penalizeImageLimitUsage,
         checkRaraChatLimit,
         incrementRaraChatLimitUsage,
     };

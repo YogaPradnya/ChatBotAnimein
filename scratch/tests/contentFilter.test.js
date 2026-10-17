@@ -24,3 +24,29 @@ test('contentFilter - validateImagePrompt memblokir blocklist bawaan', () => {
     assert.strictEqual(ok.allowed, true);
     assert.strictEqual(ok.matchedWord, null);
 });
+
+test('contentFilter - kategori nsfw utk kata sensual (seksi/hot/bikini dll)', () => {
+    for (const prompt of ['gambar seksi', 'hot', 'girl bikini', 'prompt nya nudes dong', 'bokep anime', 's3ksi hot', 'panties lace', 'onlyfans girl']) {
+        const res = validateImagePrompt(prompt);
+        assert.strictEqual(res.allowed, false, prompt);
+        assert.strictEqual(res.category, 'nsfw', prompt);
+        assert.ok(res.matchedWord, prompt);
+    }
+});
+
+test('contentFilter - kategori other (politik/kasar) ditolak tanpa penalti', () => {
+    const res = validateImagePrompt('gambar presiden di istana negara');
+    assert.strictEqual(res.allowed, false);
+    assert.strictEqual(res.category, 'other');
+    assert.ok(res.matchedWord);
+
+    const kasar = validateImagePrompt('gambar goblok lucu');
+    assert.strictEqual(kasar.allowed, false);
+    assert.strictEqual(kasar.category, 'other');
+});
+
+test('contentFilter - tidak false-positive kata aman', () => {
+    for (const prompt of ['java programming', 'pesek lucu', 'hotdog enak', 'squirtle pokemon', 'analisis data', 'brazil carnival', 'crocodile']) {
+        assert.strictEqual(validateImagePrompt(prompt).allowed, true, prompt);
+    }
+});

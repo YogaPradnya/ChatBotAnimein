@@ -2,6 +2,7 @@ const { safeMessage } = require('../services/errorHandler');
 const { formatCommandUsage, formatImageLimitExceeded, formatSimpleError } = require('../utils/messageFormatter');
 const { validateImagePrompt } = require('../utils/contentFilter');
 const { enqueueImageJob } = require('../utils/imageJobQueue');
+const { handleImagePromptRejection } = require('./helpers');
 const { resolveImagePromptFromHistory, setImagePromptHistory } = require('../utils/imagePromptHistory');
 
 async function execute(ctx) {
@@ -24,7 +25,6 @@ async function execute(ctx) {
         getFilterData,
         aiHordeImageService,
         statusBot,
-        stats,
     } = ctx;
 
     if (!isImageCommandActive) return true;
@@ -53,11 +53,13 @@ async function execute(ctx) {
     const filterData = typeof getFilterData === 'function' ? getFilterData() : {};
     const promptCheck = validateImagePrompt(prompt, filterData.profanities || []);
     if (!promptCheck.allowed) {
-        const response = filterData.response || 'Prompt gambar ditolak. Gunakan kata kunci yang aman dan sopan.';
-        if (stats?.filter) stats.filter.blocked++;
-        addActivity('blocked', senderName, prompt, response, 'HordeImageFilter');
-        await sendChatMessage(bot, `@${senderName} ${response}`, msg.id);
-        return true;
+        return handleImagePromptRejection(ctx, {
+            logTag: '𝗚𝗔𝗠𝗕𝗔𝗥𝗞𝗔𝗡',
+            prompt,
+            matchedWord: promptCheck.matchedWord,
+            category: promptCheck.category,
+            source: 'HordeImageFilter',
+        });
     }
 
     if (!aiHordeImageService?.generateImageWithHorde) {

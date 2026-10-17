@@ -67,19 +67,47 @@ function containsFilteredWord(text, words = []) {
     return words.some(word => hasWordNormalized(normalized, compact, word));
 }
 
-const IMAGE_PROMPT_BLOCKLIST = [
-    // Kata kasar dan hinaan umum
-    'anjing', 'anjir', 'anjay', 'asu', 'babi', 'bangsat', 'bajingan', 'brengsek',
-    'kampret', 'kontol', 'memek', 'ngentot', 'jancok', 'jancuk', 'cok', 'cuk',
-    'perek', 'lonte', 'pelacur', 'goblok', 'tolol', 'idiot', 'bego', 'dungu',
-
+/**
+ * Kata kunci NSFW/sensual: permintaan gambar yang kena kata ini DITOLAK
+ * + limit gambar dipotong (lihat handleImagePromptRejection di commands/helpers).
+ */
+const NSFW_IMAGE_BLOCKLIST = [
     // Seksual vulgar, jorok, dan fetish eksplisit
     'bokep', 'porno', 'porn', 'sex', 'seks', 'telanjang', 'bugil', 'nude', 'nsfw',
     'hentai', 'mesum', 'bejat', 'sange', 'horny', 'ngaceng', 'colmek', 'coli',
     'masturbasi', 'vagina', 'penis', 'payudara', 'tetek', 'toket', 'pantat',
     'bokong', 'selangkangan', 'jilat', 'sepong', 'oral', 'anal', 'fetish',
     'scat', 'kotoran', 'berak', 'tai', 'taik', 'eek', 'pipis', 'kencing',
-    'jomok', 'mas rusdi', 'rusdi',
+    'jomok', 'mas rusdi', 'rusdi', 'memek', 'kontol', 'ngentot', 'pelacur',
+    'lonte', 'perek',
+
+    // Umum dipakai untuk mencari gambar sensual/seksi (Indonesia + Inggris)
+    'seksi', 'hot', 'hot girl', 'sexy', 'sexy girl', 'sensual', 'seductive',
+    'erotis', 'erotic', 'vulgar', 'cabul', 'crot', 'esek', 'semok', 'montok',
+    'tobrut', 'toblok', 'pepek', 'tempik', 'titit', 'silit', 'kelamin',
+    'kemaluan', 'onani', 'setubuh', 'hubungan badan', 'jablay', 'kimcil',
+    'pijat plus', 'open bo', 'doggy style', 'striptis', 'striptease', 'undress',
+    'bikini', 'lingerie', 'panties', 'panty', 'bra', 'gstring', 'thong',
+    'pakaian dalam', 'celana dalam', 'underwear', 'topless', 'bottomless',
+    'no bra', 'braless', 'jav', '69', 'onlyfans', 'pornhub', 'pornstar',
+    'lewd', 'ecchi', 'fanservice', 'gravure', 'ahegao', 'paizuri', 'futanari',
+    'bdsm', 'bondage', 'groping', 'molest', 'upskirt', 'panty shot',
+    'naked', 'nudes', 'boobs', 'tits', 'ass',
+
+    // Safety tambahan untuk image generation (eksploitasi/kejahatan seksual)
+    'loli', 'lolicon', 'shota', 'shotacon', 'anak kecil seksi', 'bocil seksi',
+    'minor nude', 'underage', 'child porn', 'cp', 'telanjang anak',
+    'rape', 'pemerkosaan', 'perkosa', 'diperkosa', 'forced sex', 'sexual assault',
+    'incest', 'bestiality', 'zoophilia', 'necrophilia',
+    'deepfake', 'fake nude', 'telanjangin artis', 'public figure nude',
+];
+
+/** Kata terlarang non-NSFW: ditolak biasa tanpa potong limit. */
+const OTHER_IMAGE_BLOCKLIST = [
+    // Kata kasar dan hinaan umum
+    'anjing', 'anjir', 'anjay', 'asu', 'babi', 'bangsat', 'bajingan', 'brengsek',
+    'kampret', 'jancok', 'jancuk', 'cok', 'cuk',
+    'goblok', 'tolol', 'idiot', 'bego', 'dungu',
 
     // SARA, rasis, kebencian identitas
     'rasis', 'nazi', 'hitler', 'fasis', 'genosida', 'bantai agama', 'hina agama',
@@ -94,26 +122,37 @@ const IMAGE_PROMPT_BLOCKLIST = [
     // Kekerasan ekstrem
     'gore', 'mutilasi', 'penggal', 'darah berlebihan', 'mayat', 'bunuh diri',
     'pembunuhan', 'penyiksaan', 'terorisme', 'bom bunuh diri',
-
-    // Safety tambahan untuk image generation
-    'loli', 'lolicon', 'shota', 'shotacon', 'anak kecil seksi', 'bocil seksi',
-    'minor nude', 'underage', 'child porn', 'cp', 'telanjang anak',
-    'rape', 'pemerkosaan', 'diperkosa', 'forced sex', 'sexual assault',
-    'incest', 'bestiality', 'zoophilia', 'necrophilia',
-    'deepfake', 'fake nude', 'telanjangin artis', 'public figure nude',
     'darah muncrat', 'usus keluar', 'kepala putus', 'tubuh hancur',
 ];
 
+/** Gabungan dua daftar (kompatibilitas + pre-compile + test lama). */
+const IMAGE_PROMPT_BLOCKLIST = [...NSFW_IMAGE_BLOCKLIST, ...OTHER_IMAGE_BLOCKLIST];
+
+function findBlockedWord(normalized, compact, words = []) {
+    return words.find(word => hasWordNormalized(normalized, compact, word)) || null;
+}
+
+/**
+ * Validasi prompt gambar.
+ * @returns {{allowed: boolean, matchedWord: string|null, category: 'nsfw'|'other'|null}}
+ * category 'nsfw' = permintaan konten sensual/seksual (ditolak + potong limit).
+ */
 function validateImagePrompt(prompt, extraWords = []) {
     const normalized = normalizeText(prompt);
     const compact = normalized.replace(/[^a-z0-9]+/g, '');
-    const words = [...IMAGE_PROMPT_BLOCKLIST, ...extraWords];
-    const matchedWord = words.find(word => hasWordNormalized(normalized, compact, word));
 
-    return {
-        allowed: !matchedWord,
-        matchedWord: matchedWord || null,
-    };
+    const nsfwWord = findBlockedWord(normalized, compact, NSFW_IMAGE_BLOCKLIST);
+    if (nsfwWord) {
+        return { allowed: false, matchedWord: nsfwWord, category: 'nsfw' };
+    }
+
+    const otherWord = findBlockedWord(normalized, compact, OTHER_IMAGE_BLOCKLIST)
+        || findBlockedWord(normalized, compact, extraWords);
+    if (otherWord) {
+        return { allowed: false, matchedWord: otherWord, category: 'other' };
+    }
+
+    return { allowed: true, matchedWord: null, category: null };
 }
 
 // Pre-compile blocklist bawaan sekali saat modul dimuat.
@@ -125,4 +164,6 @@ module.exports = {
     containsFilteredWord,
     validateImagePrompt,
     IMAGE_PROMPT_BLOCKLIST,
+    NSFW_IMAGE_BLOCKLIST,
+    OTHER_IMAGE_BLOCKLIST,
 };

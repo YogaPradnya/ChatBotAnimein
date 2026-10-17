@@ -4086,6 +4086,7 @@ async function previewRaraReply({ question, affectionLevel = 0, answerStyle } = 
 
 const getImageLimitStatus = limitService.getImageLimitStatus;
 const incrementImageLimitUsage = limitService.incrementImageLimitUsage;
+const penalizeImageLimitUsage = limitService.penalizeImageLimitUsage;
 
 const fetchPinterestImage = imageService.fetchPinterestImage;
 const fetchAndDownloadPinterestImage = imageService.fetchAndDownloadPinterestImage;
@@ -4991,6 +4992,7 @@ async function processOneMessage(bot, msg) {
             downloadImageToTempFile,
             sendChatWithImage,
             incrementImageLimitUsage,
+            penalizeImageLimitUsage,
             addActivity,
             addXP,
             trackImageRequest,
