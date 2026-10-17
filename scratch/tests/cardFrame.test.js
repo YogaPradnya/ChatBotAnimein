@@ -54,6 +54,26 @@ test('CardFrame - frameOverlaySize cover + bleed (proporsional, boleh negatif)',
     assert.ok(Math.abs(b.ow / b.oh - 280 / 400) < 0.01);
 });
 
+test('CardFrame - art 2:3 (kasus .profil) bebas bocor & celah gelap', () => {
+    // Desain Common: tepi luar x 15..265 y 15..380; jendela x 25..255 y 25..370.
+    for (const [W, H] of [[230, 345], [600, 900], [230, 360], [225, 350]]) {
+        const { ow, oh, top, left } = frameOverlaySize(W, H);
+        const ax = Math.max(0, -left);
+        const ay = Math.max(0, -top);
+        const eps = 1;
+        // Art tidak menyembul keluar tepi luar bingkai (atas/bawah/samping).
+        assert.ok(ay + eps >= (oh * 15) / 400, `bocor atas ${W}x${H}`);
+        assert.ok(ay + H - eps <= (oh * 380) / 400, `bocor bawah ${W}x${H}`);
+        assert.ok(ax + eps >= (ow * 15) / 280, `bocor kiri ${W}x${H}`);
+        assert.ok(ax + W - eps <= (ow * 265) / 280, `bocor kanan ${W}x${H}`);
+        // Jendela transparan tidak melewati art (celah gelap di dalam bingkai).
+        assert.ok(ax - eps <= (ow * 25) / 280, `celah kiri ${W}x${H}`);
+        assert.ok(ax + W + eps >= (ow * 255) / 280, `celah kanan ${W}x${H}`);
+        assert.ok(ay - eps <= (oh * 25) / 400, `celah atas ${W}x${H}`);
+        assert.ok(ay + H + eps >= (oh * 370) / 400, `celah bawah ${W}x${H}`);
+    }
+});
+
 test('CardFrame - applyCardFrame hasilkan PNG berbingkai + bleed', async () => {
     const sharp = require('sharp');
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'frame-test-'));

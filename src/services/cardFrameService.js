@@ -56,17 +56,35 @@ function baseThickness(w, h) {
 /** Kanvas desain CSV. */
 const FRAME_W = 280;
 const FRAME_H = 400;
-/** Zoom ekstra agar bingkai sedikit lebih besar dari kartu (bleed). */
-const FRAME_ZOOM = 1.05;
+/**
+ * Batas skala overlay relatif ke art (pengganti zoom seragam 1.05).
+ * Geometri desain Common: tepi luar x 15..265 y 15..380, jendela transparan
+ * x 25..255 y 25..370 (pecahan: luar 0.0536..0.9464 / 0.0375..0.95,
+ * jendela 0.0893..0.9107 / 0.0625..0.925).
+ * - *_MIN: batas bawah agar art TIDAK menyembul keluar tepi luar bingkai
+ *   (keluhan .profil: art 2:3 bocor atas/bawah karena zoom 1.05 kurang).
+ * - *_MAX: batas atas agar jendela transparan tidak melewati art
+ *   (kalau lewat: celah gelap di dalam bingkai).
+ * Rentang aman art 2:3: oh/H 1.111..1.143 -> diambil tengahnya 1.125.
+ */
+const H_MIN = 1.125;
+const H_MAX = 1.14;
+const W_MIN = 1.13;
+const W_MAX = 1.217;
 
 /**
  * Ukuran overlay + offset tengah (cover-fit proporsional, tanpa gepeng).
  * Overlay boleh lebih besar dari art (negatif = bleed terpotong).
+ * Kalau rasio art tidak memungkinkan keduanya (mis. 3:4 vs jendela 2:3),
+ * prioritas: overlay tetap cover art, lalu tekan celah gelap.
  */
 function frameOverlaySize(w, h) {
     const W = Math.max(1, Math.round(Number(w) || FRAME_W));
     const H = Math.max(1, Math.round(Number(h) || FRAME_H));
-    const s = Math.max(W / FRAME_W, H / FRAME_H) * FRAME_ZOOM;
+    const cover = Math.max(W / FRAME_W, H / FRAME_H);
+    const sMin = Math.max(cover, (H_MIN * H) / FRAME_H, (W_MIN * W) / FRAME_W);
+    const sMax = Math.min((H_MAX * H) / FRAME_H, (W_MAX * W) / FRAME_W);
+    const s = Math.max(cover, Math.min(sMin, sMax));
     const ow = Math.max(1, Math.round(FRAME_W * s));
     const oh = Math.max(1, Math.round(FRAME_H * s));
     return { ow, oh, top: Math.round((H - oh) / 2), left: Math.round((W - ow) / 2) };
