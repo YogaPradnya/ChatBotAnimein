@@ -2001,7 +2001,7 @@ function getDashboardHTML() {
         <div style="flex: 1; display: flex; flex-direction: column; gap: 20px; min-width: 280px; max-width: 560px;">
           <div class="card" style="margin-bottom: 0;">
             <div class="card-title">Setting Sistem Kartu (Battle)</div>
-            <div style="font-size:11px; color:var(--muted); margin-bottom:10px;">Login web tanpa password (kode klaim via .login), jadi tidak ada daftar akun di sini.</div>
+            <div style="font-size:11px; color:var(--muted); margin-bottom:10px;">Login web memakai username/email + password Animein. User perlu ketik .daftar di chat agar data akunnya tercatat.</div>
             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:10px;">
               <label style="font-size:11px; color:var(--muted);">XP Menang<input type="number" id="cardSetWinXp" min="0" max="10000" value="100" style="width:100%; margin-top:4px; padding:6px 8px; border-radius:8px; border:1px solid var(--border);"></label>
               <label style="font-size:11px; color:var(--muted);">XP Kalah<input type="number" id="cardSetLoseXp" min="0" max="10000" value="20" style="width:100%; margin-top:4px; padding:6px 8px; border-radius:8px; border:1px solid var(--border);"></label>

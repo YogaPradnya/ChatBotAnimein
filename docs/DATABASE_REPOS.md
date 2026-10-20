@@ -48,6 +48,7 @@ Digunakan untuk:
 - leaderboard
 - profile + rank
 - quiz stats summary
+- registrasi user via `.daftar` (upsert username tanpa menghapus statistik)
 
 ## `limitRepo`
 

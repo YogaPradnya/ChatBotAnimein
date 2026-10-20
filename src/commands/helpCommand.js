@@ -71,12 +71,12 @@ async function execute(ctx) {
         helpMsg = wrapInBox('DATA', 'Pengaturan data pribadi (Core Memory) kamu.\n\nCommand:\n- .data [isi datamu]\n- .data hapus [nomor]\n- .data reset\n\nAturan:\n- Maksimal 5 list data per ID\n- Maksimal 80 karakter per item');
     } else if (helpArg === 'gambarkan') {
         helpMsg = wrapInBox('GAMBARKAN', 'Buat gambar AI berbasis deskripsi prompt.\n\nCommand:\n- .gambarkan [prompt]\n\nContoh:\n- .gambarkan anime girl playing guitar');
-    } else if (helpArg === 'login' || helpArg === 'pair') {
-        helpMsg = wrapInBox('LOGIN', 'Masuk web book kartu tanpa password.\n\nCommand:\n• .login [kode]\n\nCara:\n• Buka web, tekan Dapatkan Kode\n• Ketik .login [kode] di chat ini\n• Kembali ke web, langsung masuk');
+    } else if (helpArg === 'daftar' || helpArg === 'pair') {
+        helpMsg = wrapInBox('DAFTAR', 'Daftarkan akun chat ke database KartuYogaa.\n\nCommand:\n• .daftar\n\nSetelah itu login web memakai username/email + password Animein.');
     } else if (helpArg === 'battle') {
         helpMsg = wrapInBox('BATTLE', 'Battle kartu sudah pindah ke web.\n\nCommand:\n- .battle (tampilkan link web battle)\n\nWeb:\n- https://kartu.yogaa.web.id/\n\nBuka link di atas untuk adu kartumu, hmph!');
     } else if (helpArg === 'web' || helpArg === 'book' || helpArg === 'trade') {
-        helpMsg = wrapInBox('WEB', 'Web book kartu (tanpa password).\n\nIsi:\n• Book: galeri 265 kartu, ketuk untuk stat\n• Trade: tukar kartu via kode angka\n• Battle: vs AI (latihan) / PvP, PvP menang +100 XP\n\nMasuk: buka web untuk kode, ketik .login [kode] di chat.');
+        helpMsg = wrapInBox('WEB', 'Web book kartu.\n\nIsi:\n• Book: galeri 265 kartu, ketuk untuk stat\n• Trade: tukar kartu via kode angka\n• Battle: vs AI (latihan) / PvP, PvP menang +100 XP\n\nMasuk: ketik .daftar di chat, lalu login web memakai akun Animein.');
     } else if (helpArg === 'ban') {
         helpMsg = wrapInBox('BAN', 'Aturan bot:\n• Dilarang spam\n• Dilarang toxic\n• Dilarang abuse XP\n\nPelanggar akan di-ban permanen.');
     } else if (helpArg) {

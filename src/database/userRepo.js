@@ -20,6 +20,17 @@ function createUserRepo(db) {
         return db.execute('SELECT COUNT(*) + 1 as total FROM user_stats');
     }
 
+    // Daftarkan user chat ke user_stats. Hanya username yang di-update saat
+    // user sudah ada, sehingga XP/level/title/affection tetap utuh.
+    async function registerUser(userId, username) {
+        return db.execute({
+            sql: `INSERT INTO user_stats (user_id, username)
+                  VALUES (?, ?)
+                  ON CONFLICT(user_id) DO UPDATE SET username = excluded.username`,
+            args: [String(userId), String(username || '')],
+        });
+    }
+
     async function getQuizStats(userId) {
         return db.execute({
             sql: 'SELECT wins, participations, total_hints_used, total_images, current_streak, best_streak FROM user_quiz_stats WHERE user_id = ?',
@@ -115,6 +126,7 @@ function createUserRepo(db) {
         getUserProfile,
         getUserProfileWithRank,
         getNextRankForNewUser,
+        registerUser,
         getQuizStats,
         getLeaderboard,
         getUserXP,

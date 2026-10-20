@@ -28,7 +28,7 @@ const gachaCommand = require('./gachaCommand');
 const koleksiCommand = require('./koleksiCommand');
 const pajangCommand = require('./pajangCommand');
 const limitCommand = require('./limitCommand');
-const loginCommand = require('./loginCommand');
+const daftarCommand = require('./daftarCommand');
 const createImageCommand = require('./createImageCommand');
 const dataCommand = require('./dataCommand');
 const rekomendasiCommand = require('./rekomendasiCommand');
@@ -131,12 +131,12 @@ async function handleKuisCommand(ctx) {
     }
 
     if (lowerMsg === '.pair' || lowerMsg.startsWith('.pair ')) {
-        await ctx.sendChatMessage(ctx.bot, `📌 @${ctx.senderName.substring(0, 10)} .pair sudah tidak dipakai. Buka web untuk kode, lalu ketik .login [kode]`, ctx.msg.id);
+        await ctx.sendChatMessage(ctx.bot, `📌 @${ctx.senderName.substring(0, 10)} .pair sudah tidak dipakai. Ketik .daftar di chat agar akun web aktif.`, ctx.msg.id);
         return true;
     }
 
-    if (lowerMsg === '.login' || lowerMsg.startsWith('.login ')) {
-        return loginCommand.execute(ctx);
+    if (lowerMsg === '.daftar' || lowerMsg.startsWith('.daftar ')) {
+        return daftarCommand.execute(ctx);
     }
 
 
@@ -268,7 +268,7 @@ module.exports = {
     koleksiCommand,
     pajangCommand,
     limitCommand,
-    loginCommand,
+    daftarCommand,
     createImageCommand,
     dataCommand,
     rekomendasiCommand,

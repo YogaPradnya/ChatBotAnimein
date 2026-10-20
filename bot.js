@@ -152,6 +152,7 @@ commandRouter
         COMMANDS.PAJANG,
         COMMANDS.META,
         COMMANDS.LIMIT,
+        COMMANDS.DAFTAR,
     ], () => {});
 
 async function initDB() {
@@ -293,18 +294,6 @@ async function initDB() {
             )
         `);
         await db.execute(`CREATE INDEX IF NOT EXISTS idx_pairing_user ON web_pairing_codes (user_id)`);
-
-        // Tabel kode login web (dibuat di web, diklaim via .login di chat).
-        await db.execute(`
-            CREATE TABLE IF NOT EXISTS web_login_codes (
-                code TEXT PRIMARY KEY,
-                token_hash TEXT NOT NULL,
-                user_id TEXT DEFAULT NULL,
-                username TEXT NOT NULL DEFAULT '',
-                expires_at INTEGER NOT NULL,
-                created_at INTEGER NOT NULL
-            )
-        `);
 
         // Tabel statistik kuis per user
         await db.execute(`

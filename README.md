@@ -34,10 +34,11 @@ Bot (`.env`): `TURSO_URL`, `TURSO_AUTH_TOKEN`, kredensial Animein, `DASHBOARD_US
 Web (`web-cards/.env.local`): `TURSO_URL`, `TURSO_AUTH_TOKEN` (DB yang sama dengan bot), `DASHBOARD_LOGIN_URL`, dan `WEB_LOGIN_PROXY_SECRET` yang sama dengan bot.
 Jangan commit `.env` / `.env.local`.
 
-Login web memakai username/email + password Animein. Web mengirim permintaan
-bertanda HMAC ke dashboard Render (`/internal/auth/animein`), dashboard
-memverifikasi ke Animein, lalu web mencocokkan `user.id` dengan `user_stats`.
-Password tidak disimpan dan `key_client` tidak pernah dikirim ke web.
+Login web memakai username/email + password Animein. Sebelum login, user perlu
+mengetik `.daftar` di chat agar datanya tercatat di `user_stats`. Web mengirim
+permintaan bertanda HMAC ke dashboard Render (`/internal/auth/animein`),
+dashboard memverifikasi ke Animein, lalu web mencocokkan `user.id` dengan
+`user_stats`. Password tidak disimpan dan `key_client` tidak pernah dikirim ke web.
 
 ## Backup
 
