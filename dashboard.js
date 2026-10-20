@@ -10,7 +10,7 @@ function getLoginHTML(error = '') {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Login - AnimeinBot Dashboard</title>
+<title>Login - KartuYogaa Dashboard</title>
 <link rel="icon" type="image/png" href="/favicon.png?v=1">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
@@ -90,7 +90,7 @@ function getDashboardHTML() {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Animein.ai Dashboard</title>
+<title>KartuYogaa Dashboard</title>
 <link rel="icon" type="image/png" href="/favicon.png?v=1">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
@@ -1294,7 +1294,7 @@ function getDashboardHTML() {
     <div class="page" id="page-api-traffic">
        <div class="card" style="height: 100%; display: flex; flex-direction: column;">
           <div class="card-title">API Traffic Monitor (Real-time)</div>
-          <p style="font-size: 12px; color: var(--muted); margin-bottom: 20px;">Memantau setiap request yang dilakukan bot ke server JAPI Animein.</p>
+          <p style="font-size: 12px; color: var(--muted); margin-bottom: 20px;">Memantau setiap request yang dilakukan bot ke server API.</p>
           <div id="pathMonitorList" style="overflow-y: auto; flex: 1;">
              <div style="color:var(--muted); text-align:center;">No traffic recorded</div>
           </div>
@@ -1424,7 +1424,7 @@ function getDashboardHTML() {
         <div class="knowledge-col">
           <div class="card knowledge-card">
             <div class="card-title">
-               <span>Animein Knowledge Base</span>
+               <span>Knowledge Base</span>
                <button class="btn-sm btn-sm-toggle" onclick="addKw()">+ Add New</button>
             </div>
             <div class="knowledge-list" id="knowledgeList">
@@ -2072,7 +2072,7 @@ function getDashboardHTML() {
       </div>
       <div class="form-group">
         <label class="form-label">Help Text <span style="font-size:11px; color:var(--muted); font-weight:400;">(teks utuh yang dikirim saat .help [topik])</span></label>
-        <textarea id="kwHelpText" class="modal-textarea" style="min-height:150px; font-family:monospace; font-size:12px;" placeholder="-- PANDUAN BATTLE --\nBattle di Animein adalah...\n\nCara Battle:\n1. Buka menu Pokemon\n2. Pilih 3 Pokemon"></textarea>
+        <textarea id="kwHelpText" class="modal-textarea" style="min-height:150px; font-family:monospace; font-size:12px;" placeholder="-- PANDUAN BATTLE --\nBattle di KartuYogaa adalah...\n\nCara Battle:\n1. Buka menu Pokemon\n2. Pilih 3 Pokemon"></textarea>
       </div>
     </div>
     <div class="modal-actions">
@@ -2249,9 +2249,9 @@ function getDashboardHTML() {
   let realtimeLogs = [];
   let logSource = null;
   const DEFAULT_TITLES = [
-    "🏷️ Ksatria Animein",
+    "🏷️ Ksatria KartuYogaa",
     "⚔️ Legenda Otaku",
-    "🏆 Dewa Animein"
+    "🏆 Dewa KartuYogaa"
   ];
 
   // Toast Notification System
@@ -2296,9 +2296,9 @@ function getDashboardHTML() {
 
   function getUserTitle(level, customTitle = null) {
     if (customTitle) return customTitle;
-    if (level >= 100) return "🏆 Dewa Animein";
+    if (level >= 100) return "🏆 Dewa KartuYogaa";
     if (level >= 50) return "⚔️ Legenda Otaku";
-    if (level >= 10) return "🏷️ Ksatria Animein";
+    if (level >= 10) return "🏷️ Ksatria KartuYogaa";
     return "";
   }
 

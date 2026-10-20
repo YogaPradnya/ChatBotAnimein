@@ -1897,7 +1897,7 @@ function startDashboard(scope) {
         const sent = await sendChatMessage(targetBot, text);
         if (!sent) {
             console.warn(`[DASHBOARD] Manual Send gagal via ${botName}.`);
-            return res.status(500).json({ success: false, message: `Pesan gagal dikirim via ${botName}. Cek auth/API Animein.` });
+            return res.status(500).json({ success: false, message: `Pesan gagal dikirim via ${botName}. Cek autentikasi/API.` });
         }
 
         addActivity('manual', 'Admin', '-', text, `Dashboard (${botName})`);
