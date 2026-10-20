@@ -1,7 +1,9 @@
 # API Dashboard (ringkas, P2 hygiene)
 
 Basis: `src/dashboardServer.js` (`startDashboard`), auth cookie `dashboard_session`
-kecuali `/health`, `/login`, `/logout`. Rate-limit API: 60 req/menit/IP.
+kecuali `/health`, `/login`, `/logout`, dan `/internal/auth/animein`.
+Rate-limit API: 60 req/menit/IP. Endpoint internal memakai HMAC
+`WEB_LOGIN_PROXY_SECRET`, bukan cookie admin.
 
 ## Sistem & health
 
@@ -10,6 +12,7 @@ kecuali `/health`, `/login`, `/logout`. Rate-limit API: 60 req/menit/IP.
 | GET | `/health` | Status dashboard/bot, uptime (publik) |
 | GET | `/login` | Halaman login (publik) |
 | POST | `/login` | Login form `username,password` (publik) |
+| POST | `/internal/auth/animein` | Verifikasi kredensial Animein untuk web; HMAC `X-Web-Timestamp` + `X-Web-Signature` |
 | GET | `/logout` | Hapus sesi |
 | GET | `/api/stats` | Statistik bot, cache AI, kuis aktif, realtime logs, latensi provider (`providerLatency`), injeksi diblokir (`injectionBlocked`) |
 | GET | `/api/logs/stream` | SSE realtime logs (disarankan untuk dashboard; gantikan polling 5s) |
@@ -17,6 +20,11 @@ kecuali `/health`, `/login`, `/logout`. Rate-limit API: 60 req/menit/IP.
 | POST | `/api/system/toggle` | Kill switch ON/OFF |
 | POST | `/api/chat/send` | Kirim chat teks via bot |
 | POST | `/api/chat/send-image` | Kirim gambar via bot |
+
+Signature endpoint internal: `HMAC-SHA256(secret, timestamp + "." + "POST" +
+"." + path + "." + SHA256(rawBody))`, dikirim sebagai hex di
+`X-Web-Signature`; `X-Web-Timestamp` berisi Unix detik. Skew lebih dari 60
+detik ditolak. Body JSON hanya `{ username, password }`.
 
 ## Bot & event
 

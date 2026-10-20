@@ -83,6 +83,7 @@ function createEnvConfig() {
         },
         WEB: {
             CARDS_URL: getEnv('CARDS_WEB_URL'),
+            LOGIN_PROXY_SECRET: getEnv('WEB_LOGIN_PROXY_SECRET'),
         },
     };
 }

@@ -81,7 +81,7 @@ Command:
 | `shopCommand.js` | `.toko`, `.shop` | Tampilkan toko |
 | `buyCommand.js` | `.beli` | Pembelian item toko |
 | `imageCommand.js` | `.gambar` | Fetch dan kirim gambar |
-| `loginCommand.js` | `.login` | Klaim kode login web book kartu |
+| `loginCommand.js` | `.login` | Klaim kode login web (fallback/rollback; UI utama memakai password) |
 | `gachaCommand.js` | `.gacha` | Redirect ke web gacha + `.gacha rate` (rate/stok di chat) |
 | `koleksiCommand.js` | `.koleksi` | Galeri kartu + penanda skill-2 |
 | `pajangCommand.js` | `.pajang` | Pajang kartu gacha/display di `.profil` |

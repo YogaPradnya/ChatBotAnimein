@@ -5,6 +5,8 @@ let helmet = null;
 try { helmet = require('helmet'); } catch (_) { helmet = null; }
 const { maskSensitiveText } = require('./services/errorHandler');
 const axios = require('./httpClient');
+const { verifyAnimeinCredentials } = require('./services/animeinAuthService');
+const { verifyWebLoginRequest } = require('./utils/webLoginSignature');
 const { getDashboardHTML, getLoginHTML } = require('../dashboard.js');
 const { SESSION, RATE_LIMIT, LIMITS } = require('./config/constants');
 const { getCloudflareStat } = require('./services/cloudflareAiService');
@@ -58,6 +60,37 @@ function checkLoginRateLimit(ip) {
     return entry.count <= LOGIN_RATE_LIMIT_MAX;
 }
 
+// Rate-limit endpoint login web (bukan admin dashboard).
+// Key per IP dan per username, supaya brute-force satu akun tidak lolos
+// hanya karena berganti-ganti IP dari web server.
+const WEB_LOGIN_RATE_LIMITS = new Map(); // key -> { count, resetAt }
+const WEB_LOGIN_RATE_WINDOW_MS = 15 * 60 * 1000;
+const WEB_LOGIN_RATE_MAX_PER_IP = 120;
+const WEB_LOGIN_RATE_MAX_PER_USER = 5;
+
+function checkWebLoginRateLimit(key, max) {
+    const now = Date.now();
+    let entry = WEB_LOGIN_RATE_LIMITS.get(key);
+    if (!entry || now > entry.resetAt) {
+        entry = { count: 0, resetAt: now + WEB_LOGIN_RATE_WINDOW_MS };
+        WEB_LOGIN_RATE_LIMITS.set(key, entry);
+    }
+    entry.count++;
+    return entry.count <= max;
+}
+
+function getRequestIp(req) {
+    const forwarded = req.headers?.['x-forwarded-for'];
+    if (typeof forwarded === 'string' && forwarded.trim()) {
+        return forwarded.split(',')[0].trim();
+    }
+    return req.ip || req.socket?.remoteAddress || 'unknown';
+}
+
+function hashLoginIdentifier(value) {
+    return crypto.createHash('sha256').update(String(value || '').trim().toLowerCase()).digest('hex').slice(0, 24);
+}
+
 function safeCompare(a, b) {
     const bufA = Buffer.from(String(a || ''), 'utf8');
     const bufB = Buffer.from(String(b || ''), 'utf8');
@@ -95,6 +128,9 @@ setInterval(() => {
     }
     for (const [ip, entry] of LOGIN_RATE_LIMITS.entries()) {
         if (now > entry.resetAt) LOGIN_RATE_LIMITS.delete(ip);
+    }
+    for (const [key, entry] of WEB_LOGIN_RATE_LIMITS.entries()) {
+        if (now > entry.resetAt) WEB_LOGIN_RATE_LIMITS.delete(key);
     }
 }, SESSION.CLEANUP_INTERVAL_MS);
 
@@ -203,7 +239,14 @@ function startDashboard(scope) {
         }));
     }
 
-    app.use(express.json({ limit: '8mb' }));
+    app.use(express.json({
+        limit: '8mb',
+        // Simpan raw body hanya untuk endpoint login web (HMAC),
+        // agar request JSON besar lain tidak menahan salinan ekstra.
+        verify: (req, _res, buf) => {
+            if (req.path === '/internal/auth/animein') req.rawBody = buf;
+        },
+    }));
     app.use(express.urlencoded({ extended: true, limit: '8mb' }));
     // Block akses publik ke file prompt karakter
     app.get('/Prompt_Karakter_Rara.txt', (req, res) => res.status(404).send('Not found'));
@@ -229,6 +272,64 @@ function startDashboard(scope) {
             isImageCommandActive: runtime.isImageCommandActive,
             uptime: Math.floor((Date.now() - new Date(stats.startTime)) / 1000),
         });
+    });
+
+    const WEB_LOGIN_PATH = '/internal/auth/animein';
+    let warnedMissingWebLoginSecret = false;
+
+    // Endpoint internal untuk web kartu. Tidak memakai session admin;
+    // autentikasi memakai HMAC + timestamp dari WEB_LOGIN_PROXY_SECRET.
+    app.post(WEB_LOGIN_PATH, async (req, res) => {
+        res.setHeader('Cache-Control', 'no-store');
+        const secret = String(CONFIG.WEB_LOGIN_PROXY_SECRET || '');
+        if (!secret) {
+            if (!warnedMissingWebLoginSecret) {
+                warnedMissingWebLoginSecret = true;
+                console.warn('[WEB LOGIN] WEB_LOGIN_PROXY_SECRET belum diisi; endpoint login web nonaktif.');
+            }
+            return res.status(503).json({ ok: false, code: 'NOT_CONFIGURED' });
+        }
+        if (!verifyWebLoginRequest(req, secret)) {
+            return res.status(401).json({ ok: false, code: 'UNAUTHORIZED' });
+        }
+
+        try {
+            const username = String(req.body?.username || '').trim();
+            const password = String(req.body?.password || '');
+            if (!username || !password || username.length > 200 || password.length > 256) {
+                return res.status(400).json({ ok: false, code: 'INVALID_REQUEST' });
+            }
+
+            const ip = getRequestIp(req);
+            const ipAllowed = checkWebLoginRateLimit(`ip:${ip}`, WEB_LOGIN_RATE_MAX_PER_IP);
+            const userAllowed = checkWebLoginRateLimit(`user:${hashLoginIdentifier(username)}`, WEB_LOGIN_RATE_MAX_PER_USER);
+            if (!ipAllowed || !userAllowed) {
+                return res.status(429).json({ ok: false, code: 'RATE_LIMITED' });
+            }
+
+            const result = await verifyAnimeinCredentials(username, password);
+            if (!result.ok) {
+                if (result.code === 'UPSTREAM_BLOCKED' || result.code === 'UPSTREAM_UNAVAILABLE') {
+                    console.warn(`[WEB LOGIN] Animein upstream gagal: ${result.code}`);
+                }
+                const status = result.code === 'ACCOUNT_INACTIVE' ? 423
+                    : result.code === 'UPSTREAM_RATE_LIMITED' ? 429
+                    : (result.code.startsWith('UPSTREAM') || result.code === 'NOT_CONFIGURED') ? 503
+                    : 401;
+                return res.status(status).json({ ok: false, code: result.code });
+            }
+
+            return res.json({
+                ok: true,
+                user: {
+                    id: result.user.id,
+                    keyStatus: result.user.keyStatus,
+                },
+            });
+        } catch (e) {
+            console.error('[WEB LOGIN] error:', e && e.message ? e.message : e);
+            return res.status(500).json({ ok: false, code: 'SERVER_ERROR' });
+        }
     });
 
     function checkAuth(req, res, next) {
