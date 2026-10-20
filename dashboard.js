@@ -64,7 +64,7 @@ function getLoginHTML(error = '') {
   <div class="login-card">
     <div class="brand">
       <img src="/logo.png?v=1" alt="Logo" style="width: 80px; height: 80px; margin-bottom: 16px; border-radius: 50%; border: 2px solid var(--accent);">
-      <h1>ANIMEINBOT</h1>
+      <h1>KARTUYOGAA</h1>
       <p>Authentication Required</p>
     </div>
     ${error ? `<div class="error-msg">${escapeLoginHTML(error)}</div>` : ''}
@@ -719,7 +719,7 @@ function getDashboardHTML() {
   <div class="sidebar-brand">
     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
       <img src="/logo.png?v=1" alt="Logo" style="width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--accent);">
-      <h1 style="margin: 0;">ANIMEIN.AI</h1>
+      <h1 style="margin: 0;">KARTUYOGAA</h1>
     </div>
     <p>Control Panel <span style="font-size: 10px; font-weight: 400; color: var(--muted);">by yoga</span></p>
   </div>
