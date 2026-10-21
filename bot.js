@@ -708,36 +708,105 @@ function recordKnowledgeGap(question) {
     } catch (e) { /* fire-and-forget: jangan perlambat chat */ }
 }
 
-// Flush gabungan XP+memory dalam SATU batchWrite. XP_PENDING hanya dihapus setelah sukses,
-// dan hanya untuk user yang snapshot-nya berhasil di-flush (hindari hapus update yang masuk saat flush).
-async function flushPendingXP(reason = 'interval') {
+// Flush XP dengan increment ATOMIC. Jangan pernah menulis total dari cache:
+// cache bisa basi karena top-up web menambah XP langsung di DB. Snapshot delta
+// di bawah hanya berisi XP yang belum pernah dikirim, jadi aman ditambahkan.
+// XP_PENDING hanya dihapus untuk delta yang sudah berhasil dikirim; update yang
+// masuk saat flush tetap tersimpan untuk putaran berikutnya.
+let xpFlushPromise = null;
+
+async function doFlushPendingXP(reason) {
     persistAccuracyCounters();
     const snapshot = Object.entries(XP_PENDING_UPDATES);
     if (snapshot.length === 0) return 0;
-    try {
-        console.log(`[SYNC] Flushing XP & Memory updates for ${snapshot.length} users (${reason})...`);
-        const batch = [];
-        for (const [userId] of snapshot) {
-            const userStats = USER_STATS_CACHE[userId];
-            if (userStats) {
-                batch.push(runtimeRepo.buildUserStatsUpsert(userId, userStats.username || '', userStats));
-                if (userStats.core_memory !== undefined) {
-                    batch.push(memoryRepo.buildUpsertBatch(userId, userStats.username || '', userStats.core_memory || ''));
-                }
+    console.log(`[SYNC] Flushing XP & Memory updates for ${snapshot.length} users (${reason})...`);
+
+    let okCount = 0;
+    let failCount = 0;
+    await Promise.all(snapshot.map(async ([userId, pendingRaw]) => {
+        const delta = Number(pendingRaw) || 0;
+        const userStats = USER_STATS_CACHE[userId];
+
+        let res;
+        try {
+            res = await runtimeRepo.incrementUserXP(
+                userId,
+                userStats?.username || '',
+                delta,
+                calcLevelFromXP(Math.max(0, delta)),
+                userStats?.custom_title ?? null,
+            );
+        } catch (e) {
+            failCount++;
+            console.error(`[SYNC] Gagal increment XP ${userId}:`, e.message);
+            return; // delta tetap di buffer -> dicoba lagi
+        }
+
+        // Increment sudah sukses. Berapa pun hasil read-back, konsumsi delta
+        // snapshot agar retry tidak menggandakan XP.
+        let actualXp = Number(res?.rows?.[0]?.xp);
+        if (!Number.isFinite(actualXp)) {
+            try {
+                const q = await runtimeRepo.getUserStatsWithMemory(userId);
+                actualXp = Number(q.rows?.[0]?.xp) || 0;
+            } catch {
+                actualXp = Math.max(0, Number(userStats?.xp) || 0);
             }
         }
-        if (batch.length > 0) {
-            await runtimeRepo.batchWrite(batch);
+
+        const current = Number(XP_PENDING_UPDATES[userId]) || 0;
+        const remaining = current - delta;
+        if (Math.abs(remaining) < 1e-9) {
+            delete XP_PENDING_UPDATES[userId];
+        } else {
+            XP_PENDING_UPDATES[userId] = remaining;
         }
-        // Hapus hanya key yang ada di snapshot (update baru yang masuk saat flush tetap aman).
-        for (const [userId] of snapshot) {
-            if (Object.prototype.hasOwnProperty.call(XP_PENDING_UPDATES, userId)) delete XP_PENDING_UPDATES[userId];
+
+        // Cache = XP aktual di DB + delta baru yang belum di-flush. Ini juga
+        // menyerap top-up web yang mungkin terjadi saat bot sedang offline.
+        if (userStats) {
+            const pendingNow = Number(XP_PENDING_UPDATES[userId]) || 0;
+            userStats.xp = Math.max(0, actualXp + pendingNow);
+            userStats.level = calcLevelFromXP(userStats.xp);
         }
-        console.log(`[SYNC] Successfully synced ${snapshot.length} users to database.`);
-        return snapshot.length;
-    } catch (e) {
-        console.error('[SYNC] Global XP Flush failed:', e.message);
+
+        try {
+            await runtimeRepo.setUserLevel(userId, calcLevelFromXP(actualXp));
+        } catch (e) {
+            console.warn(`[SYNC] Gagal update level ${userId}:`, e.message);
+        }
+
+        if (userStats && userStats.core_memory !== undefined) {
+            try {
+                await runtimeRepo.batchWrite([
+                    memoryRepo.buildUpsertBatch(userId, userStats.username || '', userStats.core_memory || ''),
+                ]);
+            } catch (e) {
+                console.warn(`[SYNC] Gagal sync memory ${userId}:`, e.message);
+            }
+        }
+        okCount++;
+    }));
+
+    console.log(`[SYNC] XP flush selesai: ${okCount} sukses, ${failCount} gagal (${reason}).`);
+    return okCount;
+}
+
+async function flushPendingXP(reason = 'interval') {
+    // Cegah interval + shutdown berjalan bersamaan dan mengirim delta yang sama.
+    if (xpFlushPromise) {
+        try { await xpFlushPromise; } catch { /* sudah dicatat doFlush */ }
+        if (reason === 'shutdown' && Object.keys(XP_PENDING_UPDATES).length > 0) {
+            return flushPendingXP(reason);
+        }
         return 0;
+    }
+    const run = doFlushPendingXP(reason);
+    xpFlushPromise = run;
+    try {
+        return await run;
+    } finally {
+        if (xpFlushPromise === run) xpFlushPromise = null;
     }
 }
 
@@ -5285,7 +5354,7 @@ async function gracefulShutdown(signal) {
     console.log(`\n[SHUTDOWN] Menerima sinyal ${signal}. Menyimpan data sebelum exit...`);
 
     try {
-        // 1. Flush XP & Stats pending ke database (gabungan satu batch, hanya hapus setelah sukses)
+        // 1. Flush XP & Stats pending ke database (increment atomik; hanya hapus delta setelah sukses)
         if (typeof flushPendingXP === 'function') {
             await flushPendingXP('shutdown');
         } else {

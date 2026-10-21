@@ -12,11 +12,31 @@ function createRuntimeRepo(db) {
             await Promise.all(statements.map((s) => db.execute(s)));
         },
 
-        buildUserStatsUpsert(userId, username, stats) {
-            return {
-                sql: "INSERT INTO user_stats (user_id, username, xp, level, custom_title) VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET xp = ?, level = ?, custom_title = ?, username = ?",
-                args: [userId, username, stats.xp, stats.level, stats.custom_title, stats.xp, stats.level, stats.custom_title, username],
-            };
+        // Tambah XP secara ATOMIC (xp = xp + delta), bukan menulis total cache.
+        // Ini mencegah flush bot menimpa top-up XP dari web yang masuk saat
+        // cache bot masih basi. RETURNING xp memberi nilai aktual setelah update.
+        incrementUserXP(userId, username, delta, initialLevel, customTitle) {
+            const amount = Number(delta) || 0;
+            return db.execute({
+                sql: `INSERT INTO user_stats (user_id, username, xp, level, custom_title)
+                      VALUES (?, ?, MAX(0, ?), ?, ?)
+                      ON CONFLICT(user_id) DO UPDATE SET
+                        xp = MAX(0, user_stats.xp + ?),
+                        username = COALESCE(NULLIF(excluded.username, ''), user_stats.username),
+                        custom_title = COALESCE(excluded.custom_title, user_stats.custom_title)
+                      RETURNING xp`,
+                args: [
+                    String(userId), String(username || ''), amount, Number(initialLevel) || 1,
+                    customTitle ?? null, amount,
+                ],
+            });
+        },
+
+        setUserLevel(userId, level) {
+            return db.execute({
+                sql: 'UPDATE user_stats SET level = ? WHERE user_id = ?',
+                args: [Number(level) || 1, String(userId)],
+            });
         },
 
         getUserStatsWithMemory(userId) {
