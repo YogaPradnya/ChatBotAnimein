@@ -295,7 +295,7 @@ test('Cards - konstanta ekonomi sesuai spek', () => {
     assert.strictEqual(GACHA_COST, 500);
     assert.strictEqual(GACHA_DAILY_LIMIT, 10);
     assert.strictEqual(MAX_CARD_LEVEL, 5);
-    assert.deepStrictEqual(STOCK_LIMITS, { Common: Infinity, Rare: Infinity, Epic: 50, Legendary: 10, Mythic: 1 });
+    assert.deepStrictEqual(STOCK_LIMITS, { Common: Infinity, Rare: Infinity, Epic: 50, Legendary: 10 });
     assert.deepStrictEqual(RARITY_DOWNGRADE, { Mythic: 'Legendary', Legendary: 'Epic', Epic: 'Rare', Rare: 'Common', Common: null });
     assert.strictEqual(isUniqueRarity('Mythic'), true);
     assert.strictEqual(isUniqueRarity('Epic'), false);
@@ -316,7 +316,7 @@ test('Cards - konstanta ekonomi sesuai spek', () => {
     assert.deepStrictEqual(LIMIT_BREAK_XP_REWARD, { Common: 50, Rare: 150, Epic: 400, Legendary: 1000, Mythic: 2500 });
     assert.deepStrictEqual(BASE_POWER, { Common: 40, Rare: 70, Epic: 100, Legendary: 150, Mythic: 200 });
     assert.deepStrictEqual(DEFAULT_RATES, { Common: 70, Rare: 25, Epic: 4.89, Legendary: 0.1, Mythic: 0.01 });
-    assert.deepStrictEqual(DEFAULT_STOCKS, { Mythic: 1, Legendary: 10, Epic: 50 });
+    assert.deepStrictEqual(DEFAULT_STOCKS, { Legendary: 10, Epic: 50 });
 });
 
 test('Cards - resolvePullRarity selalu murni rate (pity dihapus)', () => {

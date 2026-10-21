@@ -59,11 +59,11 @@ async function showRate(ctx, repo, todayKey) {
         `├───────────────────`,
         ...RARITY_LIST.map((t) => `│ ${RARITY_EMOJI[t]} ${t.padEnd(9)} ${formatRate(rates[t])}%`),
         `├───────────────────`,
-        `│ 📦 Stok/kartu: 🔴Mythic ${stocks.Mythic} | 🟡Legend ${stocks.Legendary} | 🟣Epic ${stocks.Epic} | R/C ∞`,
+        `│ 📦 Stok/kartu: 🔴Mythic ∞ (tanpa batas) | 🟡Legend ${stocks.Legendary} | 🟣Epic ${stocks.Epic} | R/C ∞`,
         `│ 🎯 Sisa : ${sisa} pull hari ini`,
         `│ 📦 Duplikat menumpuk (maks ${MAX_CARD_COPIES} copy)`,
         `│ 🛠️ Naik ★ manual via Evolusi di web`,
-        `│    Mythic unik per user (tak bisa duplikat)`,
+        `│    Mythic unik per user (tak bisa duplikat, tapi bisa dimiliki banyak user)`,
         `│ 🖼️ .koleksi untuk galeri | .pajang [nama] untuk pamer`,
         `└───────────────────`,
     ];

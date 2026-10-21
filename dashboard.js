@@ -1898,9 +1898,8 @@ function getDashboardHTML() {
               <label style="font-size:11px; color:var(--muted);">🟡 Legendary<input type="number" id="gachaRateLegendary" min="0" max="100" step="0.01" value="0.1" style="width:100%; margin-top:4px; padding:6px 8px; border-radius:8px; border:1px solid var(--border);"></label>
               <label style="font-size:11px; color:var(--muted);">🔴 Mythic<input type="number" id="gachaRateMythic" min="0" max="100" step="0.01" value="0.01" style="width:100%; margin-top:4px; padding:6px 8px; border-radius:8px; border:1px solid var(--border);"></label>
             </div>
-            <div style="font-size:11px; font-weight:700; color:var(--muted); margin-bottom:6px;">STOK PER KARTU (pemilik global)</div>
-            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; margin-bottom:10px;">
-              <label style="font-size:11px; color:var(--muted);">🔴 Mythic<input type="number" id="gachaStockMythic" min="1" max="1000" value="1" style="width:100%; margin-top:4px; padding:6px 8px; border-radius:8px; border:1px solid var(--border);"></label>
+            <div style="font-size:11px; font-weight:700; color:var(--muted); margin-bottom:6px;">STOK PER KARTU (pemilik global) — Mythic tanpa batas</div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:10px;">
               <label style="font-size:11px; color:var(--muted);">🟡 Legendary<input type="number" id="gachaStockLegendary" min="1" max="1000" value="10" style="width:100%; margin-top:4px; padding:6px 8px; border-radius:8px; border:1px solid var(--border);"></label>
               <label style="font-size:11px; color:var(--muted);">🟣 Epic<input type="number" id="gachaStockEpic" min="1" max="1000" value="50" style="width:100%; margin-top:4px; padding:6px 8px; border-radius:8px; border:1px solid var(--border);"></label>
             </div>
@@ -3554,7 +3553,6 @@ async function updateStats() {
       setV('gachaRateLegendary', rates.Legendary);
       setV('gachaRateMythic', rates.Mythic);
       const stocks = d.config.stocks || {};
-      setV('gachaStockMythic', stocks.Mythic);
       setV('gachaStockLegendary', stocks.Legendary);
       setV('gachaStockEpic', stocks.Epic);
     } catch(e) { console.error(e); }
@@ -3574,7 +3572,6 @@ async function updateStats() {
         Mythic: num('gachaRateMythic'),
       },
       stocks: {
-        Mythic: int('gachaStockMythic'),
         Legendary: int('gachaStockLegendary'),
         Epic: int('gachaStockEpic'),
       },

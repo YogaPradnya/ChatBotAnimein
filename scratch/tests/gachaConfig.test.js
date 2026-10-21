@@ -113,7 +113,7 @@ test('GachaConfig - sanitize rates desimal + stocks + total nol = default', () =
     });
     assert.strictEqual(clean.rates.Mythic, 0.01);
     assert.strictEqual(clean.rates.Legendary, 0.1);
-    assert.strictEqual(clean.stocks.Mythic, 2);
+    assert.strictEqual(clean.stocks.Mythic, undefined); // Mythic tanpa batas pemilik; input diabaikan
     assert.strictEqual(clean.stocks.Legendary, 1); // clamp min
     assert.strictEqual(clean.stocks.Epic, 1000); // clamp max
     const zero = sanitizeGachaConfigInput({ rates: { Common: 0, Rare: 0, Epic: 0, Legendary: 0, Mythic: 0 } });
@@ -275,7 +275,7 @@ test('GachaConfig - Mythic milik sendiri tidak duplikat, roll ke Mythic lain', a
     assert.strictEqual(r.downgraded, false);
 });
 
-test('GachaConfig - Mythic stok 1 habis -> turun ke Legendary + flag downgraded', async () => {
+test('GachaConfig - Mythic milik orang lain tetap bisa didapat (tanpa batas pemilik)', async () => {
     invalidateGachaConfig();
     const db = createSettingsMockDb();
     db.state.cards.push({ user_id: 'orang-lain', char_name: 'Mythic X', anime: 'X', rarity: 'Mythic', level: 1, power: 210, image_url: null });
@@ -284,13 +284,13 @@ test('GachaConfig - Mythic stok 1 habis -> turun ke Legendary + flag downgraded'
         { name: 'Mythic X', anime: 'X', tier: 'Mythic' },
         { name: 'Legend Y', anime: 'Y', tier: 'Legendary' },
     ]);
-    // 0.99995 = roll Mythic; pool Mythic cuma X (stok habis) -> downgrade.
+    // 0.99995 = roll Mythic; Mythic X sudah dimiliki orang lain -> tetap boleh (tanpa batas).
     const r = await repo.performPull('u1', 'U', '2026-10-11', seqRng([0.99995, 0, 0]));
-    assert.strictEqual(r.rarity, 'Legendary');
-    assert.strictEqual(r.charName, 'Legend Y');
-    assert.strictEqual(r.downgraded, true);
-    assert.strictEqual(r.stockLeft, 9);
-    assert.strictEqual(r.stockLimit, 10);
+    assert.strictEqual(r.rarity, 'Mythic');
+    assert.strictEqual(r.charName, 'Mythic X');
+    assert.strictEqual(r.downgraded, false);
+    assert.strictEqual(r.stockLeft, null);
+    assert.strictEqual(r.stockLimit, null);
 });
 
 test('GachaConfig - Epic stok 50 habis -> turun ke Rare', async () => {
@@ -333,10 +333,10 @@ test('GachaConfig - saveConfig rates+stocks roundtrip + performPull pakai keduan
     const saved = await repo.saveConfig({
         cost: 250,
         rates: { Common: 100, Rare: 0, Epic: 0, Legendary: 0, Mythic: 0 },
-        stocks: { Mythic: 3, Legendary: 7, Epic: 11 },
+        stocks: { Mythic: 3, Legendary: 7, Epic: 11 }, // input Mythic diabaikan (tanpa batas)
     });
     assert.strictEqual(saved.rates.Common, 100);
-    assert.deepStrictEqual(saved.stocks, { Mythic: 3, Legendary: 7, Epic: 11 });
+    assert.deepStrictEqual(saved.stocks, { Legendary: 7, Epic: 11 });
     const cfg = await repo.getConfig();
     assert.deepStrictEqual(cfg.rates, saved.rates);
     assert.deepStrictEqual(cfg.stocks, saved.stocks);
@@ -356,38 +356,41 @@ test('GachaConfig - stockExcludedUsernames parse env (default yogaa)', () => {
     else process.env.STOCK_EXCLUDE_USERNAMES = prev;
 });
 
-test('GachaConfig - pemilik ter-exclude tidak makan stok (Mythic yogaa tetap bisa dipull)', async () => {
+test('GachaConfig - pemilik ter-exclude tidak makan stok (Legend yogaa tidak dihitung)', async () => {
     invalidateGachaConfig();
     const db = createSettingsMockDb();
-    // yogaa sudah punya Mythic X (stok 1) -> bagi user lain stok dianggap masih ada.
-    db.state.cards.push({ user_id: 'u-yogaa', username: 'yogaa', char_name: 'Mythic X', anime: 'X', rarity: 'Mythic', level: 1, power: 210, image_url: null });
+    // yogaa (username ter-exclude) sudah punya Legend Y -> bukan pemilik valid.
+    db.state.cards.push({ user_id: 'u-yogaa', username: 'yogaa', char_name: 'Legend Y', anime: 'Y', rarity: 'Legendary', level: 1, power: 160, image_url: null });
     const repo = createCardsRepo(db, { imageResolver: async () => null });
     await repo.savePool([
-        { name: 'Mythic X', anime: 'X', tier: 'Mythic' },
         { name: 'Legend Y', anime: 'Y', tier: 'Legendary' },
+        { name: 'Epic Z', anime: 'Z', tier: 'Epic' },
     ]);
-    const r = await repo.performPull('u1', 'U', '2026-10-11', seqRng([0.99995, 0, 0]));
-    assert.strictEqual(r.rarity, 'Mythic');
-    assert.strictEqual(r.charName, 'Mythic X');
+    // 0.9995 = roll Legendary; yogaa tidak dihitung -> stok 10 - 0 - 1 = 9.
+    const r = await repo.performPull('u1', 'U', '2026-10-11', seqRng([0.9995, 0, 0]));
+    assert.strictEqual(r.rarity, 'Legendary');
+    assert.strictEqual(r.charName, 'Legend Y');
     assert.strictEqual(r.downgraded, false);
-    assert.strictEqual(r.stockLeft, 0); // limit 1 - 0 pemilik valid - 1
+    assert.strictEqual(r.stockLeft, 9); // limit 10 - 0 pemilik valid - 1
+    assert.strictEqual(r.stockLimit, 10);
 });
 
-test('GachaConfig - tanpa exclusion, pemilik yogaa menghabiskan stok Mythic', async () => {
+test('GachaConfig - tanpa exclusion, pemilik yogaa dihitung ke stok', async () => {
     const prev = process.env.STOCK_EXCLUDE_USERNAMES;
     process.env.STOCK_EXCLUDE_USERNAMES = '';
     try {
         invalidateGachaConfig();
         const db = createSettingsMockDb();
-        db.state.cards.push({ user_id: 'u-yogaa', username: 'yogaa', char_name: 'Mythic X', anime: 'X', rarity: 'Mythic', level: 1, power: 210, image_url: null });
+        db.state.cards.push({ user_id: 'u-yogaa', username: 'yogaa', char_name: 'Legend Y', anime: 'Y', rarity: 'Legendary', level: 1, power: 160, image_url: null });
         const repo = createCardsRepo(db, { imageResolver: async () => null });
         await repo.savePool([
-            { name: 'Mythic X', anime: 'X', tier: 'Mythic' },
             { name: 'Legend Y', anime: 'Y', tier: 'Legendary' },
+            { name: 'Epic Z', anime: 'Z', tier: 'Epic' },
         ]);
-        const r = await repo.performPull('u1', 'U', '2026-10-11', seqRng([0.99995, 0, 0]));
+        // 0.9995 = roll Legendary; yogaa dihitung -> stok 10 - 1 - 1 = 8.
+        const r = await repo.performPull('u1', 'U', '2026-10-11', seqRng([0.9995, 0, 0]));
         assert.strictEqual(r.rarity, 'Legendary');
-        assert.strictEqual(r.downgraded, true);
+        assert.strictEqual(r.stockLeft, 8);
     } finally {
         if (prev === undefined) delete process.env.STOCK_EXCLUDE_USERNAMES;
         else process.env.STOCK_EXCLUDE_USERNAMES = prev;

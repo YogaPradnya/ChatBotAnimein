@@ -2,12 +2,13 @@
  * Pool kartu waifu/husbando lokal untuk gacha (total 265).
  * Tiap entri: { name, anime, tier } dengan tier Common | Rare | Epic | Legendary | Mythic.
  * Distribusi: Common 110 / Rare 76 / Epic 50 / Legendary 19 / Mythic 10.
- * Stok global per kartu: Mythic 1 / Legendary 10 / Epic 50 / Rare & Common unlimited.
+ * Stok global per kartu: Legendary 10 / Epic 50 / Rare & Common unlimited;
+ * kartu Mythic TANPA batas pemilik (bisa dimiliki banyak orang).
  * Evo full manual: duplikat menumpuk (maks 999 copy); hanya Mythic unik per user.
  */
 
 const WAIFU_POOL = [
-    // ---- Mythic (10, stok 1) ----
+    // ---- Mythic (10, tanpa batas pemilik) ----
     { name: 'Sung Jinwoo', anime: 'Solo Leveling', tier: 'Mythic' },
     { name: 'Rimuru Tempest', anime: 'That Time I Got Reincarnated as a Slime', tier: 'Mythic' },
     { name: 'Anos Voldigoad', anime: 'The Misfit of Demon King Academy', tier: 'Mythic' },

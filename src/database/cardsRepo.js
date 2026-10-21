@@ -3,7 +3,8 @@
  * PURE HOKI: tanpa pity, tanpa jaminan — setiap pull roll rate murni.
  * Rate per pull (default, bisa diatur dashboard): Common 70% / Rare 25% /
  *   Epic 4.89% / Legendary 0.1% / Mythic 0.01%.
- * Stok global per kartu: Mythic 1 / Legendary 10 / Epic 50 / Rare & Common unlimited.
+ * Stok global per kartu: Legendary 10 / Epic 50 / Rare & Common unlimited.
+ *   Mythic TANPA batas pemilik (satu kartu Mythic bisa dimiliki banyak orang).
  * Stok habis -> otomatis turun ke rarity di bawahnya. Mythic unik per user
  *   (sudah punya -> cari kartu lain, tidak bisa duplikat).
  * EVO FULL MANUAL: duplikat TIDAK auto-naik-level — copy menumpuk via quantity
@@ -87,18 +88,17 @@ const RARITY_EMOJI = {
 
 const RARITY_ORDER = { Common: 0, Rare: 1, Epic: 2, Legendary: 3, Mythic: 4 };
 
-/** Stok global per kartu (jumlah pemilik). Infinity = unlimited. */
+/** Stok global per kartu (jumlah pemilik). Infinity = unlimited.
+ *  Mythic sengaja TANPA batas: satu kartu bisa dimiliki banyak orang. */
 const STOCK_LIMITS = {
     Common: Infinity,
     Rare: Infinity,
     Epic: 50,
     Legendary: 10,
-    Mythic: 1,
 };
 
 /** Stok default yang bisa diubah via dashboard (hanya tier terbatas). */
 const DEFAULT_STOCKS = {
-    Mythic: 1,
     Legendary: 10,
     Epic: 50,
 };
@@ -176,7 +176,7 @@ const GACHA_SETTINGS_KEYS = {
     COST: 'gacha_cost',
     DAILY_LIMIT: 'gacha_daily_limit',
     RATES: 'gacha_rates', // JSON {Common, Rare, Epic, Legendary, Mythic} bobot dinormalisasi
-    STOCKS: 'gacha_stocks', // JSON {Mythic, Legendary, Epic} stok per kartu
+    STOCKS: 'gacha_stocks', // JSON {Legendary, Epic} stok per kartu (Mythic tanpa batas)
     POOL: 'gacha_pool', // JSON array [{name, anime, tier}] pengganti WAIFU_POOL
     ART: 'gacha_art', // JSON object { namaLower: imageUrl } override art kartu
 };
