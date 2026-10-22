@@ -717,66 +717,82 @@ function recordKnowledgeGap(question) {
 // XP_PENDING hanya dihapus untuk delta yang sudah berhasil dikirim; update yang
 // masuk saat flush tetap tersimpan untuk putaran berikutnya.
 let xpFlushPromise = null;
+const userXpFlushLocks = new Map();
 
 // Flush delta XP SATU user. Dipakai oleh flush interval dan oleh pembelian
 // (.beli) supaya saldo cache yang belum masuk DB ikut tersinkron sebelum
 // debit atomik. Throw bila increment gagal; delta tetap di buffer.
-async function flushSingleUserXP(userId, pendingRaw) {
-    const delta = Number(pendingRaw) || 0;
-    const userStats = USER_STATS_CACHE[userId];
-
-    const res = await runtimeRepo.incrementUserXP(
-        userId,
-        userStats?.username || '',
-        delta,
-        calcLevelFromXP(Math.max(0, delta)),
-        userStats?.custom_title ?? null,
-    );
-
-    // Increment sudah sukses. Berapa pun hasil read-back, konsumsi delta
-    // snapshot agar retry tidak menggandakan XP.
-    let actualXp = Number(res?.rows?.[0]?.xp);
-    if (!Number.isFinite(actualXp)) {
-        try {
-            const q = await runtimeRepo.getUserStatsWithMemory(userId);
-            actualXp = Number(q.rows?.[0]?.xp) || 0;
-        } catch {
-            actualXp = Math.max(0, Number(userStats?.xp) || 0);
+async function flushSingleUserXP(userId, _pendingRaw) {
+    // Serialkan flush per user. Interval, .beli, dan shutdown bisa memanggil
+    // bersamaan; delta diambil saat giliran tiba (bukan snapshot lama) agar
+    // update yang sudah dikirim request lain tidak terkirim dua kali.
+    const previous = userXpFlushLocks.get(userId) || Promise.resolve();
+    const run = previous.catch(() => {}).then(async () => {
+        const delta = Number(XP_PENDING_UPDATES[userId]) || 0;
+        if (delta === 0) {
+            return { xp: Number(USER_STATS_CACHE[userId]?.xp) || 0, skipped: true };
         }
-    }
+        const userStats = USER_STATS_CACHE[userId];
 
-    const current = Number(XP_PENDING_UPDATES[userId]) || 0;
-    const remaining = current - delta;
-    if (Math.abs(remaining) < 1e-9) {
-        delete XP_PENDING_UPDATES[userId];
-    } else {
-        XP_PENDING_UPDATES[userId] = remaining;
-    }
+        const res = await runtimeRepo.incrementUserXP(
+            userId,
+            userStats?.username || '',
+            delta,
+            calcLevelFromXP(Math.max(0, delta)),
+            userStats?.custom_title ?? null,
+        );
 
-    // Cache = XP aktual di DB + delta baru yang belum di-flush. Ini juga
-    // menyerap top-up web yang mungkin terjadi saat bot sedang offline.
-    if (userStats) {
-        const pendingNow = Number(XP_PENDING_UPDATES[userId]) || 0;
-        userStats.xp = Math.max(0, actualXp + pendingNow);
-        userStats.level = calcLevelFromXP(userStats.xp);
-    }
+        // Increment sudah sukses. Berapa pun hasil read-back, konsumsi delta
+        // yang dikirim agar retry tidak menggandakan XP.
+        let actualXp = Number(res?.rows?.[0]?.xp);
+        if (!Number.isFinite(actualXp)) {
+            try {
+                const q = await runtimeRepo.getUserStatsWithMemory(userId);
+                actualXp = Number(q.rows?.[0]?.xp) || 0;
+            } catch {
+                actualXp = Math.max(0, Number(userStats?.xp) || 0);
+            }
+        }
 
-    try {
-        await runtimeRepo.setUserLevel(userId, calcLevelFromXP(actualXp));
-    } catch (e) {
-        console.warn(`[SYNC] Gagal update level ${userId}:`, e.message);
-    }
+        const current = Number(XP_PENDING_UPDATES[userId]) || 0;
+        const remaining = current - delta;
+        if (Math.abs(remaining) < 1e-9) {
+            delete XP_PENDING_UPDATES[userId];
+        } else {
+            XP_PENDING_UPDATES[userId] = remaining;
+        }
 
-    if (userStats && userStats.core_memory !== undefined) {
+        // Cache = XP aktual di DB + delta baru yang belum di-flush. Ini juga
+        // menyerap top-up web yang mungkin terjadi saat bot sedang offline.
+        if (userStats) {
+            const pendingNow = Number(XP_PENDING_UPDATES[userId]) || 0;
+            userStats.xp = Math.max(0, actualXp + pendingNow);
+            userStats.level = calcLevelFromXP(userStats.xp);
+        }
+
         try {
-            await runtimeRepo.batchWrite([
-                memoryRepo.buildUpsertBatch(userId, userStats.username || '', userStats.core_memory || ''),
-            ]);
+            await runtimeRepo.setUserLevel(userId, calcLevelFromXP(actualXp));
         } catch (e) {
-            console.warn(`[SYNC] Gagal sync memory ${userId}:`, e.message);
+            console.warn(`[SYNC] Gagal update level ${userId}:`, e.message);
         }
+
+        if (userStats && userStats.core_memory !== undefined) {
+            try {
+                await runtimeRepo.batchWrite([
+                    memoryRepo.buildUpsertBatch(userId, userStats.username || '', userStats.core_memory || ''),
+                ]);
+            } catch (e) {
+                console.warn(`[SYNC] Gagal sync memory ${userId}:`, e.message);
+            }
+        }
+        return { xp: actualXp };
+    });
+    userXpFlushLocks.set(userId, run);
+    try {
+        return await run;
+    } finally {
+        if (userXpFlushLocks.get(userId) === run) userXpFlushLocks.delete(userId);
     }
-    return { xp: actualXp };
 }
 
 // Flush pending XP satu user secara sinkron (ditunggu). Return { ok, flushed }.
