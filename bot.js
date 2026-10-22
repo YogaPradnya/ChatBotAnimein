@@ -72,7 +72,6 @@ const { createDisplayRepo } = require('./src/database/displayRepo');
 const { createProfilePrefRepo } = require('./src/database/profilePrefRepo');
 const { createBanRepo } = require('./src/database/banRepo');
 const { createQuizRepo } = require('./src/database/quizRepo');
-const { createQuizWeeklyRepo, QUIZ_WEEKLY_TABLE_SQL } = require('./src/database/quizWeeklyRepo');
 const { createReportRepo } = require('./src/database/reportRepo');
 const { createCacheRepo } = require('./src/database/cacheRepo');
 const { createChatRepo } = require('./src/database/chatRepo');
@@ -122,7 +121,6 @@ const profilePrefRepo = createProfilePrefRepo(db);
 let limitService;
 const banRepo = createBanRepo(db);
 const quizRepo = createQuizRepo(db);
-const weeklyRepo = createQuizWeeklyRepo(db);
 const reportRepo = createReportRepo(db);
 const cacheRepo = createCacheRepo(db);
 const chatRepo = createChatRepo(db);
@@ -137,7 +135,6 @@ commandRouter
     .register([
         COMMANDS.HINT,
         COMMANDS.KUIS,
-        COMMANDS.TURNAMEN,
         '.game',
         COMMANDS.PROFIL,
         COMMANDS.RANK,
@@ -310,9 +307,6 @@ async function initDB() {
             )
         `);
 
-        // Tabel turnamen kuis mingguan
-        await db.execute(QUIZ_WEEKLY_TABLE_SQL);
-
         // === MIGRASI: username PK -> user_id PK ===
         try {
             const schemaCheck = await db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='user_stats'");
@@ -452,7 +446,6 @@ async function initDB() {
         await db.execute(`CREATE INDEX IF NOT EXISTS idx_quiz_pool_title ON quiz_pool (title)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_quiz_pool_title' }));
         await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_user_type ON user_inventory (user_id, item_type)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_inventory_user_type' }));
         await db.execute(`CREATE INDEX IF NOT EXISTS idx_quiz_banned_username ON quiz_banned (username)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_quiz_banned_username' }));
-        await db.execute(`CREATE INDEX IF NOT EXISTS idx_quiz_weekly_week ON quiz_weekly (week_key)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_quiz_weekly_week' }));
         
         const filterValue = await settingsRepo.get(SETTINGS_KEYS.FILTER_DATA);
         if (filterValue) {
@@ -607,17 +600,27 @@ async function initDB() {
         const discPercentVal = await settingsRepo.get(SETTINGS_KEYS.DISCOUNT_PERCENT);
         if (discPercentVal !== null) global.discountPercent = parseInt(discPercentVal) || 50;
 
+        // Harga 0 valid (item gratis). Jangan pakai `|| default` karena akan
+        // mengubah 0 menjadi harga default saat bot restart.
+        const loadPrice = (raw, def) => {
+            const n = parseInt(raw, 10);
+            return Number.isFinite(n) && n >= 0 ? n : def;
+        };
+
         const prTitleVal = await settingsRepo.get(SETTINGS_KEYS.PRICE_CUSTOM_TITLE);
-        if (prTitleVal !== null) global.priceCustomTitle = parseInt(prTitleVal) || 6500;
+        if (prTitleVal !== null) global.priceCustomTitle = loadPrice(prTitleVal, 6500);
 
         const prHintVal = await settingsRepo.get(SETTINGS_KEYS.PRICE_HINT_PACK);
-        if (prHintVal !== null) global.priceHintPack = parseInt(prHintVal) || 1800;
+        if (prHintVal !== null) global.priceHintPack = loadPrice(prHintVal, 1800);
 
         const prImageVal = await settingsRepo.get(SETTINGS_KEYS.PRICE_EXTRA_IMAGE);
-        if (prImageVal !== null) global.priceExtraImage = parseInt(prImageVal) || 3000;
+        if (prImageVal !== null) global.priceExtraImage = loadPrice(prImageVal, 3000);
 
         const prLimitVal = await settingsRepo.get(SETTINGS_KEYS.PRICE_EXTRA_LIMIT);
-        if (prLimitVal !== null) global.priceExtraLimit = parseInt(prLimitVal) || 2500;
+        if (prLimitVal !== null) global.priceExtraLimit = loadPrice(prLimitVal, 2500);
+
+        const prRaraChatVal = await settingsRepo.get(SETTINGS_KEYS.PRICE_EXTRA_RARA_CHAT);
+        if (prRaraChatVal !== null) global.priceExtraRaraChat = loadPrice(prRaraChatVal, 3000);
 
         const aiTempVal = await settingsRepo.get('ai_temperature');
         if (aiTempVal !== null) global.AI_TEMPERATURE = parseFloat(aiTempVal) || 1.0;
@@ -715,6 +718,83 @@ function recordKnowledgeGap(question) {
 // masuk saat flush tetap tersimpan untuk putaran berikutnya.
 let xpFlushPromise = null;
 
+// Flush delta XP SATU user. Dipakai oleh flush interval dan oleh pembelian
+// (.beli) supaya saldo cache yang belum masuk DB ikut tersinkron sebelum
+// debit atomik. Throw bila increment gagal; delta tetap di buffer.
+async function flushSingleUserXP(userId, pendingRaw) {
+    const delta = Number(pendingRaw) || 0;
+    const userStats = USER_STATS_CACHE[userId];
+
+    const res = await runtimeRepo.incrementUserXP(
+        userId,
+        userStats?.username || '',
+        delta,
+        calcLevelFromXP(Math.max(0, delta)),
+        userStats?.custom_title ?? null,
+    );
+
+    // Increment sudah sukses. Berapa pun hasil read-back, konsumsi delta
+    // snapshot agar retry tidak menggandakan XP.
+    let actualXp = Number(res?.rows?.[0]?.xp);
+    if (!Number.isFinite(actualXp)) {
+        try {
+            const q = await runtimeRepo.getUserStatsWithMemory(userId);
+            actualXp = Number(q.rows?.[0]?.xp) || 0;
+        } catch {
+            actualXp = Math.max(0, Number(userStats?.xp) || 0);
+        }
+    }
+
+    const current = Number(XP_PENDING_UPDATES[userId]) || 0;
+    const remaining = current - delta;
+    if (Math.abs(remaining) < 1e-9) {
+        delete XP_PENDING_UPDATES[userId];
+    } else {
+        XP_PENDING_UPDATES[userId] = remaining;
+    }
+
+    // Cache = XP aktual di DB + delta baru yang belum di-flush. Ini juga
+    // menyerap top-up web yang mungkin terjadi saat bot sedang offline.
+    if (userStats) {
+        const pendingNow = Number(XP_PENDING_UPDATES[userId]) || 0;
+        userStats.xp = Math.max(0, actualXp + pendingNow);
+        userStats.level = calcLevelFromXP(userStats.xp);
+    }
+
+    try {
+        await runtimeRepo.setUserLevel(userId, calcLevelFromXP(actualXp));
+    } catch (e) {
+        console.warn(`[SYNC] Gagal update level ${userId}:`, e.message);
+    }
+
+    if (userStats && userStats.core_memory !== undefined) {
+        try {
+            await runtimeRepo.batchWrite([
+                memoryRepo.buildUpsertBatch(userId, userStats.username || '', userStats.core_memory || ''),
+            ]);
+        } catch (e) {
+            console.warn(`[SYNC] Gagal sync memory ${userId}:`, e.message);
+        }
+    }
+    return { xp: actualXp };
+}
+
+// Flush pending XP satu user secara sinkron (ditunggu). Return { ok, flushed }.
+// Dipakai sebelum debit pembelian agar XP yang masih di buffer ikut terpakai
+// dan tidak "hidup lagi" pada flush berikutnya.
+async function flushUserXP(userId) {
+    if (!Object.prototype.hasOwnProperty.call(XP_PENDING_UPDATES, userId)) {
+        return { ok: true, flushed: false };
+    }
+    try {
+        await flushSingleUserXP(userId, XP_PENDING_UPDATES[userId]);
+        return { ok: true, flushed: true };
+    } catch (e) {
+        console.error(`[SYNC] Gagal flush XP user ${userId}:`, e.message);
+        return { ok: false, flushed: false, error: e };
+    }
+}
+
 async function doFlushPendingXP(reason) {
     persistAccuracyCounters();
     const snapshot = Object.entries(XP_PENDING_UPDATES);
@@ -724,68 +804,14 @@ async function doFlushPendingXP(reason) {
     let okCount = 0;
     let failCount = 0;
     await Promise.all(snapshot.map(async ([userId, pendingRaw]) => {
-        const delta = Number(pendingRaw) || 0;
-        const userStats = USER_STATS_CACHE[userId];
-
-        let res;
         try {
-            res = await runtimeRepo.incrementUserXP(
-                userId,
-                userStats?.username || '',
-                delta,
-                calcLevelFromXP(Math.max(0, delta)),
-                userStats?.custom_title ?? null,
-            );
+            await flushSingleUserXP(userId, pendingRaw);
+            okCount++;
         } catch (e) {
             failCount++;
             console.error(`[SYNC] Gagal increment XP ${userId}:`, e.message);
-            return; // delta tetap di buffer -> dicoba lagi
+            // delta tetap di buffer -> dicoba lagi
         }
-
-        // Increment sudah sukses. Berapa pun hasil read-back, konsumsi delta
-        // snapshot agar retry tidak menggandakan XP.
-        let actualXp = Number(res?.rows?.[0]?.xp);
-        if (!Number.isFinite(actualXp)) {
-            try {
-                const q = await runtimeRepo.getUserStatsWithMemory(userId);
-                actualXp = Number(q.rows?.[0]?.xp) || 0;
-            } catch {
-                actualXp = Math.max(0, Number(userStats?.xp) || 0);
-            }
-        }
-
-        const current = Number(XP_PENDING_UPDATES[userId]) || 0;
-        const remaining = current - delta;
-        if (Math.abs(remaining) < 1e-9) {
-            delete XP_PENDING_UPDATES[userId];
-        } else {
-            XP_PENDING_UPDATES[userId] = remaining;
-        }
-
-        // Cache = XP aktual di DB + delta baru yang belum di-flush. Ini juga
-        // menyerap top-up web yang mungkin terjadi saat bot sedang offline.
-        if (userStats) {
-            const pendingNow = Number(XP_PENDING_UPDATES[userId]) || 0;
-            userStats.xp = Math.max(0, actualXp + pendingNow);
-            userStats.level = calcLevelFromXP(userStats.xp);
-        }
-
-        try {
-            await runtimeRepo.setUserLevel(userId, calcLevelFromXP(actualXp));
-        } catch (e) {
-            console.warn(`[SYNC] Gagal update level ${userId}:`, e.message);
-        }
-
-        if (userStats && userStats.core_memory !== undefined) {
-            try {
-                await runtimeRepo.batchWrite([
-                    memoryRepo.buildUpsertBatch(userId, userStats.username || '', userStats.core_memory || ''),
-                ]);
-            } catch (e) {
-                console.warn(`[SYNC] Gagal sync memory ${userId}:`, e.message);
-            }
-        }
-        okCount++;
     }));
 
     console.log(`[SYNC] XP flush selesai: ${okCount} sukses, ${failCount} gagal (${reason}).`);
@@ -818,7 +844,7 @@ if (xpFlushInterval.unref) xpFlushInterval.unref();
 async function updateUserMemory(userId, username, chatHistory) {
     return;
 }
-/** Hitung level berdasarkan total XP. Formula: level L butuh 50 * L^3 XP. */
+/** Hitung level berdasarkan total XP. Formula: level L butuh 20 * L^3 XP. */
 function calcLevelFromXP(xp) {
     let level = 1;
     while (xp >= Math.floor(20 * Math.pow(level, 3))) {
@@ -860,20 +886,27 @@ async function addXP(userId, username, amount) {
         const finalAmount = baseAmount * multiplier;
         
         const oldLevel = userStat.level;
-        userStat.xp = Math.max(0, userStat.xp + finalAmount);
+        // Penalti tidak boleh melebihi XP yang benar-benar ada di cache.
+        // Tanpa clamp, buffer bisa negatif dan "memakan" hadiah berikutnya
+        // saat flush (mis. -30 di XP 0 lalu menang +35 -> flush hanya +5).
+        const availableXp = Math.max(0, Number(userStat.xp) || 0);
+        const appliedAmount = finalAmount < 0
+            ? Math.max(finalAmount, -availableXp)
+            : finalAmount;
+        userStat.xp = Math.max(0, availableXp + appliedAmount);
         userStat.level = calcLevelFromXP(userStat.xp);
         
         const leveledUp = userStat.level > oldLevel;
 
         // 3. Buffer for DB Sync (Point 2)
-        XP_PENDING_UPDATES[userId] = (XP_PENDING_UPDATES[userId] || 0) + finalAmount;
+        XP_PENDING_UPDATES[userId] = (XP_PENDING_UPDATES[userId] || 0) + appliedAmount;
         
-        console.log(`[XP Buffer] ${username}(${userId}) +${finalAmount} -> Total: ${userStat.xp} (Lvl: ${userStat.level})`);
+        console.log(`[XP Buffer] ${username}(${userId}) ${appliedAmount >= 0 ? '+' : ''}${appliedAmount} -> Total: ${userStat.xp} (Lvl: ${userStat.level})`);
         
-        return { leveledUp, level: userStat.level, xp: userStat.xp, custom_title: userStat.custom_title };
+        return { leveledUp, level: userStat.level, xp: userStat.xp, earned: appliedAmount, custom_title: userStat.custom_title };
     } catch (e) {
         console.error("[GAMIFICATION] Add XP error:", e.message);
-        return { leveledUp: false, level: 1, xp: 0 };
+        return { leveledUp: false, level: 1, xp: 0, earned: 0 };
     }
 }
 
@@ -1150,6 +1183,7 @@ global.priceCustomTitle = 6500;
 global.priceHintPack = 1800;
 global.priceExtraImage = 3000;
 global.priceExtraLimit = 2500;
+global.priceExtraRaraChat = 3000;
 
 
 const stats = {
@@ -1352,7 +1386,7 @@ let SYSTEM_PROMPT = '';
 
 function readPromptFromFileFallback() {
     try {
-        const primaryPath = path.join(__dirname, 'public', 'Prompt_Karakter_Rara.txt');
+        const primaryPath = path.join(__dirname, 'src', 'prompts', 'Prompt_Karakter_Rara.txt');
         if (fs.existsSync(primaryPath)) {
             return fs.readFileSync(primaryPath, 'utf8');
         }
@@ -5003,6 +5037,7 @@ async function processOneMessage(bot, msg) {
             profilePrefRepo,
             buyItem,
             addXP,
+            flushUserXP,
             USER_STATS_CACHE,
             limitRepo,
             getJakartaDateKey,
@@ -5013,7 +5048,6 @@ async function processOneMessage(bot, msg) {
             clearQuizTimers,
             startQuiz,
             quizRepo,
-            weeklyRepo,
             trackQuizStat,
             trackStreak,
             levenshtein,
@@ -5459,6 +5493,8 @@ const runtimeState = {
     set priceExtraImage(value) { global.priceExtraImage = value; },
     get priceExtraLimit() { return global.priceExtraLimit; },
     set priceExtraLimit(value) { global.priceExtraLimit = value; },
+    get priceExtraRaraChat() { return global.priceExtraRaraChat; },
+    set priceExtraRaraChat(value) { global.priceExtraRaraChat = value; },
 };
 
 startDashboard({
@@ -5490,7 +5526,6 @@ startDashboard({
     settingsRepo,
     limitRepo,
     settingsKeys: SETTINGS_KEYS,
-    weeklyRepo,
     cardsRepo,
     displayRepo,
     login,

@@ -3,6 +3,37 @@ const assert = require('node:assert');
 const { createClient } = require('@libsql/client');
 const { createRuntimeRepo } = require('../../src/database/runtimeRepo');
 
+test('runtimeRepo.debitUserXP - guard saldo, tidak bisa overdraw', async () => {
+    const db = createClient({ url: ':memory:' });
+    await db.execute(`
+        CREATE TABLE user_stats (
+            user_id TEXT PRIMARY KEY,
+            username TEXT,
+            xp INTEGER DEFAULT 0,
+            level INTEGER DEFAULT 1,
+            custom_title TEXT DEFAULT NULL
+        )
+    `);
+    await db.execute({ sql: 'INSERT INTO user_stats (user_id, username, xp, level) VALUES (?, ?, ?, ?)', args: ['u1', 'Yogaa', 100, 1] });
+    const repo = createRuntimeRepo(db);
+
+    // Saldo kurang: tidak berubah, rows kosong.
+    let res = await repo.debitUserXP('u1', 101);
+    assert.equal(res.rows.length, 0);
+    let row = await db.execute({ sql: 'SELECT xp FROM user_stats WHERE user_id = ?', args: ['u1'] });
+    assert.equal(Number(row.rows[0].xp), 100);
+
+    // Dua debit 60 bersamaan: tepat satu yang berhasil.
+    const [a, b] = await Promise.all([
+        repo.debitUserXP('u1', 60),
+        repo.debitUserXP('u1', 60),
+    ]);
+    const success = [a, b].filter((r) => r.rows.length > 0);
+    assert.equal(success.length, 1);
+    row = await db.execute({ sql: 'SELECT xp FROM user_stats WHERE user_id = ?', args: ['u1'] });
+    assert.equal(Number(row.rows[0].xp), 40);
+});
+
 test('runtimeRepo.incrementUserXP - atomic, tidak menimpa top-up web', async () => {
     const db = createClient({ url: ':memory:' });
     await db.execute(`

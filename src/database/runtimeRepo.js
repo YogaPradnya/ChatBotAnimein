@@ -32,6 +32,17 @@ function createRuntimeRepo(db) {
             });
         },
 
+        // Potong XP secara atomik untuk pembelian. Guard `xp >= ?` membuat dua
+        // pembelian bersamaan tidak bisa membuat saldo minus. RETURNING xp
+        // memberi saldo final; rows kosong = saldo kurang / user belum ada.
+        debitUserXP(userId, amount) {
+            const price = Math.max(0, Math.floor(Number(amount) || 0));
+            return db.execute({
+                sql: 'UPDATE user_stats SET xp = xp - ? WHERE user_id = ? AND xp >= ? RETURNING xp',
+                args: [price, String(userId), price],
+            });
+        },
+
         setUserLevel(userId, level) {
             return db.execute({
                 sql: 'UPDATE user_stats SET level = ? WHERE user_id = ?',

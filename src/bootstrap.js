@@ -14,7 +14,6 @@ const { createDisplayRepo } = require('./database/displayRepo');
 const { createProfilePrefRepo } = require('./database/profilePrefRepo');
 const { createBanRepo } = require('./database/banRepo');
 const { createQuizRepo } = require('./database/quizRepo');
-const { createQuizWeeklyRepo, QUIZ_WEEKLY_TABLE_SQL } = require('./database/quizWeeklyRepo');
 const { createReportRepo } = require('./database/reportRepo');
 const { createCacheRepo } = require('./database/cacheRepo');
 const { createChatRepo } = require('./database/chatRepo');
@@ -58,7 +57,6 @@ function initializeBootstrap(options = {}) {
     const profilePrefRepo = createProfilePrefRepo(db);
     const banRepo = createBanRepo(db);
     const quizRepo = createQuizRepo(db);
-    const weeklyRepo = createQuizWeeklyRepo(db);
     const reportRepo = createReportRepo(db);
     const cacheRepo = createCacheRepo(db);
     const chatRepo = createChatRepo(db);
@@ -78,7 +76,6 @@ function initializeBootstrap(options = {}) {
         profilePrefRepo,
         banRepo,
         quizRepo,
-        weeklyRepo,
         reportRepo,
         cacheRepo,
         chatRepo,
@@ -181,9 +178,8 @@ function initializeBootstrap(options = {}) {
                 `);
                 await db.execute(`ALTER TABLE quiz_pool ADD COLUMN last_used_at INTEGER DEFAULT 0`).catch(e => ignoreExpectedError(e, { scope: 'DB MIGRATION', detail: 'quiz_pool.last_used_at' }));
 
-                // Tabel turnamen kuis mingguan
-                await db.execute(QUIZ_WEEKLY_TABLE_SQL);
-                await db.execute(`CREATE INDEX IF NOT EXISTS idx_quiz_weekly_week ON quiz_weekly (week_key)`).catch(e => ignoreExpectedError(e, { scope: 'DB INDEX', detail: 'idx_quiz_weekly_week' }));
+                // Tabel turnamen kuis mingguan sudah dihapus (fitur dihentikan).
+                // Tabel quiz_weekly lama dibiarkan di DB agar tidak destruktif.
 
                 await initShopTables(shopRepo);
 

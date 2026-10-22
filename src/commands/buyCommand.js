@@ -14,6 +14,8 @@ async function execute(ctx) {
         userRepo,
         buyItem,
         addXP,
+        flushUserXP,
+        runtimeRepo,
         USER_STATS_CACHE,
         limitRepo,
         getJakartaDateKey,
@@ -57,33 +59,87 @@ async function execute(ctx) {
             return true;
         }
 
+        // Sinkronkan delta XP yang masih di buffer dulu, lalu baca saldo DB.
+        // Ini menghindari cache basi (top-up web) dan XP pending yang belum masuk.
+        if (typeof flushUserXP === 'function') {
+            const flushed = await flushUserXP(senderUserId);
+            if (!flushed.ok) {
+                await sendChatMessage(bot, `@${senderName} Gagal menyinkronkan XP. Coba lagi sebentar.`, msg.id);
+                return true;
+            }
+        }
         const xpRes = await userRepo.getUserXP(senderUserId);
-        const dbXP = xpRes.rows.length > 0 ? Number(xpRes.rows[0].xp) : 0;
-        const cachedXP = USER_STATS_CACHE[senderUserId]?.xp;
-        const currentXP = Number.isFinite(Number(cachedXP)) ? Number(cachedXP) : dbXP;
-        const result = await buyItem(shopRepo, senderUserId, senderName, itemId, currentXP, { titleName, quantity: buyQuantity });
+        const currentXP = xpRes.rows.length > 0 ? Math.max(0, Number(xpRes.rows[0].xp) || 0) : 0;
+
+        const calcLevel = (xp) => {
+            let lv = 1;
+            while (xp >= Math.floor(20 * Math.pow(lv, 3))) lv++;
+            return lv;
+        };
+
+        const syncCache = (xp) => {
+            if (USER_STATS_CACHE[senderUserId]) {
+                USER_STATS_CACHE[senderUserId].xp = xp;
+                USER_STATS_CACHE[senderUserId].level = calcLevel(xp);
+            }
+        };
+
+        const result = await buyItem(shopRepo, senderUserId, senderName, itemId, currentXP, {
+            titleName,
+            quantity: buyQuantity,
+            // Debit SEBELUM item diberikan. Flush delta pending user dulu agar
+            // XP yang masih di buffer ikut terpakai dan tidak muncul lagi nanti.
+            onBeforeGrant: async (price) => {
+                if (typeof flushUserXP === 'function') {
+                    const flushed = await flushUserXP(senderUserId);
+                    if (!flushed.ok) {
+                        return { success: false, message: 'Gagal menyinkronkan XP. Coba lagi sebentar.' };
+                    }
+                }
+                if (price <= 0) {
+                    syncCache(currentXP);
+                    return { success: true, xpAfter: currentXP, levelAfter: calcLevel(currentXP) };
+                }
+                let debit;
+                try {
+                    debit = await runtimeRepo.debitUserXP(senderUserId, price);
+                } catch (e) {
+                    console.error('[SHOP] Debit XP gagal:', e.message);
+                    return { success: false, message: 'Gagal memotong XP. Coba lagi.' };
+                }
+                if (!debit.rows || debit.rows.length === 0) {
+                    // Saldo akhir di DB bisa berbeda dari cache (mis. top-up web).
+                    const fresh = await userRepo.getUserXP(senderUserId).catch(() => null);
+                    const freshXp = fresh?.rows?.length ? Number(fresh.rows[0].xp) : 0;
+                    syncCache(freshXp);
+                    return {
+                        success: false,
+                        message: `XP kamu tidak cukup. Butuh ${price.toLocaleString('id-ID')} XP, kamu punya ${freshXp.toLocaleString('id-ID')} XP.`,
+                    };
+                }
+                const xpAfter = Math.max(0, Number(debit.rows[0].xp) || 0);
+                const levelAfter = calcLevel(xpAfter);
+                try { await runtimeRepo.setUserLevel(senderUserId, levelAfter); } catch (_) {}
+                syncCache(xpAfter);
+                return { success: true, xpAfter, levelAfter };
+            },
+            // Grant gagal setelah debit -> kembalikan XP secara atomik.
+            onRefund: async (price) => {
+                const res = await runtimeRepo.incrementUserXP(
+                    senderUserId,
+                    senderName,
+                    price,
+                    calcLevel(price),
+                    USER_STATS_CACHE[senderUserId]?.custom_title ?? null,
+                );
+                const xpAfter = Math.max(0, Number(res?.rows?.[0]?.xp) || 0);
+                const levelAfter = calcLevel(xpAfter);
+                try { await runtimeRepo.setUserLevel(senderUserId, levelAfter); } catch (_) {}
+                syncCache(xpAfter);
+            },
+        });
 
         if (result.success) {
-            const nextXP = Math.max(0, currentXP - result.xpDeducted);
-
-            // Hitung ulang level berdasarkan XP baru (bisa turun)
-            const calcLevel = (xp) => {
-                let lv = 1;
-                while (xp >= Math.floor(20 * Math.pow(lv, 3))) lv++;
-                return lv;
-            };
-            const nextLevel = calcLevel(nextXP);
-
-            await userRepo.setUserXP(senderUserId, senderName, nextXP, nextLevel);
-
-            if (USER_STATS_CACHE[senderUserId]) {
-                USER_STATS_CACHE[senderUserId].xp = nextXP;
-                USER_STATS_CACHE[senderUserId].level = nextLevel;
-            }
-            if (ctx.XP_PENDING_UPDATES) {
-                delete ctx.XP_PENDING_UPDATES[senderUserId];
-            }
-
             if (itemId === 1 && USER_STATS_CACHE[senderUserId]) {
                 USER_STATS_CACHE[senderUserId].custom_title = titleName;
             }

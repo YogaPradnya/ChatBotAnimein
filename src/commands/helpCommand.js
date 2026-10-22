@@ -17,13 +17,11 @@ async function execute(ctx) {
     let helpMsg = '';
 
     if (helpArg === 'kuis') {
-        helpMsg = wrapInBox('𝗞𝗨𝗜𝗦', 'Kuis otomatis setiap 3 jam.\n\nCommand:\n• .tebak [jawab]\n• .hint (minta clue)\n• .kuis (waktu kuis)\n• .kuis [mudah|sedang|sulit] (mulai + XP x1|x1.5|x2)\n• .turnamen (papan peringkat mingguan)\n\nHadiah:\n• +500 XP (maks, x multiplier level)\n• Hint: -40 XP\n• Salah: -20 XP');
-    } else if (helpArg === 'turnamen') {
-        helpMsg = wrapInBox('TURNAMEN', 'Papan peringkat kuis mingguan (reset tiap Senin).\n\nCommand:\n• .turnamen\n\nTampilan:\n• Top 10 minggu berjalan\n• Juara minggu lalu\n• Total partisipasi');
+        helpMsg = wrapInBox('𝗞𝗨𝗜𝗦', 'Kuis otomatis setiap 3 jam.\n\nCommand:\n• .tebak [jawab]\n• .hint (minta clue)\n• .kuis (waktu kuis)\n• .kuis [mudah|sedang|sulit] (mulai + XP x1|x1.5|x2)\n\nHadiah:\n• +500 XP (maks, x multiplier level)\n• Hint: -1..5 XP (gratis dengan item free_hint)\n• Salah: -3 XP');
     } else if (helpArg === 'gambar') {
-        helpMsg = wrapInBox('𝗚𝗔𝗠𝗕𝗔𝗥', 'Cari gambar dari Pinterest ke chat.\n\nCommand:\n• .gambar [keyword]\n\nLimit: 3 gambar/hari\nBonus: +5 XP/gambar\n\nInfo: Beli limit di .toko (item 3).');
+        helpMsg = wrapInBox('𝗚𝗔𝗠𝗕𝗔𝗥', 'Cari gambar dari Pinterest ke chat.\n\nCommand:\n• .gambar [keyword]\n\nLimit: 3 gambar/hari\n\nInfo: Beli limit di .toko (item 3).');
     } else if (helpArg === 'xp') {
-        helpMsg = wrapInBox('XP', 'XP didapat dari:\n• AI Chat   : +10 XP\n• AutoReply : +5 XP\n• Kuis      : +100-500\n• Gambar    : +500 XP\n• Cek Profil: +5 XP\n\nFormula Level:\nXP = 50 * Level^3');
+        helpMsg = wrapInBox('XP', 'XP didapat dari:\n• AI Chat   : +10 XP\n• AutoReply : +5 XP\n• Kuis      : +100-500\n• Cek Profil: +5 XP\n\nFormula Level:\nXP = 20 * Level^3');
     } else if (helpArg === 'shop' || helpArg === 'toko') {
         helpMsg = wrapInBox('TOKO', 'Toko item Rara.\n\nCommand:\n• .toko - List item\n• .beli [nomor]\n• .beli 1 [gelar]\n\nNote: Pembelian memotong XP kamu.');
     } else if (helpArg === 'kombo' || helpArg === 'combo') {
@@ -93,7 +91,7 @@ async function execute(ctx) {
         helpMsg = [
             `┌── ${boxHeader('HELP TOPIC')}`,
             `│ Ketik .help [topik]. Daftar topik:`,
-            `│ rekomendasi, waifu, link, data, kuis, turnamen, gambar, gambarkan, xp, shop, kombo, profil, cek, rank, streak, level, ai, jadwal, hot, baru, random, populer, cari, genre, tas, limit, ban, gacha, koleksi, pajang, battle, pair, web`,
+            `│ rekomendasi, waifu, link, data, kuis, gambar, gambarkan, xp, shop, kombo, profil, cek, rank, streak, level, ai, jadwal, hot, baru, random, populer, cari, genre, tas, limit, ban, gacha, koleksi, pajang, battle, pair, web`,
             `└───────────────────`,
         ].join('\n');
     }

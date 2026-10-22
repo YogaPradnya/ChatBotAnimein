@@ -13,7 +13,6 @@ const { getCloudflareStat } = require('./services/cloudflareAiService');
 const { getCerebrasStat } = require('./services/cerebrasAiService');
 const { getNvidiaStat } = require('./services/nvidiaAiService');
 const { getJakartaDateKey } = require('./utils');
-const { getWeekKey, getPrevWeekKey } = require('./database/quizWeeklyRepo');
 
 const SESSION_TTL_MS = SESSION.TTL_MS; // 24 jam
 const SESSIONS = new Map();
@@ -80,11 +79,25 @@ function checkWebLoginRateLimit(key, max) {
 }
 
 function getRequestIp(req) {
-    const forwarded = req.headers?.['x-forwarded-for'];
-    if (typeof forwarded === 'string' && forwarded.trim()) {
-        return forwarded.split(',')[0].trim();
-    }
+    // Gunakan req.ip dari Express. Nilainya hanya mempercayai X-Forwarded-For
+    // sesuai `trust proxy` (lihat app.set di startDashboard), sehingga client
+    // tidak bisa memalsukan IP untuk melewati rate limit.
     return req.ip || req.socket?.remoteAddress || 'unknown';
+}
+
+function getCookie(req, name) {
+    const cookies = String(req.headers?.cookie || '');
+    const prefix = `${name}=`;
+    for (const part of cookies.split(';')) {
+        const trimmed = part.trim();
+        if (!trimmed.startsWith(prefix)) continue;
+        try {
+            return decodeURIComponent(trimmed.slice(prefix.length));
+        } catch {
+            return trimmed.slice(prefix.length);
+        }
+    }
+    return '';
 }
 
 function hashLoginIdentifier(value) {
@@ -98,6 +111,14 @@ function safeCompare(a, b) {
     return crypto.timingSafeEqual(bufA, bufB);
 }
 
+function toIntInRange(value, min, max) {
+    if (value === undefined || value === null || value === '') return null;
+    const num = Number(value);
+    if (!Number.isFinite(num)) return null;
+    const int = Math.trunc(num);
+    return int >= min && int <= max ? int : null;
+}
+
 function safeError(res, e, status = 500) {
     try {
         console.error('[DASHBOARD ERROR]', e && e.message ? e.message : e);
@@ -107,14 +128,28 @@ function safeError(res, e, status = 500) {
 
 function isAllowedApiOrigin(req) {
     const origin = req.headers.origin || req.headers.referer;
-    if (!origin) return true; // same-origin form/curl tanpa Origin tetap lolos
+    if (!origin) return true; // same-origin fetch/curl tanpa Origin tetap lolos
+    const value = String(origin);
+    if (value === 'null') return false;
     try {
-        const originUrl = new URL(origin);
+        const originUrl = new URL(value);
         const host = String(req.headers.host || '').toLowerCase();
         return originUrl.host.toLowerCase() === host;
     } catch (_) {
-        return true;
+        return false;
     }
+}
+
+// Double-submit CSRF: cookie yang bisa dibaca JS + header X-CSRF-Token.
+// Token juga disimpan di session supaya cookie yang ditanam dari subdomain
+// lain tidak otomatis dianggap sah.
+function isValidCsrf(req, session) {
+    const header = String(req.headers['x-csrf-token'] || '');
+    const cookie = getCookie(req, 'dashboard_csrf');
+    const expected = String(session?.csrfToken || '');
+    return Boolean(header && cookie && expected)
+        && safeCompare(header, cookie)
+        && safeCompare(header, expected);
 }
 
 // Cleanup expired sessions dan rate limits setiap 10 menit
@@ -217,8 +252,13 @@ function startDashboard(scope) {
 
     // Eksplisit: referensi stabil di-destructure; state reaktif diakses via
     // `runtime.` agar tetap live (getter/setter), setara semantik `with(runtime)`.
-    const { projectRoot, state, CONFIG, db, bots, stats, cache, ANIMEIN_HEADERS, USER_STATS_CACHE, XP_PENDING_UPDATES, bannedUsers, sendChatMessage, sendChatWithImage, addActivity, startQuiz, resetAutoQuizTimer, fetchHomeAnime, clearQuizTimers, flushPendingXP, getImageLimitStatus, reportRepo, cacheRepo, settingsRepo, limitRepo, settingsKeys, login, logEmitter, weeklyRepo, cardsRepo, displayRepo } = runtime;
+    const { projectRoot, state, CONFIG, db, bots, stats, cache, ANIMEIN_HEADERS, USER_STATS_CACHE, XP_PENDING_UPDATES, bannedUsers, sendChatMessage, sendChatWithImage, addActivity, startQuiz, resetAutoQuizTimer, fetchHomeAnime, clearQuizTimers, flushPendingXP, getImageLimitStatus, reportRepo, cacheRepo, settingsRepo, limitRepo, settingsKeys, login, logEmitter, cardsRepo, displayRepo } = runtime;
     const app = express();
+
+    // Jangan percaya X-Forwarded-For secara default: saat diakses langsung,
+    // client bisa memalsukan IP untuk melewati rate limit. Set TRUST_PROXY=1
+    // hanya bila dashboard memang berada di belakang reverse proxy tepercaya.
+    app.set('trust proxy', process.env.TRUST_PROXY === '1' ? 1 : false);
 
     if (helmet) {
         app.use(helmet({
@@ -239,21 +279,41 @@ function startDashboard(scope) {
         }));
     }
 
-    app.use(express.json({
-        limit: '8mb',
-        // Simpan raw body hanya untuk endpoint login web (HMAC),
-        // agar request JSON besar lain tidak menahan salinan ekstra.
+    // Batas body kecil: dashboard hanya mengirim JSON konfigurasi. Endpoint
+    // login web butuh raw body, jadi hanya request itu yang disalin.
+    // Upload kartu pajangan butuh ~4MB base64 (gambar maks 3MB), jadi khusus
+    // path itu limit-nya lebih besar.
+    const jsonParserSmall = express.json({
+        limit: '1mb',
         verify: (req, _res, buf) => {
             if (req.path === '/internal/auth/animein') req.rawBody = buf;
         },
-    }));
-    app.use(express.urlencoded({ extended: true, limit: '8mb' }));
-    // Block akses publik ke file prompt karakter
+    });
+    const jsonParserUpload = express.json({ limit: '6mb' });
+    app.use((req, res, next) => {
+        if (req.path === '/api/display/upload') return jsonParserUpload(req, res, next);
+        return jsonParserSmall(req, res, next);
+    });
+    app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+    // Error parser (payload terlalu besar / JSON rusak) -> JSON, bukan HTML.
+    app.use((err, req, res, next) => {
+        if (!err) return next();
+        if (err.type === 'entity.too.large' || err.status === 413) {
+            return res.status(413).json({ success: false, message: 'Payload terlalu besar.' });
+        }
+        if (err instanceof SyntaxError && Object.prototype.hasOwnProperty.call(err, 'body')) {
+            return res.status(400).json({ success: false, message: 'JSON tidak valid.' });
+        }
+        return next(err);
+    });
+    // Block akses publik ke file prompt karakter (file sudah dipindah ke
+    // src/prompts, route ini hanya pertahanan berlapis).
     app.get('/Prompt_Karakter_Rara.txt', (req, res) => res.status(404).send('Not found'));
     app.use(express.static(path.join(projectRoot, 'public')));
-    // Pengecekan Origin/Referer sederhana untuk POST /api/* (tolak cross-origin)
+    // Tolak cross-origin untuk semua request yang mengubah data.
     app.use((req, res, next) => {
-        if (req.method === 'POST' && req.path.startsWith('/api/')) {
+        const method = String(req.method || '').toUpperCase();
+        if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
             if (!isAllowedApiOrigin(req)) {
                 return res.status(403).json({ success: false, message: 'Forbidden origin' });
             }
@@ -289,6 +349,12 @@ function startDashboard(scope) {
             }
             return res.status(503).json({ ok: false, code: 'NOT_CONFIGURED' });
         }
+        // Batasi percobaan per IP SEBELUM verifikasi HMAC, supaya signature
+        // acak tidak bisa dibanjirkan tanpa batas.
+        const ip = getRequestIp(req);
+        if (!checkWebLoginRateLimit(`ip:${ip}`, WEB_LOGIN_RATE_MAX_PER_IP)) {
+            return res.status(429).json({ ok: false, code: 'RATE_LIMITED' });
+        }
         if (!verifyWebLoginRequest(req, secret)) {
             return res.status(401).json({ ok: false, code: 'UNAUTHORIZED' });
         }
@@ -300,10 +366,8 @@ function startDashboard(scope) {
                 return res.status(400).json({ ok: false, code: 'INVALID_REQUEST' });
             }
 
-            const ip = getRequestIp(req);
-            const ipAllowed = checkWebLoginRateLimit(`ip:${ip}`, WEB_LOGIN_RATE_MAX_PER_IP);
             const userAllowed = checkWebLoginRateLimit(`user:${hashLoginIdentifier(username)}`, WEB_LOGIN_RATE_MAX_PER_USER);
-            if (!ipAllowed || !userAllowed) {
+            if (!userAllowed) {
                 return res.status(429).json({ ok: false, code: 'RATE_LIMITED' });
             }
 
@@ -332,14 +396,24 @@ function startDashboard(scope) {
         }
     });
 
+    function readSession(req) {
+        const token = getCookie(req, 'dashboard_session');
+        if (!token || !isSessionValid(token)) return { token: '', session: null };
+        return { token, session: SESSIONS.get(token) || null };
+    }
+
     function checkAuth(req, res, next) {
-        if (req.path === '/login' || req.path === '/logout') return next();
-        const cookies = req.headers.cookie || '';
-        const token = cookies.split(';').find(c => c.trim().startsWith('dashboard_session='))?.split('=')[1];
-        if (token && isSessionValid(token)) {
+        if (req.path === '/login') return next();
+        const { token, session } = readSession(req);
+        if (token && session) {
+            const method = String(req.method || '').toUpperCase();
+            const isWrite = method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS';
+            if (isWrite && !isValidCsrf(req, session)) {
+                return res.status(403).json({ success: false, message: 'CSRF token tidak valid. Muat ulang halaman.' });
+            }
             // Rate limiting untuk API endpoints
             if (req.path.startsWith('/api/')) {
-                const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+                const ip = getRequestIp(req);
                 if (!checkRateLimit(ip)) {
                     return res.status(429).json({ error: 'Too many requests. Coba lagi dalam 1 menit.' });
                 }
@@ -352,7 +426,7 @@ function startDashboard(scope) {
 
     app.get('/login', (req, res) => res.send(getLoginHTML()));
     app.post('/login', (req, res) => {
-        const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+        const ip = getRequestIp(req);
         if (!checkLoginRateLimit(ip)) {
             return res.status(429).send(getLoginHTML('Terlalu banyak percobaan. Coba lagi dalam 1 menit.'));
         }
@@ -361,14 +435,18 @@ function startDashboard(scope) {
         if (!expectedUser || !expectedPass) {
             return res.status(500).send(getLoginHTML('Login tidak tersedia saat ini.'));
         }
-        const { username, password } = req.body;
+        const { username = '', password = '' } = req.body || {};
         const userOk = safeCompare(username || '', expectedUser);
         const passOk = safeCompare(password || '', expectedPass);
         if (userOk && passOk) {
             const token = crypto.randomBytes(32).toString('hex');
-            SESSIONS.set(token, { createdAt: Date.now() });
+            const csrfToken = crypto.randomBytes(24).toString('hex');
+            SESSIONS.set(token, { createdAt: Date.now(), csrfToken });
             const secureCookie = process.env.NODE_ENV === 'production' ? '; Secure' : '';
-            res.setHeader('Set-Cookie', `dashboard_session=${token}; HttpOnly; Path=/; Max-Age=86400; SameSite=Lax${secureCookie}`);
+            res.setHeader('Set-Cookie', [
+                `dashboard_session=${token}; HttpOnly; Path=/; Max-Age=86400; SameSite=Lax${secureCookie}`,
+                `dashboard_csrf=${csrfToken}; Path=/; Max-Age=86400; SameSite=Lax${secureCookie}`,
+            ]);
             res.redirect('/');
         } else {
             res.send(getLoginHTML('Username atau Password salah!'));
@@ -376,14 +454,16 @@ function startDashboard(scope) {
     });
 
     function doLogout(req, res) {
-        const cookies = req.headers.cookie || '';
-        const token = cookies.split(';').find(c => c.trim().startsWith('dashboard_session='))?.split('=')[1];
+        const { token } = readSession(req);
         if (token) SESSIONS.delete(token);
-        res.setHeader('Set-Cookie', 'dashboard_session=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax');
+        const secureCookie = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+        res.setHeader('Set-Cookie', [
+            `dashboard_session=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax${secureCookie}`,
+            `dashboard_csrf=; Path=/; Max-Age=0; SameSite=Lax${secureCookie}`,
+        ]);
         res.redirect('/login');
     }
 
-    app.get('/logout', doLogout);
     app.post('/logout', doLogout);
 
     // Lindungi semua route setelah ini
@@ -406,9 +486,14 @@ function startDashboard(scope) {
         }
         if (blockWhenSystemOff(res, 'Event XP')) return;
 
-        runtime.XP_MULTIPLIER = parseInt(multiplier) || 2;
-        const durationMin = parseInt(minutes) || 60;
-        const durationMs = durationMin * 60 * 1000;
+        const multiplierValue = toIntInRange(multiplier, 2, 100);
+        const durationMin = toIntInRange(minutes, 1, 10080);
+        if ((multiplier !== undefined && multiplierValue === null) || (minutes !== undefined && durationMin === null)) {
+            return res.status(400).json({ success: false, message: 'Multiplier 2-100 dan durasi 1-10080 menit.' });
+        }
+        runtime.XP_MULTIPLIER = multiplierValue || 2;
+        const durationValue = durationMin || 60;
+        const durationMs = durationValue * 60 * 1000;
         runtime.doubleXPEndTime = Date.now() + durationMs;
 
         if (runtime.doubleXPTimeout) clearTimeout(runtime.doubleXPTimeout);
@@ -416,7 +501,7 @@ function startDashboard(scope) {
             stopDoubleXP();
         }, durationMs);
 
-        console.log(`[EVENT] XP x${runtime.XP_MULTIPLIER} ENABLED for ${durationMin} minutes. Ends at: ${new Date(runtime.doubleXPEndTime).toLocaleTimeString()}`);
+        console.log(`[EVENT] XP x${runtime.XP_MULTIPLIER} ENABLED for ${durationValue} minutes. Ends at: ${new Date(runtime.doubleXPEndTime).toLocaleTimeString()}`);
         
         const msg = [
             `╭━━ 🎊 *EVENT AKTIF* 🎊 ━━╮`,
@@ -425,7 +510,7 @@ function startDashboard(scope) {
             `┃ Semua kuis & interaksi memberikan`,
             `┃ hadiah XP *${runtime.XP_MULTIPLIER}x lipat*! 🔥`,
             `┣━━━━━━━━━━━━━━━━━━━┫`,
-            `┃ ⏳ Durasi : ${durationMin} menit`,
+            `┃ ⏳ Durasi : ${durationValue} menit`,
             `┃ ✨ Ayo kumpulin XP sebanyaknya!`,
             `╰━━━━━━━━━━━━━━━━━━━╯`
         ].join('\n');
@@ -669,21 +754,6 @@ function startDashboard(scope) {
             res.json({ success: true });
         } catch(e) {
             res.json({ success: false, message: e.message });
-        }
-    });
-
-    app.get('/api/quiz/weekly', async (req, res) => {
-        try {
-            const allowed = [10, 50, 100];
-            const rawLimit = parseInt(req.query.limit, 10) || 10;
-            const limit = allowed.includes(rawLimit) ? rawLimit : 10;
-            const weekKey = getWeekKey();
-            const prevKey = getPrevWeekKey();
-            const top = weeklyRepo ? await weeklyRepo.getLeaderboard(weekKey, limit) : [];
-            const winner = weeklyRepo ? await weeklyRepo.getTopUser(prevKey) : null;
-            res.json({ success: true, weekKey, top, prevWeek: { weekKey: prevKey, winner }, limit });
-        } catch (e) {
-            safeError(res, e);
         }
     });
 
@@ -1372,7 +1442,7 @@ function startDashboard(scope) {
                     priceHintPack: runtime.priceHintPack,
                     priceExtraImage: runtime.priceExtraImage,
                     priceExtraLimit: runtime.priceExtraLimit,
-                    priceExtraRaraChat: runtime.priceExtraRaraChat !== undefined ? priceExtraRaraChat : 3000
+                    priceExtraRaraChat: runtime.priceExtraRaraChat !== undefined ? runtime.priceExtraRaraChat : 3000
                 }
             });
         } catch (e) {
@@ -1382,30 +1452,27 @@ function startDashboard(scope) {
 
     app.post('/api/economy/save', async (req, res) => {
         const { baseXpRate: bx, priceCustomTitle: pct, priceHintPack: php, priceExtraImage: pei, priceExtraLimit: pel, priceExtraRaraChat: perc } = req.body || {};
+        const fields = [
+            ['baseXpRate', bx, 1, 1000, settingsKeys.BASE_XP_RATE],
+            ['priceCustomTitle', pct, 0, 1000000000, settingsKeys.PRICE_CUSTOM_TITLE],
+            ['priceHintPack', php, 0, 1000000000, settingsKeys.PRICE_HINT_PACK],
+            ['priceExtraImage', pei, 0, 1000000000, settingsKeys.PRICE_EXTRA_IMAGE],
+            ['priceExtraLimit', pel, 0, 1000000000, settingsKeys.PRICE_EXTRA_LIMIT],
+            ['priceExtraRaraChat', perc, 0, 1000000000, settingsKeys.PRICE_EXTRA_RARA_CHAT],
+        ];
+        const parsed = [];
+        for (const [name, raw, min, max, key] of fields) {
+            if (raw === undefined) continue;
+            const value = toIntInRange(raw, min, max);
+            if (value === null) {
+                return res.status(400).json({ success: false, message: `${name} harus angka ${min}-${max}.` });
+            }
+            parsed.push([name, value, key]);
+        }
         try {
-            if (bx !== undefined) {
-                runtime.baseXpRate = parseInt(bx, 10);
-                await settingsRepo.set(settingsKeys.BASE_XP_RATE, runtime.baseXpRate);
-            }
-            if (pct !== undefined) {
-                runtime.priceCustomTitle = parseInt(pct, 10);
-                await settingsRepo.set(settingsKeys.PRICE_CUSTOM_TITLE, runtime.priceCustomTitle);
-            }
-            if (php !== undefined) {
-                runtime.priceHintPack = parseInt(php, 10);
-                await settingsRepo.set(settingsKeys.PRICE_HINT_PACK, runtime.priceHintPack);
-            }
-            if (pei !== undefined) {
-                runtime.priceExtraImage = parseInt(pei, 10);
-                await settingsRepo.set(settingsKeys.PRICE_EXTRA_IMAGE, runtime.priceExtraImage);
-            }
-            if (pel !== undefined) {
-                runtime.priceExtraLimit = parseInt(pel, 10);
-                await settingsRepo.set(settingsKeys.PRICE_EXTRA_LIMIT, runtime.priceExtraLimit);
-            }
-            if (perc !== undefined) {
-                runtime.priceExtraRaraChat = parseInt(perc, 10);
-                await settingsRepo.set('price_extra_rara_chat', runtime.priceExtraRaraChat);
+            for (const [name, value, key] of parsed) {
+                runtime[name] = value;
+                await settingsRepo.set(key, value);
             }
 
             console.log(`[DASHBOARD] Economy settings updated -> Base XP: ${runtime.baseXpRate}%, CustomTitle: ${runtime.priceCustomTitle}, HintPack: ${runtime.priceHintPack}, ExtraImg: ${runtime.priceExtraImage}, ExtraLimit: ${runtime.priceExtraLimit}, ExtraRaraChat: ${runtime.priceExtraRaraChat}`);
@@ -1419,9 +1486,14 @@ function startDashboard(scope) {
         const { active, duration, multiplier } = req.body || {};
         try {
             if (active) {
-                runtime.XP_MULTIPLIER = parseInt(multiplier) || 2;
-                const durationMin = parseInt(duration) || 60;
-                const durationMs = durationMin * 60 * 1000;
+                const multiplierValue = toIntInRange(multiplier, 2, 100);
+                const durationMin = toIntInRange(duration, 1, 10080);
+                if ((multiplier !== undefined && multiplierValue === null) || (duration !== undefined && durationMin === null)) {
+                    return res.status(400).json({ success: false, message: 'Multiplier 2-100 dan durasi 1-10080 menit.' });
+                }
+                runtime.XP_MULTIPLIER = multiplierValue || 2;
+                const durationValue = durationMin || 60;
+                const durationMs = durationValue * 60 * 1000;
                 runtime.doubleXPEndTime = Date.now() + durationMs;
 
                 if (runtime.doubleXPTimeout) clearTimeout(runtime.doubleXPTimeout);
@@ -1429,7 +1501,7 @@ function startDashboard(scope) {
                     stopDoubleXP();
                 }, durationMs);
 
-                console.log(`[EVENT] XP x${runtime.XP_MULTIPLIER} ENABLED for ${durationMin} minutes.`);
+                console.log(`[EVENT] XP x${runtime.XP_MULTIPLIER} ENABLED for ${durationValue} minutes.`);
                 
                 const msg = [
                     `╭━━ 🎊 *EVENT AKTIF* 🎊 ━━╮`,
@@ -1438,7 +1510,7 @@ function startDashboard(scope) {
                     `┃ Semua kuis & interaksi memberikan`,
                     `┃ hadiah XP *${runtime.XP_MULTIPLIER}x lipat*! 🔥`,
                     `┣━━━━━━━━━━━━━━━━━━━┫`,
-                    `┃ ⏳ Durasi : ${durationMin} menit`,
+                    `┃ ⏳ Durasi : ${durationValue} menit`,
                     `┃ ✨ Ayo kumpulin XP sebanyaknya!`,
                     `╰━━━━━━━━━━━━━━━━━━━╯`
                 ].join('\n');
@@ -1456,10 +1528,15 @@ function startDashboard(scope) {
         const { active, percent, duration } = req.body || {};
         try {
             if (active) {
+                const percentValue = toIntInRange(percent, 1, 100);
+                const durationMin = toIntInRange(duration, 1, 10080);
+                if ((percent !== undefined && percentValue === null) || (duration !== undefined && durationMin === null)) {
+                    return res.status(400).json({ success: false, message: 'Diskon 1-100% dan durasi 1-10080 menit.' });
+                }
                 runtime.isDiscountEvent = true;
-                runtime.discountPercent = parseInt(percent) || 50;
-                const durationMin = parseInt(duration) || 60;
-                const durationMs = durationMin * 60 * 1000;
+                runtime.discountPercent = percentValue || 50;
+                const durationValue = durationMin || 60;
+                const durationMs = durationValue * 60 * 1000;
                 state.discountEndTime = Date.now() + durationMs;
 
                 if (state.discountTimeout) clearTimeout(state.discountTimeout);
@@ -1478,7 +1555,7 @@ function startDashboard(scope) {
                 await settingsRepo.set(settingsKeys.IS_DISCOUNT_EVENT, runtime.isDiscountEvent);
                 await settingsRepo.set(settingsKeys.DISCOUNT_PERCENT, runtime.discountPercent);
 
-                console.log(`[EVENT] Toko Rara Discount Event updated -> Active: ${runtime.isDiscountEvent}, Discount: ${runtime.discountPercent}%, Duration: ${durationMin}m`);
+                console.log(`[EVENT] Toko Rara Discount Event updated -> Active: ${runtime.isDiscountEvent}, Discount: ${runtime.discountPercent}%, Duration: ${durationValue}m`);
 
                 const msg = [
                     `╭━━ 🛒 *DISKON TOKO RARA* 🛒 `,
@@ -1487,7 +1564,7 @@ function startDashboard(scope) {
                     `┃ Seluruh item di Toko Rara diskon sebesar`,
                     `┃ *${runtime.discountPercent}%* dari harga normal! 🔥`,
                     `┣━━━━━━━━━━━━━━━━━━━┫`,
-                    `┃ ⏳ Durasi : ${durationMin} menit`,
+                    `┃ ⏳ Durasi : ${durationValue} menit`,
                     `┃ ✨ Ketik *.toko* untuk melihat harga baru!`,
                     `╰━━━━━━━━━━━━━━━━━━━╯`
                 ].join('\n');
@@ -2448,27 +2525,31 @@ function startDashboard(scope) {
             const result = await reportRepo.listReports(100);
             res.json({ success: true, laporan: result.rows });
         } catch (e) {
-            res.json({ success: false, error: 'Internal error' });
+            return safeError(res, e);
         }
     });
 
     app.post('/api/laporan/status', async (req, res) => {
-        const { id, status } = req.body;
+        const { id, status } = req.body || {};
+        if (!id || !['baru', 'diproses', 'selesai'].includes(String(status))) {
+            return res.status(400).json({ success: false, error: 'Data laporan tidak valid.' });
+        }
         try {
             await reportRepo.updateReportStatus(id, status);
             res.json({ success: true });
         } catch (e) {
-            res.json({ success: false, error: 'Internal error' });
+            return safeError(res, e);
         }
     });
 
     app.post('/api/laporan/delete', async (req, res) => {
-        const { id } = req.body;
+        const { id } = req.body || {};
+        if (!id) return res.status(400).json({ success: false, error: 'ID laporan wajib diisi.' });
         try {
             await reportRepo.deleteReport(id);
             res.json({ success: true });
         } catch (e) {
-            res.json({ success: false, error: 'Internal error' });
+            return safeError(res, e);
         }
     });
 
@@ -2477,7 +2558,7 @@ function startDashboard(scope) {
             await reportRepo.deleteAllReports();
             res.json({ success: true });
         } catch (e) {
-            res.json({ success: false, error: 'Internal error' });
+            return safeError(res, e);
         }
     });
 
@@ -2490,10 +2571,13 @@ function startDashboard(scope) {
 
     app.use((err, req, res, next) => {
         console.error('[DASHBOARD ERROR]', err.stack || err.message);
+        const status = Number(err.status || err.statusCode) >= 400 && Number(err.status || err.statusCode) < 600
+            ? Number(err.status || err.statusCode)
+            : 500;
         if (req.path.startsWith('/api/')) {
-            return res.status(500).json({ success: false, error: 'Internal error' });
+            return res.status(status).json({ success: false, error: status === 500 ? 'Internal error' : String(err.message || 'Request tidak valid.') });
         }
-        res.status(500).send(`<pre>Dashboard error: ${String(err.message).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))}</pre>`);
+        res.status(status).send(`<pre>Dashboard error: ${String(err.message).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))}</pre>`);
     });
 
     app.listen(CONFIG.DASHBOARD_PORT, () => {

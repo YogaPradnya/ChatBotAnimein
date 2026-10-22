@@ -95,11 +95,6 @@ async function fetchUserWaifuList(targetUsername, bot, CONFIG, recordPath, isAni
         }
 
         if (!targetId) {
-            // Gunakan ID bot auth jika pencarian persis tidak ketemu tetapi mencari diri sendiri
-            targetId = bot.auth ? bot.auth.userId : null;
-        }
-
-        if (!targetId) {
             return { error: `User @${cleanUsername} tidak ditemukan`, username: cleanUsername };
         }
 

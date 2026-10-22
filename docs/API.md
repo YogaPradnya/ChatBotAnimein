@@ -49,7 +49,6 @@ detik ditolak. Body JSON hanya `{ username, password }`.
 | POST | `/api/quiz/unban` | Unban kuis |
 | POST | `/api/quiz/refetch` | Refetch data kuis |
 | POST | `/api/quiz/stop` | Hentikan kuis aktif |
-| GET | `/api/quiz/weekly` | Top 10 turnamen mingguan + juara minggu lalu |
 
 ## Filter & auto-reply
 

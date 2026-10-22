@@ -754,7 +754,7 @@ function getDashboardHTML() {
         <i data-lucide="chevron-down" class="nav-chevron"></i>
       </button>
       <div class="nav-group-items">
-        <button class="nav-item" onclick="showPage('kuis', this); toggleSidebar(false)"><i data-lucide="trophy"></i><span>Kuis & Turnamen</span></button>
+        <button class="nav-item" onclick="showPage('kuis', this); toggleSidebar(false)"><i data-lucide="trophy"></i><span>Kuis</span></button>
         <button class="nav-item" onclick="showPage('gacha', this); toggleSidebar(false)"><i data-lucide="layers"></i><span>Gacha & Kartu</span></button>
         <button class="nav-item" onclick="showPage('display', this); toggleSidebar(false)"><i data-lucide="gift"></i><span>Kartu Pajangan</span></button>
         <button class="nav-item" onclick="showPage('webkartu', this); toggleSidebar(false)"><i data-lucide="book-open"></i><span>Web Kartu</span></button>
@@ -780,7 +780,7 @@ function getDashboardHTML() {
     <span id="statusLabel">OFFLINE</span>
   </div>
   <div class="nav-footer">
-    <button class="btn-logout" onclick="window.location.href='/logout'">Keluar / Logout</button>
+    <button class="btn-logout" onclick="doLogout()">Keluar / Logout</button>
   </div>
 </div>
 
@@ -1701,23 +1701,6 @@ function getDashboardHTML() {
             </div>
           </div>
 
-          <!-- Turnamen Mingguan Card -->
-          <div class="card" style="margin-bottom: 0;">
-            <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">🏆 Turnamen Mingguan <span id="weeklyTournamentKey" style="font-size:11px; background:var(--accent); color:#fff; padding:2px 8px; border-radius:10px; font-weight:600;"></span></div>
-            <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px; font-size:11px; color:var(--muted);">
-              <span>Tampilkan</span>
-              <select id="weeklyLimit" onchange="weeklyLimit=parseInt(this.value,10);loadWeeklyTournament()" style="padding:4px 8px; border-radius:8px; border:1px solid var(--border); font-size:11px;">
-                <option value="10">10</option>
-                <option value="50">50</option>
-                <option value="100">100</option>
-              </select>
-            </div>
-            <div id="weeklyChampion" style="font-size:12px; color:var(--muted); margin-bottom:12px;">Memuat juara minggu lalu...</div>
-            <div id="weeklyTournamentList" style="display:flex; flex-direction:column; gap:8px; max-height:320px; overflow-y:auto;">
-              <div style="color: var(--muted); font-size: 12px;">Memuat turnamen...</div>
-            </div>
-          </div>
-
           <div id="kuisPageCurrentCard" class="card" style="display:none; border: 1px solid var(--accent); background: var(--accent-light); margin-bottom: 10px;">
             <div class="card-title" style="color:var(--accent); border-bottom-color:rgba(249,115,22,0.1);">Kuis yang Sedang Berjalan</div>
             <div id="kuisPageContent"></div>
@@ -2237,6 +2220,30 @@ function getDashboardHTML() {
 <div id="toastContainer"></div>
 
 <script>
+  // CSRF double-submit: semua request non-GET wajib membawa header token.
+  (function() {
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = function(input, init) {
+      const opts = init ? Object.assign({}, init) : {};
+      const method = String(opts.method || (input && input.method) || 'GET').toUpperCase();
+      if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
+        const match = document.cookie.match(/(?:^|; )dashboard_csrf=([^;]+)/);
+        if (match) {
+          const headers = new Headers(opts.headers || {});
+          headers.set('X-CSRF-Token', decodeURIComponent(match[1]));
+          opts.headers = headers;
+        }
+      }
+      return nativeFetch(input, opts);
+    };
+  })();
+
+  function doLogout() {
+    fetch('/logout', { method: 'POST' }).finally(function() {
+      window.location.href = '/login';
+    });
+  }
+
   let stats = {};
   let isBotActive = false;
   let isSystemOff = false;
@@ -2455,7 +2462,7 @@ function getDashboardHTML() {
         parentGroup.classList.add('open');
       }
     }
-    const titles = { dashboard: 'Dashboard', model: 'Model AI', prompt: 'Prompt & Knowledge', gambar: 'Limit Manager', laporan: 'Laporan', banned: 'Blokir User', inspector: 'Cek & Setting Data User', filter: 'Filter Kata', kuis: 'Kuis & Turnamen', gacha: 'Gacha & Kartu', display: 'Kartu Pajangan', webkartu: 'Web Kartu', logs: 'Realtime Logs', 'api-traffic': 'API Monitor', ekonomi: 'Ekonomi & Toko' };
+    const titles = { dashboard: 'Dashboard', model: 'Model AI', prompt: 'Prompt & Knowledge', gambar: 'Limit Manager', laporan: 'Laporan', banned: 'Blokir User', inspector: 'Cek & Setting Data User', filter: 'Filter Kata', kuis: 'Kuis', gacha: 'Gacha & Kartu', display: 'Kartu Pajangan', webkartu: 'Web Kartu', logs: 'Realtime Logs', 'api-traffic': 'API Monitor', ekonomi: 'Ekonomi & Toko' };
     document.getElementById('pageTitle').textContent = titles[id] || id;
     if (id === 'dashboard') refresh();
     if (id === 'prompt') loadPrompt();
@@ -2463,7 +2470,7 @@ function getDashboardHTML() {
     if (id === 'filter') loadFilter();
     if (id === 'gambar') { loadGlobalLimits(); loadCommandLimits(); loadImageLimits(); loadRaraChatLimits(); }
     if (id === 'banned') loadBannedPage();
-    if (id === 'kuis') { loadTitles(); loadUsers(); loadQuizPool(); loadWeeklyTournament(); }
+    if (id === 'kuis') { loadTitles(); loadUsers(); loadQuizPool(); }
     if (id === 'gacha') { loadGachaStats(); loadGachaConfig(); loadGachaCards(); }
     if (id === 'display') { loadDisplayCards(1); }
     if (id === 'logs') renderRealtimeLogs();
@@ -2843,15 +2850,22 @@ async function updateStats() {
 
   let fullCache = [];
   async function loadCache() {
-    const res = await fetch('/api/cache/list');
-    const d = await res.json();
-    fullCache = d.data;
-    renderCache(fullCache);
+    try {
+      const res = await fetch('/api/cache/list');
+      const d = await res.json().catch(() => ({}));
+      fullCache = Array.isArray(d.data) ? d.data : [];
+      renderCache(fullCache);
+    } catch (e) {
+      console.error('[CACHE]', e);
+      fullCache = [];
+      renderCache(fullCache);
+    }
   }
   function renderCache(data) {
     const tbody = document.getElementById('cacheList');
     if (!tbody) return;
-    tbody.innerHTML = data.map(c => \`
+    const rows = Array.isArray(data) ? data : [];
+    tbody.innerHTML = rows.map(c => \`
       <tr>
         <td class="td-key">\${escapeHTML(c.question_key)}</td>
         <td><span class="kw-domain">\${escapeHTML(c.domain || 'general')}</span></td>
@@ -3236,10 +3250,26 @@ async function updateStats() {
     loadAutoReply();
   }
 
+  let fullLaporan = [];
   async function loadLaporan() {
-    const res = await fetch('/api/laporan');
-    const d = await res.json();
-    renderLaporan(d.laporan);
+    try {
+      const res = await fetch('/api/laporan');
+      const d = await res.json().catch(() => ({}));
+      fullLaporan = Array.isArray(d.laporan) ? d.laporan : [];
+    } catch (e) {
+      console.error('[LAPORAN]', e);
+      fullLaporan = [];
+    }
+    renderLaporan(fullLaporan);
+  }
+
+  function filterLaporanUI() {
+    const selected = document.getElementById('laporanFilter')?.value || '';
+    if (!selected) {
+      renderLaporan(fullLaporan);
+      return;
+    }
+    renderLaporan(fullLaporan.filter((l) => (l.status || 'baru') === selected));
   }
 
   function renderLaporan(data) {
@@ -3481,37 +3511,6 @@ async function updateStats() {
   function filterQuizPool() {
     quizPoolPage = 1;
     loadQuizPool();
-  }
-
-  let weeklyLimit = 10;
-
-  async function loadWeeklyTournament() {
-    const list = document.getElementById('weeklyTournamentList');
-    const champ = document.getElementById('weeklyChampion');
-    const keyEl = document.getElementById('weeklyTournamentKey');
-    if (!list) return;
-    try {
-      const res = await fetch('/api/quiz/weekly?limit=' + weeklyLimit);
-      const d = await res.json();
-      if (!d.success) return;
-      if (keyEl) keyEl.textContent = d.weekKey || '';
-      if (champ) {
-        const w = d.prevWeek && d.prevWeek.winner;
-        champ.textContent = w
-          ? 'Juara ' + (d.prevWeek.weekKey || '') + ': ' + (w.username || w.user_id) + ' (' + (w.wins || 0) + ' menang)'
-          : 'Belum ada juara minggu lalu.';
-      }
-      const top = d.top || [];
-      list.innerHTML = top.length === 0
-        ? '<div style="color:var(--muted); font-size:12px;">Belum ada peserta minggu ini.</div>'
-        : top.map((t, i) => {
-            const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1) + '.';
-            return '<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--bg); border-radius:8px; font-size:12px;">' +
-              '<span style="font-weight:700;">' + medal + ' ' + escapeHTML(t.username || t.user_id) + '</span>' +
-              '<span style="color:var(--muted);">' + (Number(t.wins) || 0) + ' menang &bull; ' + (Number(t.participations) || 0) + ' main</span>' +
-              '</div>';
-          }).join('');
-    } catch(e) { console.error(e); }
   }
 
   async function loadGachaStats() {
@@ -5313,12 +5312,12 @@ async function updateStats() {
         document.getElementById('ecoDiscountPercent').value = d.settings.discountPercent || 50;
         document.getElementById('ecoDiscountDuration').value = d.settings.discountDuration || 60;
         
-        document.getElementById('priceCustomTitle').value = d.settings.priceCustomTitle || 6500;
-        document.getElementById('priceHintPack').value = d.settings.priceHintPack || 1800;
-        document.getElementById('priceExtraImage').value = d.settings.priceExtraImage || 3000;
-        document.getElementById('priceExtraLimit').value = d.settings.priceExtraLimit || 2500;
+        document.getElementById('priceCustomTitle').value = d.settings.priceCustomTitle ?? 6500;
+        document.getElementById('priceHintPack').value = d.settings.priceHintPack ?? 1800;
+        document.getElementById('priceExtraImage').value = d.settings.priceExtraImage ?? 3000;
+        document.getElementById('priceExtraLimit').value = d.settings.priceExtraLimit ?? 2500;
         const raraPriceEl = document.getElementById('priceExtraRaraChat');
-        if (raraPriceEl) raraPriceEl.value = d.settings.priceExtraRaraChat || 3000;
+        if (raraPriceEl) raraPriceEl.value = d.settings.priceExtraRaraChat ?? 3000;
 
         const xpBtn = document.getElementById('ecoXpToggleBtn');
         if (d.settings.isDoubleXP) {
@@ -5350,7 +5349,7 @@ async function updateStats() {
       priceHintPack: parseInt(document.getElementById('priceHintPack').value),
       priceExtraImage: parseInt(document.getElementById('priceExtraImage').value),
       priceExtraLimit: parseInt(document.getElementById('priceExtraLimit').value),
-      priceExtraRaraChat: parseInt(document.getElementById('priceExtraRaraChat')?.value || 3000),
+      priceExtraRaraChat: parseInt(document.getElementById('priceExtraRaraChat')?.value),
     };
 
     if (Object.values(data).some(isNaN)) {

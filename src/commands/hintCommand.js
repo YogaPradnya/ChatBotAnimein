@@ -37,7 +37,9 @@ async function execute(ctx) {
                 console.log(`[SHOP] ${senderName} menggunakan free hint (sisa: ${freeHints - 1})`);
             } else {
                 penalty = Math.floor(Math.random() * 5) + 1;
-                await addXP(senderUserId, senderName, -penalty);
+                const penaltyRes = await addXP(senderUserId, senderName, -penalty);
+                // XP tidak bisa minus: tampilkan potongan aktual, bukan nominal.
+                penalty = Math.abs(Number(penaltyRes?.earned) || 0);
             }
             activeQuiz.hintsRevealed++;
             trackQuizStat(senderUserId, senderName, 'total_hints_used');

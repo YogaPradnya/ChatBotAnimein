@@ -23,7 +23,7 @@ async function execute(ctx) {
         `│ .profil, .cek, .rank, .limit, .data, .lapor, .daftar`,
         `│`,
         `│ Kuis:`,
-        `│ .tebak, .hint, .kuis, .turnamen`,
+        `│ .tebak, .hint, .kuis`,
         `│`,
         `│ Kartu:`,
         `│ .gacha (web) | .gacha rate | .koleksi, .pajang, .battle`,

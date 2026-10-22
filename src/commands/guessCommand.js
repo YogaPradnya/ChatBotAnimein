@@ -80,13 +80,12 @@ async function execute(ctx) {
             const xpEarned = Math.round(Math.max(100, baseXP - penaltyHint - penaltyWrong) * diffMult);
 
             const xpRes = await addXP(senderUserId, senderName, xpEarned);
-            const finalDisplayXP = (XP_MULTIPLIER > 1 && xpEarned > 0) ? xpEarned * XP_MULTIPLIER : xpEarned;
+            // Tampilkan XP yang BENAR-BENAR masuk (baseXpRate + multiplier),
+            // bukan hitungan mentah command.
+            const finalDisplayXP = Number.isFinite(Number(xpRes.earned))
+                ? Math.max(0, Number(xpRes.earned))
+                : xpEarned;
             trackQuizStat(senderUserId, senderName, 'wins');
-            if (ctx.weeklyRepo && typeof ctx.weeklyRepo.recordResult === 'function') {
-                ctx.weeklyRepo.recordResult(senderUserId, senderName, true).catch((e) => {
-                    console.warn('[WEEKLY] Gagal catat menang:', e.message);
-                });
-            }
 
             const dn = senderName.substring(0, 10);
             const xpMul = XP_MULTIPLIER > 1 ? `(x${XP_MULTIPLIER})` : '';
@@ -113,13 +112,10 @@ async function execute(ctx) {
         } else {
             activeQuiz.wrongGuessCount = (activeQuiz.wrongGuessCount || 0) + 1;
             activeQuiz.wrongGuessers.add(senderName);
-            if (ctx.weeklyRepo && typeof ctx.weeklyRepo.recordResult === 'function') {
-                ctx.weeklyRepo.recordResult(senderUserId, senderName, false).catch((e) => {
-                    console.warn('[WEEKLY] Gagal catat kalah:', e.message);
-                });
-            }
-            await sendChatMessage(bot, `❌ @${senderName.substring(0, 10)} Salah!\n-3 XP | ${activeQuiz.original.length} char`, msg.id);
-            await addXP(senderUserId, senderName, -3);
+            const penaltyRes = await addXP(senderUserId, senderName, -3);
+            // Tampilkan potongan yang benar-benar terjadi (XP tidak bisa minus).
+            const shownPenalty = Math.abs(Number(penaltyRes?.earned) || 0);
+            await sendChatMessage(bot, `❌ @${senderName.substring(0, 10)} Salah!\n-${shownPenalty} XP | ${activeQuiz.original.length} char`, msg.id);
         }
     } finally {
         activeQuiz.isProcessingAnswer = false;

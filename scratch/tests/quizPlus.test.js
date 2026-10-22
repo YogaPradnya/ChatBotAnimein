@@ -2,7 +2,6 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { DIFFICULTY, parseDifficulty, getDifficultyConfig } = require('../../src/services/quizDifficulty');
 const { createQuizRepo } = require('../../src/database/quizRepo');
-const { getWeekKey, getPrevWeekKey, sortLeaderboard, createQuizWeeklyRepo } = require('../../src/database/quizWeeklyRepo');
 const { createQuizService, createInitialQuizState } = require('../../src/services/quizService');
 
 test('QuizPlus - difficulty multiplier mapping', () => {
@@ -38,36 +37,6 @@ test('QuizPlus - filter low-rating SQL builder (mock db)', async () => {
     assert.match(captured[1], /score >= '8\.0'/);
     await repo.getRandomQuiz({ filter: 'all' });
     assert.doesNotMatch(captured[2], /score/);
-});
-
-test('QuizPlus - weekly week_key format & leaderboard sort (mock)', async () => {
-    assert.match(getWeekKey(), /^\d{4}-W\d{2}$/);
-    // Nilai tetap (zona Jakarta): 10 Okt 2026 = Sabtu minggu ISO 41.
-    assert.strictEqual(getWeekKey(new Date('2026-10-10T12:00:00+07:00')), '2026-W41');
-    assert.strictEqual(getWeekKey(new Date('2026-01-01T12:00:00+07:00')), '2026-W01');
-    assert.strictEqual(getPrevWeekKey(new Date('2026-10-10T12:00:00+07:00')), '2026-W40');
-
-    const unsorted = [
-        { user_id: 'b', username: 'b', wins: 1, participations: 9 },
-        { user_id: 'a', username: 'a', wins: 3, participations: 3 },
-        { user_id: 'c', username: 'c', wins: 3, participations: 5 },
-    ];
-    const sorted = sortLeaderboard(unsorted);
-    assert.deepStrictEqual(sorted.map((r) => r.user_id), ['c', 'a', 'b']);
-    // Input asli tidak dimutasi.
-    assert.strictEqual(unsorted[0].user_id, 'b');
-
-    const mockDb = {
-        async execute() {
-            return { rows: unsorted };
-        },
-    };
-    const weekly = createQuizWeeklyRepo(mockDb);
-    const board = await weekly.getLeaderboard('2026-W41', 2);
-    assert.strictEqual(board.length, 2);
-    assert.deepStrictEqual(board.map((r) => r.user_id), ['c', 'a']);
-    const top = await weekly.getTopUser('2026-W41');
-    assert.strictEqual(top.user_id, 'c');
 });
 
 function buildQuizServiceHarness(durationMs = 300000) {

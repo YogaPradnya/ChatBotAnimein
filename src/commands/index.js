@@ -11,7 +11,6 @@ const shopCommand = require('./shopCommand');
 const buyCommand = require('./buyCommand');
 const guessCommand = require('./guessCommand');
 const hintCommand = require('./hintCommand');
-const turnamenCommand = require('./turnamenCommand');
 const { ensureCommandLimit } = require('./helpers');
 const { parseDifficulty } = require('../services/quizDifficulty');
 const imageCommand = require('./imageCommand');
@@ -86,10 +85,6 @@ async function handleKuisCommand(ctx) {
         }
         await ctx.incrementCommandUsage(ctx.senderUserId, ctx.senderName);
         return ctx.startQuiz(ctx.bot, ctx.senderName, ctx.msg.id, null, { difficulty });
-    }
-
-    if (lowerMsg === '.turnamen') {
-        return turnamenCommand.execute(ctx);
     }
 
     if (lowerMsg === '.rank' || lowerMsg === '.leaderboard') {
@@ -253,7 +248,6 @@ module.exports = {
     buyCommand,
     guessCommand,
     hintCommand,
-    turnamenCommand,
     imageCommand,
     jadwalCommand,
     hotCommand,

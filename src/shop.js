@@ -27,7 +27,7 @@ const SHOP_ITEMS = [
     {
         id: 3,
         name: 'Extra Gambar (+3)',
-        description: '+3 limit gambar',
+        description: '+3 limit gambar permanen',
         price: 3000,
         type: 'extra_image',
         consumable: true,
@@ -36,7 +36,7 @@ const SHOP_ITEMS = [
     {
         id: 4,
         name: 'Extra Limit (+1)',
-        description: '+1 limit hari ini',
+        description: '+1 limit permanen',
         price: 2500,
         type: 'extra_cmd_limit',
         consumable: true,
@@ -45,7 +45,7 @@ const SHOP_ITEMS = [
     {
         id: 5,
         name: 'Extra Chat Rara (+1)',
-        description: '+1 limit chat Rara hari ini',
+        description: '+1 limit chat Rara permanen',
         price: 3000,
         type: 'extra_rara_chat',
         consumable: true,
@@ -70,11 +70,13 @@ function getItemPrice(item) {
         if (item.type === 'extra_rara_chat') basePrice = global.priceExtraRaraChat !== undefined ? global.priceExtraRaraChat : 3000;
     }
     
+    const price = Math.max(0, Number(basePrice) || 0);
     if (global.isDiscountEvent) {
-        const factor = (100 - (global.discountPercent || 50)) / 100;
-        return Math.floor(basePrice * factor);
+        const percent = Math.min(100, Math.max(0, Number(global.discountPercent) || 0));
+        const factor = (100 - percent) / 100;
+        return Math.max(0, Math.floor(price * factor));
     }
-    return basePrice;
+    return Math.max(0, Math.floor(price));
 }
 
 function getShopMessage() {
@@ -173,7 +175,7 @@ async function buyItem(repoOrDb, userId, username, itemId, userXP, extraArgs = {
         return { success: false, message: 'Custom Title tidak bisa dibeli dalam jumlah banyak.' };
     }
 
-    const totalPrice = getItemPrice(item) * quantity;
+    const totalPrice = Math.max(0, getItemPrice(item) * quantity);
     if (userXP < totalPrice) {
         return {
             success: false,
@@ -181,37 +183,74 @@ async function buyItem(repoOrDb, userId, username, itemId, userXP, extraArgs = {
         };
     }
 
-    // Handle custom title: perlu argumen title
+    // Validasi argumen title SEBELUM memotong XP.
+    let titleName = '';
     if (item.type === 'custom_title') {
-        const titleName = extraArgs.titleName ? extraArgs.titleName.trim() : '';
+        titleName = extraArgs.titleName ? extraArgs.titleName.trim() : '';
         if (!titleName) {
             return {
                 success: false,
                 message: `Ketik nama title yang kamu inginkan.\nContoh: .beli 1 Yogaa Ganteng`
             };
         }
-
         if (titleName.length > 15) {
             return {
                 success: false,
                 message: `Nama title terlalu panjang (maksimal 15 karakter).`
             };
         }
+    }
 
+    // Debit XP dilakukan pemanggil SEBELUM item diberikan. Bila grant gagal,
+    // callback onRefund mengembalikan XP (tidak ada item gratis).
+    let debit = { success: true };
+    if (typeof extraArgs.onBeforeGrant === 'function') {
+        debit = await extraArgs.onBeforeGrant(totalPrice);
+        if (!debit || debit.success === false) {
+            return { success: false, message: debit?.message || 'Gagal memotong XP.' };
+        }
+    } else if (userXP < totalPrice) {
+        return { success: false, message: 'XP kamu tidak cukup.' };
+    }
+
+    const refund = async () => {
+        if (typeof extraArgs.onRefund === 'function') {
+            try { await extraArgs.onRefund(totalPrice); } catch (e) {
+                console.warn('[SHOP] Gagal refund XP:', e.message);
+            }
+        }
+    };
+
+    // Handle custom title: perlu argumen title
+    if (item.type === 'custom_title') {
         try {
             // Set custom title langsung di user_stats
             await shopRepo.setCustomTitle(userId, username, titleName);
 
-            return { success: true, message: `Title berhasil diubah menjadi: ${titleName}`, xpDeducted: totalPrice };
+            return {
+                success: true,
+                message: `Title berhasil diubah menjadi: ${titleName}`,
+                xpDeducted: totalPrice,
+                xpAfter: debit.xpAfter,
+                levelAfter: debit.levelAfter,
+            };
         } catch (e) {
+            await refund();
             return { success: false, message: 'Gagal memproses pembelian title.' };
         }
     }
 
     // Consumable items
     const totalQuantity = (item.quantity || 1) * quantity;
-    const added = await addItem(shopRepo, userId, username, item.type, totalQuantity);
+    let added = false;
+    try {
+        added = await addItem(shopRepo, userId, username, item.type, totalQuantity);
+    } catch (e) {
+        console.warn('[SHOP] Gagal menambahkan item:', e.message);
+        added = false;
+    }
     if (!added) {
+        await refund();
         return { success: false, message: 'Gagal menambahkan item ke inventory.' };
     }
 
@@ -219,6 +258,8 @@ async function buyItem(repoOrDb, userId, username, itemId, userXP, extraArgs = {
         success: true,
         message: `Berhasil membeli ${quantity}x ${item.name}! (+${totalQuantity} ${item.type})`,
         xpDeducted: totalPrice,
+        xpAfter: debit.xpAfter,
+        levelAfter: debit.levelAfter,
     };
 }
 
