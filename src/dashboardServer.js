@@ -624,8 +624,7 @@ function startDashboard(scope) {
             console.log(`[QUIZ] Reset ${p}% data kuis. Berhasil menghapus ${limit} item.`);
             res.json({ success: true, deleted: limit });
         } catch (e) {
-            console.error("[QUIZ RESET ERROR]", e.message);
-            res.json({ success: false, message: e.message });
+            safeError(res, e);
         }
     });
 
@@ -646,8 +645,8 @@ function startDashboard(scope) {
                 args: [...args, limit, offset]
             });
             res.json({ success: true, data: rows.rows, pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) }, q });
-        } catch(e) {
-            res.json({ success: false, message: e.message });
+        } catch (e) {
+            safeError(res, e);
         }
     });
 
@@ -663,7 +662,7 @@ function startDashboard(scope) {
             resetAutoQuizTimer(); // Reset timer auto-kuis ke 1 jam lagi
             res.json({ success: true, message: id ? 'Kuis spesifik berhasil dikirim!' : 'Kuis manual berhasil dikirim dan timer di-reset!' });
         } catch (e) {
-            res.json({ success: false, message: e.message });
+            safeError(res, e);
         }
     });
 
@@ -686,8 +685,8 @@ function startDashboard(scope) {
                 args: [...args, limit, offset]
             });
             res.json({ success: true, banned: rows.rows, pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) }, q });
-        } catch(e) {
-            res.json({ success: false, message: e.message });
+        } catch (e) {
+            safeError(res, e);
         }
     });
 
@@ -721,8 +720,8 @@ function startDashboard(scope) {
             if (u) bannedUsers.add(u.toLowerCase());
             console.log(`[BAN] ${u}(${targetUserId}) dibanned dari kuis. Alasan: ${reason || '-'}`);
             res.json({ success: true, resolvedUserId: String(targetUserId) !== u });
-        } catch(e) {
-            res.json({ success: false, message: e.message });
+        } catch (e) {
+            safeError(res, e);
         }
     });
 
@@ -752,8 +751,8 @@ function startDashboard(scope) {
             }
             console.log(`[BAN] User ID ${targetUserId} / @${u} di-unban dari kuis.`);
             res.json({ success: true });
-        } catch(e) {
-            res.json({ success: false, message: e.message });
+        } catch (e) {
+            safeError(res, e);
         }
     });
 
@@ -1219,7 +1218,7 @@ function startDashboard(scope) {
             });
         } catch (e) {
             const botStatus = runtime.isSystemOff ? 'offline' : ((bots[0] && bots[0].auth && bots[0].auth.userId) ? 'online' : 'offline');
-            res.json({ ...stats, botStatus, isBotInfoActive: runtime.isBotInfoActive, isBotKuisActive: runtime.isBotKuisActive, isImageCommandActive: runtime.isImageCommandActive, isSystemOff: runtime.isSystemOff, realtimeLogs: stats.realtimeLogs || [], error: e.message });
+            res.json({ ...stats, botStatus, isBotInfoActive: runtime.isBotInfoActive, isBotKuisActive: runtime.isBotKuisActive, isImageCommandActive: runtime.isImageCommandActive, isSystemOff: runtime.isSystemOff, realtimeLogs: stats.realtimeLogs || [], error: 'Internal error' });
         }
     });
 
@@ -2353,7 +2352,7 @@ function startDashboard(scope) {
             const jsonStr = config ? JSON.stringify(config, null, 2) : '';
             res.json({ success: true, prompt: jsonStr, config });
         } catch (e) {
-            res.json({ success: false, prompt: '', error: e.message });
+            safeError(res, e);
         }
     });
 
