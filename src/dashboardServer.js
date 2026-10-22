@@ -126,15 +126,56 @@ function safeError(res, e, status = 500) {
     return res.status(status).json({ success: false, message: 'Internal error' });
 }
 
+function getAllowedRequestHostnames(req) {
+    const hosts = new Set();
+    const add = (value) => {
+        // Dukung host:port, origin penuh, dan daftar dipisah koma.
+        const raw = String(value || '').split(',')[0].trim();
+        if (!raw) return;
+        try {
+            const parsed = raw.includes('://') ? new URL(raw) : new URL(`http://${raw}`);
+            if (parsed.hostname) hosts.add(parsed.hostname.toLowerCase());
+        } catch (_) { /* abaikan nilai tidak valid */ }
+    };
+    add(req.headers.host);
+    add(req.hostname);
+    // X-Forwarded-Host hanya dicocokkan untuk keperluan origin publik;
+    // rate limit tetap memakai req.ip yang mengikuti TRUST_PROXY. Header ini
+    // tidak bisa dipalsukan dari browser dan request non-browser tetap wajib
+    // melewati kredensial/CSRF.
+    add(req.headers['x-forwarded-host']);
+    add(process.env.DASHBOARD_PUBLIC_ORIGIN);
+    return hosts;
+}
+
 function isAllowedApiOrigin(req) {
     const origin = req.headers.origin || req.headers.referer;
-    if (!origin) return true; // same-origin fetch/curl tanpa Origin tetap lolos
+    if (!origin) return true; // fetch/curl same-origin tanpa Origin tetap lolos
     const value = String(origin);
-    if (value === 'null') return false;
+    const allowedHosts = getAllowedRequestHostnames(req);
+
+    // Safari/WebKit dapat mengirim Origin: null untuk form POST same-origin
+    // saat pengaturan privasi ketat aktif. Login form hanya diizinkan lewat
+    // rate limit + kredensial; request API tetap butuh sinyal same-origin.
+    if (value === 'null') {
+        if (req.path === '/login') return true;
+        // Request API dari dashboard selalu membawa X-CSRF-Token (lihat
+        // dashboard.js). Token tetap diverifikasi setelah middleware ini, jadi
+        // meneruskannya aman dan tidak membuka CSRF dari origin lain.
+        if (req.headers['x-csrf-token']) return true;
+        const site = String(req.headers['sec-fetch-site'] || '').toLowerCase();
+        if (site === 'same-origin' || site === 'none') return true;
+        const referer = String(req.headers.referer || '');
+        if (referer && referer !== 'null') {
+            try {
+                return allowedHosts.has(new URL(referer).hostname.toLowerCase());
+            } catch (_) { /* invalid referer */ }
+        }
+        return false;
+    }
+
     try {
-        const originUrl = new URL(value);
-        const host = String(req.headers.host || '').toLowerCase();
-        return originUrl.host.toLowerCase() === host;
+        return allowedHosts.has(new URL(value).hostname.toLowerCase());
     } catch (_) {
         return false;
     }
