@@ -150,6 +150,7 @@ commandRouter
         COMMANDS.META,
         COMMANDS.LIMIT,
         COMMANDS.DAFTAR,
+        COMMANDS.LOGIN,
     ], () => {});
 
 async function initDB() {

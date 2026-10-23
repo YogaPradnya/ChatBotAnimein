@@ -68,6 +68,7 @@ const COMMANDS = {
     KOLEKSI: '.koleksi',
     PAJANG: '.pajang',
     DAFTAR: '.daftar',
+    LOGIN: '.login',
 
 };
 

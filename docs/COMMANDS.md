@@ -51,6 +51,7 @@ Command:
 .pajang
 .battle
 .daftar
+.login
 ```
 
 ### `handleImageCommand(ctx)`
@@ -82,6 +83,7 @@ Command:
 | `buyCommand.js` | `.beli` | Pembelian item toko |
 | `imageCommand.js` | `.gambar` | Fetch dan kirim gambar |
 | `daftarCommand.js` | `.daftar` | Daftarkan user chat ke `user_stats` (ID dari pengirim, username saja yang di-update) |
+| `loginCommand.js` | `.login KODE` | Klaim kode login web (dibuat di web, TTL 5 menit, sekali pakai) dan ikat `user_id` pengirim |
 | `gachaCommand.js` | `.gacha` | Redirect ke web gacha + `.gacha rate` (rate/stok di chat) |
 | `koleksiCommand.js` | `.koleksi` | Galeri kartu + penanda skill-2 |
 | `pajangCommand.js` | `.pajang` | Pajang kartu gacha/display di `.profil` |

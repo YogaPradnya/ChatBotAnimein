@@ -70,11 +70,13 @@ async function execute(ctx) {
     } else if (helpArg === 'gambarkan') {
         helpMsg = wrapInBox('GAMBARKAN', 'Buat gambar AI berbasis deskripsi prompt.\n\nCommand:\n- .gambarkan [prompt]\n\nContoh:\n- .gambarkan anime girl playing guitar');
     } else if (helpArg === 'daftar' || helpArg === 'pair') {
-        helpMsg = wrapInBox('DAFTAR', 'Daftarkan akun chat ke database KartuYogaa.\n\nCommand:\n• .daftar\n\nSetelah itu login web memakai username/email + password Animein.');
+        helpMsg = wrapInBox('DAFTAR', 'Daftarkan akun chat ke database KartuYogaa.\n\nCommand:\n• .daftar\n\nSetelah itu login web bisa memakai username/email + password Animein, atau kode dari web + .login.');
+    } else if (helpArg === 'login') {
+        helpMsg = wrapInBox('LOGIN WEB', 'Masuk ke web KartuYogaa tanpa password.\n\nLangkah:\n1. Buka web, pilih tab "Kode Login".\n2. Centang TnC, lalu tekan Dapatkan Kode.\n3. Kirim .login KODE ke bot dari akun yang sudah .daftar.\n4. Kembali ke web — book otomatis terbuka.\n\nCatatan:\n• Kode berlaku 5 menit dan sekali pakai.\n• Wajib .daftar dulu sebelum klaim kode.');
     } else if (helpArg === 'battle') {
         helpMsg = wrapInBox('BATTLE', 'Battle kartu sudah pindah ke web.\n\nCommand:\n- .battle (tampilkan link web battle)\n\nWeb:\n- https://kartu.yogaa.web.id/\n\nBuka link di atas untuk adu kartumu, hmph!');
     } else if (helpArg === 'web' || helpArg === 'book' || helpArg === 'trade') {
-        helpMsg = wrapInBox('WEB', 'Web book kartu.\n\nIsi:\n• Book: galeri 265 kartu, ketuk untuk stat\n• Trade: tukar kartu via kode angka\n• Battle: vs AI (latihan) / PvP, PvP menang +100 XP\n\nMasuk: ketik .daftar di chat, lalu login web memakai akun Animein.');
+        helpMsg = wrapInBox('WEB', 'Web book kartu.\n\nIsi:\n• Book: galeri 265 kartu, ketuk untuk stat\n• Trade: tukar kartu via kode angka\n• Battle: vs AI (latihan) / PvP, PvP menang +100 XP\n\nMasuk: ketik .daftar dulu. Lalu pilih salah satu:\n• Login web dengan username/email + password Animein, atau\n• Buka tab "Kode Login" di web, salin kode, kirim .login KODE ke bot.');
     } else if (helpArg === 'ban') {
         helpMsg = wrapInBox('BAN', 'Aturan bot:\n• Dilarang spam\n• Dilarang toxic\n• Dilarang abuse XP\n\nPelanggar akan di-ban permanen.');
     } else if (helpArg) {
@@ -91,7 +93,7 @@ async function execute(ctx) {
         helpMsg = [
             `┌── ${boxHeader('HELP TOPIC')}`,
             `│ Ketik .help [topik]. Daftar topik:`,
-            `│ rekomendasi, waifu, link, data, kuis, gambar, gambarkan, xp, shop, kombo, profil, cek, rank, streak, level, ai, jadwal, hot, baru, random, populer, cari, genre, tas, limit, ban, gacha, koleksi, pajang, battle, pair, web`,
+            `│ rekomendasi, waifu, link, data, kuis, gambar, gambarkan, xp, shop, kombo, profil, cek, rank, streak, level, ai, jadwal, hot, baru, random, populer, cari, genre, tas, limit, ban, gacha, koleksi, pajang, battle, pair, web, login`,
             `└───────────────────`,
         ].join('\n');
     }
