@@ -132,24 +132,25 @@ function mockImage(url = 'https://img.test/card.jpg') {
 
 const TODAY = '2026-10-10';
 
-test('Cards - pool valid: 265 entri, tier valid, distribusi 110/76/50/19/10', () => {
-    assert.strictEqual(WAIFU_POOL.length, 265);
+test('Cards - pool valid: 306 entri, tier valid, distribusi 125/86/55/29/11', () => {
+    assert.strictEqual(WAIFU_POOL.length, 306);
     const count = { Common: 0, Rare: 0, Epic: 0, Legendary: 0, Mythic: 0 };
     const names = new Set();
     for (const e of WAIFU_POOL) {
         assert.ok(e.name && e.anime && e.tier, `entri tak lengkap: ${JSON.stringify(e)}`);
         assert.ok(['Common', 'Rare', 'Epic', 'Legendary', 'Mythic'].includes(e.tier), `tier invalid: ${e.tier}`);
+        assert.ok(!e.role || ['Damage', 'Tank', 'Healer', 'Support', 'Assassin', 'Mage'].includes(e.role), `role invalid: ${e.role}`);
         count[e.tier]++;
         assert.ok(!names.has(e.name), `nama duplikat: ${e.name}`);
         names.add(e.name);
     }
-    assert.deepStrictEqual(count, { Common: 110, Rare: 76, Epic: 50, Legendary: 19, Mythic: 10 });
+    assert.deepStrictEqual(count, { Common: 125, Rare: 86, Epic: 55, Legendary: 29, Mythic: 11 });
     const pools = getPoolsByTier();
-    assert.strictEqual(pools.Common.length, 110);
-    assert.strictEqual(pools.Rare.length, 76);
-    assert.strictEqual(pools.Epic.length, 50);
-    assert.strictEqual(pools.Legendary.length, 19);
-    assert.strictEqual(pools.Mythic.length, 10);
+    assert.strictEqual(pools.Common.length, 125);
+    assert.strictEqual(pools.Rare.length, 86);
+    assert.strictEqual(pools.Epic.length, 55);
+    assert.strictEqual(pools.Legendary.length, 29);
+    assert.strictEqual(pools.Mythic.length, 11);
 });
 
 test('Cards - pool tanpa pokemon (nama & anime bersih)', () => {

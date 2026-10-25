@@ -132,6 +132,12 @@ test('GachaConfig - sanitizePoolInput valid & tolak rusak', () => {
         { name: 'A', anime: 'X', tier: 'Common' },
         { name: 'a', anime: 'Y', tier: 'Rare' },
     ]).ok, false);
+    const withRole = sanitizePoolInput([{ name: 'A', anime: 'X', tier: 'Epic', role: 'Mage' }]);
+    assert.deepStrictEqual(withRole.pool, [{ name: 'A', anime: 'X', tier: 'Epic', role: 'Mage' }]);
+    assert.deepStrictEqual(
+        sanitizePoolInput([{ name: 'A', anime: 'X', tier: 'Epic', role: 'Bogus' }]).pool,
+        [{ name: 'A', anime: 'X', tier: 'Epic' }],
+    );
 });
 
 test('GachaConfig - savePool/customized lalu resetPool ke default', async () => {
@@ -151,7 +157,7 @@ test('GachaConfig - savePool/customized lalu resetPool ke default', async () => 
     await repo.resetPool();
     eff = await repo.getEffectiveCards();
     assert.strictEqual(eff.customized, false);
-    assert.strictEqual(eff.cards.length, 265);
+    assert.strictEqual(eff.cards.length, 306);
 });
 
 test('GachaConfig - groupPoolByTier kelompokkan list kustom', () => {
@@ -216,17 +222,19 @@ test('GachaConfig - performPull pakai pool kustom dashboard', async () => {
     assert.strictEqual(r.rarity, 'Common');
 });
 
-test('GachaConfig - getEffectiveCards default 265 + ada imageUrl statis', async () => {
+test('GachaConfig - getEffectiveCards default 306 + ada imageUrl statis', async () => {
     invalidateGachaConfig();
     const db = createSettingsMockDb();
     const repo = createCardsRepo(db, { imageResolver: async () => null });
     const eff = await repo.getEffectiveCards();
     assert.strictEqual(eff.customized, false);
-    assert.strictEqual(eff.cards.length, 265);
+    assert.strictEqual(eff.cards.length, 306);
     for (const c of eff.cards) {
         assert.ok(c.name && c.anime && c.tier);
     }
     assert.ok(eff.cards.some((c) => typeof c.imageUrl === 'string' && c.imageUrl.startsWith('https://')));
+    assert.strictEqual(eff.cards.find((c) => c.name === 'Ryomen Sukuna').role, 'Assassin');
+    assert.strictEqual(eff.cards.find((c) => c.name === 'Fern').role, 'Mage');
 });
 
 function seqRng(values) {

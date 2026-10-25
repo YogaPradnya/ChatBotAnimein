@@ -3889,7 +3889,7 @@ async function updateStats() {
     try {
       const res = await fetch('/api/gacha/cards', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pool: cachedGachaPool.map((c) => ({ name: c.name, anime: c.anime, tier: c.tier })) }),
+        body: JSON.stringify({ pool: cachedGachaPool.map((c) => ({ name: c.name, anime: c.anime, tier: c.tier, ...(c.role ? { role: c.role } : {}) })) }),
       });
       const d = await res.json().catch(() => ({}));
       if (res.ok && d.success) {
@@ -3904,7 +3904,7 @@ async function updateStats() {
   }
 
   async function resetGachaPool() {
-    const ok = await customConfirm('Kembalikan pool kartu ke bawaan (265 kartu)? Kartu yang sudah dimiliki user tidak berubah.', 'Reset Pool Gacha', 'Ya, Reset');
+    const ok = await customConfirm('Kembalikan pool kartu ke bawaan (306 kartu)? Kartu yang sudah dimiliki user tidak berubah.', 'Reset Pool Gacha', 'Ya, Reset');
     if (!ok) return;
     try {
       const res = await fetch('/api/gacha/cards/reset', { method: 'POST' });

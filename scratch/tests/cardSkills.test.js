@@ -14,6 +14,8 @@ const {
     buildFallbackSkill,
 } = require('../../src/data/cardSkills');
 const { createCardsRepo } = require('../../src/database/cardsRepo');
+const { CARD_BATTLE_SKILLS } = require('../../src/data/cardBattleSkills');
+const { WAIFU_POOL } = require('../../src/data/waifuPool');
 
 test('Skill - aturan unlock: C/R/E terkunci di bawah ★5, buka di ★5', () => {
     for (const rarity of ['Common', 'Rare', 'Epic']) {
@@ -59,6 +61,20 @@ test('Skill - kurasi 24 kartu L/M valid + tematik', () => {
     assert.strictEqual(gojo.skill2.name, 'Hollow Purple');
     const jinwoo = resolveSkills({ charName: 'Sung Jinwoo', anime: 'Solo Leveling', rarity: 'Mythic', level: 1 });
     assert.strictEqual(jinwoo.skill1.name, 'Shadow Extraction');
+});
+
+test('Skill - 41 kartu baru memakai nama skill kurasi battle', () => {
+    assert.strictEqual(Object.keys(CARD_BATTLE_SKILLS).length, 41);
+    for (const [key, entry] of Object.entries(CARD_BATTLE_SKILLS)) {
+        const card = WAIFU_POOL.find((c) => c.name.toLowerCase() === key);
+        assert.ok(card, `kartu pool tidak ditemukan: ${key}`);
+        const r = resolveSkills({ charName: card.name, anime: card.anime, rarity: card.tier, level: 5 });
+        assert.ok(r.skill1 && r.skill2, `${key} harus punya 2 skill`);
+        assert.strictEqual(r.skill1.name, entry.skill1.name, `S1 ${key}`);
+        assert.strictEqual(r.skill2.name, entry.skill2.name, `S2 ${key}`);
+        assert.strictEqual(isValidSkill(r.skill1), true, `S1 invalid ${key}`);
+        assert.strictEqual(isValidSkill(r.skill2), true, `S2 invalid ${key}`);
+    }
 });
 
 test('Skill - fallback deterministik + angka dalam batas', () => {

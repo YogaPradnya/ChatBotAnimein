@@ -1,5 +1,5 @@
 /**
- * Gacha Kartu Waifu/Husbando — ekonomi sink + koleksi kartu lokal (265 kartu).
+ * Gacha Kartu Waifu/Husbando — ekonomi sink + koleksi kartu lokal (306 kartu).
  * PURE HOKI: tanpa pity, tanpa jaminan — setiap pull roll rate murni.
  * Rate per pull (default, bisa diatur dashboard): Common 70% / Rare 25% /
  *   Epic 4.89% / Legendary 0.1% / Mythic 0.01%.
@@ -29,6 +29,7 @@ const {
 const GACHA_COST = 500;
 const GACHA_DAILY_LIMIT = 10;
 const MAX_CARD_LEVEL = 5;
+const POOL_ROLES = ['Damage', 'Tank', 'Healer', 'Support', 'Assassin', 'Mage'];
 
 /** Maksimal tumpukan copy per kartu per user (evo full manual). */
 const MAX_CARD_COPIES = 999;
@@ -274,7 +275,9 @@ function sanitizePoolInput(pool) {
         const key = name.toLowerCase();
         if (seen.has(key)) return { ok: false, error: `Nama duplikat: ${name}` };
         seen.add(key);
-        clean.push({ name, anime, tier });
+        // Role opsional dipertahankan untuk pool kustom yang dipakai web battle.
+        const role = String(entry?.role || '').trim();
+        clean.push(POOL_ROLES.includes(role) ? { name, anime, tier, role } : { name, anime, tier });
     }
     return { ok: true, pool: clean };
 }
@@ -1203,6 +1206,7 @@ function createCardsRepo(db, options = {}) {
                     name: e.name,
                     anime: e.anime,
                     tier: e.tier,
+                    ...(POOL_ROLES.includes(String(e.role || '')) ? { role: e.role } : {}),
                     imageUrl: settings.art[key] || cloudArt[key] || staticArt[key] || null,
                     skills: preview,
                     skill2Unlock: isHighTier(e.tier) ? '★1' : '★5',

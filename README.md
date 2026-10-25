@@ -17,7 +17,7 @@ Repo web kartu (`YogaPradnya/webcard`, Next.js):
 
 - `src/app/` — halaman book, battle, gacha, trade, profile, shop, missions
 - `src/components/ThemeToggle.js` — toggle dark/white mode (`localStorage animein-theme`)
-- Role colors: Damage merah, Tank coklat, Support hijau, Assist biru (lihat `src/app/globals.css`)
+- Role colors: Damage merah, Tank coklat, Healer hijau, Support biru, Assassin merah tua, Mage ungu (lihat `web-cards/src/app/book.css`)
 
 ## Deploy (Coolify, VPS `43.153.199.221`)
 

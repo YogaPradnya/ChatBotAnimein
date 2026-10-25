@@ -8,6 +8,8 @@
  * power efektif (lihat effectivePower).
  */
 
+const { getCardSkillOverride } = require('./cardBattleSkills');
+
 const SKILL_EFFECT_KINDS = ['power_pct', 'bonus_xp'];
 
 /** Batas angka efek yang wajar (validasi + clamp fallback). */
@@ -222,6 +224,18 @@ function buildFallbackSkill(rarity, slot, charName, anime) {
     return makeSkill(tpl, `Jurus pamungkas ${name}${from ? ` (${from})` : ''}.`, 'power_pct', lo + (seed % (hi - lo + 1)));
 }
 
+/**
+ * Skill fallback dengan nama kurasi battle (41 kartu baru).
+ * Angka/kind tetap dari fallback tier supaya keseimbangan gacha tidak berubah.
+ */
+function namedFallbackSkill(key, slot, rarity, charName, anime) {
+    const override = getCardSkillOverride(key);
+    const meta = slot === 1 ? override?.skill1 : override?.skill2;
+    if (!meta || !meta.name) return null;
+    const base = buildFallbackSkill(rarity, slot, charName, anime);
+    return makeSkill(meta.name, base.desc, base.effectKind, base.effectValue);
+}
+
 function curatedSkill(key, slot, charName, anime) {
     const entry = CURATED_SKILLS[String(key || '').trim().toLowerCase()];
     if (!entry) return null;
@@ -238,11 +252,13 @@ function curatedSkill(key, slot, charName, anime) {
 function resolveSkills({ charName = '', anime = '', rarity = 'Common', level = 1 } = {}) {
     const key = String(charName || '').trim().toLowerCase();
     const skill1 = curatedSkill(key, 1, charName, anime)
+        || namedFallbackSkill(key, 1, rarity, charName, anime)
         || buildFallbackSkill(rarity, 1, charName, anime);
     if (!hasSecondSkill(rarity, level)) {
         return { skill1, skill2: null, locked: true };
     }
     const skill2 = curatedSkill(key, 2, charName, anime)
+        || namedFallbackSkill(key, 2, rarity, charName, anime)
         || buildFallbackSkill(rarity, 2, charName, anime);
     return { skill1, skill2, locked: false };
 }

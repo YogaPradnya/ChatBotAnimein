@@ -1,14 +1,15 @@
 /**
- * Pool kartu waifu/husbando lokal untuk gacha (total 265).
- * Tiap entri: { name, anime, tier } dengan tier Common | Rare | Epic | Legendary | Mythic.
- * Distribusi: Common 110 / Rare 76 / Epic 50 / Legendary 19 / Mythic 10.
+ * Pool kartu waifu/husbando lokal untuk gacha (total 306).
+ * Tiap entri: { name, anime, tier, role? } dengan tier Common | Rare | Epic | Legendary | Mythic.
+ * Role eksplisit dipakai kartu baru; kartu lama memakai hash role deterministik.
+ * Distribusi: Common 125 / Rare 86 / Epic 55 / Legendary 29 / Mythic 11.
  * Stok global per kartu: Legendary 10 / Epic 50 / Rare & Common unlimited;
  * kartu Mythic TANPA batas pemilik (bisa dimiliki banyak orang).
  * Evo full manual: duplikat menumpuk (maks 999 copy); hanya Mythic unik per user.
  */
 
 const WAIFU_POOL = [
-    // ---- Mythic (10, tanpa batas pemilik) ----
+    // ---- Mythic (11, tanpa batas pemilik) ----
     { name: 'Sung Jinwoo', anime: 'Solo Leveling', tier: 'Mythic' },
     { name: 'Rimuru Tempest', anime: 'That Time I Got Reincarnated as a Slime', tier: 'Mythic' },
     { name: 'Anos Voldigoad', anime: 'The Misfit of Demon King Academy', tier: 'Mythic' },
@@ -19,8 +20,9 @@ const WAIFU_POOL = [
     { name: 'Meruem', anime: 'Hunter x Hunter', tier: 'Mythic' },
     { name: 'All Might', anime: 'My Hero Academia', tier: 'Mythic' },
     { name: 'Guts', anime: 'Berserk', tier: 'Mythic' },
+    { name: 'Ryomen Sukuna', anime: 'Jujutsu Kaisen', tier: 'Mythic', role: 'Assassin' },
 
-    // ---- Legendary (19, stok 10) ----
+    // ---- Legendary (29, stok 10) ----
     { name: 'Gojo Satoru', anime: 'Jujutsu Kaisen', tier: 'Legendary' },
     { name: 'Levi Ackerman', anime: 'Attack on Titan', tier: 'Legendary' },
     { name: 'Monkey D. Luffy', anime: 'One Piece', tier: 'Legendary' },
@@ -40,8 +42,18 @@ const WAIFU_POOL = [
     { name: 'Kurisu Makise', anime: 'Steins;Gate', tier: 'Legendary' },
     { name: 'C.C.', anime: 'Code Geass', tier: 'Legendary' },
     { name: 'Yuno Gasai', anime: 'Future Diary', tier: 'Legendary' },
+    { name: 'Aizen Sosuke', anime: 'Bleach', tier: 'Legendary', role: 'Mage' },
+    { name: 'Muzan Kibutsuji', anime: 'Demon Slayer', tier: 'Legendary', role: 'Assassin' },
+    { name: 'Kaido', anime: 'One Piece', tier: 'Legendary', role: 'Tank' },
+    { name: 'Toji Fushiguro', anime: 'Jujutsu Kaisen', tier: 'Legendary', role: 'Assassin' },
+    { name: 'Kaguya Otsutsuki', anime: 'Naruto', tier: 'Legendary', role: 'Mage' },
+    { name: 'Garou', anime: 'One Punch Man', tier: 'Legendary', role: 'Assassin' },
+    { name: 'Dracule Mihawk', anime: 'One Piece', tier: 'Legendary', role: 'Damage' },
+    { name: 'Fern', anime: "Frieren: Beyond Journey's End", tier: 'Legendary', role: 'Mage' },
+    { name: 'Esdeath', anime: 'Akame ga Kill!', tier: 'Legendary', role: 'Mage' },
+    { name: 'Akame', anime: 'Akame ga Kill!', tier: 'Legendary', role: 'Assassin' },
 
-    // ---- Epic (50) ----
+    // ---- Epic (55) ----
     { name: 'Naruto Uzumaki', anime: 'Naruto', tier: 'Epic' },
     { name: 'Eren Yeager', anime: 'Attack on Titan', tier: 'Epic' },
     { name: 'Tanjiro Kamado', anime: 'Demon Slayer', tier: 'Epic' },
@@ -93,8 +105,13 @@ const WAIFU_POOL = [
     { name: 'Aqua', anime: 'KonoSuba', tier: 'Epic' },
     { name: 'Echidna', anime: 'Re:Zero', tier: 'Epic' },
     { name: 'Shiro', anime: 'No Game No Life', tier: 'Epic' },
+    { name: 'Yhwach', anime: 'Bleach', tier: 'Epic', role: 'Mage' },
+    { name: 'Ulquiorra Cifer', anime: 'Bleach', tier: 'Epic', role: 'Assassin' },
+    { name: 'Tomura Shigaraki', anime: 'My Hero Academia', tier: 'Epic', role: 'Damage' },
+    { name: 'Yuta Okkotsu', anime: 'Jujutsu Kaisen', tier: 'Epic', role: 'Assassin' },
+    { name: 'Naofumi Iwatani', anime: 'The Rising of the Shield Hero', tier: 'Epic', role: 'Tank' },
 
-    // ---- Rare (76) ----
+    // ---- Rare (86) ----
     { name: 'Yuji Itadori', anime: 'Jujutsu Kaisen', tier: 'Rare' },
     { name: 'Nobara Kugisaki', anime: 'Jujutsu Kaisen', tier: 'Rare' },
     { name: 'Mikasa Ackerman', anime: 'Attack on Titan', tier: 'Rare' },
@@ -172,8 +189,18 @@ const WAIFU_POOL = [
     { name: 'Mitsuha Miyamizu', anime: 'Your Name', tier: 'Rare' },
     { name: 'Yui Hirasawa', anime: 'K-On!', tier: 'Rare' },
     { name: 'Nana Oosaki', anime: 'NANA', tier: 'Rare' },
+    { name: 'Mereoleona Vermillion', anime: 'Black Clover', tier: 'Rare', role: 'Damage' },
+    { name: 'Obito Uchiha', anime: 'Naruto', tier: 'Rare', role: 'Support' },
+    { name: 'Julius Novachrono', anime: 'Black Clover', tier: 'Rare', role: 'Mage' },
+    { name: 'Akaza', anime: 'Demon Slayer', tier: 'Rare', role: 'Damage' },
+    { name: 'Dabi', anime: 'My Hero Academia', tier: 'Rare', role: 'Mage' },
+    { name: 'Okabe Rintarou', anime: 'Steins;Gate', tier: 'Rare', role: 'Support' },
+    { name: 'Neferpitou', anime: 'Hunter x Hunter', tier: 'Rare', role: 'Assassin' },
+    { name: 'Hiei', anime: 'Yu Yu Hakusho', tier: 'Rare', role: 'Mage' },
+    { name: 'Fubuki', anime: 'One Punch Man', tier: 'Rare', role: 'Support' },
+    { name: 'Chrollo Lucilfer', anime: 'Hunter x Hunter', tier: 'Rare', role: 'Support' },
 
-    // ---- Common (110) ----
+    // ---- Common (125) ----
     { name: 'Edward Elric', anime: 'Fullmetal Alchemist', tier: 'Common' },
     { name: 'Roy Mustang', anime: 'Fullmetal Alchemist', tier: 'Common' },
     { name: 'Spike Spiegel', anime: 'Cowboy Bebop', tier: 'Common' },
@@ -284,6 +311,21 @@ const WAIFU_POOL = [
     { name: 'Chloe von Einzbern', anime: 'Fate/kaleid liner Prisma Illya', tier: 'Common' },
     { name: 'Caren Hortensia', anime: 'Fate/hollow ataraxia', tier: 'Common' },
     { name: 'Mei Misaki', anime: 'Another', tier: 'Common' },
+    { name: 'Mumen Rider', anime: 'One Punch Man', tier: 'Common', role: 'Tank' },
+    { name: 'Kazuma Satou', anime: 'KonoSuba', tier: 'Common', role: 'Support' },
+    { name: 'Koby', anime: 'One Piece', tier: 'Common', role: 'Healer' },
+    { name: 'Genya Shinazugawa', anime: 'Demon Slayer', tier: 'Common', role: 'Tank' },
+    { name: 'Mina Ashido', anime: 'My Hero Academia', tier: 'Common', role: 'Mage' },
+    { name: 'Ritsu Kageyama', anime: 'Mob Psycho 100', tier: 'Common', role: 'Mage' },
+    { name: 'Shizune', anime: 'Naruto', tier: 'Common', role: 'Healer' },
+    { name: 'Videl', anime: 'Dragon Ball', tier: 'Common', role: 'Healer' },
+    { name: 'Konohamaru Sarutobi', anime: 'Naruto', tier: 'Common', role: 'Damage' },
+    { name: 'Tashigi', anime: 'One Piece', tier: 'Common', role: 'Assassin' },
+    { name: 'Himiko Toga', anime: 'My Hero Academia', tier: 'Common', role: 'Assassin' },
+    { name: 'Kanao Tsuyuri', anime: 'Demon Slayer', tier: 'Common', role: 'Assassin' },
+    { name: 'Marco', anime: 'One Piece', tier: 'Common', role: 'Healer' },
+    { name: 'Suzaku Kururugi', anime: 'Code Geass', tier: 'Common', role: 'Damage' },
+    { name: 'Vicious', anime: 'Cowboy Bebop', tier: 'Common', role: 'Assassin' },
 ];
 
 const VALID_TIERS = ['Common', 'Rare', 'Epic', 'Legendary', 'Mythic'];
