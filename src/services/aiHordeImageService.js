@@ -8,6 +8,25 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// Fetch dengan timeout sendiri: tanpa ini satu request gantung = antrean gambar
+// (maxConcurrent=1) macet selamanya. Pakai AbortController agar kompatibel semua Node.
+async function fetchWithTimeout(url, options = {}, ms = 30000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ms);
+    try {
+        return await fetch(url, { ...options, signal: options.signal || controller.signal });
+    } catch (e) {
+        if (e && (e.name === 'AbortError' || controller.signal.aborted)) {
+            const err = new Error(`AI Horde request timeout setelah ${Math.round(ms / 1000)}s: ${url}`);
+            err.code = 'ETIMEDOUT';
+            throw err;
+        }
+        throw e;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 function sanitizePromptLine(text) {
     return String(text || '')
         .replace(/^"|"$/g, '')
@@ -66,7 +85,7 @@ function createAiHordeImageService({
     }
 
     async function requestJson(url, options = {}, key = hordeApiKeys[0]) {
-        const response = await fetch(url, {
+        const response = await fetchWithTimeout(url, {
             ...options,
             headers: {
                 apikey: key,
@@ -74,7 +93,7 @@ function createAiHordeImageService({
                 'Content-Type': 'application/json',
                 ...(options.headers || {})
             }
-        });
+        }, 30000);
 
         const text = await response.text();
         let data;
@@ -161,7 +180,7 @@ function createAiHordeImageService({
         let mimeType = 'image/png';
 
         if (/^https?:\/\//i.test(generation.img)) {
-            const imageResponse = await fetch(generation.img);
+            const imageResponse = await fetchWithTimeout(generation.img, {}, 30000);
             if (!imageResponse.ok) throw new Error(`Gagal download hasil AI Horde: HTTP ${imageResponse.status}`);
             mimeType = String(imageResponse.headers.get('content-type') || 'image/png').split(';')[0];
             buffer = Buffer.from(await imageResponse.arrayBuffer());

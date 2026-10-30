@@ -461,7 +461,13 @@ function startDashboard(scope) {
             }
             return next();
         }
-        if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'Unauthorized' });
+        if (req.path.startsWith('/api/')) {
+            // Rate-limit juga untuk request tanpa auth agar probing 401 tak terbatas.
+            if (!checkRateLimit(getRequestIp(req))) {
+                return res.status(429).json({ error: 'Too many requests. Coba lagi dalam 1 menit.' });
+            }
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
         res.redirect('/login');
     }
 
@@ -732,7 +738,8 @@ function startDashboard(scope) {
     });
 
     app.post('/api/quiz/ban', async (req, res) => {
-        const { userId, user_id, username, reason } = req.body;
+        const { userId, user_id, username } = req.body;
+        const reason = String(req.body.reason || '').slice(0, 200);
         let targetUserId = userId || user_id;
         const u = String(username || '').replace(/^@/, '').trim();
         if (!targetUserId && u) {
@@ -759,7 +766,7 @@ function startDashboard(scope) {
             // belum ketahuan (belum pernah chat).
             bannedUsers.add(String(targetUserId));
             if (u) bannedUsers.add(u.toLowerCase());
-            console.log(`[BAN] ${u}(${targetUserId}) dibanned dari kuis. Alasan: ${reason || '-'}`);
+            console.log(`[BAN] ${u}(${targetUserId}) dibanned dari kuis. Alasan: ${String(reason || '-').replace(/[\r\n]+/g, ' ')}`);
             res.json({ success: true, resolvedUserId: String(targetUserId) !== u });
         } catch (e) {
             safeError(res, e);
@@ -1942,12 +1949,18 @@ function startDashboard(scope) {
     });
 
     app.post('/api/limits/rara-chat/update', async (req, res) => {
-        const username = String(req.body.username || '').replace(/^@/, '').trim();
+        const username = String(req.body.username || '').replace(/^@/, '').trim().slice(0, 64);
         const userId = String(req.body.userId || req.body.user_id || '').trim();
-        const extraLimit = parseInt(req.body.extraLimit ?? req.body.extra_limit, 10) || 0;
+        const extraLimit = parseInt(req.body.extraLimit ?? req.body.extra_limit, 10);
         const usedCount = req.body.usedCount !== undefined ? parseInt(req.body.usedCount, 10) : 0;
 
         if (!userId) return res.status(400).json({ success: false, message: 'User ID wajib diisi.' });
+        if (!Number.isFinite(extraLimit) || extraLimit < 0 || extraLimit > 10000) {
+            return res.status(400).json({ success: false, message: 'Extra limit tidak valid (0..10000).' });
+        }
+        if (!Number.isFinite(usedCount) || usedCount < 0 || usedCount > 100000) {
+            return res.status(400).json({ success: false, message: 'Used count tidak valid.' });
+        }
 
         try {
             const today = getJakartaDateKey();
@@ -2028,10 +2041,12 @@ function startDashboard(scope) {
         if (typeof image !== 'string' || !image.startsWith('data:image/')) return res.status(400).json({ success: false, message: 'Format gambar tidak valid.' });
         if (image.length > 7 * 1024 * 1024) return res.status(400).json({ success: false, message: 'Gambar terlalu besar (maks ~7MB).' });
         if (text && String(text).length > 2000) return res.status(400).json({ success: false, message: 'Caption terlalu panjang (maks 2000 karakter).' });
+        const ALLOWED_IMAGE_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+        const safeMime = ALLOWED_IMAGE_MIME.includes(mimeType) ? mimeType : 'image/jpeg';
         
         console.log(`[DASHBOARD] Manual Image: ${(text || '(no caption)').toString().slice(0, 200)}`);
         const imageBot = bots.find(b => b.role === 'image') || bots[0];
-        const success = await sendChatWithImage(imageBot, { data: image, mimeType: mimeType || 'image/jpeg' }, text || '');
+        const success = await sendChatWithImage(imageBot, { data: image, mimeType: safeMime }, text || '');
         if (success) {
             addActivity('image', 'Admin', text || '(image)', 'Image sent', 'Dashboard');
             res.json({ success: true });
@@ -2193,6 +2208,9 @@ function startDashboard(scope) {
 
     app.post('/api/titles/add', async (req, res) => {
         const { title } = req.body;
+        if (typeof title !== 'string' || !title.trim() || title.trim().length > 50) {
+            return res.status(400).json({ success: false, message: 'Title tidak valid (1..50 karakter).' });
+        }
         try {
             const getRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'available_titles'" });
             let titles = getRes.rows.length > 0 ? JSON.parse(getRes.rows[0].value) : [];
@@ -2235,8 +2253,10 @@ function startDashboard(scope) {
         if (!Number.isFinite(levelNum) || !Number.isInteger(levelNum) || levelNum < 1 || levelNum > MAX_EDIT_LEVEL) {
             return res.status(400).json({ success: false, message: `Level tidak valid (1..${MAX_EDIT_LEVEL.toLocaleString('id-ID')}).` });
         }
+        const safeUsername = typeof username === 'string' ? username.trim().slice(0, 64) : username;
+        const safeTitle = typeof custom_title === 'string' ? custom_title.trim().slice(0, 64) : custom_title;
         try {
-            const finalTitle = custom_title === "" ? null : custom_title;
+            const finalTitle = safeTitle === "" ? null : safeTitle;
             const affPoints = typeof affection_points !== 'undefined' ? (parseInt(affection_points) || 0) : null;
             const affLevel = typeof affection_level !== 'undefined' ? (parseInt(affection_level) || 0) : null;
 
@@ -2244,17 +2264,17 @@ function startDashboard(scope) {
                 if (affPoints !== null && affLevel !== null) {
                     await db.execute({ 
                         sql: "UPDATE user_stats SET xp = ?, level = ?, custom_title = ?, username = ?, affection_points = ?, affection_level = ? WHERE user_id = ?", 
-                        args: [xp, level, finalTitle, username, affPoints, affLevel, String(targetUserId)] 
+                        args: [xp, level, finalTitle, safeUsername, affPoints, affLevel, String(targetUserId)] 
                     });
                 } else {
                     await db.execute({ 
                         sql: "UPDATE user_stats SET xp = ?, level = ?, custom_title = ?, username = ? WHERE user_id = ?", 
-                        args: [xp, level, finalTitle, username, String(targetUserId)] 
+                        args: [xp, level, finalTitle, safeUsername, String(targetUserId)] 
                     });
                 }
 
                 if (USER_STATS_CACHE[targetUserId]) {
-                    USER_STATS_CACHE[targetUserId].username = username;
+                    USER_STATS_CACHE[targetUserId].username = safeUsername;
                     USER_STATS_CACHE[targetUserId].xp = parseInt(xp);
                     USER_STATS_CACHE[targetUserId].level = parseInt(level);
                     USER_STATS_CACHE[targetUserId].custom_title = finalTitle;
@@ -2265,16 +2285,16 @@ function startDashboard(scope) {
                 if (affPoints !== null && affLevel !== null) {
                     await db.execute({ 
                         sql: "UPDATE user_stats SET xp = ?, level = ?, custom_title = ?, affection_points = ?, affection_level = ? WHERE username = ?", 
-                        args: [xp, level, finalTitle, affPoints, affLevel, username] 
+                        args: [xp, level, finalTitle, affPoints, affLevel, safeUsername] 
                     });
                 } else {
                     await db.execute({ 
                         sql: "UPDATE user_stats SET xp = ?, level = ?, custom_title = ? WHERE username = ?", 
-                        args: [xp, level, finalTitle, username] 
+                        args: [xp, level, finalTitle, safeUsername] 
                     });
                 }
 
-                const cachedId = Object.keys(USER_STATS_CACHE).find(k => USER_STATS_CACHE[k]?.username === username);
+                const cachedId = Object.keys(USER_STATS_CACHE).find(k => USER_STATS_CACHE[k]?.username === safeUsername);
                 if (cachedId) {
                     USER_STATS_CACHE[cachedId].xp = parseInt(xp);
                     USER_STATS_CACHE[cachedId].level = parseInt(level);
@@ -2404,6 +2424,11 @@ function startDashboard(scope) {
 
     app.post('/api/autoreply/add', async (req, res) => {
         const { keyword, answer } = req.body;
+        if (typeof keyword !== 'string' || typeof answer !== 'string'
+            || !keyword.trim() || !answer.trim()
+            || keyword.trim().length > 100 || answer.trim().length > 500) {
+            return res.status(400).json({ success: false, message: 'Keyword (1..100) / answer (1..500) tidak valid.' });
+        }
         if (keyword && answer) {
             runtime.AUTO_REPLY.push({ keyword, answer });
             try {
@@ -2494,6 +2519,9 @@ function startDashboard(scope) {
 
     app.post('/api/domains/add', async (req, res) => {
         const { domain } = req.body;
+        if (typeof domain !== 'string' || !domain.trim() || domain.trim().length > 100) {
+            return res.status(400).json({ success: false, message: 'Domain tidak valid (1..100 karakter).' });
+        }
         if (domain && !runtime.CUSTOM_DOMAINS.includes(domain)) {
             runtime.CUSTOM_DOMAINS.push(domain);
             try {

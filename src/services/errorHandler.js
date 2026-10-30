@@ -21,8 +21,12 @@ function maskSecretValue(value) {
 
 function maskSensitiveText(value) {
     return String(value || '')
-        .replace(/((?:key_client|password|token|authorization|api[_-]?key|groq_api_key)\s*[=:]\s*)([^\s&]+)/gi, (_, prefix, secret) => `${prefix}${maskSecretValue(secret)}`)
-        .replace(/(Bearer\s+)([A-Za-z0-9._-]+)/gi, (_, prefix, secret) => `${prefix}${maskSecretValue(secret)}`);
+        // Bearer token dulu (sebelum pola generik memakan kata "Bearer" sebagai secret).
+        .replace(/(Bearer\s+)([A-Za-z0-9._-]{6,})/gi, (_, prefix, secret) => `${prefix}${maskSecretValue(secret)}`)
+        // URL webhook (tidak berbentuk key=value sehingga lolos pola generik).
+        .replace(/https?:\/\/discord(?:app)?\.com\/api\/webhooks\/[^\s"']+/gi, 'https://discord.com/api/webhooks/****')
+        .replace(/((?:key_client|password|token|api[_-]?key|groq_api_key)\s*[=:]\s*)(?!Bearer\s+)([^\s&;]+)/gi, (_, prefix, secret) => `${prefix}${maskSecretValue(secret)}`)
+        .replace(/(Authorization\s*:\s*)([^\s&;]+)/gi, (_, prefix, secret) => `${prefix}${maskSecretValue(secret)}`);
 }
 
 function formatError(error) {

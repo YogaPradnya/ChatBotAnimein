@@ -316,47 +316,54 @@ async function initDB() {
                 console.log('[MIGRATION] Migrasi schema username -> user_id dimulai...');
 
                 // 1. user_stats
-                await db.execute(`CREATE TABLE user_stats_v2 (user_id TEXT PRIMARY KEY, username TEXT NOT NULL DEFAULT '', xp INTEGER DEFAULT 0, level INTEGER DEFAULT 1, custom_title TEXT DEFAULT NULL)`);
-                try { await db.execute(`INSERT INTO user_stats_v2 (user_id, username, xp, level, custom_title) SELECT username, username, xp, level, custom_title FROM user_stats`); } catch(e) { console.warn('[MIGRATION] user_stats copy:', e.message); }
-                await db.execute('DROP TABLE user_stats');
+                await db.execute(`CREATE TABLE IF NOT EXISTS user_stats_v2 (user_id TEXT PRIMARY KEY, username TEXT NOT NULL DEFAULT '', xp INTEGER DEFAULT 0, level INTEGER DEFAULT 1, custom_title TEXT DEFAULT NULL, affection_points INTEGER DEFAULT 0, affection_level INTEGER DEFAULT 1)`);
+                try { await db.execute(`INSERT OR IGNORE INTO user_stats_v2 (user_id, username, xp, level, custom_title, affection_points, affection_level) SELECT username, username, xp, level, custom_title, COALESCE(affection_points, 0), COALESCE(affection_level, 1) FROM user_stats`); } catch(e) { console.warn('[MIGRATION] user_stats copy:', e.message); }
+                await db.execute(`ALTER TABLE user_stats RENAME TO user_stats_backup`);
                 await db.execute('ALTER TABLE user_stats_v2 RENAME TO user_stats');
+                await db.execute('DROP TABLE IF EXISTS user_stats_backup');
 
                 // 2. user_quiz_stats
-                await db.execute(`CREATE TABLE user_quiz_stats_v2 (user_id TEXT PRIMARY KEY, username TEXT NOT NULL DEFAULT '', wins INTEGER DEFAULT 0, participations INTEGER DEFAULT 0, total_hints_used INTEGER DEFAULT 0, total_images INTEGER DEFAULT 0, current_streak INTEGER DEFAULT 0, best_streak INTEGER DEFAULT 0, last_active_date TEXT DEFAULT NULL)`);
-                try { await db.execute(`INSERT INTO user_quiz_stats_v2 (user_id, username, wins, participations, total_hints_used, total_images, current_streak, best_streak, last_active_date) SELECT username, username, wins, participations, total_hints_used, total_images, current_streak, best_streak, last_active_date FROM user_quiz_stats`); } catch(e) { console.warn('[MIGRATION] user_quiz_stats copy:', e.message); }
-                await db.execute('DROP TABLE user_quiz_stats');
+                await db.execute(`CREATE TABLE IF NOT EXISTS user_quiz_stats_v2 (user_id TEXT PRIMARY KEY, username TEXT NOT NULL DEFAULT '', wins INTEGER DEFAULT 0, participations INTEGER DEFAULT 0, total_hints_used INTEGER DEFAULT 0, total_images INTEGER DEFAULT 0, current_streak INTEGER DEFAULT 0, best_streak INTEGER DEFAULT 0, last_active_date TEXT DEFAULT NULL)`);
+                try { await db.execute(`INSERT OR IGNORE INTO user_quiz_stats_v2 (user_id, username, wins, participations, total_hints_used, total_images, current_streak, best_streak, last_active_date) SELECT username, username, wins, participations, total_hints_used, total_images, current_streak, best_streak, last_active_date FROM user_quiz_stats`); } catch(e) { console.warn('[MIGRATION] user_quiz_stats copy:', e.message); }
+                await db.execute(`ALTER TABLE user_quiz_stats RENAME TO user_quiz_stats_backup`);
                 await db.execute('ALTER TABLE user_quiz_stats_v2 RENAME TO user_quiz_stats');
+                await db.execute('DROP TABLE IF EXISTS user_quiz_stats_backup');
 
                 // 3. user_memories
-                await db.execute(`CREATE TABLE user_memories_v2 (user_id TEXT PRIMARY KEY, username TEXT NOT NULL DEFAULT '', content TEXT DEFAULT '', updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
-                try { await db.execute(`INSERT INTO user_memories_v2 (user_id, username, content, updated_at) SELECT username, username, content, updated_at FROM user_memories`); } catch(e) { console.warn('[MIGRATION] user_memories copy:', e.message); }
-                await db.execute('DROP TABLE user_memories');
+                await db.execute(`CREATE TABLE IF NOT EXISTS user_memories_v2 (user_id TEXT PRIMARY KEY, username TEXT NOT NULL DEFAULT '', content TEXT DEFAULT '', updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
+                try { await db.execute(`INSERT OR IGNORE INTO user_memories_v2 (user_id, username, content, updated_at) SELECT username, username, content, updated_at FROM user_memories`); } catch(e) { console.warn('[MIGRATION] user_memories copy:', e.message); }
+                await db.execute(`ALTER TABLE user_memories RENAME TO user_memories_backup`);
                 await db.execute('ALTER TABLE user_memories_v2 RENAME TO user_memories');
+                await db.execute('DROP TABLE IF EXISTS user_memories_backup');
 
                 // 4. user_inventory
-                await db.execute(`CREATE TABLE user_inventory_v2 (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, username TEXT NOT NULL DEFAULT '', item_type TEXT NOT NULL, item_value TEXT DEFAULT '', quantity INTEGER DEFAULT 0, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
-                try { await db.execute(`INSERT INTO user_inventory_v2 (user_id, username, item_type, item_value, quantity, updated_at) SELECT username, username, item_type, item_value, quantity, updated_at FROM user_inventory`); } catch(e) { console.warn('[MIGRATION] user_inventory copy:', e.message); }
-                await db.execute('DROP TABLE IF EXISTS user_inventory');
+                await db.execute(`CREATE TABLE IF NOT EXISTS user_inventory_v2 (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, username TEXT NOT NULL DEFAULT '', item_type TEXT NOT NULL, item_value TEXT DEFAULT '', quantity INTEGER DEFAULT 0, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
+                try { await db.execute(`INSERT OR IGNORE INTO user_inventory_v2 (user_id, username, item_type, item_value, quantity, updated_at) SELECT username, username, item_type, item_value, quantity, updated_at FROM user_inventory`); } catch(e) { console.warn('[MIGRATION] user_inventory copy:', e.message); }
+                await db.execute(`ALTER TABLE user_inventory RENAME TO user_inventory_backup`);
                 await db.execute('ALTER TABLE user_inventory_v2 RENAME TO user_inventory');
+                await db.execute('DROP TABLE IF EXISTS user_inventory_backup');
                 await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_user_type ON user_inventory (user_id, item_type)');
 
                 // 5. command_limits
-                await db.execute(`CREATE TABLE command_limits_v2 (user_id TEXT PRIMARY KEY, username TEXT NOT NULL DEFAULT '', usage_date TEXT NOT NULL, used_count INTEGER DEFAULT 0, extra_limit INTEGER DEFAULT 0, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
-                try { await db.execute(`INSERT INTO command_limits_v2 (user_id, username, usage_date, used_count, extra_limit, updated_at) SELECT username, username, usage_date, used_count, extra_limit, updated_at FROM command_limits`); } catch(e) { console.warn('[MIGRATION] command_limits copy:', e.message); }
-                await db.execute('DROP TABLE command_limits');
+                await db.execute(`CREATE TABLE IF NOT EXISTS command_limits_v2 (user_id TEXT PRIMARY KEY, username TEXT NOT NULL DEFAULT '', usage_date TEXT NOT NULL, used_count INTEGER DEFAULT 0, extra_limit INTEGER DEFAULT 0, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
+                try { await db.execute(`INSERT OR IGNORE INTO command_limits_v2 (user_id, username, usage_date, used_count, extra_limit, updated_at) SELECT username, username, usage_date, used_count, extra_limit, updated_at FROM command_limits`); } catch(e) { console.warn('[MIGRATION] command_limits copy:', e.message); }
+                await db.execute(`ALTER TABLE command_limits RENAME TO command_limits_backup`);
                 await db.execute('ALTER TABLE command_limits_v2 RENAME TO command_limits');
+                await db.execute('DROP TABLE IF EXISTS command_limits_backup');
 
                 // 6. image_limits
-                await db.execute(`CREATE TABLE image_limits_v2 (user_id TEXT PRIMARY KEY, username TEXT NOT NULL DEFAULT '', usage_date TEXT NOT NULL, used_count INTEGER DEFAULT 0, daily_limit INTEGER DEFAULT 5, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
-                try { await db.execute(`INSERT INTO image_limits_v2 (user_id, username, usage_date, used_count, daily_limit, updated_at) SELECT username, username, usage_date, used_count, daily_limit, updated_at FROM image_limits`); } catch(e) { console.warn('[MIGRATION] image_limits copy:', e.message); }
-                await db.execute('DROP TABLE image_limits');
+                await db.execute(`CREATE TABLE IF NOT EXISTS image_limits_v2 (user_id TEXT PRIMARY KEY, username TEXT NOT NULL DEFAULT '', usage_date TEXT NOT NULL, used_count INTEGER DEFAULT 0, daily_limit INTEGER DEFAULT 5, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
+                try { await db.execute(`INSERT OR IGNORE INTO image_limits_v2 (user_id, username, usage_date, used_count, daily_limit, updated_at) SELECT username, username, usage_date, used_count, daily_limit, updated_at FROM image_limits`); } catch(e) { console.warn('[MIGRATION] image_limits copy:', e.message); }
+                await db.execute(`ALTER TABLE image_limits RENAME TO image_limits_backup`);
                 await db.execute('ALTER TABLE image_limits_v2 RENAME TO image_limits');
+                await db.execute('DROP TABLE IF EXISTS image_limits_backup');
 
                 // 7. quiz_banned
-                await db.execute(`CREATE TABLE quiz_banned_v2 (user_id TEXT PRIMARY KEY, username TEXT NOT NULL DEFAULT '', reason TEXT DEFAULT '', banned_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
-                try { await db.execute(`INSERT INTO quiz_banned_v2 (user_id, username, reason, banned_at) SELECT username, username, reason, banned_at FROM quiz_banned`); } catch(e) { console.warn('[MIGRATION] quiz_banned copy:', e.message); }
-                await db.execute('DROP TABLE quiz_banned');
+                await db.execute(`CREATE TABLE IF NOT EXISTS quiz_banned_v2 (user_id TEXT PRIMARY KEY, username TEXT NOT NULL DEFAULT '', reason TEXT DEFAULT '', banned_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
+                try { await db.execute(`INSERT OR IGNORE INTO quiz_banned_v2 (user_id, username, reason, banned_at) SELECT username, username, reason, banned_at FROM quiz_banned`); } catch(e) { console.warn('[MIGRATION] quiz_banned copy:', e.message); }
+                await db.execute(`ALTER TABLE quiz_banned RENAME TO quiz_banned_backup`);
                 await db.execute('ALTER TABLE quiz_banned_v2 RENAME TO quiz_banned');
+                await db.execute('DROP TABLE IF EXISTS quiz_banned_backup');
 
                 console.log('[MIGRATION] Migrasi user_id selesai!');
             }
@@ -1708,8 +1715,17 @@ async function fetchHomeAnime(force = false) {
 
     // Pastikan tidak ada kuis berjalan saat mau fetch/reset baru
     if (!force && (activeQuiz.isRunning || activeQuiz.isStarting)) {
-        console.log("[ANIMEIN] Kuis sedang berjalan, menunda microfetch & reset...");
-        return false;
+        const ageMs = Date.now() - (activeQuiz.startedAt || Date.now());
+        const maxAgeMs = (activeQuiz.durationMs || QUIZ_DURATION_MS) + (5 * 60 * 1000);
+        if (ageMs > maxAgeMs) {
+            console.warn(`[ANIMEIN] Watchdog: kuis macet (umur ${Math.round(ageMs/1000)}s), force reset agar microfetch jalan.`);
+            try { clearQuizTimers(); } catch (_) {}
+            activeQuiz.isRunning = false;
+            activeQuiz.isStarting = false;
+        } else {
+            console.log("[ANIMEIN] Kuis sedang berjalan, menunda microfetch & reset...");
+            return false;
+        }
     }
 
     try {
@@ -1849,7 +1865,7 @@ async function fetchHomeAnime(force = false) {
         }
 
         // Update Cache untuk trending (ambil dari hot data home)
-        const resHome = await animeinClient.get('/3/2/home/data', { headers: ANIMEIN_HEADERS }).catch(() => null);
+        const resHome = await animeinClient.get('/3/2/home/data', { headers: ANIMEIN_HEADERS, timeout: 10000 }).catch(() => null);
         if (resHome?.data?.data?.hot) {
             const hot = resHome.data.data.hot.slice(0, 30);
             cache.trending.data = hot.map((a, i) => `${i+1}. ${a.title} [Rating: ${a.favorites||'?'}]`);
@@ -4328,7 +4344,8 @@ async function fetchMessages(bot) {
         
         const response = await animeinClient.get('/3/2/chat/data', {
             params: queryParams,
-            headers: ANIMEIN_HEADERS_FULL
+            headers: ANIMEIN_HEADERS_FULL,
+            timeout: 15000
         });
         return response.data;
     } catch (error) {
@@ -4454,7 +4471,8 @@ async function sendChatMessage(bot, text, replyTo = '0', options = {}) {
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                     'Origin': 'https://animeinweb.com',
-                }
+                },
+                timeout: 15000
             });
         }
         
@@ -5298,8 +5316,10 @@ async function startBot() {
     // Bila 5 siklus kosong berturut-turut -> interval 30s; kembali ke base saat ada pesan.
     let isPolling = false;
     let idleCycles = 0;
+    let pollingTickStartedAt = 0;
     const POLL_BASE_MS = CONFIG.POLL_INTERVAL;
     const POLL_IDLE_MS = 30000;
+    const POLL_TICK_TIMEOUT_MS = 60000; // watchdog: satu siklus tidak boleh gantung lebih dari ini
     async function pollOneBot(bot) {
         if (bot.role === 'notif') { bot.isFirstRun = true; return 0; }
         if (bot.role === 'image' && !isImageCommandActive) { bot.isFirstRun = true; return 0; }
@@ -5330,17 +5350,34 @@ async function startBot() {
     }
     async function pollingTick() {
         if (isSystemOff) { pollingTimer = setTimeout(pollingTick, POLL_BASE_MS); if (pollingTimer.unref) pollingTimer.unref(); return; }
-        if (isPolling) { pollingTimer = setTimeout(pollingTick, POLL_BASE_MS); if (pollingTimer.unref) pollingTimer.unref(); return; } // skip bila siklus sebelumnya masih jalan
-        isPolling = true;
-        try {
-            const results = await Promise.allSettled(bots.map((bot) => pollOneBot(bot)));
-            let totalMsgs = 0;
-            for (const r of results) {
-                if (r.status === 'fulfilled') totalMsgs += (r.value || 0);
-                else console.error('[POLLING] Error pada polling bot:', r.reason && r.reason.message ? r.reason.message : r.reason);
+        if (isPolling) {
+            // Watchdog: kalau siklus sebelumnya nyangkut (mis. request tanpa timeout
+            // yang hang sebelum fix ini), paksa reset agar loop tidak mati selamanya.
+            if (pollingTickStartedAt && Date.now() - pollingTickStartedAt > POLL_TICK_TIMEOUT_MS) {
+                console.warn('[POLLING] Watchdog: siklus sebelumnya macet, force reset isPolling.');
+                isPolling = false;
+            } else {
+                pollingTimer = setTimeout(pollingTick, POLL_BASE_MS); if (pollingTimer.unref) pollingTimer.unref(); return; // skip bila siklus sebelumnya masih jalan
             }
-            if (totalMsgs > 0) idleCycles = 0;
-            else idleCycles++;
+        }
+        isPolling = true;
+        pollingTickStartedAt = Date.now();
+        try {
+            const batch = Promise.allSettled(bots.map((bot) => pollOneBot(bot)));
+            const tickTimeout = new Promise((resolve) => setTimeout(() => resolve('timeout'), POLL_TICK_TIMEOUT_MS));
+            const winner = await Promise.race([batch, tickTimeout]);
+            if (winner === 'timeout') {
+                console.warn('[POLLING] Watchdog: siklus polling melebihi 60s, dilewati agar loop tidak mati. Cek koneksi API Animein.');
+            } else {
+                const results = winner;
+                let totalMsgs = 0;
+                for (const r of results) {
+                    if (r.status === 'fulfilled') totalMsgs += (r.value || 0);
+                    else console.error('[POLLING] Error pada polling bot:', r.reason && r.reason.message ? r.reason.message : r.reason);
+                }
+                if (totalMsgs > 0) idleCycles = 0;
+                else idleCycles++;
+            }
         } catch (e) {
             console.error('[POLLING] Error pada polling loop:', e.message);
         } finally {

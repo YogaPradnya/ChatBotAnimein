@@ -14,7 +14,7 @@ const DIFFICULTY_ALIASES = {
     easy: 'mudah',
     sedang: 'sedang',
     medium: 'sedang',
-    normal: 'sedang',
+    normal: 'normal',
     sulit: 'sulit',
     susah: 'sulit',
     hard: 'sulit',

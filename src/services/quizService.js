@@ -216,27 +216,49 @@ function createQuizService({
             `└───────────────────`,
         ].join('\n');
 
-        await sendChatMessage(bot, timeoutMsg, lastMsgId);
+        try {
+            await sendChatMessage(bot, timeoutMsg, lastMsgId);
+        } catch (e) {
+            console.warn('[QUIZ] expireQuiz send gagal (kuis tetap dianggap selesai):', e.message);
+        }
     }
 
     // opts opsional: { difficulty: 'mudah'|'sedang'|'sulit', durationMs, xpMultiplier, filter }
     // Signature lama startQuiz(bot, senderName, msgId, forcedId) tetap kompatibel.
     async function startQuiz(bot, senderName, msgId, forcedId = null, opts = {}) {
-        // PENTING: bersihkan timer kuis LAMA sebelum setActiveQuiz agar tidak bocor/ganda.
-        // Jangan pindahkan clearQuizTimers ke sesudah setActiveQuiz.
-        try { clearQuizTimers(); } catch (e) { console.warn('[QUIZ] clearQuizTimers awal gagal:', e.message); }
         let activeQuiz = getActiveQuiz();
         if (getIsSystemOff()) {
             console.warn('[KILL SWITCH] Start kuis diblokir karena Kill Switch ON.');
             return;
         }
         if (activeQuiz.isRunning || activeQuiz.isStarting) {
-            const remaining = Math.floor((getEffectiveDuration() - (Date.now() - (activeQuiz.startedAt || Date.now()))) / 1000);
-            const timeStr = remaining > 0 ? `${Math.floor(remaining/60)}m ${remaining%60}s` : 'menunggu...';
-            const msg = `📌 @${senderName} Kuis masih berlangsung!\n\n` + (activeQuiz.isRunning ? buildHintMessage(activeQuiz.hintsRevealed) : '🔄 Sedang menyiapkan soal kuis...') + `\n\nKetik .tebak [jawaban] untuk menjawab!`;
-            await sendChatMessage(bot, msg, msgId);
-            return;
+            // Watchdog: kalau kuis macet (lebih tua dari durasi + toleransi 60 dtk),
+            // force-reset agar tidak deadlock selamanya. Tanpa ini, satu kegagalan
+            // kirim pesan / satu start ganda bikin "Kuis sedang berjalan" permanen
+            // dan microfetch terblokir terus (sesuai log user).
+            const ageMs = Date.now() - (activeQuiz.startedAt || Date.now());
+            const maxAgeMs = getEffectiveDuration() + 60000;
+            if (activeQuiz.isRunning && ageMs > maxAgeMs) {
+                console.warn(`[QUIZ] Watchdog: kuis macet terdeteksi (umur ${Math.round(ageMs/1000)}s), force reset.`);
+                activeQuiz.isRunning = false;
+                activeQuiz.isStarting = false;
+                try { clearQuizTimers(); } catch (e) { console.warn('[QUIZ] clearQuizTimers watchdog gagal:', e.message); }
+            } else {
+                // JANGAN clear timer di sini: timer milik kuis yang sedang jalan.
+                // Clear sebelum guard (kode lama) menghapus expireTimer lalu return,
+                // sehingga kuis tidak pernah expire -> stuck selamanya.
+                const remaining = Math.floor((getEffectiveDuration() - (Date.now() - (activeQuiz.startedAt || Date.now()))) / 1000);
+                const timeStr = remaining > 0 ? `${Math.floor(remaining/60)}m ${remaining%60}s` : 'menunggu...';
+                const msg = `📌 @${senderName} Kuis masih berlangsung!\n\n` + (activeQuiz.isRunning ? buildHintMessage(activeQuiz.hintsRevealed) : '🔄 Sedang menyiapkan soal kuis...') + `\n\nKetik .tebak [jawaban] untuk menjawab!`;
+                await sendChatMessage(bot, msg, msgId);
+                return;
+            }
         }
+
+        // PENTING: bersihkan timer kuis LAMA hanya saat benar-benar akan mulai kuis baru.
+        // Jangan pindahkan clearQuizTimers ke sebelum guard isRunning/isStarting.
+        try { clearQuizTimers(); } catch (e) { console.warn('[QUIZ] clearQuizTimers awal gagal:', e.message); }
+        activeQuiz = getActiveQuiz();
 
         activeQuiz.isStarting = true;
         try {
@@ -315,11 +337,29 @@ function createQuizService({
             if (difficulty !== 'normal') {
                 introMsg = `🏷️ Mode ${diffCfg.label} (XP x${diffCfg.xpMultiplier})\n\n${introMsg}`;
             }
-            await sendChatMessage(bot, introMsg, msgId);
+            try {
+                await sendChatMessage(bot, introMsg, msgId);
+            } catch (e) {
+                // Kirim pesan gagal (API down) JANGAN bikin kuis macet:
+                // tetap jadwalkan expiry agar kuis selesai sendiri.
+                console.warn('[QUIZ] sendChatMessage intro gagal, tetap jadwalkan expiry:', e.message);
+            }
             scheduleQuizExpiry(bot, msgId);
         } catch (err) {
             console.error("[QUIZ] Error starting:", err);
-            getActiveQuiz().isStarting = false;
+            // Jangan sisakan state macet: kalau kuis baru sudah di-set tapi
+            // expireTimer belum terjadwal, kembalikan ke idle.
+            try {
+                const cur = getActiveQuiz();
+                cur.isStarting = false;
+                if (cur.isRunning && !cur.expireTimer && !cur.startedAt) {
+                    cur.isRunning = false;
+                } else if (cur.isRunning && !cur.expireTimer && cur.startedAt) {
+                    // Kuiz terlanjur isRunning tanpa timer -> jadwalkan expiry
+                    // memakai bot/msgId terakhir agar bisa pulih sendiri.
+                    try { scheduleQuizExpiry(bot, msgId); } catch (_) {}
+                }
+            } catch (_) {}
         }
     }
 
