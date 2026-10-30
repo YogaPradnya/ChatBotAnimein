@@ -154,12 +154,18 @@ commandRouter
         COMMANDS.LOGIN,
     ], () => {});
 
+// Status koneksi DB + retry otomatis. initDB hanya jalan sekali saat startup;
+// bila sqld sempat mati saat itu, bot jalan pincang selamanya (pool kuis tidak
+// terisi, XP/limit/gacha mati). Retry tiap 5 menit sampai initDB sukses.
+let dbReady = false;
+let dbInitializing = false;
+let dbRetryTimer = null;
+
 async function initDB() {
     if (!CONFIG.TURSO_URL) {
         console.warn('[DB] TURSO_URL tidak ditemukan di .env. Database dinonaktifkan.');
         return;
-    }
-    try {
+    }    try {
         await db.execute(`
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
@@ -666,7 +672,9 @@ async function initDB() {
         console.log(`[BAN] Loaded ${bannedUsers.size} banned users.`);
 
         console.log("[DB] Turso Database connected & Tables ready.");
+        dbReady = true;
     } catch (e) {
+        dbReady = false;
         console.error("[DB] Gagal inisialisasi Turso:", e.message);
         // Gejala khas sqld self-host mati: proxy membalas non-JSON (502/503) sehingga
         // hrana-client (@libsql/client) melempar error misleading "resp.body?.cancel
@@ -5225,6 +5233,21 @@ async function processOneMessage(bot, msg) {
 }
 async function startBot() {
     await initDB();
+
+    // Bila initDB gagal (mis. sqld mati saat startup), coba lagi tiap 5 menit
+    // sampai sukses. initDB idempoten (CREATE IF NOT EXISTS + guard ALTER).
+    if (dbRetryTimer) clearInterval(dbRetryTimer);
+    dbRetryTimer = setInterval(async () => {
+        if (dbReady || dbInitializing || isSystemOff || !CONFIG.TURSO_URL) return;
+        dbInitializing = true;
+        try {
+            console.log('[DB] Mencoba ulang inisialisasi Turso...');
+            await initDB();
+        } finally {
+            dbInitializing = false;
+        }
+    }, 5 * 60 * 1000);
+    if (dbRetryTimer.unref) dbRetryTimer.unref();
     
     for (const bot of bots) {
         if (bot.role === 'image' && !isImageCommandActive) {
@@ -5499,6 +5522,7 @@ async function gracefulShutdown(signal) {
         if (startupFetchHourlyInterval) clearInterval(startupFetchHourlyInterval);
         if (autoQuizInterval) clearInterval(autoQuizInterval);
         if (startupQuizFetchTimer) clearTimeout(startupQuizFetchTimer);
+        if (dbRetryTimer) clearInterval(dbRetryTimer);
         // Sumber kebenaran ganda doubleXP/discount: clear keduanya agar tidak ada timeout bocor.
         if (doubleXPTimeout) { clearTimeout(doubleXPTimeout); doubleXPTimeout = null; }
         if (discountTimeout) { clearTimeout(discountTimeout); discountTimeout = null; }
