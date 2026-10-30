@@ -78,6 +78,7 @@ const { createChatRepo } = require('./src/database/chatRepo');
 const { createStatsRepo } = require('./src/database/statsRepo');
 const { createRuntimeRepo } = require('./src/database/runtimeRepo');
 const { createStreakRepo } = require('./src/database/streakRepo');
+const { createStreakService } = require('./src/services/streakService');
 const { createMemoryRepo } = require('./src/database/memoryRepo');
 const { createKnowledgeRepo, normalizeKnowledgeList, findKnowledgeByHelpTopic, buildKnowledgeContext } = require('./src/database/knowledgeRepo');
 const commands = require('./src/commands');
@@ -667,6 +668,12 @@ async function initDB() {
         console.log("[DB] Turso Database connected & Tables ready.");
     } catch (e) {
         console.error("[DB] Gagal inisialisasi Turso:", e.message);
+        // Gejala khas sqld self-host mati: proxy membalas non-JSON (502/503) sehingga
+        // hrana-client (@libsql/client) melempar error misleading "resp.body?.cancel
+        // is not a function". Arahkan langsung ke akar masalah.
+        if (/cancel is not a function|HTTP status 5\d\d|fetch failed|ENOTFOUND|ECONNREFUSED|EAI_AGAIN/i.test(String((e && e.message) || ''))) {
+            console.error("[DB] Kemungkinan container sqld mati / proxy 502 (balasan non-JSON). Cek Coolify: service sqld Running, domain -> service sqld port 8080, lalu curl /health.");
+        }
     }
 }
 // initDB will be called in startBot
@@ -963,6 +970,9 @@ const quizService = createQuizService({
 });
 
 const clearQuizTimers = quizService.clearQuizTimers;
+// Streak service: bonus XP beruntun harian (x1.25 s/d x3.0). Sebelumnya dead code
+// (tidak pernah dipanggil) sehingga multiplier tidak pernah berlaku.
+const streakService = createStreakService({ streakRepo, userRepo });
 const buildHintMessage = quizService.buildHintMessage;
 const scheduleQuizExpiry = quizService.scheduleQuizExpiry;
 const expireQuiz = quizService.expireQuiz;
@@ -4987,17 +4997,42 @@ Instruksi Penjelasan:
 
 // Satu pesan diproses di fungsi terpisah agar error pada satu pesan tidak
 // menggagalkan (dan menyembunyikan) pesan lain dalam batch yang sama.
+// Error yang layak dicoba ulang sekali: timeout/jaringan/rate-limit/5xx.
+// Bukan untuk error logika (itu akan gagal lagi dan berisiko reply ganda).
+function isTransientPollError(e) {
+    const code = String((e && e.code) || '').toUpperCase();
+    if (/ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|ENOTFOUND|EPIPE|EAI_FAIL|UND_ERR|ABORT|TIMEOUT/i.test(code)) return true;
+    const status = Number((e && (e.status || (e.response && (e.response.status || e.response.statusCode)))) || 0);
+    if (status === 429 || (status >= 500 && status < 600)) return true;
+    const msg = String((e && e.message) || '').toLowerCase();
+    return /timeout|timed out|socket hang|econn|temporar|try again|rate.?limit|too many|502|503|504/.test(msg);
+}
+
 async function processMessages(bot, messages) {
-    for (const msg of messages) {
+    // Urutkan by id naik: API tidak menjamin urutan; tanpa sort, ID besar yang
+    // diproses duluan membuat ID kecil sisanya ter-skip oleh guard lastMessageId.
+    const sorted = [...messages].sort((a, b) => (parseInt(a.id || 0) || 0) - (parseInt(b.id || 0) || 0));
+    for (const msg of sorted) {
         const msgId = parseInt(msg.id || 0);
         if (!msgId || msgId <= bot.lastMessageId) continue;
-        // At-most-once: penanda dimajukan SEBELUM proses agar error permanen
-        // tidak membuat pesan yang sama diulang terus tiap siklus polling.
+        // At-most-once: penanda dimajukan SEBELUM proses agar pesan yang sama
+        // tidak membuat loop beracun (error permanen = retry selamanya + reply ganda).
         bot.lastMessageId = msgId;
         try {
             await processOneMessage(bot, msg);
         } catch (e) {
             console.error(`[HANDLER] ${bot.role} gagal memproses pesan ${msgId}: ${e && e.message ? e.message : e}`);
+            // Kompensasi at-most-once: error transient (AI timeout, 5xx) dicoba
+            // ulang SEKALI agar pesan tidak hilang sia-sia. Error permanen tidak
+            // di-retry (akan gagal lagi; penanda sudah maju = tidak ada duplikat fetch).
+            if (isTransientPollError(e)) {
+                try {
+                    await new Promise((r) => setTimeout(r, 1000));
+                    await processOneMessage(bot, msg);
+                } catch (e2) {
+                    console.error(`[HANDLER] ${bot.role} retry pesan ${msgId} gagal: ${e2 && e2.message ? e2.message : e2}`);
+                }
+            }
         }
     }
 }
@@ -5085,6 +5120,7 @@ async function processOneMessage(bot, msg) {
             quizRepo,
             trackQuizStat,
             trackStreak,
+            processQuizWinStreak: (...args) => streakService.processQuizWinStreak(...args),
             levenshtein,
             XP_MULTIPLIER,
             getItemCount,
@@ -5304,6 +5340,11 @@ async function startBot() {
             startupFetchHourlyInterval = setInterval(() => {
                 if (isSystemOff) return;
                 fetchHomeAnime().catch(e => console.error("[INTERVAL] Fetch anime failed:", e.message));
+                // Retensi cache AI: pruneExpiredCache selama ini tidak punya pemanggil,
+                // tabel response_cache tumbuh tanpa batas. Jalan tiap jam, best-effort.
+                if (cacheRepo && typeof cacheRepo.pruneExpiredCache === 'function') {
+                    cacheRepo.pruneExpiredCache(7).catch(e => console.warn('[PRUNE] pruneExpiredCache gagal:', e.message));
+                }
             }, 60 * 60 * 1000); // Setiap 1 jam setelah fetch pertama
             if (startupFetchHourlyInterval.unref) startupFetchHourlyInterval.unref();
         }, 30 * 60 * 1000); // Tunggu 30 menit

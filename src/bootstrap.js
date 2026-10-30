@@ -294,6 +294,11 @@ function initializeBootstrap(options = {}) {
                 console.log("[DB] Turso Database connected & Tables ready.");
             } catch (e) {
                 console.error("[DB] Gagal inisialisasi Turso:", e.message);
+                // Lihat penjelasan di bot.js initDB: error "cancel is not a function"
+                // = gejala sqld/proxy 502 membalas non-JSON, bukan bug query.
+                if (/cancel is not a function|HTTP status 5\d\d|fetch failed|ENOTFOUND|ECONNREFUSED|EAI_AGAIN/i.test(String((e && e.message) || ''))) {
+                    console.error("[DB] Kemungkinan container sqld mati / proxy 502 (balasan non-JSON). Cek Coolify: service sqld Running, domain -> service sqld port 8080, lalu curl /health.");
+                }
             }
         }
     };
