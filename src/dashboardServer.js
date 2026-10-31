@@ -516,6 +516,61 @@ function startDashboard(scope) {
     // Lindungi semua route setelah ini
     app.use(checkAuth);
 
+    // Diagnosa jalur bot -> DB (pengganti Render Shell yang tidak ada di
+    // paket gratis). Dibuka dari browser yang sudah login:
+    //   https://botdb.yogaa.web.id/api/db/ping
+    // Mengukur 3 tahap dari proses bot (Render): DNS, HTTPS /health, dan
+    // query libsql SELECT 1. Tidak pernah melempar; selalu JSON.
+    app.get('/api/db/ping', async (req, res) => {
+        const result = { ok: false, at: new Date().toISOString(), steps: {} };
+        let host = '';
+        try {
+            host = new URL(String(CONFIG.TURSO_URL || '')).hostname || '';
+        } catch (_) { host = ''; }
+        result.host = host || '(TURSO_URL tidak valid)';
+
+        async function timed(label, fn, timeoutMs) {
+            const t0 = Date.now();
+            let timer = null;
+            try {
+                const out = await Promise.race([
+                    Promise.resolve().then(fn),
+                    new Promise((_, reject) => {
+                        timer = setTimeout(() => {
+                            const e = new Error(`${label} timeout setelah ${timeoutMs}ms`);
+                            e.code = 'PING_TIMEOUT';
+                            reject(e);
+                        }, timeoutMs);
+                        if (timer.unref) timer.unref();
+                    }),
+                ]);
+                result.steps[label] = { ok: true, ms: Date.now() - t0, ...out };
+            } catch (e) {
+                result.steps[label] = { ok: false, ms: Date.now() - t0, error: String((e && e.message) || e).slice(0, 200) };
+            } finally {
+                if (timer) clearTimeout(timer);
+            }
+        }
+
+        if (!host) {
+            return res.json({ ...result, error: 'TURSO_URL kosong/tidak valid' });
+        }
+        await timed('dns', async () => {
+            const addr = await require('dns').promises.lookup(host);
+            return { address: addr.address };
+        }, 8000);
+        await timed('health', async () => {
+            const r = await axios.get(`https://${host}/health`, { timeout: 10000 });
+            return { http: r.status };
+        }, 12000);
+        await timed('db', async () => {
+            const r = await db.execute('SELECT 1 as v');
+            return { rows: (r.rows || []).length };
+        }, 12000);
+        result.ok = ['dns', 'health', 'db'].every((k) => result.steps[k] && result.steps[k].ok);
+        res.json(result);
+    });
+
     function blockWhenSystemOff(res, action = 'Aksi') {
         if (!runtime.isSystemOff) return false;
         return res.status(423).json({

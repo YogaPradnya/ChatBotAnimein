@@ -4830,9 +4830,10 @@ async function updateStats() {
   try { refresh(); } catch (e) { console.error('Init refresh gagal:', e); }
   try { loadTitles(); } catch (e) { console.error('Init loadTitles gagal:', e); }
   try { connectRealtimeLogs(); } catch (e) { console.error('Init SSE gagal:', e); }
-  // TODO(perf): refresh 5s via polling; pertimbangkan SSE (/api/logs/stream sudah SSE)
-  // agar dashboard tidak polling buta. Tetap dipertahankan 5s untuk kompatibilitas.
-  setInterval(refresh, 5000);
+  // TODO(perf): refresh via polling; pertimbangkan SSE (/api/logs/stream sudah SSE)
+  // agar dashboard tidak polling buta. Interval 15s (dulunya 5s) untuk
+  // mengurangi beban ke sqld/VPS agar tidak ke-trigger rate-limit/firewall.
+  setInterval(refresh, 15000);
 
   // =============== GLOBAL LIMITS ===============
   async function loadGlobalLimits() {
