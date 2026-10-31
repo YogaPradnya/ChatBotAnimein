@@ -1219,22 +1219,42 @@ function startDashboard(scope) {
     });
 
     app.get('/api/stats', async (req, res) => {
+        const uptime = Math.floor((Date.now() - new Date(stats.startTime)) / 1000);
+        const botStatus = runtime.isSystemOff ? 'offline' : ((bots[0] && bots[0].auth && bots[0].auth.userId) ? 'online' : 'offline');
+        // Tahan gagal sebagian: tiap query DB jalan paralel dengan fallback
+        // sendiri. Satu tabel lambat/mati tidak boleh mengosongkan seluruh
+        // dashboard (insiden: sqld sleep -> semua angka hilang + error global).
+        const dbErrors = {};
+        async function safeDb(label, fn, fallback) {
+            try {
+                return await fn();
+            } catch (e) {
+                dbErrors[label] = (e && e.message) || String(e);
+                console.warn(`[DASHBOARD] /api/stats ${label} gagal, pakai fallback:`, dbErrors[label]);
+                return fallback;
+            }
+        }
+        const [logsCount, laporanCount, quizCount, titleRes] = await Promise.all([
+            safeDb('chat_logs', () => db.execute("SELECT COUNT(*) as count FROM chat_logs"), { rows: [{ count: 0 }] }),
+            safeDb('laporan', () => db.execute("SELECT COUNT(*) as count FROM laporan"), { rows: [{ count: 0 }] }),
+            safeDb('quiz_pool', () => db.execute("SELECT COUNT(*) as count FROM quiz_pool"), { rows: [{ count: 0 }] }),
+            safeDb('settings', () => db.execute({ sql: "SELECT value FROM settings WHERE key = 'available_titles'" }), { rows: [] }),
+        ]);
+        let availableTitles = [];
         try {
-            const uptime = Math.floor((Date.now() - new Date(stats.startTime)) / 1000);
-            const logsCount = await db.execute("SELECT COUNT(*) as count FROM chat_logs");
-            const laporanCount = await db.execute("SELECT COUNT(*) as count FROM laporan");
-            const quizCount = await db.execute("SELECT COUNT(*) as count FROM quiz_pool");
-            
-            const titleRes = await db.execute({ sql: "SELECT value FROM settings WHERE key = 'available_titles'" });
-            const availableTitles = titleRes.rows.length > 0 ? JSON.parse(titleRes.rows[0].value) : [];
-
-            const botStatus = runtime.isSystemOff ? 'offline' : ((bots[0] && bots[0].auth && bots[0].auth.userId) ? 'online' : 'offline');
-            res.json({ 
+            if (titleRes.rows.length > 0) availableTitles = JSON.parse(titleRes.rows[0].value);
+            if (!Array.isArray(availableTitles)) availableTitles = [];
+        } catch (e) {
+            dbErrors.available_titles = (e && e.message) || String(e);
+            availableTitles = [];
+        }
+        try {
+            res.json({
                 ...stats,
                 cloudflare: getCloudflareStat(),
                 cerebras: getCerebrasStat(),
                 nvidia: getNvidiaStat(),
-                uptime, 
+                uptime,
                 botStatus,
                 isBotActive: runtime.isBotInfoActive, // backward compat
                 isBotInfoActive: runtime.isBotInfoActive,
@@ -1247,9 +1267,9 @@ function startDashboard(scope) {
                 doubleXPEndTime: runtime.doubleXPEndTime,
                 quizFilter: runtime.QUIZ_FILTER,
                 availableTitles,
-                totalDBLogs: logsCount.rows[0].count,
-                totalReports: laporanCount.rows[0].count,
-                totalDBKuis: quizCount.rows[0].count,
+                totalDBLogs: Number(logsCount.rows[0]?.count ?? 0),
+                totalReports: Number(laporanCount.rows[0]?.count ?? 0),
+                totalDBKuis: Number(quizCount.rows[0]?.count ?? 0),
                 totalQuizzesStarted: stats.totalQuizzesStarted,
                 accuracyFallback: stats.accuracyFallback || 0,
                 accuracyDontKnow: stats.accuracyDontKnow || 0,
@@ -1262,10 +1282,11 @@ function startDashboard(scope) {
                     hints: runtime.activeQuiz.hintsRevealed,
                     start: runtime.activeQuiz.startedAt
                 } : null,
-                realtimeLogs: stats.realtimeLogs || []
+                realtimeLogs: stats.realtimeLogs || [],
+                dbOk: Object.keys(dbErrors).length === 0,
+                dbErrors,
             });
         } catch (e) {
-            const botStatus = runtime.isSystemOff ? 'offline' : ((bots[0] && bots[0].auth && bots[0].auth.userId) ? 'online' : 'offline');
             res.json({ ...stats, botStatus, isBotInfoActive: runtime.isBotInfoActive, isBotKuisActive: runtime.isBotKuisActive, isImageCommandActive: runtime.isImageCommandActive, isSystemOff: runtime.isSystemOff, realtimeLogs: stats.realtimeLogs || [], error: 'Internal error' });
         }
     });
@@ -1401,20 +1422,30 @@ function startDashboard(scope) {
                 sql: `SELECT user_id, username, usage_date, used_count, daily_limit, updated_at FROM image_limits${whereSql} ORDER BY updated_at DESC, username ASC LIMIT ? OFFSET ?`,
                 args: [...args, limit, offset]
             });
-            const data = [];
-
-            for (const row of rows.rows) {
-                const status = await getImageLimitStatus(row.user_id, row.username);
-                data.push({
-                    user_id: status.userId,
-                    username: status.username,
-                    usage_date: status.usageDate,
-                    used_count: status.used,
-                    daily_limit: status.limit,
-                    remaining: status.remaining,
-                    updated_at: row.updated_at,
-                });
-            }
+            const data = (await Promise.all(rows.rows.map(async (row) => {
+                try {
+                    const status = await getImageLimitStatus(row.user_id, row.username);
+                    return {
+                        user_id: status.userId,
+                        username: status.username,
+                        usage_date: status.usageDate,
+                        used_count: status.used,
+                        daily_limit: status.limit,
+                        remaining: status.remaining,
+                        updated_at: row.updated_at,
+                    };
+                } catch (e) {
+                    return {
+                        user_id: String(row.user_id || ''),
+                        username: String(row.username || '').replace(/^@/, ''),
+                        usage_date: today,
+                        used_count: Number(row.used_count || 0),
+                        daily_limit: Number(row.daily_limit || runtime.IMAGE_DAILY_LIMIT_DEFAULT),
+                        remaining: 0,
+                        updated_at: row.updated_at,
+                    };
+                }
+            })));
 
             res.json({ success: true, date: today, defaultLimit: runtime.IMAGE_DAILY_LIMIT_DEFAULT, data, pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) }, q });
         } catch (e) {

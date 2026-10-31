@@ -8,6 +8,7 @@ function createLimitService({
     stats,
     logEmitter,
 }) {
+    const { withTimeout } = require('../utils/withTimeout');
     function defaultCommandStatus() {
         const limit = getDefaultCommandLimit();
         return { used: 0, limit, remaining: limit };
@@ -59,6 +60,9 @@ function createLimitService({
         }
     }
 
+    // Fail-open dengan batas default bila DB lambat/mati: tanpa try/catch +
+    // timeout di sini, satu query hang membuat .gambar gantung dan (sebelum
+    // refactor polling) menahan seluruh siklus fetch semua bot.
     async function getImageLimitStatus(userId, username) {
         const usernameClean = String(username || '').replace(/^@/, '').trim();
         const userIdStr = String(userId || '');
@@ -69,25 +73,36 @@ function createLimitService({
             return defaultImageStatus(userIdStr, usernameClean, today);
         }
 
-        const result = await limitRepo.getImageLimit(userIdStr);
-        if (result.rows.length === 0) {
-            await limitRepo.createImageLimit(userIdStr, usernameClean, today, defaultLimit);
+        try {
+            return await withTimeout((async () => {
+                const result = await limitRepo.getImageLimit(userIdStr);
+                if (result.rows.length === 0) {
+                    try {
+                        await limitRepo.createImageLimit(userIdStr, usernameClean, today, defaultLimit);
+                    } catch (_) { /* best-effort: tetap balas default */ }
+                    return defaultImageStatus(userIdStr, usernameClean, today);
+                }
+
+                const row = result.rows[0];
+                const storedLimit = Number(row.daily_limit ?? defaultLimit);
+                const limit = Math.max(defaultLimit, storedLimit);
+                let used = Number(row.used_count || 0);
+                let usageDate = row.usage_date || today;
+
+                if (usageDate !== today) {
+                    used = 0;
+                    usageDate = today;
+                    try {
+                        await limitRepo.resetImageLimitUsage(userIdStr, today);
+                    } catch (_) { /* best-effort */ }
+                }
+
+                return { userId: userIdStr, username: usernameClean, usageDate, used, limit, remaining: Math.max(0, limit - used) };
+            })(), 10000, 'getImageLimitStatus');
+        } catch (e) {
+            console.warn('[IMG LIMIT] Fallback default (DB lambat/mati):', (e && e.message) || e);
             return defaultImageStatus(userIdStr, usernameClean, today);
         }
-
-        const row = result.rows[0];
-        const storedLimit = Number(row.daily_limit ?? defaultLimit);
-        const limit = Math.max(defaultLimit, storedLimit);
-        let used = Number(row.used_count || 0);
-        let usageDate = row.usage_date || today;
-
-        if (usageDate !== today) {
-            used = 0;
-            usageDate = today;
-            await limitRepo.resetImageLimitUsage(userIdStr, today);
-        }
-
-        return { userId: userIdStr, username: usernameClean, usageDate, used, limit, remaining: Math.max(0, limit - used) };
     }
 
     async function incrementImageLimitUsage(userId, username) {

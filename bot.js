@@ -6,6 +6,7 @@ const EventEmitter = require('events');
 const { initializeBootstrap } = require('./src/bootstrap');
 const { createMessagePipeline } = require('./src/pipeline/messagePipeline');
 const { createClient } = require('@libsql/client');
+const { patchDbWithTimeout } = require('./src/utils/withTimeout');
 const { CONFIG, ANIMEIN_HEADERS, ANIMEIN_HEADERS_FULL, warnMissingConfig } = require('./src/config');
 const { startDashboard } = require('./src/dashboardServer');
 const { loadPokemonData } = require('./src/pokemon');
@@ -111,6 +112,10 @@ const db = createClient({
     url: CONFIG.TURSO_URL || '',
     authToken: CONFIG.TURSO_AUTH_TOKEN || '',
 });
+// Fail-fast: setiap query DB maksimal 8s. Tanpa ini satu query sqld yang
+// hang (sleep/jaringan) menggantung startQuiz/getImageLimitStatus/polling
+// tanpa batas. Semua repo memakai objek db ini sehingga otomatis terlindungi.
+patchDbWithTimeout(db);
 
 const settingsRepo = createSettingsRepo(db);
 const userRepo = createUserRepo(db);

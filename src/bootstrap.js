@@ -24,6 +24,7 @@ const { createMemoryRepo } = require('./database/memoryRepo');
 const { createKnowledgeRepo } = require('./database/knowledgeRepo');
 const { initShopTables } = require('./shop');
 const { LIMITS, SETTINGS_KEYS } = require('./config/constants');
+const { patchDbWithTimeout } = require('./utils/withTimeout');
 const { ignoreExpectedError, handleError } = require('./services/errorHandler');
 const { recordPath: recordApiPath } = require('./utils');
 
@@ -36,6 +37,7 @@ function initializeBootstrap(options = {}) {
         url: CONFIG.TURSO_URL || '',
         authToken: CONFIG.TURSO_AUTH_TOKEN || '',
     });
+    patchDbWithTimeout(db);
 
     function recordPath(routePath) {
         recordApiPath(stats, routePath);
