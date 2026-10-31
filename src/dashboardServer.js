@@ -513,15 +513,14 @@ function startDashboard(scope) {
 
     app.post('/logout', doLogout);
 
-    // Lindungi semua route setelah ini
-    app.use(checkAuth);
-
     // Diagnosa jalur bot -> DB (pengganti Render Shell yang tidak ada di
-    // paket gratis). Dibuka dari browser yang sudah login:
-    //   https://botdb.yogaa.web.id/api/db/ping
-    // Mengukur 3 tahap dari proses bot (Render): DNS, HTTPS /health, dan
-    // query libsql SELECT 1. Tidak pernah melempar; selalu JSON.
+    // paket gratis). Publik seperti /health (tanpa login) karena isinya
+    // hanya timing, tanpa secret; tapi di-rate-limit agar tidak bisa dipakai
+    // untuk menghantam DB. URL: https://botdb.yogaa.web.id/api/db/ping
     app.get('/api/db/ping', async (req, res) => {
+        if (!checkRateLimit(getRequestIp(req))) {
+            return res.status(429).json({ ok: false, error: 'Too many requests. Coba lagi dalam 1 menit.' });
+        }
         const result = { ok: false, at: new Date().toISOString(), steps: {} };
         let host = '';
         try {
@@ -570,6 +569,9 @@ function startDashboard(scope) {
         result.ok = ['dns', 'health', 'db'].every((k) => result.steps[k] && result.steps[k].ok);
         res.json(result);
     });
+
+    // Lindungi semua route setelah ini
+    app.use(checkAuth);
 
     function blockWhenSystemOff(res, action = 'Aksi') {
         if (!runtime.isSystemOff) return false;
