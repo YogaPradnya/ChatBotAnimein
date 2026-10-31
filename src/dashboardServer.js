@@ -1287,7 +1287,8 @@ function startDashboard(scope) {
                 return await fn();
             } catch (e) {
                 dbErrors[label] = (e && e.message) || String(e);
-                console.warn(`[DASHBOARD] /api/stats ${label} gagal, pakai fallback:`, dbErrors[label]);
+                const { warnThrottled } = require('./utils/dbHealth');
+                warnThrottled(`dashboard-stats:${label}`, `[DASHBOARD] /api/stats ${label} gagal, pakai fallback: ${dbErrors[label]} (log berikutnya max 1/menit)`);
                 return fallback;
             }
         }

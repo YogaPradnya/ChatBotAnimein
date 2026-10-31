@@ -1360,6 +1360,8 @@ function fmtXP(xp) {
 /** Track daily streak user (dipanggil setiap kali user berinteraksi) */
 async function trackStreak(userId, username) {
     if (!CONFIG.TURSO_URL) return;
+    const { isDbCircuitOpen } = require('./src/utils/dbHealth');
+    if (isDbCircuitOpen()) return; // statistik non-kritis: dijeda saat outage
     const today = getJakartaDateKey();
     try {
         const res = await streakRepo.getUserStreak(userId);
@@ -1396,27 +1398,34 @@ async function trackStreak(userId, username) {
 
         await streakRepo.updateUserStreak(userId, newStreak, newBest, today);
     } catch (e) {
-        console.warn(`[STREAK] Gagal track streak ${username}:`, e.message);
+        const { warnThrottled } = require('./src/utils/dbHealth');
+        warnThrottled(`streak:${username}`, `[STREAK] Gagal track streak ${username}: ${e.message} (log berikutnya max 1/menit)`);
     }
 }
 
 /** Track quiz participation dan win */
 async function trackQuizStat(userId, username, field, amount = 1) {
     if (!CONFIG.TURSO_URL) return;
+    const { isDbCircuitOpen } = require('./src/utils/dbHealth');
+    if (isDbCircuitOpen()) return; // statistik non-kritis: dijeda saat outage
     try {
         await streakRepo.incrementQuizStat(userId, username, field, amount);
     } catch (e) {
-        console.warn(`[QUIZ STATS] Gagal track ${field} ${username}:`, e.message);
+        const { warnThrottled } = require('./src/utils/dbHealth');
+        warnThrottled(`quizstat:${field}:${username}`, `[QUIZ STATS] Gagal track ${field} ${username}: ${e.message} (log berikutnya max 1/menit)`);
     }
 }
 
 /** Track image request count */
 async function trackImageRequest(userId, username) {
     if (!CONFIG.TURSO_URL) return;
+    const { isDbCircuitOpen } = require('./src/utils/dbHealth');
+    if (isDbCircuitOpen()) return; // statistik non-kritis: dijeda saat outage
     try {
         await streakRepo.incrementImageRequest(userId, username);
     } catch (e) {
-        console.warn(`[IMAGE STATS] Gagal track gambar ${username}:`, e.message);
+        const { warnThrottled } = require('./src/utils/dbHealth');
+        warnThrottled(`imgstats:${username}`, `[IMAGE STATS] Gagal track gambar ${username}: ${e.message} (log berikutnya max 1/menit)`);
     }
 }
 

@@ -7,9 +7,14 @@ function createRuntimeRepo(db) {
         // Tulis sekelompok statement sebagai execute() tunggal PARALEL.
         // Upsert di sini independen per user -> aman paralel (~0,5-1 dtk/statement).
         // Nama batchWrite dipertahankan karena pemanggil lama (bot.js:flushPendingXP).
+        // Anti-burst: di-chunk 5 paralel agar tidak menghantam sqld/VPS dengan
+        // puluhan koneksi sekaligus (pemicu timeout massal saat jalur sibuk).
         async batchWrite(statements) {
             if (!statements || statements.length === 0) return;
-            await Promise.all(statements.map((s) => db.execute(s)));
+            const CHUNK = 5;
+            for (let i = 0; i < statements.length; i += CHUNK) {
+                await Promise.all(statements.slice(i, i + CHUNK).map((s) => db.execute(s)));
+            }
         },
 
         // Tambah XP secara ATOMIC (xp = xp + delta), bukan menulis total cache.

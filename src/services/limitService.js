@@ -100,7 +100,8 @@ function createLimitService({
                 return { userId: userIdStr, username: usernameClean, usageDate, used, limit, remaining: Math.max(0, limit - used) };
             })(), 10000, 'getImageLimitStatus');
         } catch (e) {
-            console.warn('[IMG LIMIT] Fallback default (DB lambat/mati):', (e && e.message) || e);
+            const { warnThrottled } = require('../utils/dbHealth');
+            warnThrottled('img-limit', `[IMG LIMIT] Fallback default (DB lambat/mati): ${(e && e.message) || e} (log berikutnya max 1/menit)`);
             return defaultImageStatus(userIdStr, usernameClean, today);
         }
     }

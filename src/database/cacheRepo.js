@@ -104,6 +104,8 @@ function createCacheRepo(db) {
     }
 
     async function saveNotifiedAnimeId(itemId) {
+        const { isDbCircuitOpen, warnThrottled } = require('../utils/dbHealth');
+        if (isDbCircuitOpen()) return null; // dijeda saat outage; dicoba lagi siklus berikut
         try {
             await initNotifCacheTable();
             return await db.execute({
@@ -111,7 +113,7 @@ function createCacheRepo(db) {
                 args: [String(itemId)],
             });
         } catch (e) {
-            console.warn('[CACHE_REPO] saveNotifiedAnimeId gagal:', e.message);
+            warnThrottled('cache-notif', `[CACHE_REPO] saveNotifiedAnimeId gagal: ${e.message} (log berikutnya max 1/menit)`);
             return null;
         }
     }

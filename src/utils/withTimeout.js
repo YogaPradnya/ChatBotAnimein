@@ -37,9 +37,14 @@ function describeDbArg(arg) {
 // karena memakai objek db yang sama.
 function patchDbWithTimeout(db, ms = DEFAULT_DB_TIMEOUT_MS) {
     if (!db || typeof db.execute !== 'function' || db.execute.__withTimeout) return db;
+    const { recordDbSuccess, recordDbFailure } = require('./dbHealth');
     const rawExecute = db.execute.bind(db);
     const wrapped = function patchedExecute(arg, ...rest) {
-        return withTimeout(Promise.resolve().then(() => rawExecute(arg, ...rest)), ms, `DB ${describeDbArg(arg)}`);
+        return withTimeout(Promise.resolve().then(() => rawExecute(arg, ...rest)), ms, `DB ${describeDbArg(arg)}`)
+            .then(
+                (res) => { recordDbSuccess(); return res; },
+                (err) => { recordDbFailure(); throw err; }
+            );
     };
     wrapped.__withTimeout = true;
     db.execute = wrapped;
