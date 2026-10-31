@@ -105,17 +105,30 @@ function createUserRepo(db) {
     }
 
     async function addAffection(userId, username, amount = 1) {
+        // Atomik single-statement: increment + level via CASE, tanpa read-modify-write.
+        // Ambang level: >=100:1, >=300:2, >=700:3, >=1500:4, >=3000:5 (sinkron dengan calculateHeartLevel).
+        const amt = Number(amount) || 0;
         try {
-            const current = await getAffection(userId);
-            const newPoints = current.points + amount;
-            const newLevel = calculateHeartLevel(newPoints);
-            await db.execute({
+            const res = await db.execute({
                 sql: `INSERT INTO user_stats (user_id, username, affection_points, affection_level)
                       VALUES (?, ?, ?, ?)
-                      ON CONFLICT(user_id) DO UPDATE SET affection_points = excluded.affection_points, affection_level = excluded.affection_level, username = excluded.username`,
-                args: [userId, username, newPoints, newLevel],
+                      ON CONFLICT(user_id) DO UPDATE SET
+                      affection_points = user_stats.affection_points + excluded.affection_points,
+                      affection_level = CASE
+                        WHEN user_stats.affection_points + excluded.affection_points >= 3000 THEN 5
+                        WHEN user_stats.affection_points + excluded.affection_points >= 1500 THEN 4
+                        WHEN user_stats.affection_points + excluded.affection_points >= 700 THEN 3
+                        WHEN user_stats.affection_points + excluded.affection_points >= 300 THEN 2
+                        WHEN user_stats.affection_points + excluded.affection_points >= 100 THEN 1
+                        ELSE 0 END,
+                      username = excluded.username
+                      RETURNING affection_points, affection_level`,
+                args: [userId, username, amt, calculateHeartLevel(amt)],
             });
-            return { points: newPoints, level: newLevel };
+            if (res.rows && res.rows.length > 0) {
+                return { points: Number(res.rows[0].affection_points) || 0, level: Number(res.rows[0].affection_level) || 0 };
+            }
+            return getAffection(userId);
         } catch (e) {
             console.warn('[USER_REPO] addAffection error:', e.message);
             return { points: 0, level: 0 };

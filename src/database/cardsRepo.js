@@ -126,6 +126,25 @@ function isUniqueRarity(rarity) {
     return rarity === 'Mythic';
 }
 
+// Serialisasi pull per user (single-process). Tanpa ini dua pull konkuren user
+// yang sama bisa sama-sama lolos DAILY_CAP dan INSERT duplikat bersamaan.
+const pullLocks = new Map();
+async function withUserPullLock(userId, fn) {
+    const key = String(userId || 'unknown');
+    const prev = pullLocks.get(key) || Promise.resolve();
+    let releaseNext;
+    const next = new Promise((res) => { releaseNext = res; });
+    const tail = prev.catch(() => {}).then(() => next);
+    pullLocks.set(key, tail);
+    await prev.catch(() => {});
+    try {
+        return await fn();
+    } finally {
+        releaseNext();
+        if (pullLocks.get(key) === tail) pullLocks.delete(key);
+    }
+}
+
 /** Cek syarat evo manual. Return {ok} atau {ok:false, need, have}. */
 function checkEvoCost(level, quantity) {
     const cost = EVO_COST[Number(level)];
@@ -570,19 +589,16 @@ function createCardsRepo(db, options = {}) {
         } catch (_) { /* abaikan */ }
     }
 
-    /** Jumlah pemilik global satu kartu (untuk cek stok). Akun tes/admin diabaikan. */
+    /** Jumlah pemilik global satu kartu (untuk cek stok). Akun tes/admin diabaikan.
+     *  Fail-closed: error DB dilempar (bukan return 0) agar batas stok tidak di-bypass diam-diam. */
     async function countCardOwners(charName) {
-        try {
-            const excl = stockExcludedUsernames();
-            const notIn = excl.length ? ` AND LOWER(username) NOT IN (${excl.map(() => '?').join(',')})` : '';
-            const res = await db.execute({
-                sql: `SELECT COUNT(*) AS c FROM user_cards WHERE char_name = ?${notIn}`,
-                args: [charName, ...excl],
-            });
-            return Number(res.rows[0]?.c || 0);
-        } catch (_) {
-            return 0;
-        }
+        const excl = stockExcludedUsernames();
+        const notIn = excl.length ? ` AND LOWER(username) NOT IN (${excl.map(() => '?').join(',')})` : '';
+        const res = await db.execute({
+            sql: `SELECT COUNT(*) AS c FROM user_cards WHERE char_name = ?${notIn}`,
+            args: [charName, ...excl],
+        });
+        return Number(res.rows[0]?.c || 0);
     }
 
     /**
@@ -610,7 +626,14 @@ function createCardsRepo(db, options = {}) {
                 const limit = stockLimits[r];
                 let stockLeft = null;
                 if (Number.isFinite(limit)) {
-                    const owners = await countCardOwners(cand.name);
+                    let owners = null;
+                    try {
+                        owners = await countCardOwners(cand.name);
+                    } catch (e) {
+                        // Fail-closed: stok tak bisa diverifikasi -> lewati kandidat ini.
+                        console.warn('[CARDS] countCardOwners gagal, skip kandidat:', cand.name, e.message);
+                        continue;
+                    }
                     if (owners >= limit) continue;
                     stockLeft = limit - owners - 1;
                 }
@@ -908,6 +931,11 @@ function createCardsRepo(db, options = {}) {
          * atau { error: 'DAILY_CAP'|'SOLD_OUT', ... }.
          */
         async performPull(userId, username, todayKey, rng = Math.random) {
+            // Kunci per user: cegah double-pull konkuren (DAILY_CAP + INSERT ganda).
+            return withUserPullLock(userId, () => repo.performPullInner(userId, username, todayKey, rng, 0));
+        },
+
+        async performPullInner(userId, username, todayKey, rng = Math.random, attempt = 0) {
             let settings = null;
             try {
                 settings = await loadGachaSettings(db);
@@ -934,8 +962,8 @@ function createCardsRepo(db, options = {}) {
             const downgraded = selection.rarity !== rolledRarity;
 
             // Mythic unik per user (sudah difilter); sisanya boleh menumpuk.
-            const existing = isUniqueRarity(rarity) ? null : await repo.getCard(userId, picked.name);
-            const isDuplicate = Boolean(existing);
+            let existing = isUniqueRarity(rarity) ? null : await repo.getCard(userId, picked.name);
+            let isDuplicate = Boolean(existing);
             let level = 1;
             let power;
             let imageUrl = null;
@@ -972,13 +1000,26 @@ function createCardsRepo(db, options = {}) {
                         console.warn('[CARDS] Gagal resolve gambar:', picked.name, e.message);
                     }
                 }
-                await db.execute({
-                    sql: `INSERT INTO user_cards (user_id, username, char_name, anime, rarity, level, power, image_url, quantity, pulled_at)
-                          VALUES (?, ?, ?, ?, ?, 1, ?, ?, 1, CURRENT_TIMESTAMP)`,
-                    args: [userId, username, picked.name, picked.anime, rarity, power, imageUrl],
-                });
-                await persistSkills(userId, picked.name, pullSkills.skill1, pullSkills.skill2);
-            } else {
+                let inserted = true;
+                try {
+                    await db.execute({
+                        sql: `INSERT INTO user_cards (user_id, username, char_name, anime, rarity, level, power, image_url, quantity, pulled_at)
+                              VALUES (?, ?, ?, ?, ?, 1, ?, ?, 1, CURRENT_TIMESTAMP)`,
+                        args: [userId, username, picked.name, picked.anime, rarity, power, imageUrl],
+                    });
+                } catch (e) {
+                    if (!/UNIQUE|CONFLICT/i.test(String((e && e.message) || e))) throw e;
+                    // Race: baris yang sama dibuat konkuren (antar-proses) -> perlakukan sebagai duplikat.
+                    const refetch = await repo.getCard(userId, picked.name).catch(() => null);
+                    if (!refetch) throw e;
+                    console.warn('[CARDS] INSERT race, fallback ke stack:', picked.name);
+                    existing = refetch;
+                    isDuplicate = true;
+                    inserted = false;
+                }
+                if (inserted) await persistSkills(userId, picked.name, pullSkills.skill1, pullSkills.skill2);
+            }
+            if (isDuplicate) {
                 // Evo full manual: level/power tetap, copy menumpuk (maks 999).
                 level = existing.level;
                 power = existing.power;
@@ -1003,6 +1044,23 @@ function createCardsRepo(db, options = {}) {
                         sql: 'UPDATE user_cards SET quantity = quantity + 1, username = ? WHERE user_id = ? AND LOWER(char_name) = LOWER(?)',
                         args: [username, userId, existing.char_name],
                     });
+                }
+            }
+
+            // Verifikasi stok pasca-INSERT untuk rarity terbatas: cegah oversell
+            // oleh race antar-user/proses yang sama-sama lolos cek awal.
+            if (!isDuplicate && Number.isFinite(stockLimits[rarity])) {
+                let ownersNow = null;
+                try { ownersNow = await countCardOwners(picked.name); } catch (_) { ownersNow = null; }
+                if (ownersNow !== null && ownersNow > stockLimits[rarity]) {
+                    // Batalkan baris yang baru dibuat (milik user ini, qty 1), coba kandidat lain sekali.
+                    await db.execute({
+                        sql: 'DELETE FROM user_cards WHERE user_id = ? AND char_name = ? AND quantity <= 1',
+                        args: [userId, picked.name],
+                    }).catch(() => {});
+                    console.warn(`[CARDS] Stock race ${picked.name} (${ownersNow}/${stockLimits[rarity]}), retry...`);
+                    if (attempt < 1) return repo.performPullInner(userId, username, todayKey, rng, attempt + 1);
+                    return { error: 'SOLD_OUT', cost: cfg.cost, dailyLimit: cfg.dailyLimit };
                 }
             }
 

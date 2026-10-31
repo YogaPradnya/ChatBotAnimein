@@ -12,6 +12,7 @@ async function execute(ctx) {
         clearQuizTimers,
         trackQuizStat,
         trackStreak,
+        processQuizWinStreak,
         levenshtein,
         addXP,
         XP_MULTIPLIER,
@@ -20,6 +21,13 @@ async function execute(ctx) {
 
     if (bot.isCooldown) return true;
     if (activeQuiz.isProcessingAnswer) return true;
+
+    // Anti-spam: satu user maksimal 1 tebakan per 5 detik. Sengaja TIDAK memakan
+    // daily command limit (limit 10/hari akan membunuh partisipasi kuis).
+    const nowTs = Date.now();
+    if (!activeQuiz.lastGuessAt) activeQuiz.lastGuessAt = {};
+    if (nowTs - (activeQuiz.lastGuessAt[senderUserId] || 0) < 5000) return true;
+    activeQuiz.lastGuessAt[senderUserId] = nowTs;
 
     const answer = lowerMsg.substring(6).trim();
     if (!answer) {
@@ -77,7 +85,19 @@ async function execute(ctx) {
             const penaltyHint = activeQuiz.hintsRevealed * 40;
             const penaltyWrong = (activeQuiz.wrongGuessCount || 0) * 20;
             const diffMult = Number(activeQuiz.xpMultiplier) || 1;
-            const xpEarned = Math.round(Math.max(100, baseXP - penaltyHint - penaltyWrong) * diffMult);
+            // Bonus streak menang harian (x1.25 s/d x3.0). Best-effort: gagal = x1.
+            let streakMult = 1;
+            let streakDays = 0;
+            if (typeof processQuizWinStreak === 'function') {
+                try {
+                    const st = await processQuizWinStreak(senderUserId, senderName);
+                    streakMult = Number(st && st.xpMultiplier) || 1;
+                    streakDays = Number(st && st.currentStreak) || 0;
+                } catch (e) {
+                    console.warn('[STREAK] processQuizWinStreak gagal:', e.message);
+                }
+            }
+            const xpEarned = Math.round(Math.max(100, baseXP - penaltyHint - penaltyWrong) * diffMult * streakMult);
 
             const xpRes = await addXP(senderUserId, senderName, xpEarned);
             // Tampilkan XP yang BENAR-BENAR masuk (baseXpRate + multiplier),
@@ -95,6 +115,7 @@ async function execute(ctx) {
                 `│👤 @${dn}`,
                 `│✅ ${activeQuiz.original}`,
                 `│🏷️ ${diffLabel} (x${diffMult})`,
+                ...(streakDays > 1 ? [`│🔥 Streak ${streakDays} hari (x${streakMult})`] : []),
                 `│✨ +${finalDisplayXP.toLocaleString('id-ID')} XP ${xpMul}`,
                 `│❌ Salah: ${activeQuiz.wrongGuessCount || 0}x`,
             ];

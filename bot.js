@@ -978,6 +978,7 @@ const quizService = createQuizService({
 });
 
 const clearQuizTimers = quizService.clearQuizTimers;
+const resetStuckQuiz = quizService.resetStuckQuiz;
 // Streak service: bonus XP beruntun harian (x1.25 s/d x3.0). Sebelumnya dead code
 // (tidak pernah dipanggil) sehingga multiplier tidak pernah berlaku.
 const streakService = createStreakService({ streakRepo, userRepo });
@@ -1733,13 +1734,8 @@ async function fetchHomeAnime(force = false) {
 
     // Pastikan tidak ada kuis berjalan saat mau fetch/reset baru
     if (!force && (activeQuiz.isRunning || activeQuiz.isStarting)) {
-        const ageMs = Date.now() - (activeQuiz.startedAt || Date.now());
-        const maxAgeMs = (activeQuiz.durationMs || QUIZ_DURATION_MS) + (5 * 60 * 1000);
-        if (ageMs > maxAgeMs) {
-            console.warn(`[ANIMEIN] Watchdog: kuis macet (umur ${Math.round(ageMs/1000)}s), force reset agar microfetch jalan.`);
-            try { clearQuizTimers(); } catch (_) {}
-            activeQuiz.isRunning = false;
-            activeQuiz.isStarting = false;
+        if (typeof resetStuckQuiz === 'function' && resetStuckQuiz('microfetch')) {
+            console.warn('[ANIMEIN] Watchdog: kuis macet di-reset agar microfetch jalan.');
         } else {
             console.log("[ANIMEIN] Kuis sedang berjalan, menunda microfetch & reset...");
             return false;
@@ -5376,23 +5372,27 @@ async function startBot() {
         console.log("[KILL SWITCH] Startup fetch anime dilewati.");
     }
 
-    // Main Polling Loop (paralel + anti-overlap + adaptive interval).
+    // Main Polling Loop: fetch cepat dibatasi watchdog, proses berat di background.
     // Bila 5 siklus kosong berturut-turut -> interval 30s; kembali ke base saat ada pesan.
+    // Alasan refactor: pollOneBot lama = fetch + await processMessages (AI 30s x3
+    // + kirim pesan + DB) di dalam Promise.race 60s, sehingga satu pesan berat
+    // selalu memicu watchdog. Sekarang fetch-only (cepat, ~15s maks) masuk race,
+    // proses pesan jalan di background per-bot sequential chain tanpa menahan tick.
     let isPolling = false;
     let idleCycles = 0;
     let pollingTickStartedAt = 0;
     const POLL_BASE_MS = CONFIG.POLL_INTERVAL;
     const POLL_IDLE_MS = 30000;
-    const POLL_TICK_TIMEOUT_MS = 60000; // watchdog: satu siklus tidak boleh gantung lebih dari ini
-    async function pollOneBot(bot) {
-        if (bot.role === 'notif') { bot.isFirstRun = true; return 0; }
-        if (bot.role === 'image' && !isImageCommandActive) { bot.isFirstRun = true; return 0; }
-        if (bot.role === 'info' && !isBotInfoActive) { bot.isFirstRun = true; return 0; }
-        if (bot.role === 'kuis' && !isBotKuisActive) { bot.isFirstRun = true; return 0; }
-        if (!bot.auth.userId) return 0;
+    const POLL_TICK_TIMEOUT_MS = 60000; // watchdog fetch: satu siklus fetch tidak boleh gantung lebih dari ini
+    async function fetchOneBot(bot) {
+        if (bot.role === 'notif') { bot.isFirstRun = true; return { bot, messages: [] }; }
+        if (bot.role === 'image' && !isImageCommandActive) { bot.isFirstRun = true; return { bot, messages: [] }; }
+        if (bot.role === 'info' && !isBotInfoActive) { bot.isFirstRun = true; return { bot, messages: [] }; }
+        if (bot.role === 'kuis' && !isBotKuisActive) { bot.isFirstRun = true; return { bot, messages: [] }; }
+        if (!bot.auth.userId) return { bot, messages: [] };
 
         const data = await fetchMessages(bot);
-        if (!data) return 0;
+        if (!data) return { bot, messages: [] };
 
         const messages = (data.data && Array.isArray(data.data.chat)) ? data.data.chat : [];
 
@@ -5403,22 +5403,65 @@ async function startBot() {
             }
             console.log(`[${bot.username}] Baseline ID: ${bot.lastMessageId}.`);
             bot.isFirstRun = false;
-            return 0;
+            return { bot, messages: [] };
         }
 
-        if (messages.length > 0) {
-            await processMessages(bot, messages);
-            return messages.length;
+        if (messages.length === 0) return { bot, messages: [] };
+
+        // Reserve at-most-once: majukan penanda ke ID terbesar SEBELUM proses,
+        // agar siklus fetch berikutnya tidak mengambil ulang batch ini selagi
+        // batch diproses di background. Proses memakai snapshot `batch` di bawah
+        // (tanpa guard lastMessageId) sehingga tidak ada yang ter-skip.
+        const sorted = [...messages].sort((a, b) => (parseInt(a.id || 0) || 0) - (parseInt(b.id || 0) || 0));
+        const batch = [];
+        let maxId = bot.lastMessageId;
+        for (const msg of sorted) {
+            const id = parseInt(msg.id || 0);
+            if (!id || id <= bot.lastMessageId) continue;
+            batch.push(msg);
+            if (id > maxId) maxId = id;
         }
-        return 0;
+        bot.lastMessageId = maxId;
+        return { bot, messages: batch };
+    }
+    function enqueueBotProcessing(bot, messages) {
+        if (!messages || messages.length === 0) return;
+        const run = async () => {
+            for (const msg of messages) {
+                const msgId = parseInt(msg.id || 0);
+                try {
+                    await processOneMessage(bot, msg);
+                } catch (e) {
+                    console.error(`[HANDLER] ${bot.role} gagal memproses pesan ${msgId}: ${e && e.message ? e.message : e}`);
+                    if (isTransientPollError(e)) {
+                        try {
+                            await new Promise((r) => setTimeout(r, 1000));
+                            await processOneMessage(bot, msg);
+                        } catch (e2) {
+                            console.error(`[HANDLER] ${bot.role} retry pesan ${msgId} gagal: ${e2 && e2.message ? e2.message : e2}`);
+                        }
+                    }
+                }
+            }
+        };
+        // Chain per-bot agar balasan tetap urut; fire-and-forget (jangan await)
+        // supaya pollingTick berikutnya tidak tertahan pesan berat (AI/gambar).
+        bot.processChain = (bot.processChain || Promise.resolve()).then(run).catch((e) => {
+            console.error(`[HANDLER] ${bot.role} background chain error:`, e && e.message ? e.message : e);
+        });
+    }
+    // Kompatibilitas: nama lama tetap ada (fetch-only), proses di background.
+    async function pollOneBot(bot) {
+        const { messages } = await fetchOneBot(bot);
+        return (messages || []).length;
     }
     async function pollingTick() {
         if (isSystemOff) { pollingTimer = setTimeout(pollingTick, POLL_BASE_MS); if (pollingTimer.unref) pollingTimer.unref(); return; }
         if (isPolling) {
-            // Watchdog: kalau siklus sebelumnya nyangkut (mis. request tanpa timeout
-            // yang hang sebelum fix ini), paksa reset agar loop tidak mati selamanya.
+            // Watchdog: kalau siklus fetch sebelumnya nyangkut, paksa reset agar
+            // loop tidak mati selamanya.
             if (pollingTickStartedAt && Date.now() - pollingTickStartedAt > POLL_TICK_TIMEOUT_MS) {
-                console.warn('[POLLING] Watchdog: siklus sebelumnya macet, force reset isPolling.');
+                console.warn('[POLLING] Watchdog: siklus fetch sebelumnya macet, force reset isPolling.');
                 isPolling = false;
             } else {
                 pollingTimer = setTimeout(pollingTick, POLL_BASE_MS); if (pollingTimer.unref) pollingTimer.unref(); return; // skip bila siklus sebelumnya masih jalan
@@ -5426,23 +5469,34 @@ async function startBot() {
         }
         isPolling = true;
         pollingTickStartedAt = Date.now();
+        let timeoutHandle = null;
         try {
-            const batch = Promise.allSettled(bots.map((bot) => pollOneBot(bot)));
-            const tickTimeout = new Promise((resolve) => setTimeout(() => resolve('timeout'), POLL_TICK_TIMEOUT_MS));
+            const batch = Promise.allSettled(bots.map((bot) => fetchOneBot(bot)));
+            const tickTimeout = new Promise((resolve) => {
+                timeoutHandle = setTimeout(() => resolve('timeout'), POLL_TICK_TIMEOUT_MS);
+                if (timeoutHandle.unref) timeoutHandle.unref();
+            });
             const winner = await Promise.race([batch, tickTimeout]);
+            if (timeoutHandle) clearTimeout(timeoutHandle);
             if (winner === 'timeout') {
-                console.warn('[POLLING] Watchdog: siklus polling melebihi 60s, dilewati agar loop tidak mati. Cek koneksi API Animein.');
+                console.warn('[POLLING] Watchdog: siklus fetch melebihi 60s, dilewati agar loop tidak mati. Cek koneksi API Animein.');
             } else {
                 const results = winner;
                 let totalMsgs = 0;
                 for (const r of results) {
-                    if (r.status === 'fulfilled') totalMsgs += (r.value || 0);
+                    if (r.status === 'fulfilled') {
+                        const value = r.value || {};
+                        const msgs = value.messages || [];
+                        totalMsgs += (msgs.length || 0);
+                        if (msgs.length > 0 && value.bot) enqueueBotProcessing(value.bot, msgs);
+                    }
                     else console.error('[POLLING] Error pada polling bot:', r.reason && r.reason.message ? r.reason.message : r.reason);
                 }
                 if (totalMsgs > 0) idleCycles = 0;
                 else idleCycles++;
             }
         } catch (e) {
+            if (timeoutHandle) clearTimeout(timeoutHandle);
             console.error('[POLLING] Error pada polling loop:', e.message);
         } finally {
             isPolling = false;
@@ -5457,10 +5511,34 @@ async function startBot() {
     // Otomatis Kuis setiap 1 jam
     resetAutoQuizTimer();
     scheduleStartupQuizDataFetch();
+    // Anti-macat saat startup: state in-memory selalu fresh-idle, tapi pastikan
+    // tidak ada timer yatim + log eksplisit agar mudah didiagnosa.
+    try {
+        if (typeof resetStuckQuiz === 'function') resetStuckQuiz('startup');
+        else { activeQuiz.isRunning = false; activeQuiz.isStarting = false; activeQuiz.startingAt = 0; }
+    } catch (_) {}
+    console.log('[QUIZ] State kuis di-reset saat startup (anti-macat).');
+    startQuizWatchdog();
 }
 
 let autoQuizInterval = null;
 let startupQuizFetchTimer = null;
+let quizWatchdogInterval = null;
+
+// Watchdog berkala (5 menit): pulihkan kuis yang macet tanpa menunggu
+// ada chat masuk / microfetch jalan. Tanpa ini, isStarting nyangkut bisa
+// bertahan belasan jam (sesuai log user) karena hanya dibersihkan saat ada pemicu.
+function startQuizWatchdog() {
+    if (quizWatchdogInterval) clearInterval(quizWatchdogInterval);
+    quizWatchdogInterval = setInterval(() => {
+        try {
+            if (typeof resetStuckQuiz === 'function') resetStuckQuiz('interval-5m');
+        } catch (e) {
+            console.warn('[QUIZ] Watchdog interval gagal:', e.message);
+        }
+    }, 5 * 60 * 1000);
+    if (quizWatchdogInterval.unref) quizWatchdogInterval.unref();
+}
 
 function scheduleStartupQuizDataFetch() {
     if (startupQuizFetchTimer) clearTimeout(startupQuizFetchTimer);
@@ -5522,6 +5600,7 @@ async function gracefulShutdown(signal) {
         if (startupFetchHourlyInterval) clearInterval(startupFetchHourlyInterval);
         if (autoQuizInterval) clearInterval(autoQuizInterval);
         if (startupQuizFetchTimer) clearTimeout(startupQuizFetchTimer);
+        if (typeof quizWatchdogInterval !== 'undefined' && quizWatchdogInterval) clearInterval(quizWatchdogInterval);
         if (dbRetryTimer) clearInterval(dbRetryTimer);
         // Sumber kebenaran ganda doubleXP/discount: clear keduanya agar tidak ada timeout bocor.
         if (doubleXPTimeout) { clearTimeout(doubleXPTimeout); doubleXPTimeout = null; }
@@ -5635,6 +5714,7 @@ startDashboard({
     resetAutoQuizTimer,
     fetchHomeAnime,
     clearQuizTimers,
+    resetStuckQuiz,
     flushPendingXP,
     getImageLimitStatus,
     checkCommandLimit,

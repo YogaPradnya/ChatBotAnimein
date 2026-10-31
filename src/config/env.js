@@ -78,7 +78,7 @@ function createEnvConfig() {
             MODEL: getEnv('NVIDIA_MODEL', 'meta/llama-3.1-8b-instruct'),
         },
         BOT: {
-            POLL_INTERVAL: 9000,
+            POLL_INTERVAL: getNumberEnv('POLL_INTERVAL_MS', 9000),
             WEB_SEARCH_ENABLED: getEnv('WEB_SEARCH_ENABLED', '1') !== '0',
         },
         WEB: {
@@ -97,9 +97,32 @@ function warnMissingEnv() {
     if (!ENV_CONFIG.ANIMEIN.KUIS_USERNAME) missing.push('ANIMEIN_KUIS_USERNAME');
     if (!ENV_CONFIG.ANIMEIN.IMG_USERNAME) missing.push('ANIMEIN_IMG_USERNAME');
     if (!ENV_CONFIG.ANIMEIN.NOTIF_USERNAME) missing.push('ANIMEIN_NOTIF_USERNAME');
+    if (!ENV_CONFIG.ANIMEIN.PASSWORD) missing.push('ANIMEIN_PASSWORD');
+    if (!ENV_CONFIG.ANIMEIN.AI_KEY_CLIENT) missing.push('ANIMEIN_AI_KEY_CLIENT');
+    if (!ENV_CONFIG.ANIMEIN.KUIS_KEY_CLIENT) missing.push('ANIMEIN_KUIS_KEY_CLIENT');
+    if (!ENV_CONFIG.ANIMEIN.IMG_KEY_CLIENT) missing.push('ANIMEIN_IMG_KEY_CLIENT');
+    if (!ENV_CONFIG.ANIMEIN.NOTIF_KEY_CLIENT) missing.push('ANIMEIN_NOTIF_KEY_CLIENT');
+    if (!ENV_CONFIG.DATABASE.TURSO_URL) missing.push('TURSO_URL');
+    if (!ENV_CONFIG.DATABASE.TURSO_AUTH_TOKEN) missing.push('TURSO_AUTH_TOKEN');
+    if (!ENV_CONFIG.DASHBOARD.USERNAME) missing.push('DASHBOARD_USER/DASHBOARD_USERNAME');
+    if (!ENV_CONFIG.DASHBOARD.PASSWORD) missing.push('DASHBOARD_PASS/DASHBOARD_PASSWORD');
+    if (!ENV_CONFIG.WEB.LOGIN_PROXY_SECRET) missing.push('WEB_LOGIN_PROXY_SECRET');
 
     if (missing.length > 0) {
         console.warn(`[CONFIG] Env belum lengkap: ${missing.join(', ')}`);
+    }
+
+    // Fail-fast di production untuk secret kritikal: lebih baik crash saat
+    // startup dengan pesan jelas daripada jalan pincang tanpa sinyal.
+    const critical = [];
+    if (!ENV_CONFIG.ANIMEIN.BASE_URL) critical.push('ANIMEIN_API_URL');
+    if (!ENV_CONFIG.ANIMEIN.PASSWORD) critical.push('ANIMEIN_PASSWORD');
+    if (!ENV_CONFIG.DASHBOARD.USERNAME || !ENV_CONFIG.DASHBOARD.PASSWORD) {
+        critical.push('DASHBOARD_USER/DASHBOARD_PASS');
+    }
+    if (critical.length > 0 && String(process.env.NODE_ENV || '').toLowerCase() === 'production') {
+        console.error(`[CONFIG] FATAL: secret kritikal hilang di production: ${critical.join(', ')}. Set env lalu restart.`);
+        process.exit(1);
     }
 }
 

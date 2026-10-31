@@ -101,9 +101,18 @@ function mapRow(r) {
 function createDisplayRepo(db) {
     async function initTables() {
         await db.execute(DISPLAY_TABLE_SQL);
-        // Unik global: 1 kartu = 1 orang (nama tidak boleh dipakai ulang user lain).
-        await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_display_name_unique ON user_display_cards (name)')
-            .catch(() => {});
+        // Unik global: 1 kartu = 1 orang. COLLATE NOCASE agar "Kartu" vs "kartu"
+        // dianggap sama (cek aplikasi memakai LOWER(), index lama BINARY tidak).
+        // Buat index baru dulu; index lama dihapus hanya bila pembuatan sukses
+        // (bila ada duplikat beda-case, index lama dipertahankan + warning).
+        try {
+            await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_display_name_unique_nocase ON user_display_cards (name COLLATE NOCASE)');
+            await db.execute('DROP INDEX IF EXISTS idx_display_name_unique').catch(() => {});
+        } catch (e) {
+            console.warn('[DISPLAY] NOCASE unique index gagal (mungkin ada duplikat beda-case):', e.message);
+            await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_display_name_unique ON user_display_cards (name)')
+                .catch(() => {});
+        }
         await db.execute('CREATE INDEX IF NOT EXISTS idx_display_user ON user_display_cards (user_id)')
             .catch(() => {});
         await db.execute('CREATE INDEX IF NOT EXISTS idx_display_username ON user_display_cards (username)')

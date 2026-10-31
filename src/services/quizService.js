@@ -40,6 +40,7 @@ function createInitialQuizState() {
         isRunning: false,
         isStarting: false,
         isProcessingAnswer: false,
+        startingAt: 0,
         original: '',
         titleLower: '',
         startedAt: 0,
@@ -93,6 +94,47 @@ function createQuizService({
     function getEffectiveDuration() {
         const activeQuiz = getActiveQuiz();
         return (activeQuiz && activeQuiz.durationMs) || durationMs;
+    }
+
+    // Watchdog terpusat: kembalikan true bila ada state macet yang di-reset.
+    // Dipakai oleh startQuiz, fetchHomeAnime (bot.js), dan interval berkala.
+    // - isRunning kedaluwarsa: umur > durasi + 60s toleransi
+    // - isStarting nyangkut: mulai > 2 menit tanpa selesai (mis. DB hang,
+    //   sleep/restart, atau exception di tengah start). Kasus inilah yang
+    //   dulu deadlock permanen karena guard startQuiz hanya mereset isRunning.
+    function resetStuckQuiz(reason = 'watchdog') {
+        const activeQuiz = getActiveQuiz();
+        if (!activeQuiz) return false;
+        const now = Date.now();
+        let reset = false;
+
+        if (activeQuiz.isRunning) {
+            const ageMs = now - (activeQuiz.startedAt || now);
+            const maxAgeMs = getEffectiveDuration() + 60000;
+            if (!(activeQuiz.startedAt > 0) || ageMs > maxAgeMs) {
+                console.warn(`[QUIZ] Watchdog (${reason}): kuis macet terdeteksi (umur ${Math.round(ageMs / 1000)}s), force reset.`);
+                activeQuiz.isRunning = false;
+                reset = true;
+            }
+        }
+        if (activeQuiz.isStarting) {
+            const startAgeMs = activeQuiz.startingAt ? now - activeQuiz.startingAt : Infinity;
+            if (!activeQuiz.startingAt || startAgeMs > 2 * 60 * 1000) {
+                console.warn(`[QUIZ] Watchdog (${reason}): start kuis nyangkut (${activeQuiz.startingAt ? Math.round(startAgeMs / 1000) + 's' : 'tanpa timestamp'}), force reset isStarting.`);
+                activeQuiz.isStarting = false;
+                activeQuiz.startingAt = 0;
+                reset = true;
+            }
+        }
+        if (reset) {
+            try { clearQuizTimers(); } catch (e) { console.warn('[QUIZ] clearQuizTimers watchdog gagal:', e.message); }
+            // Jangan sisakan timer yatim: bila tidak ada kuis jalan, timer harus null.
+            if (!activeQuiz.isRunning && !activeQuiz.isStarting) {
+                activeQuiz.hintTimer = null;
+                activeQuiz.expireTimer = null;
+            }
+        }
+        return reset;
     }
 
     function buildHintMessage(level, senderName = null, penalty = 0) {
@@ -232,18 +274,12 @@ function createQuizService({
             return;
         }
         if (activeQuiz.isRunning || activeQuiz.isStarting) {
-            // Watchdog: kalau kuis macet (lebih tua dari durasi + toleransi 60 dtk),
-            // force-reset agar tidak deadlock selamanya. Tanpa ini, satu kegagalan
-            // kirim pesan / satu start ganda bikin "Kuis sedang berjalan" permanen
-            // dan microfetch terblokir terus (sesuai log user).
-            const ageMs = Date.now() - (activeQuiz.startedAt || Date.now());
-            const maxAgeMs = getEffectiveDuration() + 60000;
-            if (activeQuiz.isRunning && ageMs > maxAgeMs) {
-                console.warn(`[QUIZ] Watchdog: kuis macet terdeteksi (umur ${Math.round(ageMs/1000)}s), force reset.`);
-                activeQuiz.isRunning = false;
-                activeQuiz.isStarting = false;
-                try { clearQuizTimers(); } catch (e) { console.warn('[QUIZ] clearQuizTimers watchdog gagal:', e.message); }
-            } else {
+            // Watchdog terpusat: reset state macet (isRunning kedaluwarsa ATAU
+            // isStarting nyangkut >2 menit). Tanpa reset isStarting, satu start
+            // gagal bikin "Sedang menyiapkan..." permanen + microfetch terblokir.
+            resetStuckQuiz('startQuiz');
+            activeQuiz = getActiveQuiz();
+            if (activeQuiz.isRunning || activeQuiz.isStarting) {
                 // JANGAN clear timer di sini: timer milik kuis yang sedang jalan.
                 // Clear sebelum guard (kode lama) menghapus expireTimer lalu return,
                 // sehingga kuis tidak pernah expire -> stuck selamanya.
@@ -261,6 +297,7 @@ function createQuizService({
         activeQuiz = getActiveQuiz();
 
         activeQuiz.isStarting = true;
+        activeQuiz.startingAt = Date.now();
         try {
             const difficulty = (opts.difficulty && DIFFICULTY[opts.difficulty]) ? opts.difficulty : 'normal';
             const diffCfg = getDifficultyConfig(difficulty);
@@ -301,12 +338,15 @@ function createQuizService({
             if (!anime) {
                 await sendChatMessage(bot, `@${senderName} Rara gagal mengambil data kuis dari database. Coba lagi kuisnya bentar lagi ya!`, msgId);
                 activeQuiz.isStarting = false;
+                activeQuiz.startingAt = 0;
                 return;
             }
 
             const quizData = {
                 isRunning: true,
                 isStarting: false,
+                isProcessingAnswer: false,
+                startingAt: 0,
                 original: anime.title,
                 titleLower: anime.title.toLowerCase(),
                 startedAt: Date.now(),
@@ -352,6 +392,7 @@ function createQuizService({
             try {
                 const cur = getActiveQuiz();
                 cur.isStarting = false;
+                cur.startingAt = 0;
                 if (cur.isRunning && !cur.expireTimer && !cur.startedAt) {
                     cur.isRunning = false;
                 } else if (cur.isRunning && !cur.expireTimer && cur.startedAt) {
@@ -369,6 +410,8 @@ function createQuizService({
         scheduleQuizExpiry,
         expireQuiz,
         startQuiz,
+        resetStuckQuiz,
+        getEffectiveDuration,
     };
 }
 

@@ -35,9 +35,16 @@ const rekomendasiCommand = require('./rekomendasiCommand');
 const linkCommand = require('./linkCommand');
 const waifuCommand = require('./waifuCommand');
 
-// Cooldown global untuk .hint (30 detik)
+// Cooldown .hint 30 detik PER USER (dulu global: satu user memblokir semua orang).
 const HINT_COOLDOWN_MS = 30 * 1000;
-let lastHintTime = 0;
+const lastHintTimeByUser = new Map();
+function pruneHintCooldowns() {
+    if (lastHintTimeByUser.size < 10000) return;
+    const cutoff = Date.now() - HINT_COOLDOWN_MS;
+    for (const [k, v] of lastHintTimeByUser) {
+        if (v < cutoff) lastHintTimeByUser.delete(k);
+    }
+}
 
 async function handleKuisCommand(ctx) {
     const { lowerMsg, activeQuiz } = ctx;
@@ -49,12 +56,16 @@ async function handleKuisCommand(ctx) {
         }
 
         if (lowerMsg === '.hint') {
-            // Cek cooldown 30 detik, jika masih cooldown abaikan total
+            // Cek cooldown 30 detik per user; beri tahu sisa tunggu (tidak diam-diam).
             const now = Date.now();
-            if (now - lastHintTime < HINT_COOLDOWN_MS) {
-                return true; // Abaikan tanpa balasan
+            const last = lastHintTimeByUser.get(ctx.senderUserId) || 0;
+            const waitMs = HINT_COOLDOWN_MS - (now - last);
+            if (waitMs > 0) {
+                pruneHintCooldowns();
+                await ctx.sendChatMessage(ctx.bot, `⏳ @${ctx.senderName.substring(0, 10)} Tunggu ${Math.ceil(waitMs / 1000)} detik lagi untuk .hint berikutnya.`, ctx.msg.id);
+                return true;
             }
-            lastHintTime = now;
+            lastHintTimeByUser.set(ctx.senderUserId, now);
             return hintCommand.execute(ctx);
         }
 

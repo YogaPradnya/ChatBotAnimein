@@ -32,8 +32,12 @@ function createCacheRepo(db) {
         return db.execute('DELETE FROM response_cache');
     }
 
-    async function listCache() {
-        return db.execute('SELECT * FROM response_cache ORDER BY created_at DESC');
+    async function listCache(limit = 5000) {
+        const lim = Math.min(20000, Math.max(1, parseInt(limit, 10) || 5000));
+        return db.execute({
+            sql: 'SELECT * FROM response_cache ORDER BY created_at DESC LIMIT ?',
+            args: [lim],
+        });
     }
 
     async function getCacheById(id) {

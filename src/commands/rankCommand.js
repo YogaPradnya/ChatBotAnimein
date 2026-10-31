@@ -12,6 +12,8 @@ async function execute(ctx) {
         }
         await incrementCommandUsage(senderUserId, senderName);
 
+        // Flush XP requester dulu agar peringkatnya tidak basi (XP buffer 60 detik).
+        try { if (ctx && typeof ctx.flushUserXP === 'function') await ctx.flushUserXP(senderUserId); } catch (_) {}
         const res = await userRepo.getLeaderboard(10);
         const medals = ['🥇', '🥈', '🥉'];
         let rankMsg = [

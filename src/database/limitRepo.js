@@ -65,8 +65,9 @@ function createLimitRepo(db) {
     }
 
     async function createImageLimit(userId, username, usageDate, dailyLimit) {
+        // OR IGNORE: dua inisialisasi pertama konkuren tidak boleh UNIQUE violation.
         return db.execute({
-            sql: 'INSERT INTO image_limits (user_id, username, usage_date, used_count, daily_limit) VALUES (?, ?, ?, 0, ?)',
+            sql: 'INSERT OR IGNORE INTO image_limits (user_id, username, usage_date, used_count, daily_limit) VALUES (?, ?, ?, 0, ?)',
             args: [userId, username, usageDate, dailyLimit],
         });
     }

@@ -31,15 +31,22 @@ async function execute(ctx) {
 
             // Baru potong XP dan increment setelah hint berhasil di-generate
             const freeHints = await getItemCount(db, senderUserId, 'free_hint');
+            const payHintPenalty = async () => {
+                const p = Math.floor(Math.random() * 5) + 1;
+                const r = await addXP(senderUserId, senderName, -p);
+                // XP tidak bisa minus: tampilkan potongan aktual, bukan nominal.
+                return Math.abs(Number(r && r.earned) || 0);
+            };
             let penalty = 0;
             if (freeHints > 0) {
-                await useItem(db, senderUserId, 'free_hint', 1);
-                console.log(`[SHOP] ${senderName} menggunakan free hint (sisa: ${freeHints - 1})`);
+                // useItem atomik (WHERE quantity >= ?): false = habis diklaim konkuren.
+                if (await useItem(db, senderUserId, 'free_hint', 1)) {
+                    console.log(`[SHOP] ${senderName} menggunakan free hint (sisa: ${freeHints - 1})`);
+                } else {
+                    penalty = await payHintPenalty();
+                }
             } else {
-                penalty = Math.floor(Math.random() * 5) + 1;
-                const penaltyRes = await addXP(senderUserId, senderName, -penalty);
-                // XP tidak bisa minus: tampilkan potongan aktual, bukan nominal.
-                penalty = Math.abs(Number(penaltyRes?.earned) || 0);
+                penalty = await payHintPenalty();
             }
             activeQuiz.hintsRevealed++;
             trackQuizStat(senderUserId, senderName, 'total_hints_used');
